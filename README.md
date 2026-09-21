@@ -14,7 +14,13 @@ AOIs (Forecaster mode, not started yet).
 - `npm run build` assembles `dist/atlantic-sst-simulator.html` from `src/template.html`
   + `vendor/leaflet` + `data/generated/data.json`
 - `npm test` end-to-end checks in headless Chromium (network stubbed to `file://`
-  only, so it also proves the app never depends on reaching a live tile provider)
+  only, so it also proves the app never depends on reaching a live tile provider).
+  Needs a Chromium build matching the installed `playwright` version — if you're
+  in a sandbox with a pre-provisioned but differently-versioned browser, point
+  `tests/run.mjs` at it with `PLAYWRIGHT_CHROMIUM_PATH=/path/to/chromium npm test`;
+  otherwise `npx playwright install chromium` once and just run `npm test`.
+  CI (`.github/workflows/test.yml`) builds and runs this on every push/PR and
+  uploads the built HTML as a downloadable artifact.
 - `npx http-server .` (or any static server) to try `index.html` → basin/mode
   select → the built simulator
 

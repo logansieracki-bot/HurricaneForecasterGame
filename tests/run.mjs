@@ -21,7 +21,11 @@ if (!existsSync(DIST)) {
   process.exit(1);
 }
 
-const browser = await chromium.launch({ executablePath: process.env.PLAYWRIGHT_CHROMIUM_PATH || '/opt/pw-browsers/chromium' });
+// PLAYWRIGHT_CHROMIUM_PATH lets a pinned-but-mismatched local Playwright install point at
+// whatever Chromium is actually on disk (e.g. /opt/pw-browsers/chromium in a sandboxed dev
+// environment); CI installs a matching browser itself and leaves this unset.
+const launchOpts = process.env.PLAYWRIGHT_CHROMIUM_PATH ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_PATH } : {};
+const browser = await chromium.launch(launchOpts);
 const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
 await page.route('**://**/*', (route) => route.request().url().startsWith('file://') ? route.continue() : route.abort());
 const errors = [];
@@ -62,7 +66,8 @@ await browser.close();
 
 // Main menu: basin/mode select, disabled cards stay disabled, Start navigates to the built basin.
 const menuErrors = [];
-const menuPage = await (await chromium.launch({ executablePath: process.env.PLAYWRIGHT_CHROMIUM_PATH || '/opt/pw-browsers/chromium' })).newPage({ viewport: { width: 1000, height: 700 } });
+const menuBrowser = await chromium.launch(launchOpts);
+const menuPage = await menuBrowser.newPage({ viewport: { width: 1000, height: 700 } });
 menuPage.on('pageerror', (e) => menuErrors.push(e.message));
 await menuPage.goto(pathToFileURL(join(ROOT, 'index.html')).href, { waitUntil: 'load' });
 
@@ -75,7 +80,7 @@ check('Start enabled once basin + mode picked', !(await menuPage.isDisabled('#st
 await Promise.all([menuPage.waitForNavigation({ waitUntil: 'load' }), menuPage.click('#start')]);
 await menuPage.waitForFunction(() => window.__ready === true, { timeout: 15000 });
 check('Start navigates to the Atlantic simulator, which loads clean', menuPage.url().endsWith('atlantic-sst-simulator.html') && menuErrors.length === 0);
-await menuPage.context().browser().close();
+await menuBrowser.close();
 
 if (failed) {
   console.error(`\n${failed} check(s) failed.`);
