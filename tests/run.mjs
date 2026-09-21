@@ -62,6 +62,14 @@ check('vector themes switch without errors', errors.length === 0);
 const bmDebugState = await page.evaluate(() => window.SSTSIM.bm());
 check('SSTSIM.bm() debug hook works on Blue Marble theme', bmDebugState && bmDebugState.theme === 'bm' && errors.length === 0);
 
+// The border-line data only covers roughly the Atlantic domain + a margin (e.g. it's empty
+// over Alaska/Yukon); panning there used to show a map with no state/country outlines at all.
+// maxBounds should clamp the view back before it gets there.
+await page.evaluate(() => window.SSTSIM.map.fitBounds([[25, -172], [75, -90]]));
+await page.waitForTimeout(300);
+const clampedWestLon = await page.evaluate(() => window.SSTSIM.map.getBounds().getWest());
+check('map cannot pan into the uncovered Alaska/Yukon region', clampedWestLon > -120);
+
 await browser.close();
 
 // Main menu: basin/mode select, disabled cards stay disabled, Start navigates to the built basin.
