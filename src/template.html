@@ -460,6 +460,7 @@ function simDate(h) { return new Date(START_MS + h * 3600000); }
 const sst = new Float32Array(N), normal = new Float32Array(N), diff = new Float32Array(N), featN = new Float32Array(N), featD = new Float32Array(N);
 const anomC = new Float32Array(CN), anomF = new Float32Array(N), ensoCo = new Float32Array(CN), ensoF = new Float32Array(N);
 let anomDirty = true;
+const WARM_PEAK_BIAS = 1.0;   // deg C added at the seasonal peak (see computeField) to correct a cool bias there
 
 function computeField() {
   const d = simDate(simHour), y = d.getUTCFullYear(), doy = (d.getTime() - Date.UTC(y, 0, 1)) / 86400000;
@@ -540,8 +541,9 @@ function computeField() {
     const ceil = seaCeil(LAT1 - j * RES) + wmUp, c0 = ceil - 1.2, o = j * NX;      // no water is hotter than physics allows for its latitude; a warmer world raises the limit
     for (let i = 0; i < NX; i++) {
       const k = o + i, mth = w0 * A0[k] + w1 * A1[k] + w2 * A2[k] + w3 * A3[k], fn = featN[k], dev = mth - annual[k];
+      const peakBoost = WARM_PEAK_BIAS * Math.tanh(Math.max(0, dev) / 1.5);   // climatology reads ~0.5-1.5 C cool right at the seasonal peak (real fall SSTs run warmer); ramps in with dev, capped so it doesn't over-add at high-latitude swings
       let an = vs * anomF[k] + es * ensoF[k]; if (an > 2) an = 2 + 1.5 * Math.tanh((an - 2) / 1.5); else if (an < -2) an = -2 - 1.5 * Math.tanh((-an - 2) / 1.5);
-      let nrm = mth + fn, v = annual[k] + (dev > 0 ? saUp : sa) * dev + fs * (fn + vs * featD[k]) + an + wm;   // summer heat saturates: stretching the swing warms summers less than it cools winters
+      let nrm = mth + fn + peakBoost, v = annual[k] + (dev > 0 ? saUp : sa) * dev + peakBoost + fs * (fn + vs * featD[k]) + an + wm;   // summer heat saturates: stretching the swing warms summers less than it cools winters
       if (nrm < -1.8) nrm = -1.8; else if (nrm > 34) nrm = 34;
       if (v > c0) v = c0 + 1.2 * Math.tanh((v - c0) / 1.2);
       if (v < -1.8) v = -1.8; else if (v > 38) v = 38;
@@ -675,7 +677,7 @@ const map = L.map('map', {
   maxBounds: [[-46, -116], [78, 46]], maxBoundsViscosity: 1   // the border-line data only covers roughly the Atlantic domain + a margin; further out, coverage is patchy (see docs/roadmap.md)
 });
 L.control.zoom({ position: 'bottomleft' }).addTo(map);
-map.fitBounds([[-6, -97], [60, 12]]);
+map.fitBounds([[-6, -97], [60, 12]], { animate: false });   // instant: an animated pan here briefly rendered a garbled frame of the embedded base image mid-transition
 const container = map.getContainer();
 
 function makeCanvas(z) { const c = document.createElement('canvas'); c.className = 'overlay'; c.style.zIndex = z; container.appendChild(c); return c; }
@@ -694,8 +696,24 @@ const TILESETS = {
 };
 const TS = { sat: { idx: 0, layer: null, offline: false, loaded: false } };
 let detailLayer = null, cspBlocked = false;
-const bmImg = new Image(); let bmReady = false;
-bmImg.onload = () => { bmReady = true; if (themeId === 'bm') scheduleRender(); };
+const bmImg = new Image(); let bmReady = false, bmMerc = null;
+bmImg.onload = () => {
+  // Pre-warp the source (plain equirectangular) crop into Mercator space once, into an
+  // offscreen canvas, instead of resampling it live every frame: the old code drew ~1200
+  // individual 1px-tall strips per render (once per row, every time the map moves). A live
+  // render is now a single drawImage from this already-correct bitmap -- much cheaper, and
+  // simpler to reason about.
+  const [BL, BR, BB, BT] = DATA.bmBox, iw = DATA.bmSize[0], ih = DATA.bmSize[1];
+  const rowsPerDeg = ih / (BT - BB), myT = mercN(BT), myB = mercN(BB);
+  bmMerc = document.createElement('canvas'); bmMerc.width = iw; bmMerc.height = ih;
+  const mctx = bmMerc.getContext('2d');
+  for (let r = 0; r < ih; r++) {
+    const my = myT + (myB - myT) * (r + 0.5) / ih, lat = invMerc(my);
+    const sy = Math.max(0, Math.min(ih - 1, (BT - lat) * rowsPerDeg));
+    mctx.drawImage(bmImg, 0, sy, iw, 1, 0, r, iw, 1);
+  }
+  bmReady = true; if (themeId === 'bm') scheduleRender();
+};
 bmImg.src = 'data:image/jpeg;base64,' + DATA.bm;
 document.addEventListener('securitypolicyviolation', (e) => { if (/arcgis/.test(e.blockedURI || '')) { if (!cspBlocked) { cspBlocked = true; refreshNote(); } } });
 function refreshNote() {
@@ -711,6 +729,7 @@ function addTileLayer(id) {
   const fail = () => { if (dead) return; dead = true; map.removeLayer(lyr); st.idx++; addTileLayer(id); };
   lyr.on('tileload', () => { ok++; if (!st.loaded && !dead) { st.loaded = true; refreshNote(); } });
   lyr.on('tileerror', (e) => {
+    if (e.tile) e.tile.style.visibility = 'hidden';   // don't flash the browser's broken-image icon while we decide what to do
     if (dead) return; err++;
     if (ok === 0 && err >= 5) fail();
     else if (ok > 0 && e.coords.z >= 6 && e.coords.z === lyr.options.maxNativeZoom) { lyr.options.maxNativeZoom = e.coords.z - 1; lyr.redraw(); }
@@ -729,7 +748,7 @@ function syncDetail() {
       let ok = 0, err = 0;
       detailLayer = L.tileLayer(ESRI, { minZoom: 7, maxZoom: 10, maxNativeZoom: 18, noWrap: true, opacity: 0, keepBuffer: 2 });
       detailLayer.on('tileload', () => { ok++; });
-      detailLayer.on('tileerror', () => { err++; if (ok === 0 && err >= 6 && map.hasLayer(detailLayer)) map.removeLayer(detailLayer); });
+      detailLayer.on('tileerror', (e) => { if (e.tile) e.tile.style.visibility = 'hidden'; err++; if (ok === 0 && err >= 6 && map.hasLayer(detailLayer)) map.removeLayer(detailLayer); });
     }
     if (!map.hasLayer(detailLayer)) detailLayer.addTo(map); updateDetailOpacity();
   } else if (detailLayer && map.hasLayer(detailLayer)) map.removeLayer(detailLayer);
@@ -834,14 +853,17 @@ function drawEmbeddedBM(ctx, minX, minY, ws) {
   const xL = Math.max(0, (BL + 180) / 360 * ws - minX), xR = Math.min(W, (BR + 180) / 360 * ws - minX);
   if (xR <= xL + 1) return;
   const sx0 = (lonAt(xL) - BL) / (BR - BL) * iw, sx1 = (lonAt(xR) - BL) / (BR - BL) * iw;
+  const yT = mercN(BT) * ws - minY, yB = mercN(BB) * ws - minY;
+  if (yB <= yT + 1) return;
+  // Clip the destination rect to the canvas (and shrink the source rect to match): our image
+  // covers far more latitude than most views show, so the unclipped destination routinely
+  // overflows the canvas by 2-3x its height -- clipping means drawImage only ever scales the
+  // part that's actually visible.
+  const dyT = Math.max(0, yT), dyB = Math.min(H, yB);
+  if (dyB <= dyT) return;
+  const syT = (dyT - yT) / (yB - yT) * ih, syB = (dyB - yT) / (yB - yT) * ih;
   ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
-  const rowsPerDeg = ih / (BT - BB);
-  for (let y = 0; y < H; y++) {
-    const lat = Math.atan(Math.sinh(Math.PI * (1 - 2 * (minY + y + 0.5) / ws))) / DEG;
-    if (lat > BT || lat < BB) continue;
-    const sh = Math.max(1, (360 / ws) * Math.cos(lat * DEG) * rowsPerDeg), sy = Math.max(0, Math.min(ih - sh, (BT - lat) * rowsPerDeg - sh / 2));
-    ctx.drawImage(bmImg, sx0, sy, sx1 - sx0, sh, xL, y, xR - xL, 1);
-  }
+  ctx.drawImage(bmMerc, sx0, syT, sx1 - sx0, syB - syT, xL, dyT, xR - xL, dyB - dyT);
 }
 function drawBaseLayer(minX, minY, ws) {
   const b = baseCanvas.getContext('2d'); b.setTransform(DPR, 0, 0, DPR, 0, 0); b.clearRect(0, 0, W, H);
@@ -970,7 +992,7 @@ function render() {
     }
   }
   octx.putImageData(img, 0, 0);
-  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+  ctx.imageSmoothingEnabled = false;
   ctx.drawImage(off, 0, 0, sw, sh, 0, 0, W, H);
   ctx.globalCompositeOperation = 'destination-out'; ctx.fillStyle = '#000'; ctx.strokeStyle = '#000'; ctx.lineWidth = 1.3; ctx.lineJoin = 'round';
   clipLand(ctx, minX, minY, ws);
