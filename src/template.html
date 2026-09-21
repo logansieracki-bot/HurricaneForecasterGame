@@ -261,6 +261,23 @@ function b64i16(s) { const u = b64bytes(s); return new Int16Array(u.buffer, 0, u
 const land = new Uint8Array(N);                 // 1 = land (0.25° nodes)
 { const mb = b64bytes(DATA.mask); for (let k = 0; k < N; k++) land[k] = (mb[k >> 3] >> (7 - (k & 7))) & 1; }
 
+/* Cells that belong to a different basin, not this Atlantic build: south of the equator
+   (the South Atlantic, its own future basin) and the Mediterranean/Black Sea (ditto). SST is
+   left NaN there ("outside the simulated area"), same as cells outside the grid entirely. */
+const outOfBasin = new Uint8Array(N);
+{
+  const MED_LON0 = -6, MED_LON1 = 40, MED_LAT0 = 30, MED_LAT1 = 47;
+  for (let j = 0; j < NY; j++) {
+    const lat = LAT1 - j * RES, o = j * NX;
+    for (let i = 0; i < NX; i++) {
+      if (lat < 0) { outOfBasin[o + i] = 1; continue; }
+      if (lat > MED_LAT1 || lat < MED_LAT0) continue;
+      const lon = LON0 + i * RES;
+      if (lon >= MED_LON0 && lon <= MED_LON1) outOfBasin[o + i] = 1;
+    }
+  }
+}
+
 const climC = [];                               // 12 coarse monthly climatologies (°C)
 { const a = b64i16(DATA.clim); for (let m = 0; m < 12; m++) { const f = new Float32Array(CN); for (let c = 0; c < CN; c++) f[c] = a[m * CN + c] / 100; climC.push(f); } }
 const eofC = new Float32Array(K * CN);          // interannual patterns (°C per +1σ of each mode)
@@ -528,7 +545,7 @@ function computeField() {
       if (nrm < -1.8) nrm = -1.8; else if (nrm > 34) nrm = 34;
       if (v > c0) v = c0 + 1.2 * Math.tanh((v - c0) / 1.2);
       if (v < -1.8) v = -1.8; else if (v > 38) v = 38;
-      sst[k] = v; normal[k] = nrm; diff[k] = v - nrm;
+      if (outOfBasin[k]) { sst[k] = NaN; normal[k] = NaN; diff[k] = NaN; } else { sst[k] = v; normal[k] = nrm; diff[k] = v - nrm; }
     }
   }
   updateLakes(f, doy);
@@ -653,7 +670,7 @@ let TH = THEMES.bm, themeId = 'bm', gridMode = 'off';
  *  Map
  * ------------------------------------------------------------------ */
 const map = L.map('map', {
-  zoomControl: false, attributionControl: false, minZoom: 2, maxZoom: 10, zoomSnap: 0.25, zoomDelta: 0.5, wheelPxPerZoomLevel: 110,
+  zoomControl: false, attributionControl: false, minZoom: 4.5, maxZoom: 10, zoomSnap: 0.25, zoomDelta: 0.5, wheelPxPerZoomLevel: 110,
   zoomAnimation: false, fadeAnimation: false, markerZoomAnimation: false, worldCopyJump: false,
   maxBounds: [[-46, -116], [78, 46]], maxBoundsViscosity: 1   // the border-line data only covers roughly the Atlantic domain + a margin; further out, coverage is patchy (see docs/roadmap.md)
 });
@@ -935,6 +952,7 @@ function render() {
       const ax = colA[x], p = r0 + i, q = r1 + i;
       const v = (src[p] * (1 - ax) + src[p + 1] * ax) * (1 - ay) + (src[q] * (1 - ax) + src[q + 1] * ax) * ay;
       vals[idx] = v;
+      if (v !== v) continue;   // NaN (outside the simulated area, or a different basin): leave transparent, not the coldest colour
       let li = ((v - V.vmin) * lscale + 0.5) | 0; if (li < 0) li = 0; else if (li > ln) li = ln;
       const a = (Math.min(colF[x], fy) * 255) | 0;
       px[idx] = ((a << 24) | (lut[li] & 0xffffff)) >>> 0;

@@ -32,11 +32,12 @@ section{margin-bottom:30px}
 .card:hover:not(:disabled){background:rgba(255,255,255,.09)}
 .card[aria-pressed=true]{border-color:var(--ice); background:rgba(255,255,255,.14)}
 .card:disabled{cursor:default; color:var(--dim); opacity:.55}
-.card .name{display:block; font-size:15px; font-weight:600; margin-bottom:3px}
+.head{display:flex; align-items:flex-start; justify-content:space-between; gap:8px; margin-bottom:3px}
+.card .name{font-size:15px; font-weight:600}
 .card .desc{display:block; font-size:12px; color:var(--dim); line-height:1.4}
 .card[aria-pressed=true] .desc{color:var(--dim)}
 .badge{
-  position:absolute; top:10px; right:10px; font-size:10px; font-weight:600; letter-spacing:.03em;
+  flex:none; font-size:10px; font-weight:600; letter-spacing:.03em;
   text-transform:uppercase; color:var(--dim); background:rgba(255,255,255,.08); border-radius:5px; padding:2px 6px;
 }
 footer{display:flex; align-items:center; justify-content:space-between; margin-top:8px}
@@ -72,10 +73,14 @@ footer{display:flex; align-items:center; justify-content:space-between; margin-t
 <script>
 const BASINS = [
   { id: 'atlantic', name: 'Atlantic', desc: 'North Atlantic hurricane basin', href: 'dist/atlantic-sst-simulator.html', enabled: true },
-  { id: 'epac', name: 'East Pacific', desc: 'Coming soon', enabled: false },
-  { id: 'wpac', name: 'West Pacific', desc: 'Coming soon', enabled: false },
-  { id: 'nio', name: 'North Indian Ocean', desc: 'Coming soon', enabled: false },
-  { id: 'sio', name: 'Australia / Madagascar', desc: 'Coming soon', enabled: false },
+  { id: 'epac', name: 'Eastern Pacific', desc: 'Coming soon', enabled: false },
+  { id: 'wpac', name: 'Western Pacific', desc: 'Coming soon', enabled: false },
+  { id: 'nio', name: 'Northern Indian Ocean', desc: 'Coming soon', enabled: false },
+  { id: 'aus', name: 'Australian Region', desc: 'Coming soon', enabled: false },
+  { id: 'spac', name: 'South Pacific', desc: 'Coming soon', enabled: false },
+  { id: 'swio', name: 'South-West Indian Ocean', desc: 'Coming soon', enabled: false },
+  { id: 'satl', name: 'South Atlantic', desc: 'Coming soon', enabled: false },
+  { id: 'med', name: 'Mediterranean', desc: 'Coming soon', enabled: false },
 ];
 const MODES = [
   { id: 'sim', name: 'Simulation', desc: 'Watch storms happen, experiment with the ocean, summon storms', enabled: true },
@@ -92,8 +97,9 @@ function renderGrid(container, items, selected, onPick) {
     b.type = 'button';
     b.disabled = !it.enabled;
     b.setAttribute('aria-pressed', selected === it.id);
-    b.innerHTML = '<span class="name">' + it.name + '</span><span class="desc">' + it.desc + '</span>'
-      + (!it.enabled ? '<span class="badge">Soon</span>' : '');
+    b.innerHTML = '<span class="head"><span class="name">' + it.name + '</span>'
+      + (!it.enabled ? '<span class="badge">Soon</span>' : '') + '</span>'
+      + '<span class="desc">' + it.desc + '</span>';
     if (it.enabled) b.onclick = () => onPick(it.id);
     container.appendChild(b);
   }

@@ -88,9 +88,11 @@ check that Satellite still resolves to something usable.
   `tools/make_climate.py` / `tools/make_geo.py` / `npm run fetch` in this repo
   yet. Until that pipeline exists, treat `data/generated/data.json` as a
   checked-in asset, not a regenerable build artifact.
-- Domain is the Atlantic sector only; ENSO changes SST but not winds or shear yet.
+- Domain is the North Atlantic basin only; SST south of the equator and in the
+  Mediterranean/Black Sea is intentionally masked out (they're future basins),
+  and ENSO changes SST but not winds or shear yet.
 - ERSST at 2° is warm-biased in coastal cells; several corrections are hand-tuned
   (see the shelf, Northeast shelf, Gulf Stream blocks in `src/template.html`).
-- Only Atlantic + Simulation mode are wired up in the main menu. East Pacific,
-  West Pacific, North Indian, and Australia/Madagascar are next (see roadmap);
-  Forecaster mode hasn't been started.
+- Only Atlantic + Simulation mode are wired up in the main menu. The other 8
+  basins are listed but disabled ("Coming soon") — see `docs/roadmap.md` for
+  order; Forecaster mode hasn't been started.

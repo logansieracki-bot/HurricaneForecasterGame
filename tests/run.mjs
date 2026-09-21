@@ -70,6 +70,18 @@ await page.waitForTimeout(300);
 const clampedWestLon = await page.evaluate(() => window.SSTSIM.map.getBounds().getWest());
 check('map cannot pan into the uncovered Alaska/Yukon region', clampedWestLon > -120);
 
+// This build is the North Atlantic basin only: the Mediterranean and the South Atlantic are
+// their own future basins, so SST there should read as "outside the simulated area" (NaN),
+// not silently show Atlantic data under a basin it doesn't belong to.
+const basinSamples = await page.evaluate(() => ({
+  med: window.SSTSIM.sample(36, 15),      // central Mediterranean
+  southAtlantic: window.SSTSIM.sample(-10, -20),   // open South Atlantic
+  openAtlantic: window.SSTSIM.sample(20, -50),     // sanity check: still real data north of the equator
+}));
+check('Mediterranean SST is excluded', Number.isNaN(basinSamples.med.sst));
+check('South Atlantic SST is excluded', Number.isNaN(basinSamples.southAtlantic.sst));
+check('open North Atlantic SST is still real data', Number.isFinite(basinSamples.openAtlantic.sst));
+
 await browser.close();
 
 // Main menu: basin/mode select, disabled cards stay disabled, Start navigates to the built basin.
@@ -80,8 +92,8 @@ menuPage.on('pageerror', (e) => menuErrors.push(e.message));
 await menuPage.goto(pathToFileURL(join(ROOT, 'index.html')).href, { waitUntil: 'load' });
 
 check('Start disabled with nothing picked', await menuPage.isDisabled('#start'));
-await menuPage.click('button.card:has-text("East Pacific")').catch(() => {});
-check('disabled basin card ("coming soon") cannot be selected', (await menuPage.getAttribute('button.card:has-text("East Pacific")', 'aria-pressed')) === 'false');
+await menuPage.click('button.card:has-text("Eastern Pacific")').catch(() => {});
+check('disabled basin card ("coming soon") cannot be selected', (await menuPage.getAttribute('button.card:has-text("Eastern Pacific")', 'aria-pressed')) === 'false');
 await menuPage.click('button.card:has-text("Atlantic")');
 await menuPage.click('button.card:has-text("Simulation")');
 check('Start enabled once basin + mode picked', !(await menuPage.isDisabled('#start')));
