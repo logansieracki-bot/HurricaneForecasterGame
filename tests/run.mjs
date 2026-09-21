@@ -1,0 +1,84 @@
+// End-to-end checks in headless Chromium. Needs a prior `npm run build`.
+// Network is stubbed to file:// only, so these also verify the app never
+// depends on reaching a live tile provider to be usable.
+import { chromium } from 'playwright';
+import { existsSync } from 'node:fs';
+import { pathToFileURL } from 'node:url';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
+const DIST = join(ROOT, 'dist/atlantic-sst-simulator.html');
+
+let failed = 0;
+function check(name, cond) {
+  console.log((cond ? 'ok   ' : 'FAIL ') + name);
+  if (!cond) failed++;
+}
+
+if (!existsSync(DIST)) {
+  console.error('dist/atlantic-sst-simulator.html not found — run `npm run build` first.');
+  process.exit(1);
+}
+
+const browser = await chromium.launch({ executablePath: process.env.PLAYWRIGHT_CHROMIUM_PATH || '/opt/pw-browsers/chromium' });
+const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+await page.route('**://**/*', (route) => route.request().url().startsWith('file://') ? route.continue() : route.abort());
+const errors = [];
+page.on('pageerror', (e) => errors.push(e.message));
+
+await page.goto(pathToFileURL(DIST).href, { waitUntil: 'load', timeout: 30000 });
+await page.waitForFunction(() => window.__ready === true, { timeout: 15000 });
+await page.waitForTimeout(1000);
+
+check('loads with no JS errors', errors.length === 0);
+if (errors.length) console.log('  ' + errors.join('\n  '));
+
+const initialTheme = await page.evaluate(() => document.querySelector('#themes button[aria-pressed="true"]')?.textContent);
+check('starts on Blue Marble theme', initialTheme === 'Blue Marble');
+
+const state1 = await page.evaluate(() => window.SSTSIM.state());
+await page.waitForTimeout(1200);
+const state2 = await page.evaluate(() => window.SSTSIM.state());
+check('sim clock advances', state2.simHour > state1.simHour);
+
+// Satellite theme has no network in this test: must fall back to Blue Marble, not hang or throw.
+await page.click('#themes button:has-text("Satellite")');
+await page.waitForTimeout(11000);
+const afterSat = await page.evaluate(() => document.querySelector('#themes button[aria-pressed="true"]')?.textContent);
+check('Satellite theme falls back to Blue Marble without a live tile source', afterSat === 'Blue Marble');
+
+const vectorThemes = ['NHC', 'Plain', 'Chart', 'Blue Marble'];
+for (const name of vectorThemes) {
+  await page.click(`#themes button:has-text("${name}")`);
+  await page.waitForTimeout(200);
+}
+check('vector themes switch without errors', errors.length === 0);
+
+const bmDebugState = await page.evaluate(() => window.SSTSIM.bm());
+check('SSTSIM.bm() debug hook works on Blue Marble theme', bmDebugState && bmDebugState.theme === 'bm' && errors.length === 0);
+
+await browser.close();
+
+// Main menu: basin/mode select, disabled cards stay disabled, Start navigates to the built basin.
+const menuErrors = [];
+const menuPage = await (await chromium.launch({ executablePath: process.env.PLAYWRIGHT_CHROMIUM_PATH || '/opt/pw-browsers/chromium' })).newPage({ viewport: { width: 1000, height: 700 } });
+menuPage.on('pageerror', (e) => menuErrors.push(e.message));
+await menuPage.goto(pathToFileURL(join(ROOT, 'index.html')).href, { waitUntil: 'load' });
+
+check('Start disabled with nothing picked', await menuPage.isDisabled('#start'));
+await menuPage.click('button.card:has-text("East Pacific")').catch(() => {});
+check('disabled basin card ("coming soon") cannot be selected', (await menuPage.getAttribute('button.card:has-text("East Pacific")', 'aria-pressed')) === 'false');
+await menuPage.click('button.card:has-text("Atlantic")');
+await menuPage.click('button.card:has-text("Simulation")');
+check('Start enabled once basin + mode picked', !(await menuPage.isDisabled('#start')));
+await Promise.all([menuPage.waitForNavigation({ waitUntil: 'load' }), menuPage.click('#start')]);
+await menuPage.waitForFunction(() => window.__ready === true, { timeout: 15000 });
+check('Start navigates to the Atlantic simulator, which loads clean', menuPage.url().endsWith('atlantic-sst-simulator.html') && menuErrors.length === 0);
+await menuPage.context().browser().close();
+
+if (failed) {
+  console.error(`\n${failed} check(s) failed.`);
+  process.exit(1);
+}
+console.log('\nAll checks passed.');

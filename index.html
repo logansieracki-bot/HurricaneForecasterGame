@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hurricane Forecaster</title>
+<style>
+:root{
+  --ink:#07111d; --panel:rgba(8,17,30,.82); --line:rgba(190,215,240,.16);
+  --text:#e4edf6; --dim:#8da2b8; --ice:#eef4fa; --focus:#7cc4ff;
+  --font:"Avenir Next","Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,Roboto,"Helvetica Neue",sans-serif;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{
+  background:radial-gradient(ellipse at 50% -10%, #0e2540 0%, var(--ink) 55%);
+  color:var(--text); font-family:var(--font);
+  display:flex; align-items:center; justify-content:center; padding:24px;
+}
+button:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+main{width:100%; max-width:760px}
+h1{font-size:clamp(28px,5vw,42px); font-weight:600; letter-spacing:-.02em; margin:0 0 6px}
+.tagline{color:var(--dim); font-size:15px; margin:0 0 36px}
+h2{font-size:13px; font-weight:600; text-transform:uppercase; letter-spacing:.06em; color:var(--dim); margin:0 0 12px}
+section{margin-bottom:30px}
+.grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap:10px}
+.card{
+  position:relative; text-align:left; border:1px solid var(--line); background:rgba(255,255,255,.04);
+  border-radius:12px; padding:16px 16px 14px; color:var(--text); font:inherit; cursor:pointer;
+  transition:background .15s,border-color .15s;
+}
+.card:hover:not(:disabled){background:rgba(255,255,255,.09)}
+.card[aria-pressed=true]{border-color:var(--ice); background:rgba(255,255,255,.14)}
+.card:disabled{cursor:default; color:var(--dim); opacity:.55}
+.card .name{display:block; font-size:15px; font-weight:600; margin-bottom:3px}
+.card .desc{display:block; font-size:12px; color:var(--dim); line-height:1.4}
+.card[aria-pressed=true] .desc{color:var(--dim)}
+.badge{
+  position:absolute; top:10px; right:10px; font-size:10px; font-weight:600; letter-spacing:.03em;
+  text-transform:uppercase; color:var(--dim); background:rgba(255,255,255,.08); border-radius:5px; padding:2px 6px;
+}
+footer{display:flex; align-items:center; justify-content:space-between; margin-top:8px}
+#hint{font-size:13px; color:var(--dim)}
+#start{
+  font:inherit; font-weight:600; font-size:14px; padding:12px 26px; border-radius:10px; border:0;
+  background:var(--ice); color:#0a1626; cursor:pointer; transition:background .15s,opacity .15s;
+}
+#start:hover:not(:disabled){background:#fff}
+#start:disabled{opacity:.4; cursor:default}
+</style>
+</head>
+<body>
+<main>
+  <h1>Hurricane Forecaster</h1>
+  <p class="tagline">Pick a basin and a mode to begin.</p>
+
+  <section>
+    <h2>Basin</h2>
+    <div class="grid" id="basins" role="group" aria-label="Basin"></div>
+  </section>
+
+  <section>
+    <h2>Mode</h2>
+    <div class="grid" id="modes" role="group" aria-label="Mode"></div>
+  </section>
+
+  <footer>
+    <span id="hint">Choose a basin and a mode.</span>
+    <button id="start" disabled>Start</button>
+  </footer>
+</main>
+<script>
+const BASINS = [
+  { id: 'atlantic', name: 'Atlantic', desc: 'North Atlantic hurricane basin', href: 'dist/atlantic-sst-simulator.html', enabled: true },
+  { id: 'epac', name: 'East Pacific', desc: 'Coming soon', enabled: false },
+  { id: 'wpac', name: 'West Pacific', desc: 'Coming soon', enabled: false },
+  { id: 'nio', name: 'North Indian Ocean', desc: 'Coming soon', enabled: false },
+  { id: 'sio', name: 'Australia / Madagascar', desc: 'Coming soon', enabled: false },
+];
+const MODES = [
+  { id: 'sim', name: 'Simulation', desc: 'Watch storms happen, experiment with the ocean, summon storms', enabled: true },
+  { id: 'forecaster', name: 'Forecaster', desc: 'Coming soon', enabled: false },
+];
+
+let basin = null, mode = null;
+
+function renderGrid(container, items, selected, onPick) {
+  container.innerHTML = '';
+  for (const it of items) {
+    const b = document.createElement('button');
+    b.className = 'card';
+    b.type = 'button';
+    b.disabled = !it.enabled;
+    b.setAttribute('aria-pressed', selected === it.id);
+    b.innerHTML = '<span class="name">' + it.name + '</span><span class="desc">' + it.desc + '</span>'
+      + (!it.enabled ? '<span class="badge">Soon</span>' : '');
+    if (it.enabled) b.onclick = () => onPick(it.id);
+    container.appendChild(b);
+  }
+}
+
+function update() {
+  renderGrid($('basins'), BASINS, basin, (id) => { basin = id; update(); });
+  renderGrid($('modes'), MODES, mode, (id) => { mode = id; update(); });
+  const ready = basin && mode;
+  $('start').disabled = !ready;
+  $('hint').textContent = ready ? 'Ready.' : 'Choose a basin and a mode.';
+}
+function $(id) { return document.getElementById(id); }
+
+$('start').onclick = () => {
+  const b = BASINS.find((x) => x.id === basin);
+  if (b && b.href) location.href = b.href;
+};
+
+update();
+</script>
+</body>
+</html>

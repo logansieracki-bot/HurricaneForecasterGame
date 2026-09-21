@@ -1,0 +1,14 @@
+{
+  "name": "hurricane-forecaster-game",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Basin hurricane simulation/forecaster game. Phase 1: Atlantic SST simulator.",
+  "type": "module",
+  "scripts": {
+    "build": "node tools/build.mjs",
+    "test": "node tests/run.mjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.63.0"
+  }
+}
