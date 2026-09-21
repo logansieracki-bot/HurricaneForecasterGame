@@ -266,14 +266,24 @@ const land = new Uint8Array(N);                 // 1 = land (0.25° nodes)
    left NaN there ("outside the simulated area"), same as cells outside the grid entirely. */
 const outOfBasin = new Uint8Array(N);
 {
-  const MED_LON0 = -6, MED_LON1 = 40, MED_LAT0 = 30, MED_LAT1 = 47, SOUTH_EDGE = -8;   // a few degrees south of the equator: clears the southern Main Development Region with room to spare, short of the South Atlantic
+  // The Mediterranean's western edge isn't a straight meridian -- it follows the Spain/France
+  // coastline northeast from Gibraltar. A flat lon >= -6 cutoff was clipping real open Atlantic
+  // (Bay of Biscay, off Brittany/the Basque coast) as if it were Mediterranean. Interpolate the
+  // cutoff longitude by latitude instead, roughly tracing that coast; north of the last point
+  // there's no more Mediterranean on the west side at all (France separates the two seas), so
+  // the cutoff longitude goes past MED_LON1 and excludes nothing.
+  const MED_LON1 = 40, MED_LAT0 = 30, MED_LAT1 = 47, SOUTH_EDGE = -8;   // a few degrees south of the equator: clears the southern Main Development Region with room to spare, short of the South Atlantic
+  const MED_W_LAT = [30, 36, 37.5, 39.5, 41, 42.5, 43.5];
+  const MED_W_LON = [-6, -5.5, -1, 0.5, 2, 3, 90];
   for (let j = 0; j < NY; j++) {
     const lat = LAT1 - j * RES, o = j * NX;
+    if (lat >= SOUTH_EDGE && (lat > MED_LAT1 || lat < MED_LAT0)) continue;
+    const medLon0 = lat >= MED_LAT0 && lat <= MED_LAT1 ? interp1(MED_W_LAT, MED_W_LON, lat) : null;
     for (let i = 0; i < NX; i++) {
       if (lat < SOUTH_EDGE) { outOfBasin[o + i] = 1; continue; }
-      if (lat > MED_LAT1 || lat < MED_LAT0) continue;
+      if (medLon0 === null) continue;
       const lon = LON0 + i * RES;
-      if (lon >= MED_LON0 && lon <= MED_LON1) outOfBasin[o + i] = 1;
+      if (lon >= medLon0 && lon <= MED_LON1) outOfBasin[o + i] = 1;
     }
   }
 }

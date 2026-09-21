@@ -83,11 +83,15 @@ check('map cannot pan down into South America / the South Atlantic', clampedSout
 // a few degrees below the equator so the southern Main Development Region isn't clipped.
 const basinSamples = await page.evaluate(() => ({
   med: window.SSTSIM.sample(36, 15),      // central Mediterranean
+  gibraltar: window.SSTSIM.sample(35.9, -4.5),     // Alboran Sea, right at the strait
+  bayOfBiscay: window.SSTSIM.sample(45, -3),       // open Atlantic off France -- a flat lon cutoff clipped this
   southAtlantic: window.SSTSIM.sample(-15, -20),   // open South Atlantic, well past the cutoff
   southernMDR: window.SSTSIM.sample(-5, -30),      // a few degrees south of the equator, inside the cutoff
   openAtlantic: window.SSTSIM.sample(20, -50),     // sanity check: still real data north of the equator
 }));
 check('Mediterranean SST is excluded', Number.isNaN(basinSamples.med.sst));
+check('Gibraltar/Alboran Sea is excluded', Number.isNaN(basinSamples.gibraltar.sst));
+check('Bay of Biscay (open Atlantic) is not clipped by the Mediterranean cutoff', Number.isFinite(basinSamples.bayOfBiscay.sst));
 check('South Atlantic SST is excluded', Number.isNaN(basinSamples.southAtlantic.sst));
 check('southern MDR (a few degrees south of the equator) still has real SST', Number.isFinite(basinSamples.southernMDR.sst));
 check('open North Atlantic SST is still real data', Number.isFinite(basinSamples.openAtlantic.sst));
