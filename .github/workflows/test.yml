@@ -2,8 +2,9 @@ name: Build & test
 
 on:
   push:
-    branches: ['**']
+    branches: [main]
   pull_request:
+    branches: [main]
 
 jobs:
   build-and-test:
@@ -28,9 +29,17 @@ jobs:
         run: npm test
 
       - name: Upload built simulator
-        if: always()
+        if: success()
+        id: upload
         uses: actions/upload-artifact@v4
         with:
           name: atlantic-sst-simulator
           path: dist/atlantic-sst-simulator.html
-          if-no-files-found: ignore
+          if-no-files-found: error
+
+      - name: Link the built HTML in the run summary
+        if: success()
+        run: |
+          echo "### Built simulator" >> "$GITHUB_STEP_SUMMARY"
+          echo "Download it from **this run's Summary page → Artifacts (bottom of the page) → \`atlantic-sst-simulator\`**, unzip, and open the \`.html\` file in a browser." >> "$GITHUB_STEP_SUMMARY"
+          echo "${{ steps.upload.outputs.artifact-url }}" >> "$GITHUB_STEP_SUMMARY"
