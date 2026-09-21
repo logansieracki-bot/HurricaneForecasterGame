@@ -8,6 +8,10 @@ AOIs (Forecaster mode, not started yet).
 **Phase 1 (in progress): Atlantic SST simulator + main menu shell.** See
 `docs/roadmap.md` for what's next.
 
+**Play it live:** https://logansieracki-bot.github.io/HurricaneForecasterGame/
+(redeploys automatically after every push to `main` that passes tests — see
+Deployment below).
+
 ## Commands
 - `npm install` (Leaflet is vendored, not an npm dep — see Layout — but `playwright`
   for tests needs installing)
@@ -23,6 +27,15 @@ AOIs (Forecaster mode, not started yet).
   uploads the built HTML as a downloadable artifact.
 - `npx http-server .` (or any static server) to try `index.html` → basin/mode
   select → the built simulator
+
+## Deployment
+`.github/workflows/test.yml` has a second job, `deploy`, that publishes
+`index.html` + the built simulator to GitHub Pages after `build-and-test`
+passes on a push to `main`. One-time setup this repo needs (can't be done from
+a workflow file): **Settings → Pages → Build and deployment → Source: "GitHub
+Actions"**. After that, every green push to `main` redeploys
+https://logansieracki-bot.github.io/HurricaneForecasterGame/ automatically —
+nothing to run by hand.
 
 ## Layout
 - `index.html` main menu: basin select + mode select. Only Atlantic / Simulation
