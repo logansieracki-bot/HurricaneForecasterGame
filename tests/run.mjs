@@ -68,18 +68,28 @@ check('SSTSIM.bm() debug hook works on Blue Marble theme', bmDebugState && bmDeb
 await page.evaluate(() => window.SSTSIM.map.fitBounds([[25, -172], [75, -90]]));
 await page.waitForTimeout(300);
 const clampedWestLon = await page.evaluate(() => window.SSTSIM.map.getBounds().getWest());
-check('map cannot pan into the uncovered Alaska/Yukon region', clampedWestLon > -120);
+check('map cannot pan into the uncovered Alaska/Yukon region', clampedWestLon > -110);
+
+// The pan limit is the North Atlantic basin, full stop: trying to jump down to South America /
+// the South Atlantic should clamp back north of it, the same way the Alaska/Yukon edge does.
+await page.evaluate(() => window.SSTSIM.map.setView([-20, -30], 5));
+await page.waitForTimeout(300);
+const clampedSouthLat = await page.evaluate(() => window.SSTSIM.map.getBounds().getSouth());
+check('map cannot pan down into South America / the South Atlantic', clampedSouthLat > -5);
 
 // This build is the North Atlantic basin only: the Mediterranean and the South Atlantic are
 // their own future basins, so SST there should read as "outside the simulated area" (NaN),
-// not silently show Atlantic data under a basin it doesn't belong to.
+// not silently show Atlantic data under a basin it doesn't belong to. The southern cutoff sits
+// a few degrees below the equator so the southern Main Development Region isn't clipped.
 const basinSamples = await page.evaluate(() => ({
   med: window.SSTSIM.sample(36, 15),      // central Mediterranean
-  southAtlantic: window.SSTSIM.sample(-10, -20),   // open South Atlantic
+  southAtlantic: window.SSTSIM.sample(-15, -20),   // open South Atlantic, well past the cutoff
+  southernMDR: window.SSTSIM.sample(-5, -30),      // a few degrees south of the equator, inside the cutoff
   openAtlantic: window.SSTSIM.sample(20, -50),     // sanity check: still real data north of the equator
 }));
 check('Mediterranean SST is excluded', Number.isNaN(basinSamples.med.sst));
 check('South Atlantic SST is excluded', Number.isNaN(basinSamples.southAtlantic.sst));
+check('southern MDR (a few degrees south of the equator) still has real SST', Number.isFinite(basinSamples.southernMDR.sst));
 check('open North Atlantic SST is still real data', Number.isFinite(basinSamples.openAtlantic.sst));
 
 await browser.close();

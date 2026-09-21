@@ -266,11 +266,11 @@ const land = new Uint8Array(N);                 // 1 = land (0.25° nodes)
    left NaN there ("outside the simulated area"), same as cells outside the grid entirely. */
 const outOfBasin = new Uint8Array(N);
 {
-  const MED_LON0 = -6, MED_LON1 = 40, MED_LAT0 = 30, MED_LAT1 = 47;
+  const MED_LON0 = -6, MED_LON1 = 40, MED_LAT0 = 30, MED_LAT1 = 47, SOUTH_EDGE = -8;   // a few degrees south of the equator: clears the southern Main Development Region with room to spare, short of the South Atlantic
   for (let j = 0; j < NY; j++) {
     const lat = LAT1 - j * RES, o = j * NX;
     for (let i = 0; i < NX; i++) {
-      if (lat < 0) { outOfBasin[o + i] = 1; continue; }
+      if (lat < SOUTH_EDGE) { outOfBasin[o + i] = 1; continue; }
       if (lat > MED_LAT1 || lat < MED_LAT0) continue;
       const lon = LON0 + i * RES;
       if (lon >= MED_LON0 && lon <= MED_LON1) outOfBasin[o + i] = 1;
@@ -672,12 +672,12 @@ let TH = THEMES.bm, themeId = 'bm', gridMode = 'off';
  *  Map
  * ------------------------------------------------------------------ */
 const map = L.map('map', {
-  zoomControl: false, attributionControl: false, minZoom: 4.5, maxZoom: 10, zoomSnap: 0.25, zoomDelta: 0.5, wheelPxPerZoomLevel: 110,
+  zoomControl: false, attributionControl: false, minZoom: 5, maxZoom: 10, zoomSnap: 0.25, zoomDelta: 0.5, wheelPxPerZoomLevel: 110,
   zoomAnimation: false, fadeAnimation: false, markerZoomAnimation: false, worldCopyJump: false,
-  maxBounds: [[-46, -116], [78, 46]], maxBoundsViscosity: 1   // the border-line data only covers roughly the Atlantic domain + a margin; further out, coverage is patchy (see docs/roadmap.md)
+  maxBounds: [[2, -102], [55, 22]], maxBoundsViscosity: 1   // hard pan limit: north Atlantic basin only -- specifically keeps South America and the South Atlantic out of reach (their own future basin), with room south of the Main Development Region
 });
 L.control.zoom({ position: 'bottomleft' }).addTo(map);
-map.fitBounds([[-6, -97], [60, 12]], { animate: false });   // instant: an animated pan here briefly rendered a garbled frame of the embedded base image mid-transition
+map.fitBounds([[10, -90], [40, -20]], { animate: false });   // instant: an animated pan here briefly rendered a garbled frame of the embedded base image mid-transition
 const container = map.getContainer();
 
 function makeCanvas(z) { const c = document.createElement('canvas'); c.className = 'overlay'; c.style.zIndex = z; container.appendChild(c); return c; }
