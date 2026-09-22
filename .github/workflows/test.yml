@@ -26,26 +26,28 @@ jobs:
       - name: Install headless Chromium for Playwright
         run: npx playwright install --with-deps chromium
 
-      - name: Build the Atlantic simulator
+      - name: Build the simulators
         run: npm run build
 
       - name: Run end-to-end checks
         run: npm test
 
-      - name: Upload built simulator
+      - name: Upload built simulators
         if: success()
         id: upload
         uses: actions/upload-artifact@v4
         with:
-          name: atlantic-sst-simulator
-          path: dist/atlantic-sst-simulator.html
+          name: sst-simulators
+          path: |
+            dist/atlantic-sst-simulator.html
+            dist/eastpacific-sst-simulator.html
           if-no-files-found: error
 
       - name: Link the built HTML in the run summary
         if: success()
         run: |
-          echo "### Built simulator" >> "$GITHUB_STEP_SUMMARY"
-          echo "Download it from **this run's Summary page → Artifacts (bottom of the page) → \`atlantic-sst-simulator\`**, unzip, and open the \`.html\` file in a browser." >> "$GITHUB_STEP_SUMMARY"
+          echo "### Built simulators" >> "$GITHUB_STEP_SUMMARY"
+          echo "Download them from **this run's Summary page → Artifacts (bottom of the page) → \`sst-simulators\`**, unzip, and open either \`.html\` file in a browser." >> "$GITHUB_STEP_SUMMARY"
           echo "${{ steps.upload.outputs.artifact-url }}" >> "$GITHUB_STEP_SUMMARY"
 
   # Publishes the main menu + built simulator to GitHub Pages. Only runs once
@@ -77,6 +79,7 @@ jobs:
           mkdir -p _site/dist
           cp index.html _site/
           cp dist/atlantic-sst-simulator.html _site/dist/
+          cp dist/eastpacific-sst-simulator.html _site/dist/
 
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
