@@ -1,6 +1,28 @@
 # Roadmap
 
 ## Just landed
+- Fixed a real data bug the Gulf of California extension surfaced: a visible
+  hard seam cutting across the gulf, with a patch of water not warming the
+  way its surroundings did. Root cause was in the *data*, not rendering --
+  `tools/climate_lib.py`'s land-fill used to fill an invalid (land) coarse
+  cell with a copy of the single nearest valid cell's value; for a gulf much
+  narrower than the 2° ERSST grid, most of its coarse cells are themselves
+  invalid, so whole neighborhoods got the *same* borrowed value with a hard,
+  multi-degree step right where that copied patch met the next one. Replaced
+  it with a diffusion fill (each invalid cell relaxes toward its neighbors'
+  average, standard image-inpainting) so there's no single borrowed source
+  and nothing to seam. Also clamped the bicubic upsampler (`template.html`
+  and `template-eastpacific.html` both) to the local min/max of its own
+  input points, since Catmull-Rom can independently overshoot near a sharp
+  coarse-grid step -- a second, smaller source of the same kind of artifact.
+  Regenerated both basins' climatology with the fix; verified by scanning
+  for cell-to-cell jumps in the fixed field (down from ~2.8°C to ~1.7°C,
+  and the remaining jump is a real coastal gradient, not a repeated-value
+  artifact) and visually (the gulf now shows one continuous gradient from
+  its mouth to its head, matching how an enclosed, shallow sea actually
+  behaves). Also smoothed the Gulf of California shelf-effect's own box
+  edges (feathered fade instead of an on/off lat/lon rectangle) while
+  re-verifying it -- a second, smaller hard edge in the same area.
 - **Eastern Pacific** is live: same architecture as Atlantic (real ERSST v5
   climatology + EOF interannual anomalies + ENSO regression, real Natural
   Earth/apexmaps-geo geography, an embedded Blue Marble crop), plus its own

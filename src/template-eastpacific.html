@@ -295,12 +295,27 @@ const upsample = (function () {
   return function (src, dst) {
     for (let r = 0; r < CNY; r++) {
       const ro = r * CNX, to = r * NX;
-      for (let i = 0; i < NX; i++) { const b = i * 4; tmp[to + i] = src[ro + cI[b]] * cW[b] + src[ro + cI[b + 1]] * cW[b + 1] + src[ro + cI[b + 2]] * cW[b + 2] + src[ro + cI[b + 3]] * cW[b + 3]; }
+      for (let i = 0; i < NX; i++) {
+        const b = i * 4, s0 = src[ro + cI[b]], s1 = src[ro + cI[b + 1]], s2 = src[ro + cI[b + 2]], s3 = src[ro + cI[b + 3]];
+        let v = s0 * cW[b] + s1 * cW[b + 1] + s2 * cW[b + 2] + s3 * cW[b + 3];
+        // Clamp to the local min/max: Catmull-Rom can overshoot past its own input range near a
+        // sharp jump in the coarse (2 deg) data -- e.g. a narrow gulf where one coarse cell is
+        // mostly open water and its neighbor is mostly land-filled coastline. Unclamped, that
+        // shows up as a visible band of over/undershoot in the upsampled field; clamping is a
+        // no-op everywhere the curve doesn't overshoot, i.e. almost everywhere else.
+        const lo = Math.min(s0, s1, s2, s3), hi = Math.max(s0, s1, s2, s3);
+        tmp[to + i] = v < lo ? lo : v > hi ? hi : v;
+      }
     }
     for (let j = 0; j < NY; j++) {
       const b = j * 4, o0 = rI[b] * NX, o1 = rI[b + 1] * NX, o2 = rI[b + 2] * NX, o3 = rI[b + 3] * NX;
       const w0 = rW[b], w1 = rW[b + 1], w2 = rW[b + 2], w3 = rW[b + 3], d = j * NX;
-      for (let i = 0; i < NX; i++) dst[d + i] = tmp[o0 + i] * w0 + tmp[o1 + i] * w1 + tmp[o2 + i] * w2 + tmp[o3 + i] * w3;
+      for (let i = 0; i < NX; i++) {
+        const t0 = tmp[o0 + i], t1 = tmp[o1 + i], t2 = tmp[o2 + i], t3 = tmp[o3 + i];
+        let v = t0 * w0 + t1 * w1 + t2 * w2 + t3 * w3;
+        const lo = Math.min(t0, t1, t2, t3), hi = Math.max(t0, t1, t2, t3);
+        dst[d + i] = v < lo ? lo : v > hi ? hi : v;
+      }
     }
   };
 })();
@@ -399,11 +414,23 @@ const GAP_FIELD = GAP.map((g, gi) => {
    the region's primary hurricane genesis area, peaking in the boreal late summer/early fall. */
 const R_EPWP = rect(-106, -90, 9, 19);
 /* Gulf of California (Sea of Cortez): a narrow, shallow, semi-enclosed gulf whose surface water
-   swings much harder with the seasons than the open Pacific just outside it. */
+   swings much harder with the seasons than the open Pacific just outside it. Faded in smoothly
+   over a couple of degrees at each edge (edgeFade) instead of an on/off box -- a hard box here
+   showed up as a visible seam where the effect switched off, not a smooth coastal transition. */
+const GOC_LAT0 = 22.5, GOC_LAT1 = 32.5, GOC_LON0 = -114.5, GOC_LON1 = -105, GOC_FEATHER = 2;
+function edgeFade(v, lo, hi, feather) {
+  if (v < lo - feather || v > hi + feather) return 0;
+  if (v < lo) return 0.5 - 0.5 * Math.cos(Math.PI * (v - (lo - feather)) / feather);
+  if (v > hi) return 0.5 - 0.5 * Math.cos(Math.PI * ((hi + feather) - v) / feather);
+  return 1;
+}
 let shelfIdx, shelfK;
-{ const idx = []; for (let j = 0; j < NY; j++) { const lat = LAT1 - j * RES; if (lat < 22.5 || lat > 32) continue;
-    for (let i = 0; i < NX; i++) { const lon = LON0 + i * RES; if (lon < -114.5 || lon > -105) continue; const k = j * NX + i; if (!land[k] && contDist[k] <= 2.5) idx.push(k); } }
-  shelfIdx = Int32Array.from(idx); shelfK = new Float32Array(idx.length); for (let n = 0; n < idx.length; n++) shelfK[n] = 0.6 * Math.exp(-contDist[idx[n]] / 1.0); }
+{ const idx = [], amps = [];
+  for (let j = 0; j < NY; j++) { const lat = LAT1 - j * RES, latG = edgeFade(lat, GOC_LAT0, GOC_LAT1, GOC_FEATHER); if (latG <= 0) continue;
+    for (let i = 0; i < NX; i++) { const lon = LON0 + i * RES, lonG = edgeFade(lon, GOC_LON0, GOC_LON1, GOC_FEATHER); if (lonG <= 0) continue;
+      const k = j * NX + i; if (land[k] || contDist[k] > 2.5) continue;
+      idx.push(k); amps.push(0.6 * Math.exp(-contDist[k] / 1.0) * latG * lonG); } }
+  shelfIdx = Int32Array.from(idx); shelfK = Float32Array.from(amps); }
 
 /* ------------------------------------------------------------------ *
  *  Simulation state (seeded)

@@ -313,12 +313,26 @@ const upsample = (function () {
   return function (src, dst) {
     for (let r = 0; r < CNY; r++) {
       const ro = r * CNX, to = r * NX;
-      for (let i = 0; i < NX; i++) { const b = i * 4; tmp[to + i] = src[ro + cI[b]] * cW[b] + src[ro + cI[b + 1]] * cW[b + 1] + src[ro + cI[b + 2]] * cW[b + 2] + src[ro + cI[b + 3]] * cW[b + 3]; }
+      for (let i = 0; i < NX; i++) {
+        const b = i * 4, s0 = src[ro + cI[b]], s1 = src[ro + cI[b + 1]], s2 = src[ro + cI[b + 2]], s3 = src[ro + cI[b + 3]];
+        let v = s0 * cW[b] + s1 * cW[b + 1] + s2 * cW[b + 2] + s3 * cW[b + 3];
+        // Clamp to the local min/max: Catmull-Rom can overshoot past its own input range near a
+        // sharp jump in the coarse (2 deg) data -- e.g. a strait/inlet much narrower than 2 deg.
+        // Unclamped, that shows up as a visible band of over/undershoot in the upsampled field;
+        // clamping is a no-op everywhere the curve doesn't overshoot, i.e. almost everywhere else.
+        const lo = Math.min(s0, s1, s2, s3), hi = Math.max(s0, s1, s2, s3);
+        tmp[to + i] = v < lo ? lo : v > hi ? hi : v;
+      }
     }
     for (let j = 0; j < NY; j++) {
       const b = j * 4, o0 = rI[b] * NX, o1 = rI[b + 1] * NX, o2 = rI[b + 2] * NX, o3 = rI[b + 3] * NX;
       const w0 = rW[b], w1 = rW[b + 1], w2 = rW[b + 2], w3 = rW[b + 3], d = j * NX;
-      for (let i = 0; i < NX; i++) dst[d + i] = tmp[o0 + i] * w0 + tmp[o1 + i] * w1 + tmp[o2 + i] * w2 + tmp[o3 + i] * w3;
+      for (let i = 0; i < NX; i++) {
+        const t0 = tmp[o0 + i], t1 = tmp[o1 + i], t2 = tmp[o2 + i], t3 = tmp[o3 + i];
+        let v = t0 * w0 + t1 * w1 + t2 * w2 + t3 * w3;
+        const lo = Math.min(t0, t1, t2, t3), hi = Math.max(t0, t1, t2, t3);
+        dst[d + i] = v < lo ? lo : v > hi ? hi : v;
+      }
     }
   };
 })();

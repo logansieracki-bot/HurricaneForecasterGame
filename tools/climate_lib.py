@@ -9,7 +9,6 @@ basin-specific and come from here.
 import base64
 import numpy as np
 import xarray as xr
-from scipy.ndimage import distance_transform_edt
 
 CRES = 2.0
 BASE_YEARS = (1991, 2020)   # climatology baseline, matches the Atlantic build's own docs
@@ -41,45 +40,59 @@ def extract_box(sst, lon0, lon1, lat0, lat1):
 
 
 def land_fill_indices(box):
-    """Nearest-valid-cell indices, computed once from the temporal mean's NaN
-    pattern (land is NaN in every timestep, so this mask doesn't change over
-    time). Filling land cells keeps bicubic upsampling near a coastline from
-    getting contaminated by NaN -- land SST is never rendered (the app clips to
-    vector coastlines separately), so this only needs to be smooth-ish."""
+    """Boolean invalid (land) mask from the temporal mean's NaN pattern -- land
+    is NaN in every timestep, so this mask doesn't change over time."""
     mean2d = box.mean("time").values
-    invalid = ~np.isfinite(mean2d)
+    return ~np.isfinite(mean2d)
+
+
+def apply_fill(vals2d, invalid, iterations=300):
+    """Diffusion fill: each invalid cell relaxes toward the average of its 4
+    neighbors, repeated until the filled region blends smoothly into the real
+    data around it (Jacobi iteration solving Laplace's equation with the valid
+    cells as fixed boundary values -- standard image-inpainting technique).
+
+    Replaces a nearest-valid-cell fill, which was fine for a coastline the 2 deg
+    ERSST grid resolves reasonably well, but produced a real, visible bug for a
+    basin box a strait/gulf much narrower than 2 deg (Gulf of California is a
+    prime example): most of its coarse cells are themselves invalid (majority
+    land at that resolution), so nearest-fill gave them all the *same* borrowed
+    value from whatever distant real ocean cell happened to be closest -- flat,
+    repeated patches with a hard multi-degree step right where that patch met
+    the next one. Diffusion fill has no such single borrowed source: it blends
+    continuously from every direction, so there's no seam to begin with."""
     if not invalid.any():
-        return invalid, None, None
-    _, (iy, ix) = distance_transform_edt(invalid, return_indices=True)
-    return invalid, iy, ix
-
-
-def apply_fill(vals2d, invalid, iy, ix):
-    if iy is None:
         return vals2d
-    out = vals2d.copy()
-    out[invalid] = vals2d[iy[invalid], ix[invalid]]
+    out = np.where(invalid, np.nanmean(vals2d), vals2d)
+    valid = ~invalid
+    for _ in range(iterations):
+        up = np.vstack([out[:1], out[:-1]])
+        down = np.vstack([out[1:], out[-1:]])
+        left = np.hstack([out[:, :1], out[:, :-1]])
+        right = np.hstack([out[:, 1:], out[:, -1:]])
+        avg = (up + down + left + right) / 4
+        out = np.where(valid, vals2d, avg)
     return out
 
 
 def monthly_climatology(box, fill):
     """12 x (cny*cnx) climatology, deg C, averaged over BASE_YEARS."""
-    invalid, iy, ix = fill
+    invalid = fill
     y0, y1 = BASE_YEARS
     sub = box.sel(time=slice(f"{y0}-01-01", f"{y1}-12-31"))
     clim = sub.groupby("time.month").mean("time").transpose("month", "lat", "lon").values
-    clim = np.stack([apply_fill(clim[m], invalid, iy, ix) for m in range(12)])
+    clim = np.stack([apply_fill(clim[m], invalid) for m in range(12)])
     return clim.reshape(12, -1)   # (12, cny*cnx), row-major matching cny,cnx
 
 
 def anomalies(box, clim12, fill):
     """Monthly anomalies over EOF_YEARS relative to the (already-filled) BASE_YEARS climatology."""
-    invalid, iy, ix = fill
+    invalid = fill
     y0, y1 = EOF_YEARS
     sub = box.sel(time=slice(f"{y0}-01-01", f"{y1}-12-31"))
     months = sub["time"].dt.month.values
     raw = sub.transpose("time", "lat", "lon").values
-    filled = np.stack([apply_fill(raw[t], invalid, iy, ix) for t in range(raw.shape[0])])
+    filled = np.stack([apply_fill(raw[t], invalid) for t in range(raw.shape[0])])
     vals = filled.reshape(filled.shape[0], -1)
     clim_per_t = clim12[months - 1]
     return vals - clim_per_t, sub["time"].values   # (T, cny*cnx)
