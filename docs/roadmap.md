@@ -8,9 +8,25 @@
   Baja/mainland Mexico, Tehuantepec/Papagayo/Panama gap-wind cooling plumes
   (with a shared stochastic burst index so the three don't move in lockstep),
   the East Pacific Warm Pool hugging southern Mexico/Central America, and
-  Gulf of California's exaggerated shallow-water seasonal swing. The domain
-  (equator–36°N, coast–140°W) matches the NHC/CPHC basin boundary exactly, so
-  unlike Atlantic it needs no sub-region SST masking at all.
+  Gulf of California's exaggerated shallow-water seasonal swing (hotter in
+  summer *and* colder in winter than the open ocean, like the Red Sea/Persian
+  Gulf, not just a one-sided winter dip). The real NHC-defined basin boundary
+  is the coast to 140°W, equator to 36°N; the grid itself extends a bit
+  further west (to 166°W) purely so the map shows Hawaii and its surrounding
+  water for context (matching NHC's own combined EPAC/CPAC graphics), with
+  everything west of 140°W masked out as "outside the simulated area" the
+  same way Atlantic excludes the Mediterranean/South Atlantic.
+- Imagery quality: the embedded Blue Marble crops (both basins) now come from
+  an 8192×4096 NASA Blue Marble: Next Generation source (~23 px/degree)
+  instead of the original 2048×1024 one (~5.7 px/degree) — the old source
+  looked visibly blurry once zoomed in on a basin as large as EPAC's.
+  `tools/make_imagery.py` crops/lifts-blacks/encodes it per basin.
+- UI re-theme: replaced the blue-tinted, heavily blurred/saturated "frosted
+  glass" panel look (across the main menu and both simulators) with a flat
+  neutral dark theme — less blur, no saturate boost, more opaque panels,
+  tighter shadows, and no decorative gradients outside the map's own SST
+  legend and the map-theme preview swatches (which are flat hard-edge color
+  splits, not blends).
 - A real, parameterized data pipeline now exists and produced that build:
   `tools/fetch.py` (ERSST v5 + Blue Marble source, idempotent), `tools/
   climate_lib.py` + `tools/make_climate.py` (climatology/EOF/ENSO regression

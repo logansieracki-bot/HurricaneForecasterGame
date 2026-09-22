@@ -7,17 +7,17 @@
 <style>/*__LEAFLET_CSS__*/</style>
 <style>
 :root{
-  --ink:#07111d; --panel:rgba(8,17,30,.82); --line:rgba(190,215,240,.16);
-  --text:#e4edf6; --dim:#8da2b8; --ice:#eef4fa; --focus:#7cc4ff; --season:rgba(255,166,96,.16);
+  --ink:#121212; --panel:rgba(24,24,26,.94); --line:rgba(255,255,255,.12);
+  --text:#e8e8e8; --dim:#999999; --ice:#efefef; --focus:#bdbdbd; --season:rgba(255,166,96,.14);
   --font:"Avenir Next","Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,Roboto,"Helvetica Neue",sans-serif;
 }
 *{box-sizing:border-box}
 html,body{height:100%;margin:0;background:var(--ink);color:var(--text);font-family:var(--font)}
-#map{position:absolute;inset:0;background:#0b1b2f;outline:none}
-.leaflet-container{background:#0b1b2f;font-family:var(--font)}
+#map{position:absolute;inset:0;background:#10161c;outline:none}
+.leaflet-container{background:#10161c;font-family:var(--font)}
 .card{position:absolute;z-index:900;background:var(--panel);border:1px solid var(--line);border-radius:12px;
-  backdrop-filter:blur(12px) saturate(1.25);-webkit-backdrop-filter:blur(12px) saturate(1.25);
-  box-shadow:0 8px 28px rgba(0,0,0,.35)}
+  backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
+  box-shadow:0 2px 12px rgba(0,0,0,.5)}
 button{font:inherit;color:inherit}
 button:focus-visible,input:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
 
@@ -30,7 +30,7 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--focus);outline-
 #year{display:grid;grid-template-columns:repeat(12,1fr);gap:2px;margin-top:11px}
 #year span{font-size:10px;text-align:center;color:var(--dim);padding:3px 0;border-radius:3px}
 #year span.hs{background:var(--season)}
-#year span.now{background:var(--ice);color:#0a1626;font-weight:700}
+#year span.now{background:var(--ice);color:#141414;font-weight:700}
 #year-bar{height:2px;background:rgba(255,255,255,.1);border-radius:2px;margin-top:5px;overflow:hidden}
 #year-bar i{display:block;height:100%;width:0;background:var(--ice)}
 
@@ -47,7 +47,7 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--focus);outline-
 .btn{width:40px;height:40px;border-radius:10px;border:0;background:transparent;display:grid;place-items:center;cursor:pointer}
 .btn:hover{background:rgba(255,255,255,.09)}
 .btn svg{width:20px;height:20px;fill:currentColor}
-#b-play{width:50px;height:50px;border-radius:50%;background:var(--ice);color:#0a1626;margin:0 4px}
+#b-play{width:50px;height:50px;border-radius:50%;background:var(--ice);color:#141414;margin:0 4px}
 #b-play:hover{background:#fff}
 #b-play svg{width:22px;height:22px}
 #speed{min-width:132px;padding-left:8px;line-height:1.15}
@@ -68,12 +68,12 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--focus);outline-
 .row{margin:12px 0 0}
 .seg{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;background:rgba(255,255,255,.07);border-radius:9px;padding:3px;gap:2px}
 .seg button{border:0;background:transparent;border-radius:7px;padding:6px 4px;font-size:12.5px;cursor:pointer;color:var(--dim)}
-.seg button[aria-pressed=true]{background:var(--ice);color:#0a1626;font-weight:600}
+.seg button[aria-pressed=true]{background:var(--ice);color:#141414;font-weight:600}
 .sl{display:flex;justify-content:space-between;align-items:baseline;font-size:12.5px;margin-bottom:2px}
 .sl output{font-variant-numeric:tabular-nums;color:var(--dim);font-size:12px}
-input[type=range]{width:100%;margin:2px 0 0;accent-color:#dbe8f5;height:20px}
+input[type=range]{width:100%;margin:2px 0 0;accent-color:#d4d4d4;height:20px}
 .chk{display:flex;align-items:center;gap:8px;font-size:12.5px;margin-top:9px;cursor:pointer}
-.chk input{accent-color:#dbe8f5;width:15px;height:15px;margin:0}
+.chk input{accent-color:#d4d4d4;width:15px;height:15px;margin:0}
 .seedrow{display:flex;gap:6px;align-items:center;margin-top:12px;font-size:12.5px}
 .seedrow input[type=number]{width:96px;background:rgba(255,255,255,.07);border:1px solid var(--line);border-radius:7px;color:var(--text);padding:5px 8px;font:inherit;font-variant-numeric:tabular-nums}
 .pill{border:1px solid var(--line);background:rgba(255,255,255,.06);border-radius:8px;padding:5px 10px;font-size:12.5px;cursor:pointer}
@@ -95,7 +95,7 @@ input[type=range]{width:100%;margin:2px 0 0;accent-color:#dbe8f5;height:20px}
 .themes button i{display:block;height:20px;border-radius:5px;margin:0 auto 4px;border:1px solid rgba(255,255,255,.22)}
 .themes button:hover{background:rgba(255,255,255,.11);color:var(--text)}
 .themes button[aria-pressed=true]{border-color:var(--ice);background:rgba(255,255,255,.15);color:var(--text);font-weight:600}
-#attr{position:absolute;right:0;bottom:0;z-index:900;font-size:10.5px;color:var(--dim);background:rgba(7,17,29,.72);padding:2px 8px;border-top-left-radius:6px;pointer-events:none}
+#attr{position:absolute;right:0;bottom:0;z-index:900;font-size:10.5px;color:var(--dim);background:rgba(18,18,18,.72);padding:2px 8px;border-top-left-radius:6px;pointer-events:none}
 
 /* notices + loader */
 #toast{left:50%;top:16px;transform:translateX(-50%);padding:9px 16px;font-size:13px;display:none}
@@ -103,11 +103,11 @@ input[type=range]{width:100%;margin:2px 0 0;accent-color:#dbe8f5;height:20px}
 
 /* leaflet chrome */
 .leaflet-bottom.leaflet-left{margin-bottom:70px}
-.leaflet-control-zoom{border:1px solid var(--line)!important;border-radius:10px!important;overflow:hidden;box-shadow:0 8px 28px rgba(0,0,0,.35)}
-.leaflet-control-zoom a{background:var(--panel)!important;color:var(--text)!important;border-bottom:1px solid var(--line)!important;backdrop-filter:blur(12px)}
-.leaflet-control-zoom a:hover{background:rgba(40,60,85,.9)!important}
-.leaflet-control-attribution{background:rgba(7,17,29,.7)!important;color:var(--dim)!important;font-size:10.5px}
-.leaflet-control-attribution a{color:#a9c2dc!important}
+.leaflet-control-zoom{border:1px solid var(--line)!important;border-radius:10px!important;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.5)}
+.leaflet-control-zoom a{background:var(--panel)!important;color:var(--text)!important;border-bottom:1px solid var(--line)!important;backdrop-filter:blur(6px)}
+.leaflet-control-zoom a:hover{background:rgba(255,255,255,.12)!important}
+.leaflet-control-attribution{background:rgba(18,18,18,.75)!important;color:var(--dim)!important;font-size:10.5px}
+.leaflet-control-attribution a{color:#bdbdbd!important}
 canvas.overlay{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none}
 
 @media (max-width:1040px){
@@ -261,9 +261,15 @@ function b64i16(s) { const u = b64bytes(s); return new Int16Array(u.buffer, 0, u
 const land = new Uint8Array(N);                 // 1 = land (0.25° nodes)
 { const mb = b64bytes(DATA.mask); for (let k = 0; k < N; k++) land[k] = (mb[k >> 3] >> (7 - (k & 7))) & 1; }
 
-/* No out-of-basin masking needed here: the domain box (equator to 140°W, the coast to 36°N)
-   already matches the NHC/CPHC-defined Eastern Pacific basin boundary on every edge, unlike the
-   Atlantic build's box (which spans the Mediterranean and South Atlantic and has to mask them out). */
+/* The grid extends a bit past Hawaii (to 166°W) purely for visual/geographic context, matching
+   how NHC's own public graphics usually show the Eastern Pacific and Central Pacific together --
+   but the real NHC Eastern Pacific basin stops at 140°W (the Central Pacific Hurricane Center's
+   area starts there). SST west of that line reads as "outside the simulated area", the same way
+   the Atlantic build excludes the Mediterranean/South Atlantic: it's a different basin, not this one. */
+const outOfBasin = new Uint8Array(N);
+const EPAC_WEST_EDGE = -140;
+{ for (let j = 0; j < NY; j++) { const o = j * NX;
+    for (let i = 0; i < NX; i++) { if (LON0 + i * RES < EPAC_WEST_EDGE) outOfBasin[o + i] = 1; } } }
 
 const climC = [];                               // 12 coarse monthly climatologies (°C)
 { const a = b64i16(DATA.clim); for (let m = 0; m < 12; m++) { const f = new Float32Array(CN); for (let c = 0; c < CN; c++) f[c] = a[m * CN + c] / 100; climC.push(f); } }
@@ -386,7 +392,7 @@ const R_EPWP = rect(-106, -90, 9, 19);
 let shelfIdx, shelfK;
 { const idx = []; for (let j = 0; j < NY; j++) { const lat = LAT1 - j * RES; if (lat < 22.5 || lat > 32) continue;
     for (let i = 0; i < NX; i++) { const lon = LON0 + i * RES; if (lon < -114.5 || lon > -105) continue; const k = j * NX + i; if (!land[k] && contDist[k] <= 2.5) idx.push(k); } }
-  shelfIdx = Int32Array.from(idx); shelfK = new Float32Array(idx.length); for (let n = 0; n < idx.length; n++) shelfK[n] = 0.4 * Math.exp(-contDist[idx[n]] / 1.0); }
+  shelfIdx = Int32Array.from(idx); shelfK = new Float32Array(idx.length); for (let n = 0; n < idx.length; n++) shelfK[n] = 0.6 * Math.exp(-contDist[idx[n]] / 1.0); }
 
 /* ------------------------------------------------------------------ *
  *  Simulation state (seeded)
@@ -487,7 +493,7 @@ function computeField() {
     if (g > 0.01) for (let j = R_EPWP.j0; j < R_EPWP.j0 + R_EPWP.h; j++) { const lat = LAT1 - j * RES, dy = (lat - 14) / 4.4;
       for (let i = R_EPWP.i0; i < R_EPWP.i0 + R_EPWP.w; i++) { const k = j * NX + i; if (land[k]) continue; const dx = (LON0 + i * RES + 98) / 7.5; featN[k] += g * Math.exp(-(dx * dx + dy * dy)); } }
   }
-  for (let n = 0; n < shelfIdx.length; n++) { const k = shelfIdx[n], dv = w0 * A0[k] + w1 * A1[k] + w2 * A2[k] + w3 * A3[k] - annual[k]; featN[k] += shelfK[n] * (dv < 0 ? dv : 0); }   // Gulf of California: shallow water cools fast in winter; it does not run hotter than open water in summer
+  for (let n = 0; n < shelfIdx.length; n++) { const k = shelfIdx[n], dv = w0 * A0[k] + w1 * A1[k] + w2 * A2[k] + w3 * A3[k] - annual[k]; featN[k] += shelfK[n] * dv; }   // Gulf of California: shallow, semi-enclosed water swings harder than the open ocean both ways -- colder in winter AND hotter in summer (like the Red Sea/Persian Gulf), not just a one-sided winter dip
 
   /* --- combine --- */
   const fs = P.features, vs = P.variability, sa = P.seasonal, wm = P.warming, es = P.enso, wmUp = Math.max(0, wm), saUp = 1 + (sa - 1) * 0.6;
@@ -501,7 +507,7 @@ function computeField() {
       if (nrm < -1.8) nrm = -1.8; else if (nrm > 34) nrm = 34;
       if (v > c0) v = c0 + 1.2 * Math.tanh((v - c0) / 1.2);
       if (v < -1.8) v = -1.8; else if (v > 38) v = 38;
-      sst[k] = v; normal[k] = nrm; diff[k] = v - nrm;
+      if (outOfBasin[k]) { sst[k] = NaN; normal[k] = NaN; diff[k] = NaN; } else { sst[k] = v; normal[k] = nrm; diff[k] = v - nrm; }
     }
   }
   updateLakes(f, doy);
@@ -625,9 +631,9 @@ let TH = THEMES.bm, themeId = 'bm', gridMode = 'off';
  *  Map
  * ------------------------------------------------------------------ */
 const map = L.map('map', {
-  zoomControl: false, attributionControl: false, minZoom: 5.75, maxZoom: 10, zoomSnap: 0.25, zoomDelta: 0.5, wheelPxPerZoomLevel: 110,
+  zoomControl: false, attributionControl: false, minZoom: 5.25, maxZoom: 10, zoomSnap: 0.25, zoomDelta: 0.5, wheelPxPerZoomLevel: 110,
   zoomAnimation: false, fadeAnimation: false, markerZoomAnimation: false, worldCopyJump: false,
-  maxBounds: [[-4, -144], [40, -70]], maxBoundsViscosity: 1   // hard pan limit: a few degrees beyond the domain box on every side, well inside the data's own padded extent (the box the geography/imagery were clipped to)
+  maxBounds: [[-4, -170], [40, -70]], maxBoundsViscosity: 1   // hard pan limit: a few degrees beyond the domain box on every side (west edge past Hawaii for context), well inside the data's own padded extent
 });
 L.control.zoom({ position: 'bottomleft' }).addTo(map);
 map.fitBounds([[5, -125], [30, -80]], { animate: false });   // instant: an animated pan here briefly rendered a garbled frame of the embedded base image mid-transition

@@ -112,31 +112,36 @@ await checkBasin('Atlantic', ATLANTIC_DIST, async (page, label) => {
 });
 
 await checkBasin('East Pacific', EPAC_DIST, async (page, label) => {
-  // Domain is a simple box (equator-36N, coast-140W), no sub-region masking needed -- but the
-  // pan limit (maxBounds) should still clamp before showing uncovered map area beyond it.
-  await page.evaluate(() => window.SSTSIM.map.fitBounds([[20, -170], [60, -120]]));   // toward Alaska/West Pacific
+  // The grid (equator-36N, coast-166W) extends a bit past Hawaii for visual/geographic context,
+  // matching NHC's own combined EPAC/CPAC graphics -- but the real NHC Eastern Pacific basin
+  // stops at 140W, so SST west of that line is masked out even though it's inside the grid and
+  // pannable. The pan limit (maxBounds) should still clamp before showing uncovered map area
+  // beyond the grid entirely.
+  await page.evaluate(() => window.SSTSIM.map.fitBounds([[20, -180], [60, -120]]));   // toward the West Pacific/date line
   await page.waitForTimeout(300);
   const clampedWestLon = await page.evaluate(() => window.SSTSIM.map.getBounds().getWest());
-  check(`[${label}] map cannot pan west past the 140W basin boundary`, clampedWestLon > -150);
+  check(`[${label}] map cannot pan west past the Hawaii-context edge of the grid`, clampedWestLon > -175);
 
   await page.evaluate(() => window.SSTSIM.map.setView([-25, -90], 5));   // toward the South Pacific
   await page.waitForTimeout(300);
   const clampedSouthLat = await page.evaluate(() => window.SSTSIM.map.getBounds().getSouth());
   check(`[${label}] map cannot pan south past the equator`, clampedSouthLat > -10);
 
-  // The domain box IS the basin boundary here (no Mediterranean-style sub-region to mask out),
-  // so this just checks the grid edges: real SST inside the box, NaN once you step outside it.
   const basinSamples = await page.evaluate(() => ({
-    offshore: window.SSTSIM.sample(15, -120),        // open water, well inside the domain
+    offshore: window.SSTSIM.sample(15, -120),        // open water, well inside the real EPAC basin
     nearCoast: window.SSTSIM.sample(15, -95),         // open water off southern Mexico
     southOfEquator: window.SSTSIM.sample(-5, -100),   // south of the basin's equatorial boundary
-    westOf140: window.SSTSIM.sample(15, -150),        // west of the 140W basin boundary
+    justEastOf140: window.SSTSIM.sample(15, -139),    // just inside the real EPAC basin's western edge
+    justWestOf140: window.SSTSIM.sample(15, -141),    // just past it -- CPHC's area, not this basin
+    hawaii: window.SSTSIM.sample(20.5, -157),         // in the grid (for context) but well outside the real basin
     northOfDomain: window.SSTSIM.sample(38, -110),    // north of the domain's 36N top edge
   }));
   check(`[${label}] open ocean SST is real data`, Number.isFinite(basinSamples.offshore.sst));
   check(`[${label}] coastal SST off southern Mexico is real data`, Number.isFinite(basinSamples.nearCoast.sst));
   check(`[${label}] south of the equator is outside the simulated area`, Number.isNaN(basinSamples.southOfEquator.sst));
-  check(`[${label}] west of 140W is outside the simulated area`, Number.isNaN(basinSamples.westOf140.sst));
+  check(`[${label}] just east of 140W (inside the real basin) has real SST`, Number.isFinite(basinSamples.justEastOf140.sst));
+  check(`[${label}] just west of 140W (CPHC's area) is outside the simulated area`, Number.isNaN(basinSamples.justWestOf140.sst));
+  check(`[${label}] Hawaii is shown for context but outside the simulated area`, Number.isNaN(basinSamples.hawaii.sst));
   check(`[${label}] north of the domain's top edge is outside the simulated area`, Number.isNaN(basinSamples.northOfDomain.sst));
 });
 
