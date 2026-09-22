@@ -26,3 +26,4 @@ function build({ basin = 'atlantic', templatePath = join(ROOT, 'src/template.htm
 }
 
 build({});
+build({ basin: 'eastpacific', templatePath: join(ROOT, 'src/template-eastpacific.html'), dataPath: join(ROOT, 'data/generated/eastpacific-data.json') });
