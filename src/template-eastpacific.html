@@ -358,9 +358,17 @@ function interp1(xs, ys, x) { if (x <= xs[0]) return ys[0]; for (let i = 1; i < 
 /* California Current: cool, equatorward, wind-driven eastern-boundary current hugging the Baja
    California / mainland Mexico coast, strongest in spring-summer when alongshore winds (and
    the resulting coastal upwelling) peak, weaker and displaced offshore in fall-winter. Upwelling
-   onset runs later in the season at higher latitude, same pattern as the Atlantic's NW Africa current. */
-const CC_LAT = [14, 18, 22, 26, 30, 33], CC_AMP = [0.3, 0.9, 1.6, 2.1, 1.7, 0.6];
-const R_CC = rect(-122, -104, 14, 34);
+   onset runs later in the season at higher latitude, same pattern as the Atlantic's NW Africa
+   current. Re-intensifies off Northern California/Oregon (Cape Mendocino/Cape Blanco are two of
+   the strongest upwelling centers on the whole coast) before tapering off toward Washington. */
+const CC_LAT = [14, 18, 22, 26, 30, 33, 36, 40, 44], CC_AMP = [0.3, 0.9, 1.6, 2.1, 1.7, 0.6, 1.0, 1.8, 1.0];
+const R_CC = rect(-126, -104, 14, 44);
+/* Humboldt (Peru) Current: one of the strongest coastal upwelling systems on Earth, keeping the
+   Peru/northern Chile coast dramatically cooler than its latitude alone would suggest (Lima, at
+   12S, runs closer to 18-20C than the high-20s a comparable Atlantic latitude would see).
+   Persistent year-round, strongest during the austral winter/spring trade-wind season (Jun-Nov). */
+const HUM_LAT = [-26, -20, -15, -10, -5, 0], HUM_AMP = [2.0, 2.6, 2.8, 2.4, 1.4, 0];
+const R_HUM = rect(-84, -68, -26, 2);
 /* Costa Rica Dome: a quasi-permanent open-ocean upwelling dome off Costa Rica/Nicaragua, driven
    by positive wind-stress curl under the Papagayo jet. Present year-round but intensifies and
    migrates toward the coast during the boreal rainy season (Jun-Nov), when the dome's cool,
@@ -472,10 +480,15 @@ function computeField() {
 
   /* --- features: featN = climatological (normal) pattern, featD = this year's departures from it --- */
   featN.fill(0); featD.fill(0);
-  { // California Current: coastal upwelling along Baja/mainland Mexico, spring-summer peak that runs later at higher latitude
+  { // California Current: coastal upwelling along Baja/mainland Mexico through Oregon, spring-summer peak that runs later at higher latitude
     for (let j = R_CC.j0; j < R_CC.j0 + R_CC.h; j++) { const lat = LAT1 - j * RES, amp = interp1(CC_LAT, CC_AMP, lat); if (amp <= 0) continue;
       const peak = Math.max(90, Math.min(220, 90 + (lat - 14) * 6)), s = 0.55 + 0.45 * Math.cos(2 * Math.PI * (doy - peak) / 365.25);
       for (let i = R_CC.i0; i < R_CC.i0 + R_CC.w; i++) { const k = j * NX + i; if (land[k]) continue; const dd = contDist[k]; if (dd > 5) continue; featN[k] -= amp * s * Math.exp(-dd / 1.6); } }
+  }
+  { // Humboldt (Peru) Current: persistent, world-class coastal upwelling, strongest in the austral winter/spring trade-wind season
+    const s = 0.6 + 0.4 * Math.cos(2 * Math.PI * (doy - 215) / 365.25);
+    for (let j = R_HUM.j0; j < R_HUM.j0 + R_HUM.h; j++) { const lat = LAT1 - j * RES, amp = interp1(HUM_LAT, HUM_AMP, lat); if (amp <= 0) continue;
+      for (let i = R_HUM.i0; i < R_HUM.i0 + R_HUM.w; i++) { const k = j * NX + i; if (land[k]) continue; const dd = contDist[k]; if (dd > 5) continue; featN[k] -= amp * s * Math.exp(-dd / 1.8); } }
   }
   { // Costa Rica Dome: open-ocean upwelling dome, strongest during the boreal rainy season (Jun-Nov) when the Papagayo jet's wind-stress curl is strongest
     const s = 0.3 + 0.7 * Math.max(0, Math.cos(2 * Math.PI * (doy - 250) / 365.25));
@@ -644,7 +657,8 @@ const CITIES = [
   { name: 'Puerto Quetzal', lat: 13.92, lon: -90.79 }, { name: 'Acajutla', lat: 13.59, lon: -89.83 },
   { name: 'Corinto', lat: 12.48, lon: -87.17 }, { name: 'Puntarenas', lat: 9.98, lon: -84.83 },
   { name: 'Panama City', lat: 8.98, lon: -79.52 }, { name: 'Honolulu', lat: 21.31, lon: -157.86 },
-  { name: 'Hilo', lat: 19.71, lon: -155.09 },
+  { name: 'Hilo', lat: 19.71, lon: -155.09 }, { name: 'Coos Bay', lat: 43.37, lon: -124.22 },
+  { name: 'Guayaquil', lat: -2.19, lon: -79.89 }, { name: 'Lima', lat: -12.05, lon: -77.03 },
 ];
 const cityPx = CITIES.map(() => ({ x: 0, y: 0, onScreen: false }));
 let hoveredCity = -1;
@@ -698,7 +712,7 @@ function updateCityTip(cx, cy) {
 const map = L.map('map', {
   zoomControl: false, attributionControl: false, minZoom: 5.25, maxZoom: 10, zoomSnap: 0.25, zoomDelta: 0.5, wheelPxPerZoomLevel: 110,
   zoomAnimation: false, fadeAnimation: false, markerZoomAnimation: false, worldCopyJump: false,
-  maxBounds: [[-4, -170], [40, -70]], maxBoundsViscosity: 1   // hard pan limit: a few degrees beyond the domain box on every side (west edge past Hawaii), well inside the data's own padded extent
+  maxBounds: [[-29, -180], [49, -70]], maxBoundsViscosity: 1   // hard pan limit: a few degrees beyond the domain box on every side (west edge is the date line itself -- nothing past it belongs to this basin), well inside the data's own padded extent
 });
 L.control.zoom({ position: 'bottomleft' }).addTo(map);
 map.fitBounds([[5, -125], [30, -80]], { animate: false });   // instant: an animated pan here briefly rendered a garbled frame of the embedded base image mid-transition

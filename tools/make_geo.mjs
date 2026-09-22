@@ -120,7 +120,10 @@ function packBits(mask) {
 export function build(basin, { lon0, lon1, lat0, lat1, padBox }) {
   // [lonW, lonE, latS, latN] -- matches DATA.box's field order in src/template.html
   // (BXL=box[0], BXR=box[1], BYT=mercN(box[3]), BYB=mercN(box[2])), and DATA.bmBox below.
-  const box = [lon0 - padBox, lon1 + padBox, lat0 - padBox, lat1 + padBox];
+  // West edge is clamped at -180 (the antimeridian) rather than padded past it: padding is just
+  // context beyond the simulated domain, and there's nothing meaningful to show past the date
+  // line for this basin -- it's where the West Pacific basin starts, not this one's edge fading out.
+  const box = [Math.max(-180, lon0 - padBox), lon1 + padBox, lat0 - padBox, lat1 + padBox];
   const clipBox = [box[0], box[2], box[1], box[3]];   // turf wants [minLon, minLat, maxLon, maxLat]
 
   const worldLand10 = loadTopo('world-atlas/land-10m.json');

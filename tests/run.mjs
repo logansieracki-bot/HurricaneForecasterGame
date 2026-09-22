@@ -134,36 +134,42 @@ await checkBasin('Atlantic', ATLANTIC_DIST, async (page, label) => {
 });
 
 await checkBasin('East Pacific', EPAC_DIST, async (page, label) => {
-  // The grid runs from the equator to 36N, coast to 166W -- a bit past Hawaii for context/NHC-
-  // style Eastern+Central Pacific combined framing. Unlike Atlantic's Mediterranean/South
-  // Atlantic exclusion, there's no sub-region masking here: real climatology/EOF/ENSO SST runs
-  // across the whole grid, Hawaii included, since masking part of it produced a hard visible seam
-  // in open water. The pan limit (maxBounds) should still clamp before showing uncovered map area
-  // beyond the grid entirely.
-  await page.evaluate(() => window.SSTSIM.map.fitBounds([[20, -180], [60, -120]]));   // toward the West Pacific/date line
+  // The grid runs from 26S to 44N, coast to 180 (the international date line) -- covering
+  // Hawaii, the Oregon/Washington coast, and the Peru/Ecuador coast, well past the NHC's narrower
+  // official Eastern Pacific boundary. Real climatology/EOF/ENSO SST (plus the California Current
+  // extended north and a new Humboldt/Peru Current feature added south) runs across the *whole*
+  // grid -- no sub-region masking, since an earlier attempt at masking part of a widened grid
+  // produced a hard visible seam in open water. The pan limit (maxBounds) should still clamp
+  // before showing uncovered map area beyond the grid entirely.
+  await page.evaluate(() => window.SSTSIM.map.fitBounds([[30, -190], [70, -150]]));   // toward the far North Pacific/beyond the date line
   await page.waitForTimeout(300);
   const clampedWestLon = await page.evaluate(() => window.SSTSIM.map.getBounds().getWest());
-  check(`[${label}] map cannot pan west past the Hawaii-context edge of the grid`, clampedWestLon > -175);
+  check(`[${label}] map cannot pan west past the international date line`, clampedWestLon > -185);
 
-  await page.evaluate(() => window.SSTSIM.map.setView([-25, -90], 5));   // toward the South Pacific
+  await page.evaluate(() => window.SSTSIM.map.setView([-45, -90], 5));   // toward the South Pacific, well past the grid's southern edge
   await page.waitForTimeout(300);
   const clampedSouthLat = await page.evaluate(() => window.SSTSIM.map.getBounds().getSouth());
-  check(`[${label}] map cannot pan south past the equator`, clampedSouthLat > -10);
+  check(`[${label}] map cannot pan south past the Peru/Chile coast edge of the grid`, clampedSouthLat > -35);
 
   const basinSamples = await page.evaluate(() => ({
-    offshore: window.SSTSIM.sample(15, -120),        // open water, mid-domain
-    nearCoast: window.SSTSIM.sample(15, -95),         // open water off southern Mexico
-    hawaii: window.SSTSIM.sample(20.5, -157),         // Hawaii's waters -- real SST now, not masked
-    westEdge: window.SSTSIM.sample(15, -165),         // near the grid's own western edge
-    southOfEquator: window.SSTSIM.sample(-5, -100),   // south of the basin's equatorial boundary
-    northOfDomain: window.SSTSIM.sample(38, -110),    // north of the domain's 36N top edge
+    offshore: window.SSTSIM.sample(15, -120),          // open water, mid-domain
+    nearCoast: window.SSTSIM.sample(15, -95),           // open water off southern Mexico
+    hawaii: window.SSTSIM.sample(20.5, -157),           // Hawaii's waters
+    dateLine: window.SSTSIM.sample(20, -179),           // near the grid's own western edge, by the date line
+    northOregon: window.SSTSIM.sample(43, -125),        // California Current extended north
+    peru: window.SSTSIM.sample(-12, -78),               // new Humboldt Current, south of the equator
+    southOfDomain: window.SSTSIM.sample(-30, -75),      // south of the grid's own 26S edge
+    northOfDomain: window.SSTSIM.sample(48, -125),      // north of the grid's own 44N edge
   }));
   check(`[${label}] open ocean SST is real data`, Number.isFinite(basinSamples.offshore.sst));
   check(`[${label}] coastal SST off southern Mexico is real data`, Number.isFinite(basinSamples.nearCoast.sst));
-  check(`[${label}] Hawaii has real SST, not masked out`, Number.isFinite(basinSamples.hawaii.sst));
-  check(`[${label}] SST reaches the grid's own western edge`, Number.isFinite(basinSamples.westEdge.sst));
-  check(`[${label}] south of the equator is outside the simulated area`, Number.isNaN(basinSamples.southOfEquator.sst));
-  check(`[${label}] north of the domain's top edge is outside the simulated area`, Number.isNaN(basinSamples.northOfDomain.sst));
+  check(`[${label}] Hawaii has real SST`, Number.isFinite(basinSamples.hawaii.sst));
+  check(`[${label}] SST reaches the grid's own western edge near the date line`, Number.isFinite(basinSamples.dateLine.sst));
+  check(`[${label}] California Current SST off northern Oregon is real data`, Number.isFinite(basinSamples.northOregon.sst));
+  check(`[${label}] Humboldt Current SST off Peru is real data`, Number.isFinite(basinSamples.peru.sst));
+  check(`[${label}] Humboldt Current cools the Peru coast noticeably below the open-ocean baseline`, basinSamples.peru.sst < basinSamples.offshore.sst - 3);
+  check(`[${label}] south of the grid's own southern edge is outside the simulated area`, Number.isNaN(basinSamples.southOfDomain.sst));
+  check(`[${label}] north of the grid's own northern edge is outside the simulated area`, Number.isNaN(basinSamples.northOfDomain.sst));
 
   await checkCityMarkers(page, label, 16.86, -99.88, 'Acapulco');
 });
