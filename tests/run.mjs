@@ -17,6 +17,26 @@ function check(name, cond) {
   if (!cond) failed++;
 }
 
+// City markers: pin(s) on the map for real coastal cities that show a hover tooltip with the
+// sim's own live SST reading there. Verifies one known city renders, hovers, and can be hidden.
+async function checkCityMarkers(page, label, lat, lon, expectedName) {
+  await page.evaluate(([lat, lon]) => window.SSTSIM.map.setView([lat, lon], 6), [lat, lon]);
+  await page.waitForTimeout(300);
+  const pt = await page.evaluate(([lat, lon]) => { const p = window.SSTSIM.map.latLngToContainerPoint([lat, lon]); return { x: p.x, y: p.y }; }, [lat, lon]);
+  await page.mouse.move(pt.x, pt.y);
+  await page.waitForTimeout(200);
+  const tipText = await page.evaluate(() => { const t = document.getElementById('city-tip'); return t.style.display === 'block' ? t.textContent : null; });
+  check(`[${label}] hovering a city marker shows its tooltip`, tipText && tipText.includes(expectedName) && /°C/.test(tipText));
+
+  await page.uncheck('#cities');
+  await page.mouse.move(pt.x + 1, pt.y + 1);
+  await page.mouse.move(pt.x, pt.y);
+  await page.waitForTimeout(200);
+  const tipHiddenText = await page.evaluate(() => { const t = document.getElementById('city-tip'); return t.style.display; });
+  check(`[${label}] "City markers" toggle hides them`, tipHiddenText === 'none');
+  await page.check('#cities');
+}
+
 for (const [label, dist] of [['Atlantic', ATLANTIC_DIST], ['East Pacific', EPAC_DIST]]) {
   if (!existsSync(dist)) {
     console.error(`${dist} not found — run \`npm run build\` first.`);
@@ -109,38 +129,43 @@ await checkBasin('Atlantic', ATLANTIC_DIST, async (page, label) => {
   check(`[${label}] South Atlantic SST is excluded`, Number.isNaN(basinSamples.southAtlantic.sst));
   check(`[${label}] southern MDR (a few degrees south of the equator) still has real SST`, Number.isFinite(basinSamples.southernMDR.sst));
   check(`[${label}] open North Atlantic SST is still real data`, Number.isFinite(basinSamples.openAtlantic.sst));
+
+  await checkCityMarkers(page, label, 25.76, -80.19, 'Miami');
 });
 
 await checkBasin('East Pacific', EPAC_DIST, async (page, label) => {
-  // Domain is a simple box (equator-36N, coast-140W) that matches the NHC/CPHC basin boundary
-  // exactly, no sub-region masking needed -- but the pan limit (maxBounds) should still clamp
-  // before showing uncovered map area beyond it (an earlier attempt to extend the grid west to
-  // show Hawaii for context left a hard visible seam where the SST overlay stopped mid-ocean; it
-  // was reverted, so this basin's grid IS its simulated area, same as before).
-  await page.evaluate(() => window.SSTSIM.map.fitBounds([[20, -170], [60, -120]]));   // toward Alaska/West Pacific
+  // The grid runs from the equator to 36N, coast to 166W -- a bit past Hawaii for context/NHC-
+  // style Eastern+Central Pacific combined framing. Unlike Atlantic's Mediterranean/South
+  // Atlantic exclusion, there's no sub-region masking here: real climatology/EOF/ENSO SST runs
+  // across the whole grid, Hawaii included, since masking part of it produced a hard visible seam
+  // in open water. The pan limit (maxBounds) should still clamp before showing uncovered map area
+  // beyond the grid entirely.
+  await page.evaluate(() => window.SSTSIM.map.fitBounds([[20, -180], [60, -120]]));   // toward the West Pacific/date line
   await page.waitForTimeout(300);
   const clampedWestLon = await page.evaluate(() => window.SSTSIM.map.getBounds().getWest());
-  check(`[${label}] map cannot pan west past the 140W basin boundary`, clampedWestLon > -150);
+  check(`[${label}] map cannot pan west past the Hawaii-context edge of the grid`, clampedWestLon > -175);
 
   await page.evaluate(() => window.SSTSIM.map.setView([-25, -90], 5));   // toward the South Pacific
   await page.waitForTimeout(300);
   const clampedSouthLat = await page.evaluate(() => window.SSTSIM.map.getBounds().getSouth());
   check(`[${label}] map cannot pan south past the equator`, clampedSouthLat > -10);
 
-  // The domain box IS the basin boundary here (no Mediterranean-style sub-region to mask out),
-  // so this just checks the grid edges: real SST inside the box, NaN once you step outside it.
   const basinSamples = await page.evaluate(() => ({
-    offshore: window.SSTSIM.sample(15, -120),        // open water, well inside the domain
+    offshore: window.SSTSIM.sample(15, -120),        // open water, mid-domain
     nearCoast: window.SSTSIM.sample(15, -95),         // open water off southern Mexico
+    hawaii: window.SSTSIM.sample(20.5, -157),         // Hawaii's waters -- real SST now, not masked
+    westEdge: window.SSTSIM.sample(15, -165),         // near the grid's own western edge
     southOfEquator: window.SSTSIM.sample(-5, -100),   // south of the basin's equatorial boundary
-    westOf140: window.SSTSIM.sample(15, -150),        // west of the 140W basin boundary
     northOfDomain: window.SSTSIM.sample(38, -110),    // north of the domain's 36N top edge
   }));
   check(`[${label}] open ocean SST is real data`, Number.isFinite(basinSamples.offshore.sst));
   check(`[${label}] coastal SST off southern Mexico is real data`, Number.isFinite(basinSamples.nearCoast.sst));
+  check(`[${label}] Hawaii has real SST, not masked out`, Number.isFinite(basinSamples.hawaii.sst));
+  check(`[${label}] SST reaches the grid's own western edge`, Number.isFinite(basinSamples.westEdge.sst));
   check(`[${label}] south of the equator is outside the simulated area`, Number.isNaN(basinSamples.southOfEquator.sst));
-  check(`[${label}] west of 140W is outside the simulated area`, Number.isNaN(basinSamples.westOf140.sst));
   check(`[${label}] north of the domain's top edge is outside the simulated area`, Number.isNaN(basinSamples.northOfDomain.sst));
+
+  await checkCityMarkers(page, label, 16.86, -99.88, 'Acapulco');
 });
 
 // Main menu: basin/mode select, disabled cards stay disabled, Start navigates to the built basin.

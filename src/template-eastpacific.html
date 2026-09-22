@@ -98,6 +98,9 @@ input[type=range]{width:100%;margin:2px 0 0;accent-color:#d4d4d4;height:20px}
 
 /* notices + loader */
 #toast{left:50%;top:16px;transform:translateX(-50%);padding:9px 16px;font-size:13px;display:none}
+#city-tip{padding:9px 12px;max-width:210px;pointer-events:none;display:none;z-index:950}
+#city-tip b{font-size:13px;font-weight:600;display:block}
+#city-tip div{font-size:11.5px;color:var(--dim);margin-top:3px;line-height:1.5}
 #loading{position:absolute;inset:0;z-index:2000;display:grid;place-items:center;background:var(--ink);font-size:14px;color:var(--dim)}
 
 /* leaflet chrome */
@@ -161,6 +164,7 @@ canvas.overlay{position:absolute;left:0;top:0;width:100%;height:100%;pointer-eve
     <label class="chk" id="detail-row"><input type="checkbox" id="detail" checked> Sharper imagery when zoomed in</label>
     <label class="chk"><input type="checkbox" id="show-sst" checked> Show sea temperature</label>
     <label class="chk"><input type="checkbox" id="borders" checked> State and country lines</label>
+    <label class="chk"><input type="checkbox" id="cities" checked> City markers</label>
     <div class="row">
       <div class="sl"><span>Coordinates</span></div>
       <div class="seg" id="seg-grid" role="group" aria-label="Coordinate grid">
@@ -216,6 +220,7 @@ canvas.overlay{position:absolute;left:0;top:0;width:100%;height:100%;pointer-eve
 </div>
 
 <div id="toast" class="card" role="status"></div>
+<div id="city-tip" class="card" role="tooltip"><b></b><div></div></div>
 <div id="attr"></div>
 
 <nav id="dock" class="card" aria-label="Playback">
@@ -260,9 +265,14 @@ function b64i16(s) { const u = b64bytes(s); return new Int16Array(u.buffer, 0, u
 const land = new Uint8Array(N);                 // 1 = land (0.25° nodes)
 { const mb = b64bytes(DATA.mask); for (let k = 0; k < N; k++) land[k] = (mb[k >> 3] >> (7 - (k & 7))) & 1; }
 
-/* No out-of-basin masking needed here: the domain box (equator to 140°W, the coast to 36°N)
-   already matches the NHC/CPHC-defined Eastern Pacific basin boundary on every edge, unlike the
-   Atlantic build's box (which spans the Mediterranean and South Atlantic and has to mask them out). */
+/* No out-of-basin masking here: the grid runs a bit past Hawaii (to 166°W) so the map shows
+   Hawaii and its surrounding water, matching how NHC's own public graphics usually show the
+   Eastern and Central Pacific together -- and unlike the first attempt at this, the real
+   climatology/EOF/ENSO physics runs across the *whole* grid, not just east of the NHC's official
+   140°W Eastern Pacific boundary. Masking past 140°W looked right on paper (it's technically a
+   different basin, the Central Pacific Hurricane Center's) but in practice put a hard, visible
+   seam in open water the map clearly shows -- worse than just simulating real SST out to the
+   edge of the grid, same as every other basin's own domain edge already works. */
 
 const climC = [];                               // 12 coarse monthly climatologies (°C)
 { const a = b64i16(DATA.clim); for (let m = 0; m < 12; m++) { const f = new Float32Array(CN); for (let c = 0; c < CN; c++) f[c] = a[m * CN + c] / 100; climC.push(f); } }
@@ -621,12 +631,74 @@ for (const id of THEME_ORDER) { const t = THEMES[id]; if (!t.swatch) t.swatch = 
 let TH = THEMES.bm, themeId = 'bm', gridMode = 'off';
 
 /* ------------------------------------------------------------------ *
+ *  City markers: real coastal cities in the basin, hover shows the sim's
+ *  own live reading there (SST, departure from normal, hurricane threshold).
+ * ------------------------------------------------------------------ */
+const CITIES = [
+  { name: 'San Diego', lat: 32.72, lon: -117.16 }, { name: 'Los Angeles', lat: 34.05, lon: -118.24 },
+  { name: 'Ensenada', lat: 31.87, lon: -116.60 }, { name: 'La Paz', lat: 24.14, lon: -110.31 },
+  { name: 'Cabo San Lucas', lat: 22.89, lon: -109.91 }, { name: 'Mazatlán', lat: 23.25, lon: -106.41 },
+  { name: 'Puerto Vallarta', lat: 20.65, lon: -105.22 }, { name: 'Manzanillo', lat: 19.11, lon: -104.34 },
+  { name: 'Zihuatanejo', lat: 17.64, lon: -101.55 }, { name: 'Acapulco', lat: 16.86, lon: -99.88 },
+  { name: 'Puerto Escondido', lat: 15.87, lon: -97.07 }, { name: 'Salina Cruz', lat: 16.17, lon: -95.20 },
+  { name: 'Puerto Quetzal', lat: 13.92, lon: -90.79 }, { name: 'Acajutla', lat: 13.59, lon: -89.83 },
+  { name: 'Corinto', lat: 12.48, lon: -87.17 }, { name: 'Puntarenas', lat: 9.98, lon: -84.83 },
+  { name: 'Panama City', lat: 8.98, lon: -79.52 }, { name: 'Honolulu', lat: 21.31, lon: -157.86 },
+  { name: 'Hilo', lat: 19.71, lon: -155.09 },
+];
+const cityPx = CITIES.map(() => ({ x: 0, y: 0, onScreen: false }));
+let hoveredCity = -1;
+function drawCities(g, minX, minY, ws) {
+  const on = $('cities').checked;
+  for (let i = 0; i < CITIES.length; i++) {
+    const c = CITIES[i], px = (c.lon + 180) / 360 * ws - minX, py = mercN(c.lat) * ws - minY;
+    const p = cityPx[i]; p.x = px; p.y = py; p.onScreen = on && px > -20 && px < W + 20 && py > -20 && py < H + 20;
+    if (!p.onScreen) continue;
+    const t = sampleField(sst, c.lat, c.lon), hovered = i === hoveredCity;
+    const r = hovered ? 5.5 : 4;
+    g.beginPath(); g.arc(px, py, r, 0, Math.PI * 2);
+    g.fillStyle = t === t ? cityMarkerColor(t) : '#8a8a8a';
+    g.fill();
+    g.lineWidth = hovered ? 2 : 1.2; g.strokeStyle = hovered ? '#ffffff' : 'rgba(0,0,0,.55)'; g.stroke();
+  }
+}
+function cityMarkerColor(t) {
+  const V = VIEWS.sst, li = Math.max(0, Math.min(V.lut.length - 1, Math.round((t - V.vmin) * (V.lut.length - 1) / (V.vmax - V.vmin))));
+  const c = V.lut[li]; return 'rgb(' + (c & 255) + ',' + ((c >> 8) & 255) + ',' + ((c >> 16) & 255) + ')';
+}
+function cityAt(cx, cy) {
+  let best = -1, bestD = 100;
+  for (let i = 0; i < cityPx.length; i++) { const p = cityPx[i]; if (!p.onScreen) continue; const d = Math.hypot(cx - p.x, cy - p.y); if (d < 9 && d < bestD) { bestD = d; best = i; } }
+  return best;
+}
+function updateCityTip(cx, cy) {
+  const tip = $('city-tip');
+  const i = cityAt(cx, cy);
+  if (i !== hoveredCity) { hoveredCity = i; scheduleRender(); }
+  if (i < 0) { tip.style.display = 'none'; return; }
+  const c = CITIES[i], t = sampleField(sst, c.lat, c.lon), n = sampleField(normal, c.lat, c.lon);
+  const lines = [];
+  if (t === t) {
+    const dv = t - n, sign = dv >= 0 ? '+' : '−';
+    lines.push(t.toFixed(1) + ' °C');
+    lines.push(sign + Math.abs(dv).toFixed(1) + ' °C vs. normal');
+    lines.push(t >= 26.5 ? 'Above hurricane threshold' : 'Below hurricane threshold');
+  } else {
+    lines.push('Outside the simulated area');
+  }
+  tip.querySelector('b').textContent = c.name;
+  tip.querySelector('div').innerHTML = lines.join('<br>');
+  const left = Math.max(8, Math.min(W - 226, cx + 14)), top = Math.max(8, Math.min(H - 100, cy + 14));
+  tip.style.left = left + 'px'; tip.style.top = top + 'px'; tip.style.display = 'block';
+}
+
+/* ------------------------------------------------------------------ *
  *  Map
  * ------------------------------------------------------------------ */
 const map = L.map('map', {
-  zoomControl: false, attributionControl: false, minZoom: 5.75, maxZoom: 10, zoomSnap: 0.25, zoomDelta: 0.5, wheelPxPerZoomLevel: 110,
+  zoomControl: false, attributionControl: false, minZoom: 5.25, maxZoom: 10, zoomSnap: 0.25, zoomDelta: 0.5, wheelPxPerZoomLevel: 110,
   zoomAnimation: false, fadeAnimation: false, markerZoomAnimation: false, worldCopyJump: false,
-  maxBounds: [[-4, -144], [40, -70]], maxBoundsViscosity: 1   // hard pan limit: a few degrees beyond the domain box on every side, well inside the data's own padded extent (the box the geography/imagery were clipped to)
+  maxBounds: [[-4, -170], [40, -70]], maxBoundsViscosity: 1   // hard pan limit: a few degrees beyond the domain box on every side (west edge past Hawaii), well inside the data's own padded extent
 });
 L.control.zoom({ position: 'bottomleft' }).addTo(map);
 map.fitBounds([[5, -125], [30, -80]], { animate: false });   // instant: an animated pan here briefly rendered a garbled frame of the embedded base image mid-transition
@@ -846,6 +918,7 @@ function uiRects() { const out = []; for (const id of ['clock', 'panel', 'dock',
 function drawGrid(minX, minY, ws) {
   const g = gridCanvas.getContext('2d'); g.setTransform(DPR, 0, 0, DPR, 0, 0); g.clearRect(0, 0, W, H);
   if ($('borders').checked) drawBorders(g, minX, minY, ws, map.getZoom());
+  drawCities(g, minX, minY, ws);
   if (gridMode === 'off') return;
   const ppd = ws / 360, step = GRID_STEPS.find((q) => q * ppd >= 80) || 30;
   const latAt = (y) => Math.atan(Math.sinh(Math.PI * (1 - 2 * (minY + y) / ws))) / DEG, lonAt = (x) => (minX + x) / ws * 360 - 180;
@@ -960,8 +1033,9 @@ window.addEventListener('resize', () => { map.invalidateSize(); scheduleRender()
  *  Readout + legend
  * ------------------------------------------------------------------ */
 let pointer = null;
-map.on('mousemove', (e) => { pointer = e.latlng; updateReadout(); });
-map.on('mouseout', () => { pointer = null; updateReadout(); });
+map.on('mousemove', (e) => { pointer = e.latlng; updateReadout(); updateCityTip(e.containerPoint.x, e.containerPoint.y); });
+map.on('mouseout', () => { pointer = null; updateReadout(); hoveredCity = -1; $('city-tip').style.display = 'none'; });
+$('cities').onchange = () => { hoveredCity = -1; $('city-tip').style.display = 'none'; scheduleRender(); };
 const fmtLL = (lat, lon) => Math.abs(lat).toFixed(1) + '°' + (lat >= 0 ? 'N' : 'S') + ' ' + Math.abs(lon).toFixed(1) + '°' + (lon >= 0 ? 'E' : 'W');
 function updateReadout() {
   const el = $('readout');
