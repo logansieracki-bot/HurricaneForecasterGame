@@ -66,8 +66,11 @@ async function checkBasin(label, dist, extra) {
   check(`[${label}] loads with no JS errors`, errors.length === 0);
   if (errors.length) console.log('  ' + errors.join('\n  '));
 
+  // Blue Marble is kept only as an internal fallback now (no button of its own); the Satellite
+  // button stays shown as pressed even if the fallback already silently kicked in (no live
+  // network in this test, so on a slow CI box it sometimes has by the time this is checked).
   const initialTheme = await page.evaluate(() => document.querySelector('#themes button[aria-pressed="true"]')?.textContent);
-  check(`[${label}] starts on Blue Marble theme`, initialTheme === 'Blue Marble');
+  check(`[${label}] starts on Satellite theme`, initialTheme === 'Satellite');
 
   const state1 = await page.evaluate(() => window.SSTSIM.state());
   await page.waitForTimeout(1200);
@@ -77,18 +80,37 @@ async function checkBasin(label, dist, extra) {
   // Satellite theme has no network in this test: must fall back to Blue Marble, not hang or throw.
   await page.click('#themes button:has-text("Satellite")');
   await page.waitForTimeout(11000);
-  const afterSat = await page.evaluate(() => document.querySelector('#themes button[aria-pressed="true"]')?.textContent);
-  check(`[${label}] Satellite theme falls back to Blue Marble without a live tile source`, afterSat === 'Blue Marble');
+  const afterSat = await page.evaluate(() => window.SSTSIM.bm().theme);
+  check(`[${label}] Satellite theme falls back to Blue Marble without a live tile source`, afterSat === 'bm');
 
-  const vectorThemes = ['NHC', 'Plain', 'Chart', 'Blue Marble'];
-  for (const name of vectorThemes) {
+  const bmDebugState = await page.evaluate(() => window.SSTSIM.bm());
+  check(`[${label}] SSTSIM.bm() debug hook works on the Blue Marble fallback`, bmDebugState && bmDebugState.theme === 'bm' && errors.length === 0);
+
+  const themeButtonCount = await page.locator('#themes button').count();
+  check(`[${label}] exactly 4 selectable theme buttons (Blue Marble is fallback-only)`, themeButtonCount === 4);
+  check(`[${label}] Blue Marble is no longer a selectable theme button`, (await page.locator('#themes button:has-text("Blue Marble")').count()) === 0);
+
+  const themeButtons = ['NHC', 'Satellite', 'Plain', 'Chart'];
+  for (const name of themeButtons) {
     await page.click(`#themes button:has-text("${name}")`);
     await page.waitForTimeout(200);
   }
-  check(`[${label}] vector themes switch without errors`, errors.length === 0);
+  check(`[${label}] all theme buttons switch without errors`, errors.length === 0);
 
-  const bmDebugState = await page.evaluate(() => window.SSTSIM.bm());
-  check(`[${label}] SSTSIM.bm() debug hook works on Blue Marble theme`, bmDebugState && bmDebugState.theme === 'bm' && errors.length === 0);
+  // Panel: Customization / Experimentation split, Experimentation starts closed.
+  const customCollapsed = await page.evaluate(() => document.getElementById('sec-custom').classList.contains('collapsed'));
+  const expCollapsed = await page.evaluate(() => document.getElementById('sec-exp').classList.contains('collapsed'));
+  check(`[${label}] Customization section starts open`, !customCollapsed);
+  check(`[${label}] Experimentation section starts closed`, expCollapsed);
+  await page.click('#sec-exp button.subhead');
+  const expCollapsedAfter = await page.evaluate(() => document.getElementById('sec-exp').classList.contains('collapsed'));
+  check(`[${label}] Experimentation section opens on click`, !expCollapsedAfter);
+
+  // ENSO: "Set ENSO now" is a slider that forces the Nino 3.4 index directly (soft ceiling, not
+  // a hard cap at 3 -- the gauge and this slider can both still show a reading past it).
+  await page.evaluate(() => { const el = document.getElementById('p-ensonow'); el.value = '2.5'; el.dispatchEvent(new Event('input')); });
+  const ensoState = await page.evaluate(() => window.SSTSIM.enso());
+  check(`[${label}] Set ENSO now slider forces the Nino 3.4 index`, Math.abs(ensoState.n34 - 2.5) < 0.05);
 
   await extra(page, label);
 

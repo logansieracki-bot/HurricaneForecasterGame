@@ -1,6 +1,43 @@
 # Roadmap
 
 ## Just landed
+- UI/UX cleanup round, both basins:
+  - Blue Marble is no longer a selectable map theme -- it's still there as the automatic offline
+    fallback when Satellite tiles can't load (embedded, network-independent, unchanged), just
+    without a button of its own now. The Satellite button stays shown as pressed while that
+    fallback is active, rather than the theme row showing nothing selected, since from the
+    user's side they're still "on Satellite," just rendered a different way. Losing one button
+    also let the theme grid go from an awkward 3-and-2 layout to a clean 2x2 for the remaining
+    four, with a short hover/press transition added so switching feels less like a hard snap.
+  - City markers were showing nearly every coastal town in reach of each basin's grid (22 apiece)
+    and read as clutter more than a feature; cut down to about a dozen genuinely recognizable
+    cities per basin, still keeping one near each hand-tuned feature the markers were added to
+    illustrate (e.g. Lima for the Humboldt Current, Salina Cruz/Corinto/Puntarenas for the three
+    Tehuantepec/Papagayo/Costa-Rica-Dome features).
+  - The "Ocean layers" panel is now two independently-collapsible sections, Customization and
+    Experimentation, the latter starting closed by default (it's the "mess with the physics"
+    half, not what most people reach for first). The view toggle's second option is relabeled
+    "SST Anomaly" (was "Vs. normal"). "Set ENSO now" is a continuous slider instead of three
+    preset buttons (La Nina/Neutral/El Nino), calling the same forceEnso() jump-to-state
+    function underneath, just continuously instead of at three fixed points.
+- New standing rule: the simulation never hard-caps a value, only soft/asymptotic-limits it --
+  real extremes should be rare, not literally impossible. Applied retroactively in this round:
+  the ENSO strength gauge's fill-width used to be `Math.min(50, a / 3 * 50)`, which visually
+  pinned the gauge at its max the instant the Nino 3.4 index reached 3, even though the
+  underlying oscillator was already soft (tanh-based, asymptotic toward 3.4) -- so a genuinely
+  record-setting El Nino looked identical to a merely strong one. Switched the gauge to the same
+  tanh shape (`50 * Math.tanh(a / 3)`) so it keeps filling, just more slowly, past that point.
+  Also converted the last two hard `Math.min`/`Math.max` clamps in `computeField`'s combine step
+  (the final temperature ceiling/floor) and the lake-climatology anomaly/ceiling clamps to the
+  same soft tanh pattern already used elsewhere in the same function. Verified with a numeric
+  stress test (every experiment slider pushed to its max, ENSO forced to 3.4, hundreds of
+  simulated days advanced): no NaNs, output stayed in a physically sane range -- the softened
+  limits compress extreme combinations instead of either flatlining (the old hard clamp) or
+  blowing up (no clamp at all).
+- Still open: a user screenshot showed three thin black horizontal lines across an SST gradient
+  that couldn't be reproduced across isotherms on/off, grid on/off, various zoom/pan, or hover
+  states -- not yet found in the app's own rendering. Needs another screenshot or repro steps
+  before it can be root-caused rather than guessed at.
 - Fixed a real data bug the Gulf of California extension surfaced: a visible
   hard seam cutting across the gulf, with a patch of water not warming the
   way its surroundings did. Root cause was in the *data*, not rendering --
