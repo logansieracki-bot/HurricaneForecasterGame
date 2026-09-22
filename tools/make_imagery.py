@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Crops the embedded Blue Marble imagery for a basin's data.json (bm/bmBox/bmSize)
-from a high-res equirectangular source (8192x4096 NASA Blue Marble Next Generation).
+from a cloud-free equirectangular source (2048x1024 NASA-derived world texture --
+see tools/fetch.py for why: a higher-res alternative was tried but had clouds baked in).
 
 Usage: python3 tools/make_imagery.py <basin> <lonW> <lonE> <latS> <latN> [floor] [quality]
-  e.g. python3 tools/make_imagery.py eastpacific -172 -68 -6 42
+  e.g. python3 tools/make_imagery.py eastpacific -146 -68 -6 42
 """
 import base64
 import io
@@ -15,12 +16,12 @@ import numpy as np
 from PIL import Image
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SRC = os.path.join(ROOT, "data", "raw", "blue_marble_8192.jpg")
+SRC = os.path.join(ROOT, "data", "raw", "blue_marble_2048.jpg")
 
 
 def build(basin, lonW, lonE, latS, latN, floor=18, quality=88):
     src = Image.open(SRC).convert("RGB")
-    sw, sh = src.size  # 8192 x 4096, full -180..180 / 90..-90
+    sw, sh = src.size  # 2048 x 1024, full -180..180 / 90..-90
 
     x0 = round((lonW + 180) / 360 * sw)
     x1 = round((lonE + 180) / 360 * sw)

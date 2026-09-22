@@ -7,7 +7,7 @@
 <style>/*__LEAFLET_CSS__*/</style>
 <style>
 :root{
-  --ink:#121212; --panel:rgba(24,24,26,.94); --line:rgba(255,255,255,.12);
+  --ink:#121212; --panel:#1a1a1c; --line:rgba(255,255,255,.12);
   --text:#e8e8e8; --dim:#999999; --ice:#efefef; --focus:#bdbdbd; --season:rgba(255,166,96,.14);
   --font:"Avenir Next","Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,Roboto,"Helvetica Neue",sans-serif;
 }
@@ -16,7 +16,6 @@ html,body{height:100%;margin:0;background:var(--ink);color:var(--text);font-fami
 #map{position:absolute;inset:0;background:#10161c;outline:none}
 .leaflet-container{background:#10161c;font-family:var(--font)}
 .card{position:absolute;z-index:900;background:var(--panel);border:1px solid var(--line);border-radius:12px;
-  backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
   box-shadow:0 2px 12px rgba(0,0,0,.5)}
 button{font:inherit;color:inherit}
 button:focus-visible,input:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
@@ -95,7 +94,7 @@ input[type=range]{width:100%;margin:2px 0 0;accent-color:#d4d4d4;height:20px}
 .themes button i{display:block;height:20px;border-radius:5px;margin:0 auto 4px;border:1px solid rgba(255,255,255,.22)}
 .themes button:hover{background:rgba(255,255,255,.11);color:var(--text)}
 .themes button[aria-pressed=true]{border-color:var(--ice);background:rgba(255,255,255,.15);color:var(--text);font-weight:600}
-#attr{position:absolute;right:0;bottom:0;z-index:900;font-size:10.5px;color:var(--dim);background:rgba(18,18,18,.72);padding:2px 8px;border-top-left-radius:6px;pointer-events:none}
+#attr{position:absolute;right:0;bottom:0;z-index:900;font-size:10.5px;color:var(--dim);background:#1a1a1c;padding:2px 8px;border-top-left-radius:6px;pointer-events:none}
 
 /* notices + loader */
 #toast{left:50%;top:16px;transform:translateX(-50%);padding:9px 16px;font-size:13px;display:none}
@@ -104,9 +103,9 @@ input[type=range]{width:100%;margin:2px 0 0;accent-color:#d4d4d4;height:20px}
 /* leaflet chrome */
 .leaflet-bottom.leaflet-left{margin-bottom:70px}
 .leaflet-control-zoom{border:1px solid var(--line)!important;border-radius:10px!important;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.5)}
-.leaflet-control-zoom a{background:var(--panel)!important;color:var(--text)!important;border-bottom:1px solid var(--line)!important;backdrop-filter:blur(6px)}
+.leaflet-control-zoom a{background:var(--panel)!important;color:var(--text)!important;border-bottom:1px solid var(--line)!important}
 .leaflet-control-zoom a:hover{background:rgba(255,255,255,.12)!important}
-.leaflet-control-attribution{background:rgba(18,18,18,.75)!important;color:var(--dim)!important;font-size:10.5px}
+.leaflet-control-attribution{background:#1a1a1c!important;color:var(--dim)!important;font-size:10.5px}
 .leaflet-control-attribution a{color:#bdbdbd!important}
 canvas.overlay{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none}
 
@@ -134,7 +133,7 @@ canvas.overlay{position:absolute;left:0;top:0;width:100%;height:100%;pointer-eve
 <section id="clock" class="card" aria-label="Simulation clock">
   <div id="c-date">May 15, 2026</div>
   <div id="c-time">00:00<small>UTC</small></div>
-  <div id="c-meta">Day 1 · northern spring</div>
+  <div id="c-meta">Day 1</div>
   <div id="year" title="Months of the year. Shaded: Eastern Pacific hurricane season (May 15–Nov 30)"></div>
   <div id="year-bar"><i></i></div>
   <div id="enso" title="Niño 3.4 sea surface temperature anomaly: the El Niño / La Niña index">
@@ -261,15 +260,9 @@ function b64i16(s) { const u = b64bytes(s); return new Int16Array(u.buffer, 0, u
 const land = new Uint8Array(N);                 // 1 = land (0.25° nodes)
 { const mb = b64bytes(DATA.mask); for (let k = 0; k < N; k++) land[k] = (mb[k >> 3] >> (7 - (k & 7))) & 1; }
 
-/* The grid extends a bit past Hawaii (to 166°W) purely for visual/geographic context, matching
-   how NHC's own public graphics usually show the Eastern Pacific and Central Pacific together --
-   but the real NHC Eastern Pacific basin stops at 140°W (the Central Pacific Hurricane Center's
-   area starts there). SST west of that line reads as "outside the simulated area", the same way
-   the Atlantic build excludes the Mediterranean/South Atlantic: it's a different basin, not this one. */
-const outOfBasin = new Uint8Array(N);
-const EPAC_WEST_EDGE = -140;
-{ for (let j = 0; j < NY; j++) { const o = j * NX;
-    for (let i = 0; i < NX; i++) { if (LON0 + i * RES < EPAC_WEST_EDGE) outOfBasin[o + i] = 1; } } }
+/* No out-of-basin masking needed here: the domain box (equator to 140°W, the coast to 36°N)
+   already matches the NHC/CPHC-defined Eastern Pacific basin boundary on every edge, unlike the
+   Atlantic build's box (which spans the Mediterranean and South Atlantic and has to mask them out). */
 
 const climC = [];                               // 12 coarse monthly climatologies (°C)
 { const a = b64i16(DATA.clim); for (let m = 0; m < 12; m++) { const f = new Float32Array(CN); for (let c = 0; c < CN; c++) f[c] = a[m * CN + c] / 100; climC.push(f); } }
@@ -507,7 +500,7 @@ function computeField() {
       if (nrm < -1.8) nrm = -1.8; else if (nrm > 34) nrm = 34;
       if (v > c0) v = c0 + 1.2 * Math.tanh((v - c0) / 1.2);
       if (v < -1.8) v = -1.8; else if (v > 38) v = 38;
-      if (outOfBasin[k]) { sst[k] = NaN; normal[k] = NaN; diff[k] = NaN; } else { sst[k] = v; normal[k] = nrm; diff[k] = v - nrm; }
+      sst[k] = v; normal[k] = nrm; diff[k] = v - nrm;
     }
   }
   updateLakes(f, doy);
@@ -631,9 +624,9 @@ let TH = THEMES.bm, themeId = 'bm', gridMode = 'off';
  *  Map
  * ------------------------------------------------------------------ */
 const map = L.map('map', {
-  zoomControl: false, attributionControl: false, minZoom: 5.25, maxZoom: 10, zoomSnap: 0.25, zoomDelta: 0.5, wheelPxPerZoomLevel: 110,
+  zoomControl: false, attributionControl: false, minZoom: 5.75, maxZoom: 10, zoomSnap: 0.25, zoomDelta: 0.5, wheelPxPerZoomLevel: 110,
   zoomAnimation: false, fadeAnimation: false, markerZoomAnimation: false, worldCopyJump: false,
-  maxBounds: [[-4, -170], [40, -70]], maxBoundsViscosity: 1   // hard pan limit: a few degrees beyond the domain box on every side (west edge past Hawaii for context), well inside the data's own padded extent
+  maxBounds: [[-4, -144], [40, -70]], maxBoundsViscosity: 1   // hard pan limit: a few degrees beyond the domain box on every side, well inside the data's own padded extent (the box the geography/imagery were clipped to)
 });
 L.control.zoom({ position: 'bottomleft' }).addTo(map);
 map.fitBounds([[5, -125], [30, -80]], { animate: false });   // instant: an animated pan here briefly rendered a garbled frame of the embedded base image mid-transition
@@ -995,7 +988,6 @@ const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct
 const MLET = 'JFMAMJJASOND';
 $('year').innerHTML = MLET.split('').map((l, i) => '<span title="' + MON[i] + '" class="' + (i >= 4 && i <= 10 ? 'hs' : '') + '">' + l + '</span>').join('');
 const yearSpans = $('year').children;
-const SEASON = (m) => (m === 11 || m <= 1) ? 'northern winter' : m <= 4 ? 'northern spring' : m <= 7 ? 'northern summer' : 'northern autumn';
 function updateEnsoUI() {
   const v = n34, a = Math.abs(v), f = $('gauge-fill');
   const w = Math.min(50, a / 3 * 50); f.style.width = w + '%'; f.style.left = (v >= 0 ? 50 : 50 - w) + '%'; f.style.background = v >= 0 ? '#ff9a5c' : '#6aa8ff';
@@ -1011,7 +1003,7 @@ function updateClock() {
   $('c-date').textContent = MON[m] + ' ' + day + ', ' + y;
   $('c-time').innerHTML = hh + ':00<small>UTC</small>';
   updateEnsoUI();
-  $('c-meta').textContent = 'Day ' + (Math.floor(simHour / 24) + 1) + ' · ' + SEASON(m);
+  $('c-meta').textContent = 'Day ' + (Math.floor(simHour / 24) + 1);
   for (let i = 0; i < 12; i++) yearSpans[i].classList.toggle('now', i === m);
   const y0 = Date.UTC(y, 0, 1), y1 = Date.UTC(y + 1, 0, 1);
   $('year-bar').firstElementChild.style.width = ((d.getTime() - y0) / (y1 - y0) * 100).toFixed(2) + '%';

@@ -10,9 +10,10 @@ SOURCES = {
     # NOAA ERSST v5, global monthly 2 deg, 1970-2021. "No constraints on data access or use."
     # Mirrored (unmodified) in xarray's own tutorial-data repo.
     "ersstv5.nc": "https://raw.githubusercontent.com/pydata/xarray-data/master/ersstv5.nc",
-    # NASA Blue Marble: Next Generation, cloud-free equirectangular, 8192x4096 (courtesy Reto
-    # Stockli, NASA/GSFC; public domain), unmodified, mirrored in a GitHub project's assets.
-    "blue_marble_8192.jpg": "https://raw.githubusercontent.com/Anko59/GeoguessMe/dev/frontend/public/globe/earth-8192.jpg",
+    # NASA-derived cloud-free world texture (2048x1024 equirectangular), public domain. A higher-
+    # resolution alternative was tried (8192x4096) but it turned out to have clouds baked in, so
+    # this basin's imagery went back to this smaller but reliably cloud-free source.
+    "blue_marble_2048.jpg": "https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/textures/planets/earth_atmos_2048.jpg",
 }
 
 

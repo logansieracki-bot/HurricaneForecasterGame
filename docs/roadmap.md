@@ -10,23 +10,28 @@
   the East Pacific Warm Pool hugging southern Mexico/Central America, and
   Gulf of California's exaggerated shallow-water seasonal swing (hotter in
   summer *and* colder in winter than the open ocean, like the Red Sea/Persian
-  Gulf, not just a one-sided winter dip). The real NHC-defined basin boundary
-  is the coast to 140°W, equator to 36°N; the grid itself extends a bit
-  further west (to 166°W) purely so the map shows Hawaii and its surrounding
-  water for context (matching NHC's own combined EPAC/CPAC graphics), with
-  everything west of 140°W masked out as "outside the simulated area" the
-  same way Atlantic excludes the Mediterranean/South Atlantic.
-- Imagery quality: the embedded Blue Marble crops (both basins) now come from
-  an 8192×4096 NASA Blue Marble: Next Generation source (~23 px/degree)
-  instead of the original 2048×1024 one (~5.7 px/degree) — the old source
-  looked visibly blurry once zoomed in on a basin as large as EPAC's.
-  `tools/make_imagery.py` crops/lifts-blacks/encodes it per basin.
-- UI re-theme: replaced the blue-tinted, heavily blurred/saturated "frosted
-  glass" panel look (across the main menu and both simulators) with a flat
-  neutral dark theme — less blur, no saturate boost, more opaque panels,
-  tighter shadows, and no decorative gradients outside the map's own SST
-  legend and the map-theme preview swatches (which are flat hard-edge color
-  splits, not blends).
+  Gulf, not just a one-sided winter dip). The domain (equator–36°N,
+  coast–140°W) matches the NHC/CPHC basin boundary exactly, so unlike
+  Atlantic it needs no sub-region SST masking at all.
+  ([Tried and reverted]: extending the grid west to 166°W to show Hawaii for
+  context, matching NHC's combined EPAC/CPAC graphics, masking everything
+  past 140°W as "outside the simulated area" — but that mask boundary landed
+  in the middle of open ocean the user could actually see, showing as a hard,
+  confusing seam where the SST overlay just stopped. A future attempt at this
+  should fade the mask out gradually approaching the edge, the same way the
+  overlay already fades at the edge of the data grid itself, not cut hard.)
+- `tools/make_imagery.py` crops/lifts-blacks/encodes the embedded Blue Marble
+  imagery per basin from the same cloud-free 2048×1024 source Atlantic uses.
+  (A higher-res 8192×4096 alternative was tried for sharper close-up
+  quality, but it turned out to have clouds baked in — not cloud-free like
+  the original — so it was reverted; if a genuinely cloud-free high-res
+  source turns up, it's worth revisiting.)
+- UI re-theme: replaced the blue-tinted, translucent/blurred panel look
+  (across the main menu and both simulators) with a flat, fully opaque
+  neutral dark theme — no backdrop blur at all now (not just less of it),
+  solid panel colors, tighter shadows, no decorative gradients outside the
+  map's own SST legend and the map-theme preview swatches (flat hard-edge
+  color splits, not blends), and no astronomical season label on the clock.
 - A real, parameterized data pipeline now exists and produced that build:
   `tools/fetch.py` (ERSST v5 + Blue Marble source, idempotent), `tools/
   climate_lib.py` + `tools/make_climate.py` (climatology/EOF/ENSO regression
