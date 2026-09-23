@@ -1,6 +1,19 @@
 # Roadmap
 
 ## Just landed
+- Storm-impact stats on city markers (sustained winds, gusts, 72h rainfall, deaths, injuries,
+  damage % and cost) are scaffolded but not live. This app has no storm model at all yet --
+  only SST -- so there's no real genesis/track/wind field to compute any of those from, and
+  making them up would break the rule the original city markers were built on (real data only,
+  never a fabricated casualty/damage number). `stormImpactAt(lat, lon)` in both templates is the
+  seam: it returns `null` today, so `updateCityTip`'s impact section never renders and nothing
+  about the tooltip changed for a user right now (verified: full test suite unchanged, a
+  temporary local override confirmed the layout renders correctly once it returns real data).
+  When an actual storm model exists, that function's body is the only thing that needs to
+  change -- return the real numbers for whichever city a storm is affecting, `null` everywhere
+  else, and the UI already knows what to do with both cases. Per explicit direction: no real
+  storms run until every basin's own ocean simulation is finished and built out, with an
+  explicit go-ahead before starting on the storm model itself.
 - Fixed a real glitch in the Satellite theme button: its swatch preview was a hand-built 3-stop
   gradient (green -> tan -> blue) meant to read as a land/beach/water transition, but at the
   icon's actual wide-and-short aspect ratio the tan middle band showed up as thin broken-looking
