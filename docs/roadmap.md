@@ -1,6 +1,12 @@
 # Roadmap
 
 ## Just landed
+- Fixed a real glitch in the Satellite theme button: its swatch preview was a hand-built 3-stop
+  gradient (green -> tan -> blue) meant to read as a land/beach/water transition, but at the
+  icon's actual wide-and-short aspect ratio the tan middle band showed up as thin broken-looking
+  lines near the top and bottom edges rather than a clean diagonal split. Gave the theme a real
+  `land` color instead and let it fall back to the same plain 2-stop diagonal every other theme's
+  swatch already uses, instead of a bespoke gradient no other button has.
 - City markers, much denser: two reference screenshots set the target density (nearly every US
   state, all of Mexico, the whole Caribbean). Atlantic went from 63 to 107 (the rest of the
   Midwest/Great Lakes, more of Canada, the Mississippi-basin South, more Texas, the smaller
