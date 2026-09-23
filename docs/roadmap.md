@@ -1,6 +1,15 @@
 # Roadmap
 
 ## Just landed
+- City markers, much denser: two reference screenshots set the target density (nearly every US
+  state, all of Mexico, the whole Caribbean). Atlantic went from 63 to 107 (the rest of the
+  Midwest/Great Lakes, more of Canada, the Mississippi-basin South, more Texas, the smaller
+  Caribbean island nations, more of Venezuela/Colombia/Brazil); EPAC went from 53 to 85 (more of
+  the US Southwest, a full spread of Mexican state capitals, more of Central/South America's
+  Pacific side). Every new inland one got a real nearest-water sample point (same pattern as the
+  first inland-cities round) and all 192 markers combined validated clean against sample() on
+  the first pass this time -- the sliver-ring and mask-smoothing fixes from the last two rounds
+  meant there were no new land/mask surprises left to trip over.
 - City markers can be inland now, not just coastal -- Philadelphia, D.C., Atlanta, Nashville and
   five more on the Atlantic build; Mexico City, Phoenix, Guatemala City and six more on EPAC.
   An inland city isn't on the water, so it has no real SST of its own to show -- the marker sits
