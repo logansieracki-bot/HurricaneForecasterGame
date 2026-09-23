@@ -133,10 +133,11 @@ await checkBasin('Atlantic', ATLANTIC_DIST, async (page, label) => {
   const clampedSouthLat = await page.evaluate(() => window.SSTSIM.map.getBounds().getSouth());
   check(`[${label}] map cannot pan down into South America / the South Atlantic`, clampedSouthLat > -5);
 
-  // This build is the North Atlantic basin only: the Mediterranean and the South Atlantic are
-  // their own future basins, so SST there should read as "outside the simulated area" (NaN),
-  // not silently show Atlantic data under a basin it doesn't belong to. The southern cutoff sits
-  // a few degrees below the equator so the southern Main Development Region isn't clipped.
+  // The South Atlantic is a future basin and isn't reachable by panning, so it's still NaN. The
+  // Mediterranean *is* reachable, so it now shows its own real climatology instead of a masked
+  // hole (masking reachable water just put a hard seam in open water a user could pan into).
+  // The Panama/Colombia corridor is the opposite case: this grid's box reaches far enough west
+  // to cross the isthmus into the Pacific side, a different ocean, so that's masked instead.
   const basinSamples = await page.evaluate(() => ({
     med: window.SSTSIM.sample(36, 15),      // central Mediterranean
     gibraltar: window.SSTSIM.sample(35.9, -4.5),     // Alboran Sea, right at the strait
@@ -144,25 +145,33 @@ await checkBasin('Atlantic', ATLANTIC_DIST, async (page, label) => {
     southAtlantic: window.SSTSIM.sample(-15, -20),   // open South Atlantic, well past the cutoff
     southernMDR: window.SSTSIM.sample(-5, -30),      // a few degrees south of the equator, inside the cutoff
     openAtlantic: window.SSTSIM.sample(20, -50),     // sanity check: still real data north of the equator
+    gulfOfPanama: window.SSTSIM.sample(8, -82),      // Pacific side of Panama -- a different ocean, not this basin's
+    cartagena: window.SSTSIM.sample(10.4, -75.5),    // Caribbean (Colombia) -- real water just past the isthmus
   }));
-  check(`[${label}] Mediterranean SST is excluded`, Number.isNaN(basinSamples.med.sst));
-  check(`[${label}] Gibraltar/Alboran Sea is excluded`, Number.isNaN(basinSamples.gibraltar.sst));
+  check(`[${label}] Mediterranean now shows real SST, not a masked hole`, Number.isFinite(basinSamples.med.sst));
+  check(`[${label}] Gibraltar/Alboran Sea now shows real SST`, Number.isFinite(basinSamples.gibraltar.sst));
   check(`[${label}] Bay of Biscay (open Atlantic) is not clipped by the Mediterranean cutoff`, Number.isFinite(basinSamples.bayOfBiscay.sst));
   check(`[${label}] South Atlantic SST is excluded`, Number.isNaN(basinSamples.southAtlantic.sst));
   check(`[${label}] southern MDR (a few degrees south of the equator) still has real SST`, Number.isFinite(basinSamples.southernMDR.sst));
   check(`[${label}] open North Atlantic SST is still real data`, Number.isFinite(basinSamples.openAtlantic.sst));
+  check(`[${label}] Pacific side of Panama is excluded (wrong ocean)`, Number.isNaN(basinSamples.gulfOfPanama.sst));
+  check(`[${label}] Caribbean side (Cartagena) still has real SST`, Number.isFinite(basinSamples.cartagena.sst));
 
   await checkCityMarkers(page, label, 25.76, -80.19, 'Miami');
 });
 
 await checkBasin('East Pacific', EPAC_DIST, async (page, label) => {
-  // The grid runs from 26S to 44N, coast to 180 (the international date line) -- covering
-  // Hawaii, the Oregon/Washington coast, and the Peru/Ecuador coast, well past the NHC's narrower
-  // official Eastern Pacific boundary. Real climatology/EOF/ENSO SST (plus the California Current
+  // The grid runs from 32S to 50N, coast to 180 (the international date line) -- covering
+  // Hawaii, past the Oregon/Washington coast into BC, and past the Peru/Ecuador coast into
+  // Chile, well past the NHC's narrower official Eastern Pacific boundary and past maxBounds
+  // itself with room to spare. Real climatology/EOF/ENSO SST (plus the California Current
   // extended north and a new Humboldt/Peru Current feature added south) runs across the *whole*
-  // grid -- no sub-region masking, since an earlier attempt at masking part of a widened grid
-  // produced a hard visible seam in open water. The pan limit (maxBounds) should still clamp
-  // before showing uncovered map area beyond the grid entirely.
+  // grid -- no masking on this side, since an earlier attempt at masking part of a widened grid
+  // produced a hard visible seam in open water. The east edge is the opposite case: the grid's
+  // box reaches past Mexico/Central America's Pacific coast into the Gulf of Mexico, Caribbean
+  // and open Atlantic -- a different ocean, so that side *is* masked (mirrors the Atlantic
+  // build's own Panama-corridor exclusion). The pan limit (maxBounds) should still clamp before
+  // showing uncovered map area beyond the grid entirely.
   await page.evaluate(() => window.SSTSIM.map.fitBounds([[30, -190], [70, -150]]));   // toward the far North Pacific/beyond the date line
   await page.waitForTimeout(300);
   const clampedWestLon = await page.evaluate(() => window.SSTSIM.map.getBounds().getWest());
@@ -180,8 +189,10 @@ await checkBasin('East Pacific', EPAC_DIST, async (page, label) => {
     dateLine: window.SSTSIM.sample(20, -179),           // near the grid's own western edge, by the date line
     northOregon: window.SSTSIM.sample(43, -125),        // California Current extended north
     peru: window.SSTSIM.sample(-12, -78),               // new Humboldt Current, south of the equator
-    southOfDomain: window.SSTSIM.sample(-30, -75),      // south of the grid's own 26S edge
-    northOfDomain: window.SSTSIM.sample(48, -125),      // north of the grid's own 44N edge
+    southOfDomain: window.SSTSIM.sample(-34, -90),      // south of the grid's own 32S edge
+    northOfDomain: window.SSTSIM.sample(52, -125),      // north of the grid's own 50N edge
+    gulfOfCalifornia: window.SSTSIM.sample(28, -111),   // real Pacific feature, must stay real
+    gulfOfMexico: window.SSTSIM.sample(24, -80),        // Florida Straits -- a different ocean, must be excluded
   }));
   check(`[${label}] open ocean SST is real data`, Number.isFinite(basinSamples.offshore.sst));
   check(`[${label}] coastal SST off southern Mexico is real data`, Number.isFinite(basinSamples.nearCoast.sst));
@@ -191,6 +202,8 @@ await checkBasin('East Pacific', EPAC_DIST, async (page, label) => {
   check(`[${label}] Humboldt Current SST off Peru is real data`, Number.isFinite(basinSamples.peru.sst));
   check(`[${label}] Humboldt Current cools the Peru coast noticeably below the open-ocean baseline`, basinSamples.peru.sst < basinSamples.offshore.sst - 3);
   check(`[${label}] south of the grid's own southern edge is outside the simulated area`, Number.isNaN(basinSamples.southOfDomain.sst));
+  check(`[${label}] Gulf of California still has real SST`, Number.isFinite(basinSamples.gulfOfCalifornia.sst));
+  check(`[${label}] Gulf of Mexico/Florida Straits is excluded (wrong ocean)`, Number.isNaN(basinSamples.gulfOfMexico.sst));
   check(`[${label}] north of the grid's own northern edge is outside the simulated area`, Number.isNaN(basinSamples.northOfDomain.sst));
 
   await checkCityMarkers(page, label, 16.86, -99.88, 'Acapulco');

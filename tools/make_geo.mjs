@@ -53,6 +53,38 @@ function encodeLines(fc) {
   return lines;
 }
 
+function isSliverRing(ring) {
+  // turf.bboxClip on a huge multi-part polygon (e.g. every landmass on Earth as one feature)
+  // can emit a spurious degenerate ring as a clipping artifact: very few points, spanning a
+  // huge distance in one dimension while being almost zero-width in the other -- not real
+  // coastline (nothing is a hundred-plus degrees long and a hundredth of a degree tall), just
+  // a stray seam from the clip. First caught as a fake landmass stretching clear across the
+  // Eastern Pacific at one exact latitude, cutting a hole clean across the SST map there.
+  if (!Array.isArray(ring) || ring.length === 0 || ring.length > 8) return false;
+  try {
+    let minLon = 999, maxLon = -999, minLat = 999, maxLat = -999;
+    for (const pt of ring) {
+      if (!Array.isArray(pt) || pt.length < 2) return false;
+      const [lon, lat] = pt;
+      if (lon < minLon) minLon = lon; if (lon > maxLon) maxLon = lon; if (lat < minLat) minLat = lat; if (lat > maxLat) maxLat = lat;
+    }
+    const w = maxLon - minLon, h = maxLat - minLat;
+    return (h < 0.1 && w > 3) || (w < 0.1 && h > 3);
+  } catch { return false; }
+}
+
+function dropSliverPolygons(geom) {
+  try {
+    if (geom.type === 'Polygon') return isSliverRing(geom.coordinates[0]) ? null : geom;
+    if (geom.type === 'MultiPolygon') {
+      const kept = geom.coordinates.filter((rings) => !isSliverRing(rings && rings[0]));
+      if (!kept.length) return null;
+      return kept.length === geom.coordinates.length ? geom : { type: 'MultiPolygon', coordinates: kept };
+    }
+  } catch { /* fall through */ }
+  return geom;
+}
+
 function clipToBox(fc, box) {
   // box = [lon0, lat0, lon1, lat1]. Drops empty results; bboxClip throws on some
   // degenerate inputs, so skip those features rather than fail the whole build.
@@ -62,7 +94,9 @@ function clipToBox(fc, box) {
     if (!f.geometry) continue;
     try {
       const clipped = turf.bboxClip(f, box);
-      if (clipped.geometry && clipped.geometry.coordinates.length) out.features.push(clipped);
+      if (!clipped.geometry) continue;
+      const geom = dropSliverPolygons(clipped.geometry);
+      if (geom && geom.coordinates.length) out.features.push({ ...clipped, geometry: geom });
     } catch { /* skip degenerate geometry */ }
   }
   return out;

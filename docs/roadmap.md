@@ -34,10 +34,56 @@
   simulated days advanced): no NaNs, output stayed in a physically sane range -- the softened
   limits compress extreme combinations instead of either flatlining (the old hard clamp) or
   blowing up (no clamp at all).
-- Still open: a user screenshot showed three thin black horizontal lines across an SST gradient
-  that couldn't be reproduced across isotherms on/off, grid on/off, various zoom/pan, or hover
-  states -- not yet found in the app's own rendering. Needs another screenshot or repro steps
-  before it can be root-caused rather than guessed at.
+- Root-caused and fixed the three black horizontal lines: a fake landmass, roughly 110° of
+  longitude wide and 0.02° of latitude tall, sitting at exactly 16.5°S in the Eastern Pacific
+  mask -- rasterizing to a solid stripe of "land" clean across the open ocean there, which the
+  renderer punches out of the SST layer as a hole and strokes a coastline halo around, reading
+  as a thin black line (three of them, one per hole edge plus the stroke). It reproduced only
+  after widening the EPAC grid, because the new box happened to trigger a real bug in
+  `tools/make_geo.mjs`: `turf.bboxClip`, run against the single feature that merges *every*
+  landmass on Earth into one multi-thousand-part MultiPolygon, occasionally emits a spurious
+  degenerate ring as a clipping artifact -- a handful of points spanning a huge distance in one
+  axis while being a hundredth of a degree wide in the other, nothing like real coastline.
+  Swapping the point-in-polygon test from a hand-rolled ray cast to turf's own
+  `booleanPointInPolygon` reproduced the exact same bad row byte-for-byte, which ruled out the
+  rasterizer and pointed at the clipped geometry itself; diffing the clipped rings directly
+  turned up the sliver. Fixed by filtering it out post-clip (few points, one dimension under
+  0.1° while the other is over 3°) rather than trying to stop turf from producing it. Confirmed
+  via a full land-mask row/column spike scan on both basins (EPAC now clean end to end; Atlantic
+  never had one) and a fresh screenshot of the exact spot -- smooth gradient, no lines.
+- Extended real SST to everywhere both maps can actually be panned to, not just wherever the
+  data happened to reach, and fixed two "wrong ocean" mistakes the same audit turned up:
+  - EPAC's grid only covered lat -26..44 while `maxBounds` already allowed panning a few degrees
+    past that on every side (a deliberate buffer so panning doesn't feel like hitting a wall
+    right at the data edge) -- so that buffer showed "outside the simulated area" instead of
+    real water. Regenerated the climatology at -32..50, -180..-68 (matching the geography/
+    imagery box that already covered it) so the buffer is real data too.
+  - Extending east that far runs the rectangular grid past Mexico/Central America's Pacific
+    coast into the Gulf of Mexico, the Caribbean and the open Atlantic -- confirmed by panning
+    there: a full, real-looking SST gradient over Florida/Cuba/the Gulf Stream, a different
+    ocean entirely. Added an east-side mask tracing the real Pacific coastline (with margin for
+    the Gulf of California, Gulf of Panama and Gulf of Guayaquil, all real modeled features)
+    the same way the Atlantic build already masks its Mediterranean cutoff. The Atlantic build
+    turned out to have the mirror-image mistake already in it (its own grid reaches far enough
+    west to cross the Panama/Colombia isthmus into the Pacific) -- same fix, a west-side mask
+    keyed off the real Caribbean coast instead.
+  - Both new mask curves were built from a handful of coastal city coordinates as anchor points;
+    the first pass used too few of them and let the interpolated cutoff jump several degrees
+    between adjacent points, which rendered as a visible staircase of blocky steps along the
+    coast instead of a smooth line (most visible off Nicaragua/Costa Rica). Fixed by adding
+    enough intermediate points to keep every step gentle (roughly 1-1.5° of cutoff movement per
+    degree of latitude), the same lesson as the diffusion-fill and Catmull-Rom clamp fixes
+    earlier: a hard edge shows up as a visible artifact even when the classification on each
+    side of it is correct.
+- City markers, both basins: reversed course on "curate them down" -- the actual ask was more
+  cities, not fewer. EPAC now runs Vancouver to northern Chile plus Hawaii (44 total); Atlantic
+  runs Halifax to the Caribbean/northern South America plus the Mediterranean, now that it's
+  real water instead of a masked hole (54 total). Every marker was checked against the app's own
+  `sample()` after all the masking changes above, since a marker placed just past a mask
+  boundary reads as "no data" -- one Costa Rica city sat close enough to the Panama-corridor
+  mask's least-precise stretch (right at the Panama Canal, where the Pacific and Caribbean
+  coasts are only tens of km apart and no single longitude cutoff can cleanly separate them) to
+  get caught by it; swapped for a nearby island city that isn't.
 - Fixed a real data bug the Gulf of California extension surfaced: a visible
   hard seam cutting across the gulf, with a patch of water not warming the
   way its surroundings did. Root cause was in the *data*, not rendering --
@@ -156,6 +202,29 @@ independently. `tools/build.mjs` builds every shipped basin's dist file in one
 
 **Per-basin checklist, learned from the Atlantic build's bugs (and confirmed
 again building EPAC):**
+- After generating a basin's land mask (`tools/make_geo.mjs`), scan every row and column for a
+  land-cell-count spike against its neighbors before trusting it. `turf.bboxClip`, run against
+  the single feature that merges every landmass on Earth into one huge MultiPolygon, can emit a
+  spurious sliver ring as a clipping artifact -- a handful of points spanning a huge distance in
+  one axis while being a hundredth of a degree wide in the other. Rasterized, that reads as a
+  fake landmass stretching clean across open ocean at one exact latitude or longitude, which the
+  renderer then punches a hole for and strokes a coastline halo around -- a solid black line
+  across the map. `make_geo.mjs`'s `clipToBox` now filters these out post-clip (a ring is a
+  sliver if it has very few points and one dimension is under 0.1° while the other is over 3°),
+  but a *new* basin's box could still trigger a shape the filter doesn't catch; the row/column
+  spike scan is the fast way to check before shipping, not eyeballing a screenshot.
+- A basin's rectangular domain box reaching past its own coastline into a genuinely different
+  ocean (not just past its official basin boundary into more of the *same* ocean, which is fine
+  -- see the note above) needs its own mask, the same technique as the Mediterranean cutoff:
+  trace the real coastline with a handful of anchor points and mask everything on the wrong
+  side. Build the anchor list densely enough that the interpolated cutoff moves gently (not
+  more than a couple degrees of longitude per degree of latitude) between consecutive points --
+  too sparse a list creates a visible staircase of blocky steps along the coast, a smaller
+  version of the same "hard edge is a visible artifact" lesson as the diffusion-fill and
+  Catmull-Rom clamp fixes. A narrow isthmus with both oceans close together (Panama chief among
+  them) can put the two coasts close enough in longitude that no single cutoff cleanly separates
+  them at that exact latitude; biasing the cutoff toward excluding a little real water there is
+  the safe direction, not including a little of the wrong ocean.
 - Don't assume border-line (state/country outline) data coverage matches the
   SST domain — verify it and set `maxBounds`/`minZoom` to match. Recalibrate
   `minZoom` per basin (it depends on the domain's own lon/lat span, not a

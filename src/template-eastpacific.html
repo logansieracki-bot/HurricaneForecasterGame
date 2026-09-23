@@ -274,14 +274,30 @@ function b64i16(s) { const u = b64bytes(s); return new Int16Array(u.buffer, 0, u
 const land = new Uint8Array(N);                 // 1 = land (0.25° nodes)
 { const mb = b64bytes(DATA.mask); for (let k = 0; k < N; k++) land[k] = (mb[k >> 3] >> (7 - (k & 7))) & 1; }
 
-/* No out-of-basin masking here: the grid runs a bit past Hawaii (to 166°W) so the map shows
-   Hawaii and its surrounding water, matching how NHC's own public graphics usually show the
-   Eastern and Central Pacific together -- and unlike the first attempt at this, the real
-   climatology/EOF/ENSO physics runs across the *whole* grid, not just east of the NHC's official
-   140°W Eastern Pacific boundary. Masking past 140°W looked right on paper (it's technically a
-   different basin, the Central Pacific Hurricane Center's) but in practice put a hard, visible
-   seam in open water the map clearly shows -- worse than just simulating real SST out to the
-   edge of the grid, same as every other basin's own domain edge already works. */
+/* No masking on the west/north/south edges: the grid runs well past the NHC's official basin
+   lines there (to the date line, past Hawaii, north past Oregon, south past the equator into
+   Peru/Chile) so the map shows real context around the storm-relevant area, and it's still the
+   same ocean -- the Eastern/Central/South Pacific aren't separate bodies of water the way the
+   Atlantic and the Mediterranean are. Masking that context off, even though it's technically a
+   different official basin boundary, put a hard, visible seam in open water the map clearly
+   shows -- worse than just simulating real SST out to the edge of the grid, same as every other
+   basin's own domain edge already works.
+
+   The *east* edge is a genuinely different case: past Mexico/Central America's Pacific coast,
+   this grid's rectangular box runs into the Gulf of Mexico, the Caribbean and the open Atlantic
+   -- a different ocean, not more Pacific context. Left unmasked, panning to Florida or the US
+   Gulf coast showed a smooth, real-looking SST gradient over what's actually the Gulf Stream/
+   Gulf of Mexico, mislabeled as this basin's own water. This traces roughly the real Pacific
+   coastline northward from Panama (with margin for the Gulf of California, Gulf of Panama and
+   Gulf of Guayaquil -- real Pacific features already modeled above) and masks everything east
+   of it, the same technique the Atlantic build uses for its own Mediterranean cutoff. */
+const EAST_LAT = [-32, -23.65, -20.21, -18.48, -17.02, -13.71, -12.05, -2.19, 3.9, 8.98, 9.98, 12.48, 13.92, 16.17, 16.86, 19, 20.65, 22, 23.25, 27.9, 31.3, 32.72, 43.37, 50];
+const EAST_LON = [-68, -68.5, -68.2, -68.3, -70, -74.2, -75, -78, -76, -78.3, -83.6, -86, -89.5, -94, -98.7, -102, -104, -105.5, -105.2, -109.5, -112.2, -115.5, -121.7, -121.5];
+const outOfBasin = new Uint8Array(N);
+for (let j = 0; j < NY; j++) {
+  const lat = LAT1 - j * RES, cutoff = interp1(EAST_LAT, EAST_LON, lat), o = j * NX;
+  for (let i = 0; i < NX; i++) { const lon = LON0 + i * RES; if (lon > cutoff) outOfBasin[o + i] = 1; }
+}
 
 const climC = [];                               // 12 coarse monthly climatologies (°C)
 { const a = b64i16(DATA.clim); for (let m = 0; m < 12; m++) { const f = new Float32Array(CN); for (let c = 0; c < CN; c++) f[c] = a[m * CN + c] / 100; climC.push(f); } }
@@ -559,7 +575,7 @@ function computeField() {
       if (nrm > 34) nrm = 34 + 1.5 * Math.tanh((nrm - 34) / 1.5); else if (nrm < -1.8) nrm = -1.8 - 1.5 * Math.tanh((-nrm - 1.8) / 1.5);   // soft: real water sometimes runs past the nominal range, it just shouldn't do so without limit
       if (v > c0) v = c0 + 1.2 * Math.tanh((v - c0) / 1.2);
       if (v > 38) v = 38 + 1.5 * Math.tanh((v - 38) / 1.5); else if (v < -1.8) v = -1.8 - 1.5 * Math.tanh((-v - 1.8) / 1.5);
-      sst[k] = v; normal[k] = nrm; diff[k] = v - nrm;
+      if (outOfBasin[k]) { sst[k] = NaN; normal[k] = NaN; diff[k] = NaN; } else { sst[k] = v; normal[k] = nrm; diff[k] = v - nrm; }
     }
   }
   updateLakes(f, doy);
@@ -684,13 +700,28 @@ let TH = THEMES.sat, themeId = 'sat', gridMode = 'off';
  *  own live reading there (SST, departure from normal, hurricane threshold).
  * ------------------------------------------------------------------ */
 const CITIES = [
-  { name: 'San Diego', lat: 32.72, lon: -117.16 }, { name: 'Los Angeles', lat: 34.05, lon: -118.24 },
+  { name: 'Vancouver', lat: 49.28, lon: -123.12 }, { name: 'Seattle', lat: 47.61, lon: -122.33 },
+  { name: 'Astoria', lat: 46.19, lon: -123.83 }, { name: 'Coos Bay', lat: 43.37, lon: -124.22 },
+  { name: 'Eureka', lat: 40.80, lon: -124.16 }, { name: 'San Francisco', lat: 37.77, lon: -122.42 },
+  { name: 'Monterey', lat: 36.60, lon: -121.89 }, { name: 'Santa Barbara', lat: 34.42, lon: -119.70 },
+  { name: 'Los Angeles', lat: 34.05, lon: -118.24 }, { name: 'San Diego', lat: 32.72, lon: -117.16 },
+  { name: 'Ensenada', lat: 31.87, lon: -116.60 }, { name: 'La Paz', lat: 24.14, lon: -110.31 },
   { name: 'Cabo San Lucas', lat: 22.89, lon: -109.91 }, { name: 'Mazatlán', lat: 23.25, lon: -106.41 },
-  { name: 'Puerto Vallarta', lat: 20.65, lon: -105.22 }, { name: 'Acapulco', lat: 16.86, lon: -99.88 },
-  { name: 'Salina Cruz', lat: 16.17, lon: -95.20 }, { name: 'Corinto', lat: 12.48, lon: -87.17 },
-  { name: 'Puntarenas', lat: 9.98, lon: -84.83 }, { name: 'Panama City', lat: 8.98, lon: -79.52 },
-  { name: 'Honolulu', lat: 21.31, lon: -157.86 }, { name: 'Coos Bay', lat: 43.37, lon: -124.22 },
-  { name: 'Guayaquil', lat: -2.19, lon: -79.89 }, { name: 'Lima', lat: -12.05, lon: -77.03 },
+  { name: 'Puerto Vallarta', lat: 20.65, lon: -105.22 }, { name: 'Manzanillo', lat: 19.11, lon: -104.34 },
+  { name: 'Zihuatanejo', lat: 17.64, lon: -101.55 }, { name: 'Acapulco', lat: 16.86, lon: -99.88 },
+  { name: 'Puerto Escondido', lat: 15.87, lon: -97.07 }, { name: 'Salina Cruz', lat: 16.17, lon: -95.20 },
+  { name: 'Puerto Quetzal', lat: 13.92, lon: -90.79 }, { name: 'Acajutla', lat: 13.59, lon: -89.83 },
+  { name: 'Corinto', lat: 12.48, lon: -87.17 }, { name: 'San Juan del Sur', lat: 11.25, lon: -85.87 },
+  { name: 'Puntarenas', lat: 9.98, lon: -84.83 }, { name: 'Quepos', lat: 9.43, lon: -84.16 },
+  { name: 'David', lat: 8.43, lon: -82.43 }, { name: 'Panama City', lat: 8.98, lon: -79.52 },
+  { name: 'Buenaventura', lat: 3.88, lon: -77.02 }, { name: 'Esmeraldas', lat: 0.97, lon: -79.65 },
+  { name: 'Guayaquil', lat: -2.19, lon: -79.89 }, { name: 'Salinas', lat: -2.21, lon: -80.97 },
+  { name: 'Paita', lat: -5.09, lon: -81.11 }, { name: 'Trujillo', lat: -8.22, lon: -78.98 },
+  { name: 'Lima', lat: -12.05, lon: -77.03 }, { name: 'Pisco', lat: -13.71, lon: -76.20 },
+  { name: 'Mollendo', lat: -17.02, lon: -72.03 }, { name: 'Arica', lat: -18.48, lon: -70.32 },
+  { name: 'Iquique', lat: -20.21, lon: -70.15 }, { name: 'Antofagasta', lat: -23.65, lon: -70.40 },
+  { name: 'Honolulu', lat: 21.31, lon: -157.86 }, { name: 'Hilo', lat: 19.71, lon: -155.09 },
+  { name: 'Kahului', lat: 20.89, lon: -156.47 }, { name: 'Lihue', lat: 21.98, lon: -159.37 },
 ];
 const cityPx = CITIES.map(() => ({ x: 0, y: 0, onScreen: false }));
 let hoveredCity = -1;

@@ -274,29 +274,35 @@ function b64i16(s) { const u = b64bytes(s); return new Int16Array(u.buffer, 0, u
 const land = new Uint8Array(N);                 // 1 = land (0.25° nodes)
 { const mb = b64bytes(DATA.mask); for (let k = 0; k < N; k++) land[k] = (mb[k >> 3] >> (7 - (k & 7))) & 1; }
 
-/* Cells that belong to a different basin, not this Atlantic build: south of the equator
-   (the South Atlantic, its own future basin) and the Mediterranean/Black Sea (ditto). SST is
-   left NaN there ("outside the simulated area"), same as cells outside the grid entirely. */
+/* Cells south of the equator (the South Atlantic, its own future basin) aren't reachable by
+   panning anyway -- maxBounds stops well north of here -- so they're left NaN ("outside the
+   simulated area"), same as cells outside the grid entirely. The Mediterranean/Black Sea used
+   to be excluded the same way, but that area *is* reachable by panning, so masking it just put
+   a hard, confusing seam in open water a user could pan straight into -- the same lesson the
+   Eastern Pacific build hit first with its own wider domain. It now shows its own real ERSST
+   climatology instead, same as everywhere else on this grid: SST should be real everywhere the
+   map can actually be panned to.
+
+   The Panama/Colombia/Central America corridor is the opposite problem, the same one the
+   Eastern Pacific build's own east edge has: this grid's box reaches far enough west (to -110)
+   to cross the isthmus into the *Pacific* side of Panama, Colombia and Costa Rica -- a different
+   ocean, not Atlantic/Caribbean water. WEST_LAT/WEST_LON trace roughly the real Caribbean
+   coastline there and mask everything west of it (real Pacific water, e.g. the Gulf of Panama).
+   The isthmus is only tens of km wide right at the Panama Canal, where the Pacific side (Panama
+   City) sits at almost the same longitude as the Caribbean side (Colon) -- no single longitude
+   cutoff can cleanly split two points that close together, so that one small stretch trades a
+   sliver of real Caribbean water for guaranteed exclusion of the much larger Gulf of Panama. */
+const WEST_LAT = [0, 4, 7, 8, 8.5, 9, 9.36, 10, 11, 12, 13, 14, 15, 15.8, 16.86, 17.64, 19.11, 20.65, 22];
+const WEST_LON = [-74, -74, -76, -78, -79, -80, -80.5, -81.5, -82.5, -83.5, -84.5, -86, -87.5, -88.5, -98.5, -100.5, -103.3, -104.2, -106];
 const outOfBasin = new Uint8Array(N);
 {
-  // The Mediterranean's western edge isn't a straight meridian -- it follows the Spain/France
-  // coastline northeast from Gibraltar. A flat lon >= -6 cutoff was clipping real open Atlantic
-  // (Bay of Biscay, off Brittany/the Basque coast) as if it were Mediterranean. Interpolate the
-  // cutoff longitude by latitude instead, roughly tracing that coast; north of the last point
-  // there's no more Mediterranean on the west side at all (France separates the two seas), so
-  // the cutoff longitude goes past MED_LON1 and excludes nothing.
-  const MED_LON1 = 40, MED_LAT0 = 30, MED_LAT1 = 47, SOUTH_EDGE = -8;   // a few degrees south of the equator: clears the southern Main Development Region with room to spare, short of the South Atlantic
-  const MED_W_LAT = [30, 36, 37.5, 39.5, 41, 42.5, 43.5];
-  const MED_W_LON = [-6, -5.5, -1, 0.5, 2, 3, 90];
+  const SOUTH_EDGE = -8;   // a few degrees south of the equator: clears the southern Main Development Region with room to spare, short of the South Atlantic
   for (let j = 0; j < NY; j++) {
     const lat = LAT1 - j * RES, o = j * NX;
-    if (lat >= SOUTH_EDGE && (lat > MED_LAT1 || lat < MED_LAT0)) continue;
-    const medLon0 = lat >= MED_LAT0 && lat <= MED_LAT1 ? interp1(MED_W_LAT, MED_W_LON, lat) : null;
-    for (let i = 0; i < NX; i++) {
-      if (lat < SOUTH_EDGE) { outOfBasin[o + i] = 1; continue; }
-      if (medLon0 === null) continue;
-      const lon = LON0 + i * RES;
-      if (lon >= medLon0 && lon <= MED_LON1) outOfBasin[o + i] = 1;
+    if (lat < SOUTH_EDGE) { outOfBasin.fill(1, o, o + NX); continue; }
+    if (lat >= 0 && lat <= 21) {
+      const westCut = interp1(WEST_LAT, WEST_LON, lat);
+      for (let i = 0; i < NX; i++) { const lon = LON0 + i * RES; if (lon < westCut) outOfBasin[o + i] = 1; }
     }
   }
 }
@@ -710,13 +716,33 @@ let TH = THEMES.sat, themeId = 'sat', gridMode = 'off';
  *  own live reading there (SST, departure from normal, hurricane threshold).
  * ------------------------------------------------------------------ */
 const CITIES = [
-  { name: 'Houston', lat: 29.76, lon: -95.37 }, { name: 'New Orleans', lat: 29.95, lon: -90.07 },
-  { name: 'Miami', lat: 25.76, lon: -80.19 }, { name: 'New York', lat: 40.71, lon: -74.01 },
-  { name: 'Halifax', lat: 44.65, lon: -63.57 }, { name: 'Hamilton (Bermuda)', lat: 32.29, lon: -64.78 },
-  { name: 'Havana', lat: 23.13, lon: -82.38 }, { name: 'San Juan', lat: 18.47, lon: -66.11 },
-  { name: 'Kingston', lat: 17.97, lon: -76.79 }, { name: 'Cancún', lat: 21.16, lon: -86.85 },
-  { name: 'Caracas', lat: 10.60, lon: -66.93 }, { name: 'Lisbon', lat: 38.72, lon: -9.14 },
-  { name: 'Dakar', lat: 14.69, lon: -17.45 },
+  { name: 'Halifax', lat: 44.65, lon: -63.57 }, { name: 'Portland', lat: 43.66, lon: -70.26 },
+  { name: 'Boston', lat: 42.36, lon: -71.06 }, { name: 'New York', lat: 40.71, lon: -74.01 },
+  { name: 'Atlantic City', lat: 39.36, lon: -74.42 }, { name: 'Norfolk', lat: 36.85, lon: -76.29 },
+  { name: 'Charleston', lat: 32.78, lon: -79.93 }, { name: 'Savannah', lat: 32.08, lon: -81.09 },
+  { name: 'Jacksonville', lat: 30.33, lon: -81.66 }, { name: 'Tampa', lat: 27.95, lon: -82.46 },
+  { name: 'Miami', lat: 25.76, lon: -80.19 }, { name: 'Key West', lat: 24.56, lon: -81.78 },
+  { name: 'New Orleans', lat: 29.95, lon: -90.07 }, { name: 'Houston', lat: 29.30, lon: -94.80 },
+  { name: 'Corpus Christi', lat: 27.80, lon: -97.40 }, { name: 'Veracruz', lat: 19.19, lon: -96.14 },
+  { name: 'Campeche', lat: 19.85, lon: -90.53 }, { name: 'Cancún', lat: 21.16, lon: -86.85 },
+  { name: 'Belize City', lat: 17.50, lon: -88.20 }, { name: 'Havana', lat: 23.13, lon: -82.38 },
+  { name: 'Santiago de Cuba', lat: 20.02, lon: -75.83 }, { name: 'Nassau', lat: 25.06, lon: -77.34 },
+  { name: 'Kingston', lat: 17.97, lon: -76.79 }, { name: 'Port-au-Prince', lat: 18.59, lon: -72.31 },
+  { name: 'Santo Domingo', lat: 18.49, lon: -69.93 }, { name: 'San Juan', lat: 18.47, lon: -66.11 },
+  { name: 'Bridgetown', lat: 13.10, lon: -59.62 }, { name: 'Fort-de-France', lat: 14.60, lon: -61.07 },
+  { name: 'Willemstad', lat: 12.11, lon: -68.93 }, { name: 'Hamilton (Bermuda)', lat: 32.29, lon: -64.78 },
+  { name: 'Colón', lat: 9.36, lon: -79.90 }, { name: 'San Andrés', lat: 12.58, lon: -81.70 },
+  { name: 'Puerto Cortés', lat: 15.80, lon: -87.95 }, { name: 'Cartagena', lat: 10.40, lon: -75.50 },
+  { name: 'Barranquilla', lat: 10.96, lon: -74.80 }, { name: 'Caracas', lat: 10.60, lon: -66.93 },
+  { name: 'Georgetown', lat: 6.80, lon: -58.16 }, { name: 'Paramaribo', lat: 5.85, lon: -55.17 },
+  { name: 'Cayenne', lat: 4.94, lon: -52.33 }, { name: 'Fortaleza', lat: -3.73, lon: -38.53 },
+  { name: 'Lisbon', lat: 38.72, lon: -9.14 }, { name: 'Porto', lat: 41.15, lon: -8.61 },
+  { name: 'Cádiz', lat: 36.53, lon: -6.30 }, { name: 'Casablanca', lat: 33.57, lon: -7.59 },
+  { name: 'Dakar', lat: 14.69, lon: -17.45 }, { name: 'Nouakchott', lat: 18.09, lon: -15.98 },
+  { name: 'Barcelona', lat: 41.39, lon: 2.17 }, { name: 'Marseille', lat: 43.30, lon: 5.37 },
+  { name: 'Genoa', lat: 44.41, lon: 8.93 }, { name: 'Naples', lat: 40.85, lon: 14.27 },
+  { name: 'Palermo', lat: 38.12, lon: 13.36 }, { name: 'Tunis', lat: 36.81, lon: 10.18 },
+  { name: 'Valletta', lat: 35.90, lon: 14.51 }, { name: 'Algiers', lat: 36.75, lon: 3.06 },
 ];
 const cityPx = CITIES.map(() => ({ x: 0, y: 0, onScreen: false }));
 let hoveredCity = -1;
