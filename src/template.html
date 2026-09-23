@@ -743,6 +743,19 @@ const CITIES = [
   { name: 'Genoa', lat: 44.41, lon: 8.93 }, { name: 'Naples', lat: 40.85, lon: 14.27 },
   { name: 'Palermo', lat: 38.12, lon: 13.36 }, { name: 'Tunis', lat: 36.81, lon: 10.18 },
   { name: 'Valletta', lat: 35.90, lon: 14.51 }, { name: 'Algiers', lat: 36.75, lon: 3.06 },
+  // Inland cities: not on the water themselves, but real places storms/moisture off this coast
+  // reach and affect. sLat/sLon is the nearest water this basin actually simulates -- the
+  // reading shown for these is that water's, labeled as such, never a fabricated "local SST"
+  // for a city that isn't on the coast.
+  { name: 'Philadelphia', lat: 39.95, lon: -75.16, sLat: 39.36, sLon: -74.42 },
+  { name: 'Washington, D.C.', lat: 38.91, lon: -77.04, sLat: 38.34, sLon: -75.09 },
+  { name: 'Raleigh', lat: 35.78, lon: -78.64, sLat: 34.21, sLon: -77.79 },
+  { name: 'Charlotte', lat: 35.23, lon: -80.84, sLat: 33.69, sLon: -78.89 },
+  { name: 'Atlanta', lat: 33.75, lon: -84.39, sLat: 32.08, sLon: -81.09 },
+  { name: 'Orlando', lat: 28.54, lon: -81.38, sLat: 28.08, sLon: -80.60 },
+  { name: 'San Antonio', lat: 29.42, lon: -98.49, sLat: 27.80, sLon: -97.40 },
+  { name: 'Nashville', lat: 36.16, lon: -86.78, sLat: 29.95, sLon: -90.07 },
+  { name: 'Montreal', lat: 45.50, lon: -73.57, sLat: 44.65, sLon: -63.57 },
 ];
 const cityPx = CITIES.map(() => ({ x: 0, y: 0, onScreen: false }));
 let hoveredCity = -1;
@@ -752,7 +765,7 @@ function drawCities(g, minX, minY, ws) {
     const c = CITIES[i], px = (c.lon + 180) / 360 * ws - minX, py = mercN(c.lat) * ws - minY;
     const p = cityPx[i]; p.x = px; p.y = py; p.onScreen = on && px > -20 && px < W + 20 && py > -20 && py < H + 20;
     if (!p.onScreen) continue;
-    const t = sampleField(sst, c.lat, c.lon), hovered = i === hoveredCity;
+    const t = sampleField(sst, c.sLat ?? c.lat, c.sLon ?? c.lon), hovered = i === hoveredCity;
     const r = hovered ? 5.5 : 4;
     g.beginPath(); g.arc(px, py, r, 0, Math.PI * 2);
     g.fillStyle = t === t ? cityMarkerColor(t) : '#8a8a8a';
@@ -774,8 +787,9 @@ function updateCityTip(cx, cy) {
   const i = cityAt(cx, cy);
   if (i !== hoveredCity) { hoveredCity = i; scheduleRender(); }
   if (i < 0) { tip.style.display = 'none'; return; }
-  const c = CITIES[i], t = sampleField(sst, c.lat, c.lon), n = sampleField(normal, c.lat, c.lon);
+  const c = CITIES[i], inland = c.sLat !== undefined, t = sampleField(sst, c.sLat ?? c.lat, c.sLon ?? c.lon), n = sampleField(normal, c.sLat ?? c.lat, c.sLon ?? c.lon);
   const lines = [];
+  if (inland) lines.push('Nearest coastal water');
   if (t === t) {
     const dv = t - n, sign = dv >= 0 ? '+' : '−';
     lines.push(t.toFixed(1) + ' °C');

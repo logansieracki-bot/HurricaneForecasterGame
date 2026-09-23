@@ -1,6 +1,16 @@
 # Roadmap
 
 ## Just landed
+- City markers can be inland now, not just coastal -- Philadelphia, D.C., Atlanta, Nashville and
+  five more on the Atlantic build; Mexico City, Phoenix, Guatemala City and six more on EPAC.
+  An inland city isn't on the water, so it has no real SST of its own to show -- the marker sits
+  at the city's real location (`lat`/`lon`), but samples an explicit nearest-water point
+  (`sLat`/`sLon`) instead, and the tooltip says "Nearest coastal water" first so it's never read
+  as the city's own reading. Same "don't fabricate data a feature has no simulation behind" rule
+  the original city markers were built on, just applied to a case where the naive answer (sample
+  the city's own coordinate) would have silently returned whatever the land-diffused SST field
+  happens to compute there -- a number with no real meaning, not an error, so it would've looked
+  fine until someone checked it against reality.
 - UI/UX cleanup round, both basins:
   - Blue Marble is no longer a selectable map theme -- it's still there as the automatic offline
     fallback when Satellite tiles can't load (embedded, network-independent, unchanged), just
