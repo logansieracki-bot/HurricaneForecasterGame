@@ -94,7 +94,7 @@ input[type=range]{width:100%;margin:2px 0 0;accent-color:#d4d4d4;height:20px}
 
 .themes{display:grid;grid-template-columns:repeat(2,1fr);gap:6px;margin-top:4px}
 .themes button{border:1px solid var(--line);background:rgba(255,255,255,.05);border-radius:9px;padding:6px 4px 5px;text-align:center;font-size:11.5px;cursor:pointer;color:var(--dim);transition:background .12s ease,border-color .12s ease,color .12s ease}
-.themes button i{display:block;height:20px;border-radius:5px;margin:0 auto 4px;border:1px solid rgba(255,255,255,.22)}
+.themes button i{display:block;height:20px;border-radius:5px;margin:0 auto 4px;border:1px solid var(--ice)}
 .themes button:hover{background:rgba(255,255,255,.11);color:var(--text)}
 .themes button[aria-pressed=true]{border-color:var(--ice);background:rgba(255,255,255,.15);color:var(--text);font-weight:600}
 #attr{position:absolute;right:0;bottom:0;z-index:900;font-size:10.5px;color:var(--dim);background:#1a1a1c;padding:2px 8px;border-top-left-radius:6px;pointer-events:none}
@@ -825,8 +825,9 @@ function cityAt(cx, cy) {
 }
 function stormImpactAt(lat, lon) {
   // Placeholder for a future storm/hurricane model (genesis, track, wind field, rain shield,
-  // damage estimate) -- returns null until one actually exists, so updateCityTip below only
-  // ever shows an impact section when there's a real storm behind it, never a fabricated one.
+  // damage estimate) -- returns null until one actually exists. The "Storm impact" section in
+  // updateCityTip below is always visible (labels included) so the UI is ready, but every value
+  // in it stays a plain "--" dash rather than a fabricated number until this returns real data.
   // No real storm runs until every basin's ocean simulation is built and the go-ahead is given.
   // Shape once wired up: { windSustained, windGust (mph), rain72h (in over the last 72h),
   // deaths, injuries (counts), damagePct (0-100), damageCost (USD) }.
@@ -848,17 +849,16 @@ function updateCityTip(cx, cy) {
   } else {
     lines.push('Outside the simulated area');
   }
-  const impact = stormImpactAt(c.lat, c.lon);
-  if (impact) {
-    lines.push('');
-    lines.push('Sustained winds ' + Math.round(impact.windSustained) + ' mph · gusts ' + Math.round(impact.windGust) + ' mph');
-    lines.push('Rainfall (72h) ' + impact.rain72h.toFixed(1) + ' in');
-    lines.push('Deaths ' + impact.deaths + ' · Injuries ' + impact.injuries);
-    lines.push('Damage ' + impact.damagePct.toFixed(0) + '% · $' + (impact.damageCost / 1e6).toFixed(0) + 'M');
-  }
+  const impact = stormImpactAt(c.lat, c.lon), dash = '—';   // no storm model yet -- labels are always on, values stay a dash until one exists
+  lines.push('');
+  lines.push('Storm impact');
+  lines.push('Sustained winds ' + (impact ? Math.round(impact.windSustained) + ' mph' : dash) + ' · gusts ' + (impact ? Math.round(impact.windGust) + ' mph' : dash));
+  lines.push('Rainfall (72h) ' + (impact ? impact.rain72h.toFixed(1) + ' in' : dash));
+  lines.push('Deaths ' + (impact ? impact.deaths : dash) + ' · Injuries ' + (impact ? impact.injuries : dash));
+  lines.push('Damage ' + (impact ? impact.damagePct.toFixed(0) + '% · $' + (impact.damageCost / 1e6).toFixed(0) + 'M' : dash));
   tip.querySelector('b').textContent = c.name;
   tip.querySelector('div').innerHTML = lines.join('<br>');
-  const left = Math.max(8, Math.min(W - 226, cx + 14)), top = Math.max(8, Math.min(H - 100, cy + 14));
+  const left = Math.max(8, Math.min(W - 226, cx + 14)), top = Math.max(8, Math.min(H - 185, cy + 14));
   tip.style.left = left + 'px'; tip.style.top = top + 'px'; tip.style.display = 'block';
 }
 
