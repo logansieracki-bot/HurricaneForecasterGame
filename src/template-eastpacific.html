@@ -104,6 +104,7 @@ input[type=range]{width:100%;margin:2px 0 0;accent-color:#d4d4d4;height:20px}
 #city-tip{padding:9px 12px;max-width:210px;pointer-events:none;display:none;z-index:950}
 #city-tip b{font-size:13px;font-weight:600;display:block}
 #city-tip div{font-size:11.5px;color:var(--dim);margin-top:3px;line-height:1.5}
+#city-tip hr{border:0;border-top:1px solid var(--line);margin:6px 0 5px}
 #loading{position:absolute;inset:0;z-index:2000;display:grid;place-items:center;background:var(--ink);font-size:14px;color:var(--dim)}
 
 /* leaflet chrome */
@@ -820,7 +821,7 @@ function updateCityTip(cx, cy) {
     lines.push('Outside the simulated area');
   }
   const impact = stormImpactAt(c.lat, c.lon), dash = '—';   // no storm model yet -- labels are always on, values stay a dash until one exists
-  lines.push('');
+  lines.push('<hr>');   // visual divider between the live climate reading above and the (still-placeholder) storm impact below
   lines.push('Storm impact');
   lines.push('Sustained winds ' + (impact ? Math.round(impact.windSustained) + ' mph' : dash) + ' · gusts ' + (impact ? Math.round(impact.windGust) + ' mph' : dash));
   lines.push('Rainfall (72h) ' + (impact ? impact.rain72h.toFixed(1) + ' in' : dash));

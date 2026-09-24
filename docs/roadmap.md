@@ -1,6 +1,85 @@
 # Roadmap
 
 ## Just landed
+- **West Pacific basin added** -- the third live basin, and the first one built directly against
+  the international date line on its *east* edge (100E-180) instead of its west, which turned up
+  two real, basin-independent bugs in code every basin shares:
+  - `climate_lib.py`'s `extract_box` re-indexes ERSST's native 0-358 longitude to -180..180, and
+    that re-index only keeps the *-180* label for the antimeridian column, never +180 -- so a box
+    ending exactly at 180 came up one column short. Fixed generically (any basin's box ending at
+    180 now gets that column via its -180 label, appended in place), verified against Atlantic
+    and EPAC's own already-shipped climatology (byte-identical output, confirming zero regression
+    on the code path they actually use).
+  - `make_imagery.py`'s plain `Image.crop()` doesn't wrap at the antimeridian either -- a box
+    padded even slightly past 180 came back with a black smear on the cropped edge instead of the
+    real imagery wrapping around from the world map's other side. Fixed by detecting the
+    wrap case and compositing the two real halves together instead of one out-of-bounds crop.
+  - Domain: 100E-180 (JTWC's own western responsibility boundary on the west; the date line
+    itself on the east, same kind of edge as EPAC's own west edge -- nothing meaningful exists
+    past it for this basin), 6S-56N (reaching into the Sea of Okhotsk past Sakhalin on the real
+    reference screenshot's own northern extent). Unlike the Atlantic's Mediterranean or EPAC's
+    Gulf of Mexico, this basin's own marginal seas (Yellow Sea, Bohai, East/South China Seas, Sea
+    of Japan) are all genuinely *in* the basin, so none of them are masked -- the only cutoff is
+    a south curve that hugs the equator near Sumatra/Java/New Guinea's own coastlines (where
+    there's a real different-ocean conflict: the Indian Ocean, the Australian region) and dips
+    a few degrees further south in the open water between them (Molucca Sea, east of New Guinea)
+    -- "wiggle room," a curve, not a flat line at 0, same coastline-following technique as every
+    other basin's own cutoff.
+  - Ocean features: verified against the real climatology *before* adding anything synthetic
+    (same discipline as the Gulf of California fix) -- the raw 2 deg data already shows a real,
+    resolvable Kuroshio/Oyashio thermal gradient (28.5C at 30N down to 21.2C at 42N in August,
+    checked directly), and already shows the real winter deep-freeze/summer-hot swing for the
+    Yellow Sea and Bohai without needing a Gulf-of-California-style correction (unlike Gulf of
+    California, these are wide enough at 2 deg resolution that diffusion-fill isn't washing the
+    swing out). What the raw data *doesn't* resolve: a near-coast vs. a few degrees offshore check
+    at the same latitude/month came back identical, meaning the Kuroshio's own concentrated warm
+    core isn't distinguished from the smoother regional gradient around it -- so that got a
+    modest synthetic band along the current's real path instead, timed to the Gulf Stream's own
+    well-documented winter-maximum thermal-contrast pattern. Vietnam's coast showed a real,
+    already-present summer dip (SW-monsoon upwelling) the open Philippine Sea at the same
+    latitude doesn't show -- sharpened, not invented, the same way EPAC's own California/Humboldt
+    Currents sharpen a real-but-coarse-grid-smoothed signal.
+  - Lakes are real now, for the first time in either basin: `DATA.lakes` had been an empty array
+    in Atlantic and EPAC's own data this whole time, meaning `template.html`'s existing lake
+    system (real hand-sourced monthly climatology for the Great Lakes and five famous tropical
+    lakes, a physically-motivated lat+area fallback for any other named lake) was fully built but
+    never actually fed geometry. `make_geo.mjs` now pulls real lake polygons from Natural Earth's
+    own lakes layer (fetched once into `data/raw/ne_10m_lakes.geojson` -- not bundled as an npm
+    package the way `world-atlas`/`apexmaps-geo` are, but the same source family they both already
+    come from), filtered to named lakes above a real 300 km² area floor so it's the basin's
+    significant lakes, not every farm pond Natural Earth happens to carry. WPAC picks up 33 of
+    them this way (Lake Baikal down through mid-sized Chinese/Mongolian/Russian lakes, Sumatra's
+    Danau Toba, the Philippines' Laguna de Bay). Two got real hand-sourced monthly figures added
+    to `LK_SPECIAL` instead of the generic fallback: Lake Biwa (Japan's largest lake, real
+    published monthly-mean/August-peak/February-low figures) and Lake Baikal itself (real
+    published annual-mean/August-peak figures; its winter low already falls out of the existing
+    freeze clamp, since five-plus months of real ice cover puts it at the same ~0 C floor).
+    A first bug caught before shipping: `turf.bboxClip` on a lake entirely outside the clip box
+    doesn't return a clean empty result -- it returns a non-empty-looking `MultiPolygon` full of
+    *empty* rings (`[[],[]]`), which slipped past a `.coordinates.length` check and let lakes from
+    clear across the globe (Ladoga, Rukwa, an Iraqi marsh) leak into an early WPAC build. Fixed
+    with a cheap real-bbox overlap pre-check before ever calling `bboxClip`, plus a proper
+    non-empty-ring guard as defense in depth.
+  - `make_geo.mjs`'s state/province `b1` layer, previously hardcoded to Mexico+US for every
+    basin, is now a per-basin list (`B1_COUNTRIES`) -- WPAC gets China, Japan, Korea, Russia and
+    Indonesia's own admin-1 boundaries, all already bundled in `apexmaps-geo`, a real detail
+    upgrade over EPAC's own mx/us-only gap (noted in an earlier round as a known, accepted limit;
+    turns out most of what WPAC needed was already sitting in the same package).
+  - 99 real cities across Russia's Far East, Japan (multiple coastlines), Korea, China, Taiwan,
+    Vietnam, the Philippines, northern Borneo/Sulawesi and Guam/Saipan, matching the density of
+    the Atlantic (107) and EPAC (85) lists; a handful of near-coast-but-not-on-it cities (Seoul,
+    Tokyo-area Kyoto, Beijing-area Tianjin, Taipei, Hanoi, Ho Chi Minh City, Pyongyang) use the
+    same `sLat`/`sLon` nearest-real-water convention the Atlantic/EPAC inland cities established.
+  - "Hurricane" became "typhoon" everywhere in this basin's own copy (the threshold line, the
+    tooltip, the season label) -- same 26.5 C physical threshold, same underlying simulation,
+    just the region's real name for the storm type. Typhoon season is shaded Jun-Dec rather than
+    Atlantic/EPAC's own May/Jun-Nov: this basin genuinely doesn't have as sharp an off-season
+    (real activity runs into December most years), so the shading reflects that instead of
+    reusing a narrower window that isn't actually true here.
+- City tooltip now has a real visual divider (a plain `<hr>`, styled to match the card's existing
+  border color) between the live climate reading and the (still-placeholder) storm-impact section
+  below it, instead of relying on a blank line's whitespace alone to separate them. Applied to
+  all three basins' templates for consistency.
 - Storm-impact stats section is now always visible in the city tooltip, labels and all -- only
   the values are placeholders. First pass had it hidden entirely behind `if (impact)`, so a user
   saw nothing different at all; corrected direction was to build the UI's shape now (so it's

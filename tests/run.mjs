@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const ATLANTIC_DIST = join(ROOT, 'dist/atlantic-sst-simulator.html');
 const EPAC_DIST = join(ROOT, 'dist/eastpacific-sst-simulator.html');
+const WPAC_DIST = join(ROOT, 'dist/westpacific-sst-simulator.html');
 
 let failed = 0;
 function check(name, cond) {
@@ -37,7 +38,7 @@ async function checkCityMarkers(page, label, lat, lon, expectedName) {
   await page.check('#cities');
 }
 
-for (const [label, dist] of [['Atlantic', ATLANTIC_DIST], ['East Pacific', EPAC_DIST]]) {
+for (const [label, dist] of [['Atlantic', ATLANTIC_DIST], ['East Pacific', EPAC_DIST], ['West Pacific', WPAC_DIST]]) {
   if (!existsSync(dist)) {
     console.error(`${dist} not found — run \`npm run build\` first.`);
     process.exit(1);
@@ -209,6 +210,53 @@ await checkBasin('East Pacific', EPAC_DIST, async (page, label) => {
   await checkCityMarkers(page, label, 16.86, -99.88, 'Acapulco');
 });
 
+await checkBasin('West Pacific', WPAC_DIST, async (page, label) => {
+  // The grid runs 6S-56N, 100E-180 (the date line) -- JTWC's own real western boundary on the
+  // west, the date line itself on the east (mirrors EPAC's own west-edge date-line clamp), and a
+  // coastline-following curve on the south that hugs the equator near Sumatra/Java/New Guinea but
+  // dips a few degrees further south in open water between them (Molucca Sea) -- never a flat
+  // line at 0. Unlike the Atlantic/EPAC builds, this basin's own marginal seas (Yellow, Bohai,
+  // Sea of Japan) are real *in-basin* water, not a different ocean to mask out.
+  await page.evaluate(() => window.SSTSIM.map.fitBounds([[20, 170], [55, 210]]));   // toward the far North Pacific/beyond the date line
+  await page.waitForTimeout(300);
+  const clampedEastLon = await page.evaluate(() => window.SSTSIM.map.getBounds().getEast());
+  check(`[${label}] map cannot pan east past the international date line`, clampedEastLon < 185);
+
+  await page.evaluate(() => window.SSTSIM.map.setView([-20, 130], 5));   // toward the Coral Sea / Australian region, well past the grid's southern edge
+  await page.waitForTimeout(300);
+  const clampedSouthLat = await page.evaluate(() => window.SSTSIM.map.getBounds().getSouth());
+  check(`[${label}] map cannot pan south past the basin's own southern edge`, clampedSouthLat > -10);
+
+  const basinSamples = await page.evaluate(() => ({
+    openWater: window.SSTSIM.sample(20, 140),          // open Philippine Sea, mid-domain
+    dateLine: window.SSTSIM.sample(30, 179),            // near the grid's own eastern edge, by the date line
+    yellowSea: window.SSTSIM.sample(37, 122),           // marginal sea, real in-basin water
+    bohai: window.SSTSIM.sample(39, 120),               // shallow, semi-enclosed, real in-basin water
+    seaOfJapan: window.SSTSIM.sample(40, 136),          // marginal sea, real in-basin water
+    kuroshio: window.SSTSIM.sample(32, 133),            // Kuroshio Current band off Kyushu/Shikoku
+    vietnamUpwelling: window.SSTSIM.sample(12, 109),    // Vietnam coastal upwelling band
+    southOfDomain: window.SSTSIM.sample(-10, 130),      // south of the grid's own 6S edge entirely
+    northOfDomain: window.SSTSIM.sample(58, 140),       // north of the grid's own 56N edge
+    malaccaStrait: window.SSTSIM.sample(0.5, 102),      // Strait of Malacca -- a different ocean, must be excluded
+    moluccaSea: window.SSTSIM.sample(-2, 125),          // south of the equator but inside the south curve's own "wiggle room"
+    southChinaSea: window.SSTSIM.sample(10, 112),       // South China Sea proper, well clear of any cutoff
+  }));
+  check(`[${label}] open ocean SST is real data`, Number.isFinite(basinSamples.openWater.sst));
+  check(`[${label}] SST reaches the grid's own eastern edge near the date line`, Number.isFinite(basinSamples.dateLine.sst));
+  check(`[${label}] Yellow Sea is real in-basin water, not masked`, Number.isFinite(basinSamples.yellowSea.sst));
+  check(`[${label}] Bohai is real in-basin water, not masked`, Number.isFinite(basinSamples.bohai.sst));
+  check(`[${label}] Sea of Japan is real in-basin water, not masked`, Number.isFinite(basinSamples.seaOfJapan.sst));
+  check(`[${label}] Kuroshio Current band has real SST`, Number.isFinite(basinSamples.kuroshio.sst));
+  check(`[${label}] Vietnam upwelling band has real SST`, Number.isFinite(basinSamples.vietnamUpwelling.sst));
+  check(`[${label}] south of the grid's own southern edge is outside the simulated area`, Number.isNaN(basinSamples.southOfDomain.sst));
+  check(`[${label}] north of the grid's own northern edge is outside the simulated area`, Number.isNaN(basinSamples.northOfDomain.sst));
+  check(`[${label}] Strait of Malacca is excluded (wrong ocean)`, Number.isNaN(basinSamples.malaccaStrait.sst));
+  check(`[${label}] Molucca Sea (south curve's wiggle room) still has real SST`, Number.isFinite(basinSamples.moluccaSea.sst));
+  check(`[${label}] South China Sea proper has real SST`, Number.isFinite(basinSamples.southChinaSea.sst));
+
+  await checkCityMarkers(page, label, 14.60, 120.98, 'Manila');
+});
+
 // Main menu: basin/mode select, disabled cards stay disabled, Start navigates to the built basin.
 async function checkMenu(basinCardText, expectedDistSuffix) {
   const menuErrors = [];
@@ -218,8 +266,8 @@ async function checkMenu(basinCardText, expectedDistSuffix) {
   await menuPage.goto(pathToFileURL(join(ROOT, 'index.html')).href, { waitUntil: 'load' });
 
   check(`[menu -> ${basinCardText}] Start disabled with nothing picked`, await menuPage.isDisabled('#start'));
-  await menuPage.click('button.card:has-text("Western Pacific")').catch(() => {});
-  check('disabled basin card ("coming soon") cannot be selected', (await menuPage.getAttribute('button.card:has-text("Western Pacific")', 'aria-pressed')) === 'false');
+  await menuPage.click('button.card:has-text("Northern Indian Ocean")').catch(() => {});
+  check('disabled basin card ("coming soon") cannot be selected', (await menuPage.getAttribute('button.card:has-text("Northern Indian Ocean")', 'aria-pressed')) === 'false');
   await menuPage.click(`button.card:has-text("${basinCardText}")`);
   await menuPage.click('button.card:has-text("Simulation")');
   check(`[menu -> ${basinCardText}] Start enabled once basin + mode picked`, !(await menuPage.isDisabled('#start')));
@@ -230,6 +278,7 @@ async function checkMenu(basinCardText, expectedDistSuffix) {
 }
 await checkMenu('Atlantic', 'atlantic-sst-simulator.html');
 await checkMenu('Eastern Pacific', 'eastpacific-sst-simulator.html');
+await checkMenu('Western Pacific', 'westpacific-sst-simulator.html');
 
 if (failed) {
   console.error(`\n${failed} check(s) failed.`);

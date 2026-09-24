@@ -30,7 +30,19 @@ def load(path):
 def extract_box(sst, lon0, lon1, lat0, lat1):
     """Coarse-grid slice on a 2 deg grid, returned north-to-south / west-to-east
     (row 0 = lat1) to match how the app's domain.clat0/clon0 are defined."""
-    box = sst.sel(lon=slice(lon0, lon1), lat=slice(lat0, lat1))
+    if lon1 == 180:
+        # 180E and 180W are the same meridian, but load()'s -180..180 re-index only
+        # keeps the -180 label for it (():(180+180)%360-180 == -180), never +180 --
+        # so a plain slice(lon0, 180) comes up one column short at the east edge.
+        # Slice up to the last real column below it (178) and append the -180
+        # column itself as the requested 180 edge; its actual coordinate label
+        # doesn't matter downstream since climate/geo both flatten by position,
+        # not by looking the label back up.
+        main = sst.sel(lon=slice(lon0, 178), lat=slice(lat0, lat1))
+        edge = sst.sel(lon=[-180], lat=slice(lat0, lat1))
+        box = xr.concat([main, edge], dim="lon")
+    else:
+        box = sst.sel(lon=slice(lon0, lon1), lat=slice(lat0, lat1))
     box = box.sortby("lat", ascending=False)   # north first
     cnx = int(round((lon1 - lon0) / CRES)) + 1
     cny = int(round((lat1 - lat0) / CRES)) + 1

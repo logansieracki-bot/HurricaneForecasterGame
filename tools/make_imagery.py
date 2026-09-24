@@ -27,7 +27,20 @@ def build(basin, lonW, lonE, latS, latN, floor=18, quality=88):
     x1 = round((lonE + 180) / 360 * sw)
     y0 = round((90 - latN) / 180 * sh)
     y1 = round((90 - latS) / 180 * sh)
-    crop = src.crop((x0, y0, x1, y1))
+    if x0 >= 0 and x1 <= sw:
+        crop = src.crop((x0, y0, x1, y1))
+    elif x0 >= 0 and x1 > sw:
+        # A box crossing the antimeridian (x1 > sw, e.g. a WPAC crop padded past 180 deg) needs
+        # to wrap around to the image's own opposite edge, not pad with black -- plain PIL crop()
+        # silently fills out-of-bounds pixels with black, which read as a fake dark smear off the
+        # date line rather than the real imagery continuing from the other side of the world map.
+        left = src.crop((x0, y0, sw, y1))
+        right = src.crop((0, y0, x1 - sw, y1))
+        crop = Image.new("RGB", (x1 - x0, y1 - y0))
+        crop.paste(left, (0, 0))
+        crop.paste(right, (left.width, 0))
+    else:
+        raise NotImplementedError(f"box crosses the antimeridian on the west side too (x0={x0}) -- not needed by any basin yet")
 
     # Black-floor lift: ocean-trench/shadow pixels in Blue Marble can hit true black,
     # which looks harsh composited under the SST overlay against the app's own dark

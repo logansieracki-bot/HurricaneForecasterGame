@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Atlantic sea surface temperature simulator</title>
+<title>Western Pacific sea surface temperature simulator</title>
 <style>/*__LEAFLET_CSS__*/</style>
 <style>
 :root{
@@ -141,7 +141,7 @@ canvas.overlay{position:absolute;left:0;top:0;width:100%;height:100%;pointer-eve
   <div id="c-date">Jun 1, 2026</div>
   <div id="c-time">00:00<small>UTC</small></div>
   <div id="c-meta">Day 1</div>
-  <div id="year" title="Months of the year. Shaded: Atlantic hurricane season (Jun–Nov)"></div>
+  <div id="year" title="Months of the year. Shaded: Western Pacific typhoon season (Jun–Dec)"></div>
   <div id="year-bar"><i></i></div>
   <div id="enso" title="Niño 3.4 sea surface temperature anomaly: the El Niño / La Niña index">
     <span>Niño 3.4</span><div id="gauge"><i id="gauge-fill"></i></div><b id="enso-v">+0.0</b>
@@ -178,7 +178,7 @@ canvas.overlay{position:absolute;left:0;top:0;width:100%;height:100%;pointer-eve
             <button data-g="off" aria-pressed="true">Off</button><button data-g="grid" aria-pressed="false">Grid</button><button data-g="labels" aria-pressed="false">Labels</button>
           </div>
         </div>
-        <label class="chk"><input type="checkbox" id="l265" checked> 26.5 °C line (hurricane threshold)</label>
+        <label class="chk"><input type="checkbox" id="l265" checked> 26.5 °C line (typhoon threshold)</label>
         <label class="chk"><input type="checkbox" id="l2"> Isotherms every 2 °C</label>
       </div>
     </section>
@@ -275,36 +275,34 @@ function b64i16(s) { const u = b64bytes(s); return new Int16Array(u.buffer, 0, u
 const land = new Uint8Array(N);                 // 1 = land (0.25° nodes)
 { const mb = b64bytes(DATA.mask); for (let k = 0; k < N; k++) land[k] = (mb[k >> 3] >> (7 - (k & 7))) & 1; }
 
-/* Cells south of the equator (the South Atlantic, its own future basin) aren't reachable by
-   panning anyway -- maxBounds stops well north of here -- so they're left NaN ("outside the
-   simulated area"), same as cells outside the grid entirely. The Mediterranean/Black Sea used
-   to be excluded the same way, but that area *is* reachable by panning, so masking it just put
-   a hard, confusing seam in open water a user could pan straight into -- the same lesson the
-   Eastern Pacific build hit first with its own wider domain. It now shows its own real ERSST
-   climatology instead, same as everywhere else on this grid: SST should be real everywhere the
-   map can actually be panned to.
+/* No masking on the west/east/north edges: this grid's box edges already ARE the real basin
+   lines there. West (100E) is JTWC's own western responsibility boundary; east is the date
+   line itself, the same kind of edge EPAC's own west edge already is -- nothing meaningful
+   exists past it for this basin, it's just where the Central/South Pacific starts. North runs
+   into the Sea of Okhotsk past Hokkaido/Sakhalin, real water, real context, not a different
+   basin. And unlike the Atlantic's Mediterranean or EPAC's Gulf of Mexico, this basin's own
+   marginal seas -- the Yellow Sea, Bohai, the East and South China Seas, the Sea of Japan --
+   are all genuinely *part* of the West Pacific, not a different ocean to mask out.
 
-   The Panama/Colombia/Central America corridor is the opposite problem, the same one the
-   Eastern Pacific build's own east edge has: this grid's box reaches far enough west (to -110)
-   to cross the isthmus into the *Pacific* side of Panama, Colombia and Costa Rica -- a different
-   ocean, not Atlantic/Caribbean water. WEST_LAT/WEST_LON trace roughly the real Caribbean
-   coastline there and mask everything west of it (real Pacific water, e.g. the Gulf of Panama).
-   The isthmus is only tens of km wide right at the Panama Canal, where the Pacific side (Panama
-   City) sits at almost the same longitude as the Caribbean side (Colon) -- no single longitude
-   cutoff can cleanly split two points that close together, so that one small stretch trades a
-   sliver of real Caribbean water for guaranteed exclusion of the much larger Gulf of Panama. */
-const WEST_LAT = [0, 4, 7, 8, 8.5, 9, 9.36, 10, 11, 12, 13, 14, 15, 15.8, 16.86, 17.64, 19.11, 20.65, 22];
-const WEST_LON = [-74, -74, -76, -78, -79, -80, -80.5, -81.5, -82.5, -83.5, -84.5, -86, -87.5, -88.5, -98.5, -100.5, -103.3, -104.2, -106];
+   The *south* edge is the real case needing a cutoff, and not a strict line at the equator:
+   real West Pacific typhoons are almost always north of it, but the true boundary threading
+   through the Indonesian archipelago isn't a ruler-straight line either -- some of this water
+   south of 0 (Makassar Strait, the Molucca Sea, open ocean east of New Guinea) is unambiguous
+   context with no real ocean-identity conflict, while water close to Sumatra/Java/New Guinea's
+   own coasts is genuinely a different basin (the Indian Ocean west of Sumatra, the Australian
+   region south of New Guinea). This traces a curve that hugs close to the equator near those
+   coastlines and only dips further south in the open water between them, the same technique
+   as every other basin's own coastline-following cutoff, just oriented north/south instead of
+   east/west. */
+const SOUTH_LON = [100, 103, 108, 115, 120, 125, 130, 140, 150, 165, 180];
+const SOUTH_LAT = [2, 1.5, 0.5, -1, -3, -4, -3, -1, -3, -5, -6];
 const outOfBasin = new Uint8Array(N);
 {
-  const SOUTH_EDGE = -8;   // a few degrees south of the equator: clears the southern Main Development Region with room to spare, short of the South Atlantic
+  const colCut = new Float32Array(NX);
+  for (let i = 0; i < NX; i++) colCut[i] = interp1(SOUTH_LON, SOUTH_LAT, LON0 + i * RES);
   for (let j = 0; j < NY; j++) {
     const lat = LAT1 - j * RES, o = j * NX;
-    if (lat < SOUTH_EDGE) { outOfBasin.fill(1, o, o + NX); continue; }
-    if (lat >= 0 && lat <= 21) {
-      const westCut = interp1(WEST_LAT, WEST_LON, lat);
-      for (let i = 0; i < NX; i++) { const lon = LON0 + i * RES; if (lon < westCut) outOfBasin[o + i] = 1; }
-    }
+    for (let i = 0; i < NX; i++) { if (lat < colCut[i]) outOfBasin[o + i] = 1; }
   }
 }
 
@@ -312,7 +310,7 @@ const climC = [];                               // 12 coarse monthly climatologi
 { const a = b64i16(DATA.clim); for (let m = 0; m < 12; m++) { const f = new Float32Array(CN); for (let c = 0; c < CN; c++) f[c] = a[m * CN + c] / 100; climC.push(f); } }
 const eofC = new Float32Array(K * CN);          // interannual patterns (°C per +1σ of each mode)
 { const a = b64i16(DATA.eof); for (let q = 0; q < a.length; q++) eofC[q] = a[q] / 1000; }
-const ensoC = new Float32Array(3 * CN);          // Atlantic response to Niño 3.4 at lags 0, 3, 6 months (°C per °C)
+const ensoC = new Float32Array(3 * CN);          // Western Pacific response to Niño 3.4 at lags 0, 3, 6 months (°C per °C)
 { const a = b64i16(DATA.enso); for (let q = 0; q < a.length; q++) ensoC[q] = a[q] / 1000; }
 const PHI_DAY = DATA.phi.map((p) => Math.pow(Math.max(0.3, p), 1 / 30.44));
 
@@ -333,9 +331,10 @@ const upsample = (function () {
         const b = i * 4, s0 = src[ro + cI[b]], s1 = src[ro + cI[b + 1]], s2 = src[ro + cI[b + 2]], s3 = src[ro + cI[b + 3]];
         let v = s0 * cW[b] + s1 * cW[b + 1] + s2 * cW[b + 2] + s3 * cW[b + 3];
         // Clamp to the local min/max: Catmull-Rom can overshoot past its own input range near a
-        // sharp jump in the coarse (2 deg) data -- e.g. a strait/inlet much narrower than 2 deg.
-        // Unclamped, that shows up as a visible band of over/undershoot in the upsampled field;
-        // clamping is a no-op everywhere the curve doesn't overshoot, i.e. almost everywhere else.
+        // sharp jump in the coarse (2 deg) data -- e.g. a narrow gulf where one coarse cell is
+        // mostly open water and its neighbor is mostly land-filled coastline. Unclamped, that
+        // shows up as a visible band of over/undershoot in the upsampled field; clamping is a
+        // no-op everywhere the curve doesn't overshoot, i.e. almost everywhere else.
         const lo = Math.min(s0, s1, s2, s3), hi = Math.max(s0, s1, s2, s3);
         tmp[to + i] = v < lo ? lo : v > hi ? hi : v;
       }
@@ -399,49 +398,54 @@ const contDist = chamfer(cont);
  *  Ocean features the 2° climatology cannot resolve
  * ------------------------------------------------------------------ */
 const colOf = (lon) => Math.round((lon - LON0) / RES), rowOf = (lat) => Math.round((LAT1 - lat) / RES);
-function polySigned(nodes, x, y) {   // signed distance (deg, + on the left of the flow) and along-path weight
-  const cl = Math.cos(y * DEG); let best = 1e9, sgn = 1, w = 1, bi = 0;
-  const px = x * cl, py = y;
-  for (let s = 0; s < nodes.length - 1; s++) {
-    const ax = nodes[s][0] * cl, ay = nodes[s][1], bx = nodes[s + 1][0] * cl, by = nodes[s + 1][1];
-    const dx = bx - ax, dy = by - ay; let t = ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy); t = Math.max(0, Math.min(1, t));
-    const dd = Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
-    if (dd < best) { best = dd; sgn = (dx * (py - ay) - dy * (px - ax)) >= 0 ? 1 : -1; w = nodes[s][2] * (1 - t) + nodes[s + 1][2] * t; bi = s + t; }
-  }
-  return [best * sgn, w, bi];
-}
 function rect(lon0, lon1, lat0, lat1) { const i0 = colOf(lon0), i1 = colOf(lon1), j0 = rowOf(lat1), j1 = rowOf(lat0); return { i0, j0, w: i1 - i0 + 1, h: j1 - j0 + 1 }; }
 
-/* Gulf Stream: a continuous ribbon relaxed toward typical stream temperatures, plus a cold wall on its north side */
-const GS_NODES = [[-80.1,25.2,.5],[-79.8,26.8,.65],[-79.3,28.6,.8],[-78.4,30.4,.9],[-76.8,32.2,1],[-75.2,34.6,1],[-74.2,35.6,1],[-72,36.6,1],[-69.5,37.9,1],[-66.5,39,1],[-63.5,40,.95],[-60,41,.9],[-56,42.2,.8],[-52,43.9,.65],[-48,45.8,.5],[-43,48,.4],[-38,50,.25],[-33,52,.1]];
-const GS_TW = [26.0,25.4,25.0,24.6,24.2,23.6,23.0,22.2,21.2,20.0,18.8,17.4,14.8,12.2,10.0,9.0,8.5,8.0];     // stream-core temperature in mid-Feb
-const GS_TS = [29.4,29.4,29.4,29.3,29.2,29.0,28.8,28.5,28.0,27.2,26.5,25.8,24.5,22.5,20.5,18.5,16.5,15.0];   // ... and in mid-Aug
-const GSR = rect(-83, -25, 21, 56), GSN = GSR.w * GSR.h;
-const GSB = new Float32Array(GSN), GSI = new Float32Array(GSN), GS2 = new Float32Array(GSN), GST = new Float32Array(GSN);
-for (let jj = 0; jj < GSR.h; jj++) for (let ii = 0; ii < GSR.w; ii++) {
-  const n = jj * GSR.w + ii, lon = LON0 + (GSR.i0 + ii) * RES, lat = LAT1 - (GSR.j0 + jj) * RES;
-  const [d, w, bi] = polySigned(GS_NODES, lon, lat);
-  GSI[n] = bi;
-  if (Math.abs(d) > 5) continue;
-  GSB[n] = 0.85 * w * Math.exp(-Math.pow(d / 0.8, 2));
-  GS2[n] = w * Math.exp(-Math.pow((d - 1.5) / 1.0, 2));
-}
-/* Loop Current and its shed eddies */
-const LC_NODES = [[-85,21.6,1],[-85.6,23.2,1],[-86.3,24.9,1],[-86.6,26.3,1],[-86,27.3,1],[-85,27,1],[-84.3,26,1],[-83.6,24.9,1],[-82.5,24.2,1],[-81,24.4,1]];
-const LCR = rect(-98, -78, 18, 31), LCRID = new Float32Array(LCR.w * LCR.h), LCBUL = new Float32Array(LCR.w * LCR.h);
-for (let jj = 0; jj < LCR.h; jj++) for (let ii = 0; ii < LCR.w; ii++) {
-  const lon = LON0 + (LCR.i0 + ii) * RES, lat = LAT1 - (LCR.j0 + jj) * RES;
-  const [d] = polySigned(LC_NODES, lon, lat);
-  LCRID[jj * LCR.w + ii] = Math.exp(-Math.pow(d / 0.8, 2));
-  LCBUL[jj * LCR.w + ii] = Math.exp(-(Math.pow((lon + 86) / 1.5, 2) + Math.pow((lat - 25.4) / 1.3, 2)));
-}
-/* Coastal shelf cells (shallow water swings harder with the seasons) */
-let shelfIdx, shelfK;
-{ const idx = []; for (let j = 0; j < NY; j++) { const lat = LAT1 - j * RES; if (lat < 25) continue; for (let i = 0; i < NX; i++) { const k = j * NX + i; if (!land[k] && contDist[k] <= 2.5) idx.push(k); } }
-  shelfIdx = Int32Array.from(idx); shelfK = new Float32Array(idx.length); for (let n = 0; n < idx.length; n++) { const lat = LAT1 - Math.floor(idx[n] / NX) * RES; shelfK[n] = 0.4 * Math.exp(-contDist[idx[n]] / 1.0) * Math.max(0, Math.min(1, (lat - 26) / 6)); } }
-const UPW = { lat: [10, 14, 19, 26, 32, 37, 44, 46], amp: [0, 1.4, 2.3, 2.8, 2.0, 1.6, 0.7, 0] };
 function interp1(xs, ys, x) { if (x <= xs[0]) return ys[0]; for (let i = 1; i < xs.length; i++) if (x <= xs[i]) { const t = (x - xs[i - 1]) / (xs[i] - xs[i - 1]); return ys[i - 1] + t * (ys[i] - ys[i - 1]); } return ys[ys.length - 1]; }
-const R_CAN = rect(-26, -6.5, 10, 45), R_BEN = rect(4, 22, -37, -10), R_VEN = rect(-74, -62, 8, 13), R_GULF = rect(-98, -80, 21, 31), R_NES = rect(-78, -62, 34, 46), NES_LAT = [34, 36, 38, 40, 42, 45], NES_AMP = [0, 0.7, 1.1, 1.1, 0.55, 0.3];
+
+/* Kuroshio Current: a warm, swift western-boundary current -- the Pacific's answer to the Gulf
+   Stream -- running from the Philippine Sea past Taiwan and the Ryukyus, along Japan's Pacific
+   coast, then separating from the coast near the Boso Peninsula (~140E) to continue northeast
+   as the Kuroshio Extension. The raw 2 deg climatology already shows a real north-south gradient
+   along this path (checked directly: Aug SST at 142E runs 28.5C at 30N down to 21.2C at 42N,
+   a real, resolvable front), but doesn't distinguish the current's own concentrated warm core
+   from the smoother regional gradient around it -- a near-coast vs. a few degrees further
+   offshore at the same latitude/month came back identical in the raw data. This traces the
+   current's real path and adds a modest warm band along it. Timed like the Gulf Stream's own
+   well-documented winter maximum: the thermal *contrast* across the front is largest in winter,
+   when the shelf/coastal water inshore of the current cools fast while the current's own deep,
+   tropically-fed core stays comparatively warm -- not when the current is "strongest" by
+   transport, which is closer to flat year-round. */
+const KURO_PATH = [[121.5, 22], [126, 26], [131, 31], [135.5, 33.3], [140.2, 35]];
+const KURO_WIDTH = 1.8, KURO_AMP = 1.3;
+const R_KURO = rect(118, 143, 19, 38);
+function distToPath(lon, lat, path) {
+  let best = 1e9;
+  for (let s = 0; s < path.length - 1; s++) {
+    const x1 = path[s][0], y1 = path[s][1], x2 = path[s + 1][0], y2 = path[s + 1][1], dx = x2 - x1, dy = y2 - y1;
+    const len2 = dx * dx + dy * dy, t = len2 > 0 ? Math.max(0, Math.min(1, ((lon - x1) * dx + (lat - y1) * dy) / len2)) : 0;
+    const d = Math.hypot(lon - (x1 + t * dx), lat - (y1 + t * dy));
+    if (d < best) best = d;
+  }
+  return best;
+}
+const KURO_FIELD = (() => {
+  const f = new Float32Array(R_KURO.w * R_KURO.h);
+  for (let jj = 0; jj < R_KURO.h; jj++) for (let ii = 0; ii < R_KURO.w; ii++) {
+    const lon = LON0 + (R_KURO.i0 + ii) * RES, lat = LAT1 - (R_KURO.j0 + jj) * RES;
+    f[jj * R_KURO.w + ii] = Math.exp(-Math.pow(distToPath(lon, lat, KURO_PATH) / KURO_WIDTH, 2));
+  }
+  return f;
+})();
+/* South China Sea / Vietnam coastal upwelling: the summer southwest monsoon drives a real,
+   documented band of cooler water along central Vietnam's coast -- checked directly against the
+   raw climatology: the Vietnam coast (110E, 12N) dips relative to the open Philippine Sea at the
+   same latitude through Jun-Sep (peaks in May, then falls back while the open water keeps
+   warming), while a strictly solar-driven cycle would just keep rising into summer like the open
+   water does. Sharpened here the same way EPAC's own California and Humboldt Currents sharpen
+   their real-but-coarse-grid-smoothed coastal signals: a coastal band, falling off with distance
+   from the continent, active only during the monsoon season that actually drives it. */
+const VU_LAT = [8, 10, 12, 14, 16, 18], VU_AMP = [0.6, 1.4, 2.0, 2.1, 1.3, 0.5];
+const R_VU = rect(106, 113, 7, 19);
 
 /* ------------------------------------------------------------------ *
  *  Simulation state (seeded)
@@ -468,32 +472,26 @@ function ensoStep(doy) {
   ensoHist[ensoHi] = n34; ensoHi = (ensoHi + 1) % E_HIST;
 }
 const ensoLag = (days) => ensoHist[((ensoHi - 1 - days) % E_HIST + E_HIST) % E_HIST];
-function forceEnso(target) {           // jump to a chosen state; the Atlantic then responds with its natural 3–6 month delay
+function forceEnso(target) {           // jump to a chosen state; the Western Pacific then responds with its natural 3–6 month delay
   const d = simDate(simHour), doy = (d.getTime() - Date.UTC(d.getUTCFullYear(), 0, 1)) / 86400000, yn = target / ensoEnv(doy) / ENSO_NORM;
   ensoZr = Math.abs(target) < 0.05 ? 0 : (-1 + Math.sqrt(Math.max(0, 1 + 4 * ENSO_B * (ENSO_B + yn)))) / (2 * ENSO_B); ensoZi = 0;
   n34 = target; ensoHist[(ensoHi - 1 + E_HIST) % E_HIST] = target; anomDirty = true; updateEnsoUI(); refresh();
 }
 
-let simHour = 0, dayCount = 0, pc = new Float32Array(K), gsShift = 0, eddies = [], nextShed = 0, lcDip = 0;
+let simHour = 0, dayCount = 0, pc = new Float32Array(K), gapIdx = 0;
 function initSim(seed) {
   P.seed = seed; rs = (seed * 2654435761) >>> 0 || 1;
   for (let k = 0; k < K; k++) pc[k] = randn();
-  gsShift = randn() * 0.6; eddies = []; lcDip = 0; dayCount = 0; simHour = 0;
-  nextShed = 40 + rand() * 200;
+  gapIdx = randn() * 0.4; dayCount = 0; simHour = 0;
   ensoZr = randn(); ensoZi = randn(); n34 = 0; ensoHist.fill(0); ensoHi = 0;
-  for (let d = -10950; d < 0; d++) ensoStep((((152 + d) % 365.25) + 365.25) % 365.25);   // 30-year spin-up ending on 1 June
-  eddies.push({ x: -90.5, y: 25.3, age: 90, dir: 1 });      // one shed eddy already drifting west at the start
+  for (let d = -10950; d < 0; d++) ensoStep((((134 + d) % 365.25) + 365.25) % 365.25);   // 30-year spin-up ending on 15 May
   anomDirty = true;
 }
 function stepDay() {
   dayCount++;
   { const dd = simDate(dayCount * 24); ensoStep((dd.getTime() - Date.UTC(dd.getUTCFullYear(), 0, 1)) / 86400000); }
   for (let k = 0; k < K; k++) pc[k] = PHI_DAY[k] * pc[k] + Math.sqrt(1 - PHI_DAY[k] * PHI_DAY[k]) * randn();
-  const pg = Math.exp(-1 / 365); gsShift = pg * gsShift + Math.sqrt(1 - pg * pg) * 0.6 * randn();
-  lcDip *= 0.978;
-  if (dayCount >= nextShed) { eddies.push({ x: -87.6, y: 26.4, age: 0 }); nextShed = dayCount + 100 + rand() * 320; lcDip = 1; }
-  for (const e of eddies) { e.x += -0.035 + 0.008 * randn(); e.y += -0.007 + 0.005 * randn(); e.age++; }
-  eddies = eddies.filter((e) => e.x > -97.5 && e.age < 700 && e.y > 19);
+  const pg = Math.exp(-1 / 8); gapIdx = pg * gapIdx + Math.sqrt(1 - pg * pg) * randn();   // ~1-week-correlated gap-wind burst index, shared across the three jets (same synoptic cold-front passages drive all of them)
   anomDirty = true;
 }
 function simDate(h) { return new Date(START_MS + h * 3600000); }
@@ -512,7 +510,6 @@ function computeField() {
   const p = f * 12 - 0.5, m1 = Math.floor(p), w = cr(p - m1), M = (x) => ((x % 12) + 12) % 12;
   const A0 = climF[M(m1 - 1)], A1 = climF[M(m1)], A2 = climF[M(m1 + 1)], A3 = climF[M(m1 + 2)];
   const w0 = w[0], w1 = w[1], w2 = w[2], w3 = w[3];
-  const wf = 0.5 + 0.5 * Math.cos(2 * Math.PI * (f - 45 / 365.25));        // 1 in mid-February, 0 in mid-August
 
   if (anomDirty) {
     anomC.fill(0);
@@ -525,59 +522,16 @@ function computeField() {
 
   /* --- features: featN = climatological (normal) pattern, featD = this year's departures from it --- */
   featN.fill(0); featD.fill(0);
-  { // Gulf Stream: relax toward stream temperature along its path (path also wanders north/south year to year)
-    const a2 = -(0.8 + 2.0 * wf), sh = gsShift / RES;
-    for (let n = 0; n < GSN; n++) {
-      const idx = GSI[n]; let i0 = Math.floor(idx); if (i0 > GS_TW.length - 2) i0 = GS_TW.length - 2; const t = idx - i0;
-      const tw = GS_TW[i0] * (1 - t) + GS_TW[i0 + 1] * t, ts = GS_TS[i0] * (1 - t) + GS_TS[i0 + 1] * t; GST[n] = ts + (tw - ts) * wf;
-    }
-    for (let jj = 0; jj < GSR.h; jj++) {
-      let jf = jj + sh; jf = Math.max(0, Math.min(GSR.h - 1.001, jf)); const j0 = Math.floor(jf), a = jf - j0, r0 = j0 * GSR.w, r1 = (j0 + 1) * GSR.w, ro = jj * GSR.w, o = (GSR.j0 + jj) * NX + GSR.i0;
-      for (let ii = 0; ii < GSR.w; ii++) {
-        const k = o + ii; if (land[k]) continue;
-        const bn = GSB[ro + ii], g2n = GS2[ro + ii], bs = GSB[r0 + ii] * (1 - a) + GSB[r1 + ii] * a, g2s = GS2[r0 + ii] * (1 - a) + GS2[r1 + ii] * a;
-        if (!(bn || bs || g2n || g2s)) continue;
-        const mth = w0 * A0[k] + w1 * A1[k] + w2 * A2[k] + w3 * A3[k], ts = GST[r0 + ii] * (1 - a) + GST[r1 + ii] * a;
-        const vn = bn * (GST[ro + ii] - mth) + a2 * g2n, vs2 = bs * (ts - mth) + a2 * g2s;
-        featN[k] += vn; featD[k] += vs2 - vn;
-      }
-    }
+  { // Kuroshio Current: warm western-boundary current, thermal contrast against the coast sharpest in winter (Gulf Stream's own well-documented pattern)
+    const s = 0.5 + 0.5 * Math.cos(2 * Math.PI * (doy - 30) / 365.25);
+    for (let jj = 0; jj < R_KURO.h; jj++) { const o = (R_KURO.j0 + jj) * NX + R_KURO.i0, ro = jj * R_KURO.w;
+      for (let ii = 0; ii < R_KURO.w; ii++) { const k = o + ii; if (land[k]) continue; const g = KURO_FIELD[ro + ii]; if (g <= 0.02) continue; featN[k] += KURO_AMP * s * g; } }
   }
-  { // Loop Current, plus the eddies it sheds
-    const w2 = wf * wf, ar = 0.15 + 1.75 * w2, ab = 0.1 + 0.9 * w2, dip = -0.4 * lcDip, ea = 0.5 + 1.7 * w2;
-    for (let jj = 0; jj < LCR.h; jj++) {
-      const lat = LAT1 - (LCR.j0 + jj) * RES, cl = Math.cos(lat * DEG), o = (LCR.j0 + jj) * NX + LCR.i0;
-      for (let ii = 0; ii < LCR.w; ii++) {
-        if (land[o + ii]) continue;
-        const lon = LON0 + (LCR.i0 + ii) * RES, base = ar * LCRID[jj * LCR.w + ii] + ab * LCBUL[jj * LCR.w + ii]; let dv = dip * base;
-        for (let e = 0; e < eddies.length; e++) { const E = eddies[e], dx = (lon - E.x) * cl, dy = lat - E.y; dv += ea * Math.exp(-E.age / 240) * Math.exp(-(dx * dx + dy * dy) / (2 * 1.4 * 1.4)); }
-        featN[o + ii] += base; featD[o + ii] += dv;
-      }
-    }
+  { // Vietnam coastal upwelling: SW-monsoon-driven cooling, active Jun-Sep, peaks in Jul-Aug
+    const s = Math.max(0, Math.cos(2 * Math.PI * (doy - 213) / 365.25));
+    if (s > 0.01) for (let j = R_VU.j0; j < R_VU.j0 + R_VU.h; j++) { const lat = LAT1 - j * RES, amp = interp1(VU_LAT, VU_AMP, lat); if (amp <= 0) continue;
+      for (let i = R_VU.i0; i < R_VU.i0 + R_VU.w; i++) { const k = j * NX + i; if (land[k]) continue; const dd = contDist[k]; if (dd > 4) continue; featN[k] -= amp * s * Math.exp(-dd / 1.4); } }
   }
-  { // NW Africa / Iberia upwelling
-    for (let j = R_CAN.j0; j < R_CAN.j0 + R_CAN.h; j++) { const lat = LAT1 - j * RES, amp = interp1(UPW.lat, UPW.amp, lat); if (amp <= 0) continue;
-      const peak = Math.max(60, Math.min(220, 60 + (lat - 14) * 10)), s = 0.55 + 0.45 * Math.cos(2 * Math.PI * (doy - peak) / 365.25);
-      for (let i = R_CAN.i0; i < R_CAN.i0 + R_CAN.w; i++) { const k = j * NX + i; if (land[k]) continue; const dd = contDist[k]; if (dd > 5) continue; featN[k] -= amp * s * Math.exp(-dd / 1.4); } }
-    // Benguela
-    const sb = 0.8 + 0.2 * Math.cos(2 * Math.PI * (doy - 210) / 365.25);
-    for (let j = R_BEN.j0; j < R_BEN.j0 + R_BEN.h; j++) { const lat = LAT1 - j * RES, a = Math.max(0, Math.min(1, (-lat - 12) / 6)) * Math.max(0, Math.min(1, (lat + 37) / 4)); if (a <= 0) continue;
-      for (let i = R_BEN.i0; i < R_BEN.i0 + R_BEN.w; i++) { const k = j * NX + i; if (land[k]) continue; const dd = contDist[k]; if (dd > 5) continue; featN[k] -= 1.6 * a * sb * Math.exp(-dd / 1.6); } }
-    // Venezuela / Guajira
-    const sv = 0.3 + 0.7 * wf;
-    for (let j = R_VEN.j0; j < R_VEN.j0 + R_VEN.h; j++) for (let i = R_VEN.i0; i < R_VEN.i0 + R_VEN.w; i++) { const k = j * NX + i; if (land[k]) continue; const dd = contDist[k]; if (dd > 3) continue; featN[k] -= 1.7 * sv * Math.exp(-dd / 0.9); }
-  }
-  { // late-summer / fall warm pool in the central Gulf of Mexico
-    const g = 0.7 * Math.exp(-Math.pow((doy - 262) / 48, 2));
-    if (g > 0.01) for (let j = R_GULF.j0; j < R_GULF.j0 + R_GULF.h; j++) { const lat = LAT1 - j * RES, dy = (lat - 25.2) / 3.2;
-      for (let i = R_GULF.i0; i < R_GULF.i0 + R_GULF.w; i++) { const k = j * NX + i; if (land[k]) continue; const dx = (LON0 + i * RES + 89.5) / 5.5; featN[k] += g * Math.exp(-(dx * dx + dy * dy)); } }
-  }
-  { // Northeast US shelf: tidal mixing and the cold pool keep summer surface water well below the coarse data's warm-biased value
-    const s = 1 - wf;
-    if (s > 0.02) for (let j = R_NES.j0; j < R_NES.j0 + R_NES.h; j++) { const lat = LAT1 - j * RES, amp = interp1(NES_LAT, NES_AMP, lat); if (amp <= 0) continue;
-      for (let i = R_NES.i0; i < R_NES.i0 + R_NES.w; i++) { const k = j * NX + i; if (land[k]) continue; const dd = contDist[k]; if (dd > 5) continue; featN[k] -= amp * s * Math.exp(-dd / 2.0); } }
-  }
-  for (let n = 0; n < shelfIdx.length; n++) { const k = shelfIdx[n], dv = w0 * A0[k] + w1 * A1[k] + w2 * A2[k] + w3 * A3[k] - annual[k]; featN[k] += shelfK[n] * (dv < 0 ? dv : 0); }   // shallow water cools fast in winter; it does not run hotter than open water in summer
 
   /* --- combine --- */
   const fs = P.features, vs = P.variability, sa = P.seasonal, wm = P.warming, es = P.enso, wmUp = Math.max(0, wm), saUp = 1 + (sa - 1) * 0.6;
@@ -651,10 +605,9 @@ function buildLines(list) {
   });
 }
 const POLYS = buildPolys(DATA.land), LAKES = buildPolys(DATA.lakes), LAND_OUT = buildPolys(DATA.landOut), B0 = buildLines(DATA.b0), B1 = buildLines(DATA.b1);
-const LAND_HI = buildPolys(DATA.landHi), HB = DATA.hiBox, HX0 = (HB[0] + 180) / 360, HX1 = (HB[1] + 180) / 360, HY0 = mercN(HB[3]), HY1 = mercN(HB[2]);
 const BXL = (DATA.box[0] + 180) / 360, BXR = (DATA.box[1] + 180) / 360, BYT = mercN(DATA.box[3]), BYB = mercN(DATA.box[2]), EPS = 1e-12;
 const onLine = (a, b, c) => Math.abs(a - c) < EPS && Math.abs(b - c) < EPS;
-const onBox = (x1, y1, x2, y2) => onLine(x1, x2, BXL) || onLine(x1, x2, BXR) || onLine(y1, y2, BYT) || onLine(y1, y2, BYB) || onLine(x1, x2, HX0) || onLine(x1, x2, HX1) || onLine(y1, y2, HY0) || onLine(y1, y2, HY1);
+const onBox = (x1, y1, x2, y2) => onLine(x1, x2, BXL) || onLine(x1, x2, BXR) || onLine(y1, y2, BYT) || onLine(y1, y2, BYB);
 
 /* ---- lakes: every lake gets its own seasonal temperature ---- */
 const LK_TAB = {   // monthly surface temperatures (°C), Jan..Dec, typical of the five Great Lakes
@@ -663,7 +616,16 @@ const LK_TAB = {   // monthly surface temperatures (°C), Jan..Dec, typical of t
   'Lake Erie': [1, 0.3, 1.2, 4, 9, 15, 21.5, 24, 21, 15, 8.5, 3.5], 'Lake Ontario': [2.5, 1.5, 1.8, 3.5, 7, 12, 18, 21.5, 19, 13.5, 8.5, 5],
   'Lake St. Clair': [0.5, 0.2, 2, 6, 12, 19, 24, 25.5, 22, 15, 8, 3]
 };
-const LK_SPECIAL = { 'Lake Titicaca': [13.5, 1.6, 40], 'Lake Victoria': [25.3, 0.9, 60], 'Lake Tanganyika': [26.3, 1.0, 80], 'Lake Malawi': [26.5, 1.5, 55], 'Lake Maracaibo': [28.8, 1.4, 235], 'Lago de Maracaibo': [28.8, 1.4, 235] };
+const LK_SPECIAL = {
+  'Lake Titicaca': [13.5, 1.6, 40], 'Lake Victoria': [25.3, 0.9, 60], 'Lake Tanganyika': [26.3, 1.0, 80], 'Lake Malawi': [26.5, 1.5, 55], 'Lake Maracaibo': [28.8, 1.4, 235], 'Lago de Maracaibo': [28.8, 1.4, 235],
+  // Real monthly figures (World Lake Database / multi-year Omihachiman station records for Biwa;
+  // published annual-mean/August-peak figures for Baikal), not the generic lat+area fallback below --
+  // Biwa in particular runs a much wider swing than that fallback would give it (a mid-latitude,
+  // moderate-depth lake with strong continental climate exposure, not the damped-by-depth curve
+  // the fallback assumes for a lake its size). Baikal's real winter low is effectively the ~0 C
+  // freeze point already built into lakeClim's own clamp below, from five-plus months of ice cover.
+  'Lake Biwa': [16.5, 11.5, 227], 'Lake Baikal': [4.9, 11.6, 220],
+};
 const LK_LAT = [0, 15, 25, 35, 45, 55, 65, 75], LK_TM = [26.5, 26, 24, 18.5, 10.5, 4.5, 1.5, 0.5], LK_A = [1, 2.5, 4.5, 8, 10.5, 11, 9, 7];
 const invMerc = (y) => Math.atan(Math.sinh(Math.PI * (1 - 2 * y))) / DEG;
 const LAKE_META = LAKES.map((p, i) => ({ name: DATA.lakeNames[i] || '', area: DATA.lakeAreas[i], lat: invMerc((p.y0 + p.y1) / 2), lon: (p.x0 + p.x1) / 2 * 360 - 180, h: invMerc(p.y0) - invMerc(p.y1) }));
@@ -714,90 +676,82 @@ let TH = THEMES.sat, themeId = 'sat', gridMode = 'off';
 
 /* ------------------------------------------------------------------ *
  *  City markers: real coastal cities in the basin, hover shows the sim's
- *  own live reading there (SST, departure from normal, hurricane threshold).
+ *  own live reading there (SST, departure from normal, typhoon threshold).
  * ------------------------------------------------------------------ */
 const CITIES = [
-  { name: 'Halifax', lat: 44.65, lon: -63.57 }, { name: 'Portland', lat: 43.66, lon: -70.26 },
-  { name: 'Boston', lat: 42.36, lon: -71.06 }, { name: 'New York', lat: 40.71, lon: -74.01 },
-  { name: 'Atlantic City', lat: 39.36, lon: -74.42 }, { name: 'Norfolk', lat: 36.85, lon: -76.29 },
-  { name: 'Charleston', lat: 32.78, lon: -79.93 }, { name: 'Savannah', lat: 32.08, lon: -81.09 },
-  { name: 'Jacksonville', lat: 30.33, lon: -81.66 }, { name: 'Tampa', lat: 27.95, lon: -82.46 },
-  { name: 'Miami', lat: 25.76, lon: -80.19 }, { name: 'Key West', lat: 24.56, lon: -81.78 },
-  { name: 'New Orleans', lat: 29.95, lon: -90.07 }, { name: 'Houston', lat: 29.30, lon: -94.80 },
-  { name: 'Corpus Christi', lat: 27.80, lon: -97.40 }, { name: 'Veracruz', lat: 19.19, lon: -96.14 },
-  { name: 'Campeche', lat: 19.85, lon: -90.53 }, { name: 'Cancún', lat: 21.16, lon: -86.85 },
-  { name: 'Belize City', lat: 17.50, lon: -88.20 }, { name: 'Havana', lat: 23.13, lon: -82.38 },
-  { name: 'Santiago de Cuba', lat: 20.02, lon: -75.83 }, { name: 'Nassau', lat: 25.06, lon: -77.34 },
-  { name: 'Kingston', lat: 17.97, lon: -76.79 }, { name: 'Port-au-Prince', lat: 18.59, lon: -72.31 },
-  { name: 'Santo Domingo', lat: 18.49, lon: -69.93 }, { name: 'San Juan', lat: 18.47, lon: -66.11 },
-  { name: 'Bridgetown', lat: 13.10, lon: -59.62 }, { name: 'Fort-de-France', lat: 14.60, lon: -61.07 },
-  { name: 'Willemstad', lat: 12.11, lon: -68.93 }, { name: 'Hamilton (Bermuda)', lat: 32.29, lon: -64.78 },
-  { name: 'Colón', lat: 9.36, lon: -79.90 }, { name: 'San Andrés', lat: 12.58, lon: -81.70 },
-  { name: 'Puerto Cortés', lat: 15.80, lon: -87.95 }, { name: 'Cartagena', lat: 10.40, lon: -75.50 },
-  { name: 'Barranquilla', lat: 10.96, lon: -74.80 }, { name: 'Caracas', lat: 10.60, lon: -66.93 },
-  { name: 'Georgetown', lat: 6.80, lon: -58.16 }, { name: 'Paramaribo', lat: 5.85, lon: -55.17 },
-  { name: 'Cayenne', lat: 4.94, lon: -52.33 }, { name: 'Fortaleza', lat: -3.73, lon: -38.53 },
-  { name: 'Lisbon', lat: 38.72, lon: -9.14 }, { name: 'Porto', lat: 41.15, lon: -8.61 },
-  { name: 'Cádiz', lat: 36.53, lon: -6.30 }, { name: 'Casablanca', lat: 33.57, lon: -7.59 },
-  { name: 'Dakar', lat: 14.69, lon: -17.45 }, { name: 'Nouakchott', lat: 18.09, lon: -15.98 },
-  { name: 'Barcelona', lat: 41.39, lon: 2.17 }, { name: 'Marseille', lat: 43.30, lon: 5.37 },
-  { name: 'Genoa', lat: 44.41, lon: 8.93 }, { name: 'Naples', lat: 40.85, lon: 14.27 },
-  { name: 'Palermo', lat: 38.12, lon: 13.36 }, { name: 'Tunis', lat: 36.81, lon: 10.18 },
-  { name: 'Valletta', lat: 35.90, lon: 14.51 }, { name: 'Algiers', lat: 36.75, lon: 3.06 },
-  // Inland cities: not on the water themselves, but real places storms/moisture off this coast
-  // reach and affect. sLat/sLon is the nearest water this basin actually simulates -- the
-  // reading shown for these is that water's, labeled as such, never a fabricated "local SST"
-  // for a city that isn't on the coast.
-  { name: 'Philadelphia', lat: 39.95, lon: -75.16, sLat: 39.36, sLon: -74.42 },
-  { name: 'Washington, D.C.', lat: 38.91, lon: -77.04, sLat: 38.34, sLon: -75.09 },
-  { name: 'Raleigh', lat: 35.78, lon: -78.64, sLat: 34.21, sLon: -77.79 },
-  { name: 'Charlotte', lat: 35.23, lon: -80.84, sLat: 33.69, sLon: -78.89 },
-  { name: 'Atlanta', lat: 33.75, lon: -84.39, sLat: 32.08, sLon: -81.09 },
-  { name: 'Orlando', lat: 28.54, lon: -81.38, sLat: 28.08, sLon: -80.60 },
-  { name: 'San Antonio', lat: 29.42, lon: -98.49, sLat: 27.80, sLon: -97.40 },
-  { name: 'Nashville', lat: 36.16, lon: -86.78, sLat: 29.95, sLon: -90.07 },
-  { name: 'Montreal', lat: 45.50, lon: -73.57, sLat: 44.65, sLon: -63.57 },
-  { name: 'Toronto', lat: 43.65, lon: -79.38, sLat: 44.65, sLon: -63.57 },
-  { name: 'Ottawa', lat: 45.42, lon: -75.70, sLat: 44.65, sLon: -63.57 },
-  { name: 'Quebec City', lat: 46.81, lon: -71.21, sLat: 44.65, sLon: -63.57 },
-  { name: 'Chicago', lat: 41.88, lon: -87.63, sLat: 40.71, sLon: -74.01 },
-  { name: 'Detroit', lat: 42.33, lon: -83.05, sLat: 40.71, sLon: -74.01 },
-  { name: 'Milwaukee', lat: 43.04, lon: -87.91, sLat: 40.71, sLon: -74.01 },
-  { name: 'Minneapolis', lat: 44.98, lon: -93.27, sLat: 40.71, sLon: -74.01 },
-  { name: 'Indianapolis', lat: 39.77, lon: -86.16, sLat: 40.71, sLon: -74.01 },
-  { name: 'Columbus', lat: 39.96, lon: -82.99, sLat: 40.71, sLon: -74.01 },
-  { name: 'Cleveland', lat: 41.50, lon: -81.69, sLat: 40.71, sLon: -74.01 },
-  { name: 'Buffalo', lat: 42.89, lon: -78.88, sLat: 40.71, sLon: -74.01 },
-  { name: 'Pittsburgh', lat: 40.44, lon: -79.99, sLat: 38.34, sLon: -75.09 },
-  { name: 'Albany', lat: 42.65, lon: -73.75, sLat: 42.36, sLon: -71.06 },
-  { name: 'Hartford', lat: 41.76, lon: -72.69, sLat: 42.36, sLon: -71.06 },
-  { name: 'Providence', lat: 41.82, lon: -71.41, sLat: 42.36, sLon: -71.06 },
-  { name: 'St. Louis', lat: 38.63, lon: -90.20, sLat: 29.95, sLon: -90.07 },
-  { name: 'Kansas City', lat: 39.10, lon: -94.58, sLat: 29.95, sLon: -90.07 },
-  { name: 'Des Moines', lat: 41.60, lon: -93.61, sLat: 29.95, sLon: -90.07 },
-  { name: 'Omaha', lat: 41.26, lon: -95.94, sLat: 29.95, sLon: -90.07 },
-  { name: 'Memphis', lat: 35.15, lon: -90.05, sLat: 29.95, sLon: -90.07 },
-  { name: 'Louisville', lat: 38.25, lon: -85.76, sLat: 29.95, sLon: -90.07 },
-  { name: 'Birmingham', lat: 33.52, lon: -86.80, sLat: 29.95, sLon: -90.07 },
-  { name: 'Jackson', lat: 32.30, lon: -90.18, sLat: 29.95, sLon: -90.07 },
-  { name: 'Little Rock', lat: 34.75, lon: -92.29, sLat: 29.95, sLon: -90.07 },
-  { name: 'Baton Rouge', lat: 30.45, lon: -91.19, sLat: 29.95, sLon: -90.07 },
-  { name: 'Columbia', lat: 34.00, lon: -81.03, sLat: 32.78, sLon: -79.93 },
-  { name: 'Richmond', lat: 37.54, lon: -77.44, sLat: 36.85, sLon: -76.29 },
-  { name: 'Tallahassee', lat: 30.44, lon: -84.28, sLat: 29.70, sLon: -84.30 },
-  { name: 'Dallas', lat: 32.78, lon: -96.80, sLat: 29.30, sLon: -94.80 },
-  { name: 'Austin', lat: 30.27, lon: -97.74, sLat: 27.80, sLon: -97.40 },
-  { name: 'Oklahoma City', lat: 35.47, lon: -97.52, sLat: 29.30, sLon: -94.80 },
-  { name: 'Tulsa', lat: 36.15, lon: -95.99, sLat: 29.30, sLon: -94.80 },
-  // Caribbean island nations -- small islands, real coastal water at their own coordinates
-  { name: 'Freeport', lat: 26.53, lon: -78.70 }, { name: 'George Town', lat: 19.30, lon: -81.38 },
-  { name: 'Basseterre', lat: 17.30, lon: -62.72 }, { name: "St. John's", lat: 17.06, lon: -61.85 },
-  { name: 'Castries', lat: 14.01, lon: -60.99 }, { name: 'Kingstown', lat: 13.16, lon: -61.22 },
-  { name: "St. George's", lat: 12.05, lon: -61.75 }, { name: 'Port of Spain', lat: 10.65, lon: -61.52 },
-  { name: 'Road Town', lat: 18.43, lon: -64.62 }, { name: 'Charlotte Amalie', lat: 18.34, lon: -64.93 },
-  { name: 'Maracaibo', lat: 10.64, lon: -71.61 }, { name: 'Santa Marta', lat: 11.24, lon: -74.20 },
-  { name: 'Belém', lat: -1.46, lon: -48.50 },
-  { name: 'Valencia', lat: 10.16, lon: -68.01, sLat: 10.60, sLon: -66.93 },
+  // A city entry with sLat/sLon isn't quite on the water itself -- that's the basin's nearest
+  // real coastal point instead, shown labeled as such (never a fabricated "local SST" for a
+  // city that isn't on the coast), same convention as the Atlantic/EPAC city lists.
+  // Russian Far East
+  { name: 'Vladivostok', lat: 43.12, lon: 131.90 },
+  { name: 'Yuzhno-Sakhalinsk', lat: 46.96, lon: 142.74, sLat: 46.63, sLon: 142.76 },
+  // Japan
+  { name: 'Wakkanai', lat: 45.42, lon: 141.67 }, { name: 'Kushiro', lat: 42.98, lon: 144.37 },
+  { name: 'Sapporo', lat: 43.06, lon: 141.35, sLat: 43.25, sLon: 141.35 },
+  { name: 'Hakodate', lat: 41.77, lon: 140.73 }, { name: 'Aomori', lat: 40.82, lon: 140.74 },
+  { name: 'Sendai', lat: 38.27, lon: 140.87, sLat: 38.26, sLon: 141.10 },
+  { name: 'Niigata', lat: 37.90, lon: 139.02 }, { name: 'Tokyo', lat: 35.68, lon: 139.69 },
+  { name: 'Yokohama', lat: 35.44, lon: 139.64 }, { name: 'Nagoya', lat: 35.18, lon: 136.91 },
+  { name: 'Osaka', lat: 34.69, lon: 135.50 }, { name: 'Kobe', lat: 34.69, lon: 135.20 },
+  { name: 'Kyoto', lat: 35.01, lon: 135.77, sLat: 34.65, sLon: 135.42 },
+  { name: 'Hiroshima', lat: 34.39, lon: 132.46 }, { name: 'Shimonoseki', lat: 33.95, lon: 130.94 },
+  { name: 'Fukuoka', lat: 33.59, lon: 130.40 }, { name: 'Kitakyushu', lat: 33.88, lon: 130.88 },
+  { name: 'Nagasaki', lat: 32.75, lon: 129.87 },
+  { name: 'Kumamoto', lat: 32.80, lon: 130.71, sLat: 32.75, sLon: 130.35 },
+  { name: 'Kagoshima', lat: 31.60, lon: 130.56 }, { name: 'Naha', lat: 26.21, lon: 127.68 },
+  { name: 'Ishigaki', lat: 24.34, lon: 124.16 },
+  // Korea
+  { name: 'Wonsan', lat: 39.15, lon: 127.44 },
+  { name: 'Pyongyang', lat: 39.02, lon: 125.75, sLat: 38.74, sLon: 125.41 },
+  { name: 'Nampo', lat: 38.74, lon: 125.41 }, { name: 'Incheon', lat: 37.46, lon: 126.71 },
+  { name: 'Seoul', lat: 37.57, lon: 126.98, sLat: 37.46, sLon: 126.71 },
+  { name: 'Gunsan', lat: 35.98, lon: 126.71 }, { name: 'Mokpo', lat: 34.81, lon: 126.39 },
+  { name: 'Busan', lat: 35.18, lon: 129.08 }, { name: 'Ulsan', lat: 35.54, lon: 129.32 },
+  { name: 'Pohang', lat: 36.02, lon: 129.37 }, { name: 'Jeju', lat: 33.50, lon: 126.53 },
+  // China
+  { name: 'Dandong', lat: 40.13, lon: 124.39 }, { name: 'Dalian', lat: 38.91, lon: 121.62 },
+  { name: 'Yingkou', lat: 40.67, lon: 122.23 }, { name: 'Qinhuangdao', lat: 39.93, lon: 119.60 },
+  { name: 'Tianjin', lat: 39.13, lon: 117.20, sLat: 38.98, sLon: 117.72 },
+  { name: 'Yantai', lat: 37.46, lon: 121.45 }, { name: 'Qingdao', lat: 36.07, lon: 120.38 },
+  { name: 'Rizhao', lat: 35.42, lon: 119.53 }, { name: 'Lianyungang', lat: 34.60, lon: 119.22 },
+  { name: 'Nantong', lat: 32.03, lon: 120.89 }, { name: 'Shanghai', lat: 31.23, lon: 121.47 },
+  { name: 'Ningbo', lat: 29.87, lon: 121.55 }, { name: 'Zhoushan', lat: 30.02, lon: 122.11 },
+  { name: 'Taizhou', lat: 28.66, lon: 121.42 }, { name: 'Wenzhou', lat: 27.99, lon: 120.70 },
+  { name: 'Fuzhou', lat: 26.08, lon: 119.30 }, { name: 'Quanzhou', lat: 24.87, lon: 118.68 },
+  { name: 'Xiamen', lat: 24.48, lon: 118.09 }, { name: 'Shantou', lat: 23.35, lon: 116.68 },
+  { name: 'Guangzhou', lat: 23.13, lon: 113.26, sLat: 22.30, sLon: 114.20 },
+  { name: 'Shenzhen', lat: 22.54, lon: 114.06 }, { name: 'Hong Kong', lat: 22.32, lon: 114.17 },
+  { name: 'Macau', lat: 22.20, lon: 113.55 }, { name: 'Zhuhai', lat: 22.27, lon: 113.58 },
+  { name: 'Zhanjiang', lat: 21.27, lon: 110.36 }, { name: 'Beihai', lat: 21.48, lon: 109.12 },
+  { name: 'Haikou', lat: 20.04, lon: 110.32 }, { name: 'Sanya', lat: 18.25, lon: 109.51 },
+  // Taiwan
+  { name: 'Keelung', lat: 25.13, lon: 121.74 },
+  { name: 'Taipei', lat: 25.03, lon: 121.57, sLat: 25.13, sLon: 121.74 },
+  { name: 'Taichung', lat: 24.15, lon: 120.68 }, { name: 'Kaohsiung', lat: 22.63, lon: 120.30 },
+  { name: 'Tainan', lat: 23.00, lon: 120.21 }, { name: 'Hualien', lat: 23.98, lon: 121.60 },
+  // Vietnam
+  { name: 'Haiphong', lat: 20.86, lon: 106.68 },
+  { name: 'Hanoi', lat: 21.03, lon: 105.85, sLat: 20.86, sLon: 106.68 },
+  { name: 'Vinh', lat: 18.68, lon: 105.69 }, { name: 'Dong Hoi', lat: 17.48, lon: 106.62 },
+  { name: 'Hue', lat: 16.46, lon: 107.59 }, { name: 'Da Nang', lat: 16.05, lon: 108.22 },
+  { name: 'Quy Nhon', lat: 13.78, lon: 109.22 }, { name: 'Nha Trang', lat: 12.24, lon: 109.19 },
+  { name: 'Phan Thiet', lat: 10.93, lon: 108.10 }, { name: 'Vung Tau', lat: 10.35, lon: 107.08 },
+  { name: 'Ho Chi Minh City', lat: 10.82, lon: 106.63, sLat: 10.35, sLon: 107.08 },
+  // Philippines
+  { name: 'Laoag', lat: 18.20, lon: 120.59 },
+  { name: 'Baguio', lat: 16.41, lon: 120.59, sLat: 16.05, sLon: 120.30 },
+  { name: 'Manila', lat: 14.60, lon: 120.98 }, { name: 'Batangas', lat: 13.76, lon: 121.06 },
+  { name: 'Legazpi', lat: 13.14, lon: 123.74 }, { name: 'Tacloban', lat: 11.24, lon: 125.00 },
+  { name: 'Iloilo', lat: 10.72, lon: 122.56 }, { name: 'Bacolod', lat: 10.68, lon: 122.95 },
+  { name: 'Cebu', lat: 10.32, lon: 123.90 }, { name: 'Cagayan de Oro', lat: 8.48, lon: 124.65 },
+  { name: 'Davao', lat: 7.07, lon: 125.61 }, { name: 'Zamboanga', lat: 6.91, lon: 122.08 },
+  { name: 'Puerto Princesa', lat: 9.74, lon: 118.74 }, { name: 'General Santos', lat: 6.11, lon: 125.17 },
+  // Borneo / Sulawesi -- the south edge of the basin, where the basin boundary hugs close to
+  // the equator (see the outOfBasin cutoff above); these sit just north of it, still real water.
+  { name: 'Kota Kinabalu', lat: 5.98, lon: 116.07 }, { name: 'Bandar Seri Begawan', lat: 4.94, lon: 114.94 },
+  { name: 'Manado', lat: 1.49, lon: 124.85 },
+  // Open-Pacific islands
+  { name: 'Hagåtña', lat: 13.48, lon: 144.75 }, { name: 'Saipan', lat: 15.18, lon: 145.75 },
 ];
 const cityPx = CITIES.map(() => ({ x: 0, y: 0, onScreen: false }));
 let hoveredCity = -1;
@@ -825,7 +779,7 @@ function cityAt(cx, cy) {
   return best;
 }
 function stormImpactAt(lat, lon) {
-  // Placeholder for a future storm/hurricane model (genesis, track, wind field, rain shield,
+  // Placeholder for a future storm/typhoon model (genesis, track, wind field, rain shield,
   // damage estimate) -- returns null until one actually exists. The "Storm impact" section in
   // updateCityTip below is always visible (labels included) so the UI is ready, but every value
   // in it stays a plain "--" dash rather than a fabricated number until this returns real data.
@@ -846,7 +800,7 @@ function updateCityTip(cx, cy) {
     const dv = t - n, sign = dv >= 0 ? '+' : '−';
     lines.push(t.toFixed(1) + ' °C');
     lines.push(sign + Math.abs(dv).toFixed(1) + ' °C vs. normal');
-    lines.push(t >= 26.5 ? 'Above hurricane threshold' : 'Below hurricane threshold');
+    lines.push(t >= 26.5 ? 'Above typhoon threshold' : 'Below typhoon threshold');
   } else {
     lines.push('Outside the simulated area');
   }
@@ -867,12 +821,12 @@ function updateCityTip(cx, cy) {
  *  Map
  * ------------------------------------------------------------------ */
 const map = L.map('map', {
-  zoomControl: false, attributionControl: false, minZoom: 5, maxZoom: 10, zoomSnap: 0.25, zoomDelta: 0.5, wheelPxPerZoomLevel: 110,
+  zoomControl: false, attributionControl: false, minZoom: 5.7, maxZoom: 10, zoomSnap: 0.25, zoomDelta: 0.5, wheelPxPerZoomLevel: 110,
   zoomAnimation: false, fadeAnimation: false, markerZoomAnimation: false, worldCopyJump: false,
-  maxBounds: [[2, -102], [55, 22]], maxBoundsViscosity: 1   // hard pan limit: north Atlantic basin only -- specifically keeps South America and the South Atlantic out of reach (their own future basin), with room south of the Main Development Region
+  maxBounds: [[-4, 102], [54, 180]], maxBoundsViscosity: 1   // hard pan limit: a few degrees beyond the domain box on every side (east edge is the date line itself -- nothing past it belongs to this basin), well inside the data's own padded extent
 });
 L.control.zoom({ position: 'bottomleft' }).addTo(map);
-map.fitBounds([[10, -90], [40, -20]], { animate: false });   // instant: an animated pan here briefly rendered a garbled frame of the embedded base image mid-transition
+map.fitBounds([[8, 110], [38, 148]], { animate: false });   // instant: an animated pan here briefly rendered a garbled frame of the embedded base image mid-transition
 const container = map.getContainer();
 
 function makeCanvas(z) { const c = document.createElement('canvas'); c.className = 'overlay'; c.style.zIndex = z; container.appendChild(c); return c; }
@@ -984,14 +938,7 @@ function paintLand(ctx, list, minX, minY, ws, stroke) {
     ctx.fill('evenodd'); if (stroke) ctx.stroke();
   }
 }
-/* sharper 1:10m coastline inside the hurricane region once zoomed in, 1:50m everywhere else */
-function hiSplit(ctx, minX, minY, ws, outside, inside) {
-  if (map.getZoom() < 5.5) { outside(); return; }
-  const bx = HX0 * ws - minX, by = HY0 * ws - minY, bw = (HX1 - HX0) * ws, bh = (HY1 - HY0) * ws;
-  ctx.save(); ctx.beginPath(); ctx.rect(-10, -10, W + 20, H + 20); ctx.rect(bx, by, bw, bh); ctx.clip('evenodd'); outside(); ctx.restore();
-  ctx.save(); ctx.beginPath(); ctx.rect(bx, by, bw, bh); ctx.clip(); inside(); ctx.restore();
-}
-function clipLand(ctx, minX, minY, ws) { hiSplit(ctx, minX, minY, ws, () => paintLand(ctx, POLYS, minX, minY, ws, true), () => paintLand(ctx, LAND_HI, minX, minY, ws, true)); }
+function clipLand(ctx, minX, minY, ws) { paintLand(ctx, POLYS, minX, minY, ws, true); }
 const lakeCss = (V, v) => { const ln = V.lut.length - 1; let li = ((v - V.vmin) * ln / (V.vmax - V.vmin) + 0.5) | 0; li = li < 0 ? 0 : li > ln ? ln : li; const c = V.lut[li]; return 'rgb(' + (c & 255) + ',' + ((c >> 8) & 255) + ',' + ((c >> 16) & 255) + ')'; };
 function drawLakes(ctx, minX, minY, ws) {
   const V = VIEWS[view];
@@ -1066,10 +1013,10 @@ function drawBaseLayer(minX, minY, ws) {
   b.lineJoin = 'round'; b.lineCap = 'round';
   b.fillStyle = TH.land; b.strokeStyle = TH.land; b.lineWidth = 0.8;
   pathPolys(b, LAND_OUT, minX, minY, ws); b.fill('evenodd'); b.stroke();        // world land beyond the detailed data (stroke hides tile seams)
-  hiSplit(b, minX, minY, ws, () => { pathPolys(b, POLYS, minX, minY, ws); b.fill('evenodd'); }, () => { pathPolys(b, LAND_HI, minX, minY, ws); b.fill('evenodd'); });
+  pathPolys(b, POLYS, minX, minY, ws); b.fill('evenodd');
   b.fillStyle = TH.lake; pathPolys(b, LAKES, minX, minY, ws); b.fill('evenodd');
   b.strokeStyle = TH.coast; b.lineWidth = TH.coastW;
-  hiSplit(b, minX, minY, ws, () => { pathPolys(b, POLYS, minX, minY, ws, true); b.stroke(); }, () => { pathPolys(b, LAND_HI, minX, minY, ws, true); b.stroke(); });
+  pathPolys(b, POLYS, minX, minY, ws, true); b.stroke();
   pathPolys(b, LAKES, minX, minY, ws, true); b.stroke();
 }
 function inRing(xs, ys, x, y) { let c = false; for (let i = 0, j = xs.length - 1; i < xs.length; j = i++) if (((ys[i] > y) !== (ys[j] > y)) && (x < (xs[j] - xs[i]) * (y - ys[i]) / (ys[j] - ys[i]) + xs[i])) c = !c; return c; }
@@ -1238,7 +1185,7 @@ function drawLegend() {
  * ------------------------------------------------------------------ */
 const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const MLET = 'JFMAMJJASOND';
-$('year').innerHTML = MLET.split('').map((l, i) => '<span title="' + MON[i] + '" class="' + (i >= 5 && i <= 10 ? 'hs' : '') + '">' + l + '</span>').join('');
+$('year').innerHTML = MLET.split('').map((l, i) => '<span title="' + MON[i] + '" class="' + (i >= 5 ? 'hs' : '') + '">' + l + '</span>').join('');
 const yearSpans = $('year').children;
 function ensoLabel(v) { const a = Math.abs(v), s = a < 0.5 ? '' : a < 1 ? 'Weak ' : a < 1.5 ? 'Moderate ' : a < 2 ? 'Strong ' : 'Very strong '; return a < 0.5 ? 'Neutral' : s + (v > 0 ? 'El Niño' : 'La Niña'); }
 function updateEnsoUI() {
@@ -1338,7 +1285,7 @@ lastNow = performance.now(); requestAnimationFrame(frame);
 window.SSTSIM = {
   advance(h) { advanceHours(h); updateClock(); refresh(); },
   sample(lat, lon) { return { sst: sampleField(sst, lat, lon), normal: sampleField(normal, lat, lon) }; },
-  state() { return { simHour, seed: P.seed, date: simDate(simHour).toISOString(), eddies: eddies.length, gsShift }; },
+  state() { return { simHour, seed: P.seed, date: simDate(simHour).toISOString(), gapIdx }; },
   set(k, v) { P[k] = v; refresh(); }, enso() { return { n34, lag0: ensoLag(0), lag3: ensoLag(91), lag6: ensoLag(183) }; }, forceEnso, setView(v) { document.querySelector('#seg-view button[data-v="' + v + '"]').click(); },
   setPlaying, restart, map, render, setTheme, setGridMode, sliderVals() { return { seasonal: P.seasonal, features: P.features, enso: P.enso, warming: P.warming, variability: P.variability, seed: P.seed }; }, applySeed,
   bm() {
