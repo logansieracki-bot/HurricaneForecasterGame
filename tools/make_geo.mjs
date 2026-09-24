@@ -29,7 +29,7 @@ function ringToDelta(ring) {
 function encodePolygons(fc) {
   // GeoJSON Feature/FeatureCollection of (Multi)Polygons -> list[ polygon -> list[ ring -> flat[] ] ]
   const polys = [];
-  const addPoly = (coords) => polys.push(coords.map(ringToDelta));
+  const addPoly = (coords) => { if (coords && coords[0] && coords[0].length) polys.push(coords.map(ringToDelta)); };
   const addGeom = (g) => {
     if (!g) return;
     if (g.type === 'Polygon') addPoly(g.coordinates);
@@ -53,6 +53,10 @@ function encodeLines(fc) {
   return lines;
 }
 
+function isEmptyRing(ring) {
+  return !Array.isArray(ring) || ring.length === 0;
+}
+
 function isSliverRing(ring) {
   // turf.bboxClip on a huge multi-part polygon (e.g. every landmass on Earth as one feature)
   // can emit a spurious degenerate ring as a clipping artifact: very few points, spanning a
@@ -60,7 +64,7 @@ function isSliverRing(ring) {
   // coastline (nothing is a hundred-plus degrees long and a hundredth of a degree tall), just
   // a stray seam from the clip. First caught as a fake landmass stretching clear across the
   // Eastern Pacific at one exact latitude, cutting a hole clean across the SST map there.
-  if (!Array.isArray(ring) || ring.length === 0 || ring.length > 8) return false;
+  if (isEmptyRing(ring) || ring.length > 8) return false;
   try {
     let minLon = 999, maxLon = -999, minLat = 999, maxLat = -999;
     for (const pt of ring) {
@@ -74,10 +78,16 @@ function isSliverRing(ring) {
 }
 
 function dropSliverPolygons(geom) {
+  // Also drops parts turf.bboxClip reports as "present" but with zero-point rings -- its own
+  // signature for a part of a MultiPolygon that doesn't intersect the clip box at all, not a
+  // real (if degenerate) sliver. First caught here: clipping the whole world's landmasses (one
+  // MultiPolygon with a part for every continent and island on Earth) against a basin-sized box
+  // left ~80-90% of the encoded "polygons" with no rings at all -- harmless to render (they
+  // bbox-cull to nothing before ever being drawn) but bloating the shipped JSON for no reason.
   try {
-    if (geom.type === 'Polygon') return isSliverRing(geom.coordinates[0]) ? null : geom;
+    if (geom.type === 'Polygon') return isEmptyRing(geom.coordinates[0]) || isSliverRing(geom.coordinates[0]) ? null : geom;
     if (geom.type === 'MultiPolygon') {
-      const kept = geom.coordinates.filter((rings) => !isSliverRing(rings && rings[0]));
+      const kept = geom.coordinates.filter((rings) => !isEmptyRing(rings && rings[0]) && !isSliverRing(rings[0]));
       if (!kept.length) return null;
       return kept.length === geom.coordinates.length ? geom : { type: 'MultiPolygon', coordinates: kept };
     }
@@ -158,6 +168,7 @@ const B1_COUNTRIES = {
   atlantic: ['mx', 'us'],
   eastpacific: ['mx', 'us'],
   westpacific: ['cn', 'jp', 'kr', 'ru', 'id'],
+  nio: ['in'],
 };
 // Most packs follow `<code>-admin1-10m.json`; the US pack alone breaks that pattern.
 const B1_FILE = { us: 'us-states-10m.json' };
