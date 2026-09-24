@@ -1,6 +1,75 @@
 # Roadmap
 
 ## Just landed
+- **North Indian Ocean basin added** -- the fourth live basin, and the first one deliberately built
+  *tight*: the real cyclone-relevant basin (Arabian Sea + Bay of Bengal + Red Sea + Persian Gulf)
+  is compact enough that the multi-degree soft-context padding the bigger basins have room for
+  would just eat a large share of the visible map for no benefit, so `padBox` here is 2 rather
+  than 3-6. Domain: 30E-100E, 8S-32N -- west clears the Red Sea's own two northern gulfs (Suez,
+  Aqaba) with margin, east matches WPAC's own west edge exactly (a clean basin-to-basin handoff,
+  no gap or overlap), north just clears the Persian Gulf's own northern tip near Kuwait, south is
+  a coastline-following curve (Somalia, the Maldives, Sri Lanka) with real "wiggle room" in the
+  open water between them, the same technique as WPAC's own south cutoff -- never a flat line at
+  the equator.
+  - **Two real hot/cold pockets, both checked against the raw climatology before adding anything
+    synthetic** (same discipline as every prior basin's own features):
+    - The **Persian Gulf** is one of the hottest bodies of seawater on Earth (~50m average depth,
+      nearly landlocked behind the Strait of Hormuz) -- raw August climatology already reached
+      32.9 C, itself real but still diluted by the coarse 2 deg grid the same way Gulf of
+      California's own narrow gulf was, given real published figures for the shallow southern
+      Gulf run into the mid-30s some years. Got the same shelf/edgeFade treatment as Gulf of
+      California (swings harder both ways -- colder in winter too, not just hotter in summer),
+      *plus* a new extension: the shelf zone also amplifies the interannual anomaly/ENSO signal,
+      not just the seasonal cycle, a real, physically-motivated consequence of having so little
+      thermal inertia -- this is the mechanism that actually delivers "especially hot in El Niño
+      years," not a hand-tuned ENSO multiplier. Caught and fixed a second, more fundamental issue
+      while verifying: the shelf boost alone was fully cancelled out by the existing
+      latitude-based `seaCeil` physical ceiling (a real, basin-independent safety limit tuned for
+      open-ocean physics) -- since the Gulf is a documented real *exception* to what its own
+      latitude would predict, it also needed its own local ceiling raised, not just a bigger
+      seasonal swing pushing against an unraised one. With both pieces in place, pure-climatology
+      testing (variability/ENSO zeroed out) shows a realistic 17 C winter low and 34.8 C
+      Aug/Sep peak, clearly hotter than the neighboring Gulf of Oman (32 C) at the same moment --
+      matching the real, well-documented seasonal character, not just a generically "hot" gulf.
+    - The **Somali upwelling ("the Great Whirl")** -- one of the strongest, fastest-developing
+      coastal upwelling systems on Earth, driven by the SW monsoon's Findlater Jet reversing the
+      Somali Current every June. Checked directly: the raw climatology's coldest July water sits
+      in a real, offshore-shifted pool around 50-54E/6-12N (not hugging the coast -- matches how
+      the real Great Whirl's cold wake is actually advected offshore), confirming the feature is
+      real but under-resolved. Modeled as an open-ocean dome (like EPAC's Costa Rica Dome) rather
+      than a coastal band (like WPAC's Vietnam upwelling), since that's the real shape here --
+      pure climatology testing shows the dome pulling the core down to ~22.5 C in August against
+      a ~27 C open-water baseline, a real ~4-5 C cold pool exactly during the SW monsoon and nowhere
+      near it (near zero by pre-monsoon April), matching the season the real Great Whirl is known for.
+  - Domain reaches into East Africa's Rift Valley lake region (Uganda/Kenya/Tanzania) on its own
+    western/southern edge, which turned out to already have real hand-sourced monthly figures in
+    `template.html`'s own `LK_SPECIAL` table (Victoria, Tanganyika, Malawi) -- present since the
+    original Atlantic build, presumably for a future basin exactly like this one, now finally used.
+  - 69 real cities across the Red Sea, Gulf of Aden/Horn of Africa, the Arabian Peninsula's Gulf
+    of Oman/Persian Gulf coast, Iran, Pakistan, both coasts of India, Sri Lanka, the Maldives,
+    Bangladesh and Myanmar -- deliberately not chasing the reference screenshot's own city density
+    into Central Asia/the Caucasus, since that reach is real for a *city list* (moisture/remnant
+    effects) but those cities sit far outside this basin's own tight domain box entirely (e.g.
+    Tashkent's 41.3N is north of even the padded box) -- a small number of genuinely far-inland
+    Indian cities (New Delhi, Ahmedabad, Bangalore, Hyderabad, Nagpur) still use the established
+    `sLat`/`sLon` nearest-real-water convention, same as every other basin's own inland cities.
+  - Cyclone terminology throughout (not "hurricane" or "typhoon" -- the region's own real name for
+    the storm type), and a season shading that reflects the real bimodal character of this basin
+    uniquely among the four live ones: Apr-Jun and Oct-Dec shaded, Jul-Sep left unshaded, since the
+    SW monsoon itself sharply suppresses cyclone formation during those months -- a real, well
+    documented seasonal gap the other basins' own single continuous season doesn't have.
+- **A real land-polygon bloat bug found and fixed in `make_geo.mjs`, affecting EPAC and WPAC too**
+  (shipped separately, ahead of this basin): `turf.bboxClip` on the whole world's landmasses (one
+  merged MultiPolygon, one part per continent/island) reports parts that don't intersect the clip
+  box at all as *present but with zero-point rings*, not absent -- the same failure shape already
+  fixed for lakes, just never caught in the land path because an empty-ring polygon happens to
+  bbox-cull to nothing before ever being drawn, invisible in the rendered map but not in the
+  shipped JSON: 77-90% of every basin's encoded land polygons built by this pipeline were empty.
+  Fixed at the source in `dropSliverPolygons`, with a defensive filter in `encodePolygons` too.
+  Verified byte-identical mask/b0/b1/real-land-content for both EPAC and WPAC against what was
+  already shipped -- pure cleanup, zero visual or functional change. Regenerating EPAC's geo data
+  along the way also activated its lakes for the first time (its own `DATA.lakes` had been empty
+  this whole time, the same gap WPAC's own build had already closed for itself).
 - **West Pacific basin added** -- the third live basin, and the first one built directly against
   the international date line on its *east* edge (100E-180) instead of its west, which turned up
   two real, basin-independent bugs in code every basin shares:

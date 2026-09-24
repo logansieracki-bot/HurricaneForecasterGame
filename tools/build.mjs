@@ -28,3 +28,4 @@ function build({ basin = 'atlantic', templatePath = join(ROOT, 'src/template.htm
 build({});
 build({ basin: 'eastpacific', templatePath: join(ROOT, 'src/template-eastpacific.html'), dataPath: join(ROOT, 'data/generated/eastpacific-data.json') });
 build({ basin: 'westpacific', templatePath: join(ROOT, 'src/template-wpac.html'), dataPath: join(ROOT, 'data/generated/westpacific-data.json') });
+build({ basin: 'nio', templatePath: join(ROOT, 'src/template-nio.html'), dataPath: join(ROOT, 'data/generated/nio-data.json') });

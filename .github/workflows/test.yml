@@ -42,6 +42,7 @@ jobs:
             dist/atlantic-sst-simulator.html
             dist/eastpacific-sst-simulator.html
             dist/westpacific-sst-simulator.html
+            dist/nio-sst-simulator.html
           if-no-files-found: error
 
       - name: Link the built HTML in the run summary
@@ -82,6 +83,7 @@ jobs:
           cp dist/atlantic-sst-simulator.html _site/dist/
           cp dist/eastpacific-sst-simulator.html _site/dist/
           cp dist/westpacific-sst-simulator.html _site/dist/
+          cp dist/nio-sst-simulator.html _site/dist/
 
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3

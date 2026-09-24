@@ -1,0 +1,1280 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>North Indian Ocean sea surface temperature simulator</title>
+<style>/*__LEAFLET_CSS__*/</style>
+<style>
+:root{
+  --ink:#121212; --panel:#1a1a1c; --line:rgba(255,255,255,.12);
+  --text:#e8e8e8; --dim:#999999; --ice:#efefef; --focus:#bdbdbd; --season:rgba(255,166,96,.14);
+  --font:"Avenir Next","Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,Roboto,"Helvetica Neue",sans-serif;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;background:var(--ink);color:var(--text);font-family:var(--font)}
+#map{position:absolute;inset:0;background:#10161c;outline:none}
+.leaflet-container{background:#10161c;font-family:var(--font)}
+.card{position:absolute;z-index:900;background:var(--panel);border:1px solid var(--line);border-radius:12px;
+  box-shadow:0 2px 12px rgba(0,0,0,.5)}
+button{font:inherit;color:inherit}
+button:focus-visible,input:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+
+/* clock */
+#clock{left:14px;top:14px;padding:12px 16px 12px;min-width:236px}
+#c-date{font-size:15px;font-weight:500;color:var(--dim)}
+#c-time{font-size:46px;font-weight:600;letter-spacing:-.025em;line-height:1.02;font-variant-numeric:tabular-nums}
+#c-time small{font-size:14px;font-weight:500;color:var(--dim);letter-spacing:.02em;margin-left:7px}
+#c-meta{font-size:12px;color:var(--dim);margin-top:3px}
+#year{display:grid;grid-template-columns:repeat(12,1fr);gap:2px;margin-top:11px}
+#year span{font-size:10px;text-align:center;color:var(--dim);padding:3px 0;border-radius:3px}
+#year span.hs{background:var(--season)}
+#year span.now{background:var(--ice);color:#141414;font-weight:700}
+#year-bar{height:2px;background:rgba(255,255,255,.1);border-radius:2px;margin-top:5px;overflow:hidden}
+#year-bar i{display:block;height:100%;width:0;background:var(--ice)}
+
+#enso{display:flex;align-items:center;gap:9px;margin-top:11px;font-size:11.5px;color:var(--dim)}
+#gauge{position:relative;flex:1;height:6px;background:rgba(255,255,255,.1);border-radius:3px}
+#gauge:before{content:"";position:absolute;left:50%;top:-3px;bottom:-3px;width:1px;background:rgba(255,255,255,.4)}
+#gauge-fill{position:absolute;top:0;bottom:0;border-radius:3px;left:50%;width:0}
+#enso b{min-width:36px;text-align:right;color:var(--text);font-size:12px;font-variant-numeric:tabular-nums}
+#enso-l{font-size:11.5px;color:var(--dim);margin-top:3px}
+
+/* transport dock */
+#dock{left:50%;transform:translateX(-50%);bottom:16px;display:flex;align-items:center;gap:4px;padding:8px 12px 8px 8px}
+.btn{width:40px;height:40px;border-radius:10px;border:0;background:transparent;display:grid;place-items:center;cursor:pointer}
+.btn:hover{background:rgba(255,255,255,.09)}
+.btn svg{width:20px;height:20px;fill:currentColor}
+#b-play{width:50px;height:50px;border-radius:50%;background:var(--ice);color:#141414;margin:0 4px}
+#b-play:hover{background:#fff}
+#b-play svg{width:22px;height:22px}
+#speed{min-width:132px;padding-left:8px;line-height:1.15}
+#speed b{display:block;font-size:21px;font-weight:600;font-variant-numeric:tabular-nums}
+#speed span{font-size:11.5px;color:var(--dim)}
+
+/* side panel */
+#panel{right:14px;top:14px;width:296px;max-height:calc(100% - 188px);overflow:auto;padding:12px 16px 14px}
+#panel header{display:flex;align-items:center;justify-content:space-between}
+#panel h2{font-size:14px;font-weight:600;margin:0}
+.subhead{display:flex;align-items:center;justify-content:space-between;width:100%;background:transparent;border:0;border-top:1px solid var(--line);text-align:left;font:inherit;font-size:13px;font-weight:600;color:var(--text);margin:18px 0 2px;padding:14px 0 2px;cursor:pointer}
+.subsec:first-child .subhead{margin-top:0;padding-top:0;border-top:0}
+.subhead .chev{font-style:normal;color:var(--dim);font-size:11px;transition:transform .15s ease}
+.subsec.collapsed .subhead .chev{transform:rotate(-90deg)}
+.subsec.collapsed .subbody{display:none}
+#panel p.hint:empty{display:none}
+#panel p.hint{font-size:11.5px;color:var(--dim);margin:0 0 6px;line-height:1.4}
+#collapse{width:28px;height:28px;border:0;background:transparent;border-radius:6px;cursor:pointer;color:var(--dim)}
+#collapse:hover{background:rgba(255,255,255,.09);color:var(--text)}
+#panel.collapsed .body{display:none}
+#panel.collapsed{width:auto}
+.row{margin:12px 0 0}
+.seg{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;background:rgba(255,255,255,.07);border-radius:9px;padding:3px;gap:2px}
+.seg button{border:0;background:transparent;border-radius:7px;padding:6px 4px;font-size:12.5px;cursor:pointer;color:var(--dim)}
+.seg button[aria-pressed=true]{background:var(--ice);color:#141414;font-weight:600}
+.sl{display:flex;justify-content:space-between;align-items:baseline;font-size:12.5px;margin-bottom:2px}
+.sl output{font-variant-numeric:tabular-nums;color:var(--dim);font-size:12px}
+input[type=range]{width:100%;margin:2px 0 0;accent-color:#d4d4d4;height:20px}
+.chk{display:flex;align-items:center;gap:8px;font-size:12.5px;margin-top:9px;cursor:pointer}
+.chk input{accent-color:#d4d4d4;width:15px;height:15px;margin:0}
+.seedrow{display:flex;gap:6px;align-items:center;margin-top:12px;font-size:12.5px}
+.seedrow input[type=number]{width:96px;background:rgba(255,255,255,.07);border:1px solid var(--line);border-radius:7px;color:var(--text);padding:5px 8px;font:inherit;font-variant-numeric:tabular-nums}
+.pill{border:1px solid var(--line);background:rgba(255,255,255,.06);border-radius:8px;padding:5px 10px;font-size:12.5px;cursor:pointer}
+.pill:hover{background:rgba(255,255,255,.13)}
+
+/* readout + legend */
+#readout{left:14px;bottom:16px;padding:8px 14px;min-width:232px}
+#readout b{font-size:19px;font-weight:600;font-variant-numeric:tabular-nums}
+#readout div{font-size:12px;color:var(--dim);font-variant-numeric:tabular-nums;margin-top:1px}
+#legend{right:14px;bottom:34px;width:292px;padding:10px 14px 9px}
+#legend canvas{display:block;width:100%;height:11px;border-radius:3px}
+#ticks{position:relative;height:16px;margin-top:3px;font-size:11px;color:var(--dim);font-variant-numeric:tabular-nums}
+#ticks span{position:absolute;transform:translateX(-50%);white-space:nowrap}
+#ticks span.key{color:var(--text);font-weight:600}
+#legend-cap{font-size:11.5px;color:var(--dim);margin-top:2px}
+
+.themes{display:grid;grid-template-columns:repeat(2,1fr);gap:6px;margin-top:4px}
+.themes button{border:1px solid var(--line);background:rgba(255,255,255,.05);border-radius:9px;padding:6px 4px 5px;text-align:center;font-size:11.5px;cursor:pointer;color:var(--dim);transition:background .12s ease,border-color .12s ease,color .12s ease}
+.themes button i{display:block;height:20px;border-radius:5px;margin:0 auto 4px;border:1px solid var(--ice)}
+.themes button:hover{background:rgba(255,255,255,.11);color:var(--text)}
+.themes button[aria-pressed=true]{border-color:var(--ice);background:rgba(255,255,255,.15);color:var(--text);font-weight:600}
+#attr{position:absolute;right:0;bottom:0;z-index:900;font-size:10.5px;color:var(--dim);background:#1a1a1c;padding:2px 8px;border-top-left-radius:6px;pointer-events:none}
+
+/* notices + loader */
+#toast{left:50%;top:16px;transform:translateX(-50%);padding:9px 16px;font-size:13px;display:none}
+#city-tip{padding:9px 12px;max-width:210px;pointer-events:none;display:none;z-index:950}
+#city-tip b{font-size:13px;font-weight:600;display:block}
+#city-tip div{font-size:11.5px;color:var(--dim);margin-top:3px;line-height:1.5}
+#city-tip hr{border:0;border-top:1px solid var(--line);margin:6px 0 5px}
+#loading{position:absolute;inset:0;z-index:2000;display:grid;place-items:center;background:var(--ink);font-size:14px;color:var(--dim)}
+
+/* leaflet chrome */
+.leaflet-bottom.leaflet-left{margin-bottom:70px}
+.leaflet-control-zoom{border:1px solid var(--line)!important;border-radius:10px!important;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.5)}
+.leaflet-control-zoom a{background:var(--panel)!important;color:var(--text)!important;border-bottom:1px solid var(--line)!important}
+.leaflet-control-zoom a:hover{background:rgba(255,255,255,.12)!important}
+.leaflet-control-attribution{background:#1a1a1c!important;color:var(--dim)!important;font-size:10.5px}
+.leaflet-control-attribution a{color:#bdbdbd!important}
+canvas.overlay{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none}
+
+@media (max-width:1040px){
+  #readout{bottom:84px}
+  #legend{bottom:112px}
+  #panel{max-height:calc(100% - 300px)}
+}
+@media (max-width:640px){
+  #clock{min-width:0;padding:9px 12px}
+  #c-time{font-size:34px}
+  #panel{width:calc(100% - 28px);top:auto;bottom:196px;max-height:38%}
+  #legend{width:calc(100% - 28px);bottom:112px;right:14px}
+  #readout{display:none}
+  .leaflet-control-zoom{display:none}
+  #dock{width:calc(100% - 28px);justify-content:space-between}
+  #speed{min-width:0}
+  #speed span{display:none}
+}
+</style>
+</head>
+<body>
+<div id="map" tabindex="-1"></div>
+
+<section id="clock" class="card" aria-label="Simulation clock">
+  <div id="c-date">Apr 1, 2026</div>
+  <div id="c-time">00:00<small>UTC</small></div>
+  <div id="c-meta">Day 1</div>
+  <div id="year" title="Months of the year. Shaded: North Indian Ocean cyclone season (Apr–Jun, Oct–Dec -- the monsoon itself, Jul–Sep, sharply suppresses formation)"></div>
+  <div id="year-bar"><i></i></div>
+  <div id="enso" title="Niño 3.4 sea surface temperature anomaly: the El Niño / La Niña index">
+    <span>Niño 3.4</span><div id="gauge"><i id="gauge-fill"></i></div><b id="enso-v">+0.0</b>
+  </div>
+  <div id="enso-l">Neutral</div>
+</section>
+
+<aside id="panel" class="card" aria-label="Layers and experiments">
+  <header><h2>Ocean layers</h2><button id="collapse" aria-label="Collapse panel" title="Collapse panel">&#9662;</button></header>
+  <div class="body">
+    <section class="subsec" id="sec-custom">
+      <button class="subhead" aria-expanded="true" aria-controls="sec-custom-b"><span>Customization</span><i class="chev">&#9662;</i></button>
+      <div class="subbody" id="sec-custom-b">
+        <div class="row seg" id="seg-view" role="group" aria-label="Map layer">
+          <button data-v="sst" aria-pressed="true">Temperature</button>
+          <button data-v="anom" aria-pressed="false">SST Anomaly</button>
+        </div>
+        <div class="row">
+          <div class="sl"><label for="op">Overlay strength</label><output id="op-o">85%</output></div>
+          <input id="op" type="range" min="0" max="100" value="85">
+        </div>
+        <div class="row">
+          <div class="sl"><span>Map theme</span></div>
+          <div id="themes" class="themes" role="group" aria-label="Map theme"></div>
+          <p class="hint" id="th-note"></p>
+        </div>
+        <label class="chk" id="detail-row"><input type="checkbox" id="detail" checked> Sharper imagery when zoomed in</label>
+        <label class="chk"><input type="checkbox" id="show-sst" checked> Show sea temperature</label>
+        <label class="chk"><input type="checkbox" id="borders" checked> State and country lines</label>
+        <label class="chk"><input type="checkbox" id="cities" checked> City markers</label>
+        <div class="row">
+          <div class="sl"><span>Coordinates</span></div>
+          <div class="seg" id="seg-grid" role="group" aria-label="Coordinate grid">
+            <button data-g="off" aria-pressed="true">Off</button><button data-g="grid" aria-pressed="false">Grid</button><button data-g="labels" aria-pressed="false">Labels</button>
+          </div>
+        </div>
+        <label class="chk"><input type="checkbox" id="l265" checked> 26.5 °C line (cyclone threshold)</label>
+        <label class="chk"><input type="checkbox" id="l2"> Isotherms every 2 °C</label>
+      </div>
+    </section>
+    <section class="subsec collapsed" id="sec-exp">
+      <button class="subhead" aria-expanded="false" aria-controls="sec-exp-b"><span>Experimentation</span><i class="chev">&#9662;</i></button>
+      <div class="subbody" id="sec-exp-b">
+        <p class="hint">Normal = 1991–2020 average.</p>
+        <div class="row">
+          <div class="sl"><label for="p-warm">Warming</label><output id="p-warm-o">+0.0 °C</output></div>
+          <input id="p-warm" type="range" min="-3" max="4" step="0.1" value="0">
+        </div>
+        <div class="row">
+          <div class="sl"><label for="p-var">Year-to-year variability</label><output id="p-var-o">1.0×</output></div>
+          <input id="p-var" type="range" min="0" max="3" step="0.1" value="1">
+        </div>
+        <div class="row">
+          <div class="sl"><label for="p-sea">Seasonal swing</label><output id="p-sea-o">1.0×</output></div>
+          <input id="p-sea" type="range" min="0" max="2" step="0.05" value="1">
+        </div>
+        <div class="row">
+          <div class="sl"><label for="p-feat">Currents and upwelling</label><output id="p-feat-o">1.0×</output></div>
+          <input id="p-feat" type="range" min="0" max="2" step="0.05" value="1">
+        </div>
+        <div class="row">
+          <div class="sl"><label for="p-enso">El Niño / La Niña influence</label><output id="p-enso-o">1.0×</output></div>
+          <input id="p-enso" type="range" min="0" max="4" step="0.05" value="1">
+        </div>
+        <div class="row">
+          <div class="sl"><label for="p-ensonow">Set ENSO now</label><output id="p-ensonow-o">Neutral</output></div>
+          <input id="p-ensonow" type="range" min="-3" max="3.4" step="0.1" value="0">
+        </div>
+        <div class="seedrow">
+          <label for="seed">Seed</label><input id="seed" type="number" min="1" max="999999" step="1">
+          <button class="pill" id="b-newseed" title="Pick a new random year and restart">New seed</button>
+          <button class="pill" id="b-reset" title="Reset the sliders (seed-nudged ones go back to this seed's values)">Reset</button>
+        </div>
+        <label class="chk"><input type="checkbox" id="seed-vary" checked> Seed nudges swing, currents and El Niño</label>
+      </div>
+    </section>
+  </div>
+</aside>
+
+<div id="readout" class="card" aria-live="off"><b>–</b><div>Move the pointer over the ocean</div></div>
+
+<div id="legend" class="card">
+  <canvas id="legend-canvas" width="264" height="11"></canvas>
+  <div id="ticks"></div>
+  <div id="legend-cap">Sea surface temperature, °C</div>
+</div>
+
+<div id="toast" class="card" role="status"></div>
+<div id="city-tip" class="card" role="tooltip"><b></b><div></div></div>
+<div id="attr"></div>
+
+<nav id="dock" class="card" aria-label="Playback">
+  <button class="btn" id="b-restart" aria-label="Restart at April 1" title="Restart at April 1 (R)">
+    <svg viewBox="0 0 24 24"><path d="M12 5V2L7 6.5 12 11V8c3.3 0 6 2.7 6 6s-2.7 6-6 6-6-2.7-6-6H4c0 4.4 3.6 8 8 8s8-3.6 8-8-3.6-8-8-8z"/></svg>
+  </button>
+  <button class="btn" id="b-slower" aria-label="Slower" title="Slower ( [ )">
+    <svg viewBox="0 0 24 24"><path d="M11 6v12l-8.5-6zM21 6v12l-8.5-6z"/></svg>
+  </button>
+  <button class="btn" id="b-play" aria-label="Pause" title="Pause / play (Space)">
+    <svg viewBox="0 0 24 24" id="ic-pause"><path d="M6 4h4v16H6zM14 4h4v16h-4z"/></svg>
+    <svg viewBox="0 0 24 24" id="ic-play" style="display:none"><path d="M7 4v16l13-8z"/></svg>
+  </button>
+  <button class="btn" id="b-faster" aria-label="Faster" title="Faster ( ] )">
+    <svg viewBox="0 0 24 24"><path d="M13 6v12l8.5-6zM3 6v12l8.5-6z"/></svg>
+  </button>
+  <div id="speed"><b id="speed-x">1×</b><span id="speed-sub">+1 h every 60 ms</span></div>
+</nav>
+
+<div id="loading">Building the ocean grid…</div>
+
+<script type="application/json" id="sim-data">/*__DATA__*/</script>
+<script>/*__LEAFLET_JS__*/</script>
+<script>
+(function () {
+'use strict';
+const $ = (id) => document.getElementById(id);
+const DATA = JSON.parse($('sim-data').textContent);
+
+/* ------------------------------------------------------------------ *
+ *  Grid + decoding
+ * ------------------------------------------------------------------ */
+const DM = DATA.domain;
+const NX = DM.nx, NY = DM.ny, RES = DM.res, LON0 = DM.lon0, LAT1 = DM.lat1;
+const CNX = DM.cnx, CNY = DM.cny, RATIO = DM.cres / DM.res;
+const N = NX * NY, CN = CNX * CNY, K = DATA.K;
+const DEG = Math.PI / 180;
+
+function b64bytes(s) { const b = atob(s), u = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); return u; }
+function b64i16(s) { const u = b64bytes(s); return new Int16Array(u.buffer, 0, u.length >> 1); }
+
+const land = new Uint8Array(N);                 // 1 = land (0.25° nodes)
+{ const mb = b64bytes(DATA.mask); for (let k = 0; k < N; k++) land[k] = (mb[k >> 3] >> (7 - (k & 7))) & 1; }
+
+/* No masking on the west/east/north edges: this grid's box edges already ARE the real basin
+   lines there, or close enough not to need a coastline-following curve. West (30E) sits a
+   couple degrees past the Red Sea's own two northern gulfs (Suez, Aqaba), so the whole Red Sea
+   is real in-basin water -- along with the Persian Gulf and Gulf of Oman, unlike the Atlantic's
+   Mediterranean or EPAC's Gulf of Mexico, these are genuinely *part* of this basin, not a
+   different ocean to mask out. East (100E) matches WPAC's own west edge exactly, so the two
+   basins hand off cleanly with no gap or overlap in what's simulated. North (32N) just clears
+   the Persian Gulf's own northern tip near Kuwait, with real inland-city context (via sLat/sLon
+   sampling, same convention as every other basin's own inland cities) reaching further than
+   that without needing the SST grid itself to follow.
+
+   The *south* edge is the real case needing a cutoff, and like every other basin's own version
+   of this, not a strict line at the equator: real North Indian Ocean cyclones are almost always
+   north of it, but the water immediately south isn't uniformly "a different basin" either --
+   open water between Somalia and the Maldives, or east of the Maldives, is unambiguous context,
+   while water hugging Somalia's own coast, the Maldives themselves, or south of Sri Lanka needs
+   the curve to track roughly where the real coastline/archipelago actually sits. This curve
+   hugs those landmarks and only dips further south in the open water between them, the same
+   technique as WPAC's own south cutoff. */
+const SOUTH_LON = [30, 40, 44, 48, 55, 65, 73, 78, 85, 93, 100];
+const SOUTH_LAT = [12, 12, 8, 0, -4, -6, -2, -3, 0, 1, 2];
+const outOfBasin = new Uint8Array(N);
+{
+  const colCut = new Float32Array(NX);
+  for (let i = 0; i < NX; i++) colCut[i] = interp1(SOUTH_LON, SOUTH_LAT, LON0 + i * RES);
+  for (let j = 0; j < NY; j++) {
+    const lat = LAT1 - j * RES, o = j * NX;
+    for (let i = 0; i < NX; i++) { if (lat < colCut[i]) outOfBasin[o + i] = 1; }
+  }
+}
+
+const climC = [];                               // 12 coarse monthly climatologies (°C)
+{ const a = b64i16(DATA.clim); for (let m = 0; m < 12; m++) { const f = new Float32Array(CN); for (let c = 0; c < CN; c++) f[c] = a[m * CN + c] / 100; climC.push(f); } }
+const eofC = new Float32Array(K * CN);          // interannual patterns (°C per +1σ of each mode)
+{ const a = b64i16(DATA.eof); for (let q = 0; q < a.length; q++) eofC[q] = a[q] / 1000; }
+const ensoC = new Float32Array(3 * CN);          // North Indian Ocean response to Niño 3.4 at lags 0, 3, 6 months (°C per °C)
+{ const a = b64i16(DATA.enso); for (let q = 0; q < a.length; q++) ensoC[q] = a[q] / 1000; }
+const PHI_DAY = DATA.phi.map((p) => Math.pow(Math.max(0.3, p), 1 / 30.44));
+
+/* Catmull-Rom weights */
+function cr(t) { const t2 = t * t, t3 = t2 * t; return [-0.5 * t3 + t2 - 0.5 * t, 1.5 * t3 - 2.5 * t2 + 1, -1.5 * t3 + 2 * t2 + 0.5 * t, 0.5 * t3 - 0.5 * t2]; }
+
+/* Separable bicubic upsampler: coarse (2°) -> fine (0.25°) */
+const upsample = (function () {
+  const cI = new Int32Array(NX * 4), cW = new Float32Array(NX * 4);
+  for (let i = 0; i < NX; i++) { const f = i / RATIO, c1 = Math.floor(f), w = cr(f - c1); for (let q = 0; q < 4; q++) { cI[i * 4 + q] = Math.min(CNX - 1, Math.max(0, c1 - 1 + q)); cW[i * 4 + q] = w[q]; } }
+  const rI = new Int32Array(NY * 4), rW = new Float32Array(NY * 4);
+  for (let j = 0; j < NY; j++) { const f = j / RATIO, r1 = Math.floor(f), w = cr(f - r1); for (let q = 0; q < 4; q++) { rI[j * 4 + q] = Math.min(CNY - 1, Math.max(0, r1 - 1 + q)); rW[j * 4 + q] = w[q]; } }
+  const tmp = new Float32Array(CNY * NX);
+  return function (src, dst) {
+    for (let r = 0; r < CNY; r++) {
+      const ro = r * CNX, to = r * NX;
+      for (let i = 0; i < NX; i++) {
+        const b = i * 4, s0 = src[ro + cI[b]], s1 = src[ro + cI[b + 1]], s2 = src[ro + cI[b + 2]], s3 = src[ro + cI[b + 3]];
+        let v = s0 * cW[b] + s1 * cW[b + 1] + s2 * cW[b + 2] + s3 * cW[b + 3];
+        // Clamp to the local min/max: Catmull-Rom can overshoot past its own input range near a
+        // sharp jump in the coarse (2 deg) data -- e.g. a narrow gulf where one coarse cell is
+        // mostly open water and its neighbor is mostly land-filled coastline. Unclamped, that
+        // shows up as a visible band of over/undershoot in the upsampled field; clamping is a
+        // no-op everywhere the curve doesn't overshoot, i.e. almost everywhere else.
+        const lo = Math.min(s0, s1, s2, s3), hi = Math.max(s0, s1, s2, s3);
+        tmp[to + i] = v < lo ? lo : v > hi ? hi : v;
+      }
+    }
+    for (let j = 0; j < NY; j++) {
+      const b = j * 4, o0 = rI[b] * NX, o1 = rI[b + 1] * NX, o2 = rI[b + 2] * NX, o3 = rI[b + 3] * NX;
+      const w0 = rW[b], w1 = rW[b + 1], w2 = rW[b + 2], w3 = rW[b + 3], d = j * NX;
+      for (let i = 0; i < NX; i++) {
+        const t0 = tmp[o0 + i], t1 = tmp[o1 + i], t2 = tmp[o2 + i], t3 = tmp[o3 + i];
+        let v = t0 * w0 + t1 * w1 + t2 * w2 + t3 * w3;
+        const lo = Math.min(t0, t1, t2, t3), hi = Math.max(t0, t1, t2, t3);
+        dst[d + i] = v < lo ? lo : v > hi ? hi : v;
+      }
+    }
+  };
+})();
+
+const climF = [], annual = new Float32Array(N);
+for (let m = 0; m < 12; m++) { const f = new Float32Array(N); upsample(climC[m], f); climF.push(f); for (let k = 0; k < N; k++) annual[k] += f[k] / 12; }
+
+/* ------------------------------------------------------------------ *
+ *  Static geography: coast distances, continental mask
+ * ------------------------------------------------------------------ */
+function chamfer(src) {           // src: 1 where source. returns distance in degrees
+  const d = new Float32Array(N), BIG = 1e6;
+  for (let k = 0; k < N; k++) d[k] = src[k] ? 0 : BIG;
+  for (let j = 0; j < NY; j++) for (let i = 0; i < NX; i++) {
+    const k = j * NX + i; let v = d[k];
+    if (i > 0) v = Math.min(v, d[k - 1] + 1);
+    if (j > 0) { v = Math.min(v, d[k - NX] + 1); if (i > 0) v = Math.min(v, d[k - NX - 1] + 1.414); if (i < NX - 1) v = Math.min(v, d[k - NX + 1] + 1.414); }
+    d[k] = v;
+  }
+  for (let j = NY - 1; j >= 0; j--) for (let i = NX - 1; i >= 0; i--) {
+    const k = j * NX + i; let v = d[k];
+    if (i < NX - 1) v = Math.min(v, d[k + 1] + 1);
+    if (j < NY - 1) { v = Math.min(v, d[k + NX] + 1); if (i < NX - 1) v = Math.min(v, d[k + NX + 1] + 1.414); if (i > 0) v = Math.min(v, d[k + NX - 1] + 1.414); }
+    d[k] = v;
+  }
+  for (let k = 0; k < N; k++) d[k] *= RES;
+  return d;
+}
+const cont = new Uint8Array(N);   // continents + Greenland only (islands excluded)
+{
+  const seen = new Uint8Array(N), q = new Int32Array(N);
+  for (let s = 0; s < N; s++) {
+    if (!land[s] || seen[s]) continue;
+    let h = 0, t = 0; q[t++] = s; seen[s] = 1;
+    while (h < t) {
+      const k = q[h++], i = k % NX, j = (k / NX) | 0;
+      if (i > 0 && land[k - 1] && !seen[k - 1]) { seen[k - 1] = 1; q[t++] = k - 1; }
+      if (i < NX - 1 && land[k + 1] && !seen[k + 1]) { seen[k + 1] = 1; q[t++] = k + 1; }
+      if (j > 0 && land[k - NX] && !seen[k - NX]) { seen[k - NX] = 1; q[t++] = k - NX; }
+      if (j < NY - 1 && land[k + NX] && !seen[k + NX]) { seen[k + NX] = 1; q[t++] = k + NX; }
+    }
+    if (t >= 2500) for (let u = 0; u < t; u++) cont[q[u]] = 1;
+  }
+}
+const contDist = chamfer(cont);
+
+/* ------------------------------------------------------------------ *
+ *  Ocean features the 2° climatology cannot resolve
+ * ------------------------------------------------------------------ */
+const colOf = (lon) => Math.round((lon - LON0) / RES), rowOf = (lat) => Math.round((LAT1 - lat) / RES);
+function rect(lon0, lon1, lat0, lat1) { const i0 = colOf(lon0), i1 = colOf(lon1), j0 = rowOf(lat1), j1 = rowOf(lat0); return { i0, j0, w: i1 - i0 + 1, h: j1 - j0 + 1 }; }
+
+function interp1(xs, ys, x) { if (x <= xs[0]) return ys[0]; for (let i = 1; i < xs.length; i++) if (x <= xs[i]) { const t = (x - xs[i - 1]) / (xs[i] - xs[i - 1]); return ys[i - 1] + t * (ys[i] - ys[i - 1]); } return ys[ys.length - 1]; }
+
+/* Persian Gulf (Arabian Gulf): a narrow, extremely shallow (~50m average), nearly landlocked
+   gulf whose surface water runs hotter than almost anywhere else on Earth -- and colder in
+   winter than the open Gulf of Oman just outside it, the same both-directions swing the Gulf of
+   California and Red Sea/Yellow Sea family of enclosed seas show. Checked directly against the
+   raw climatology: August already reaches 32.9C at its own coarse grid cells (real, but real
+   published figures for the shallow southern Gulf run into the mid-30s some years, especially
+   during El Nino -- so the coarse 2 deg grid is diluting the true extreme the same way it did
+   for the narrow Gulf of California, not inventing a feature from nothing). Faded in smoothly at
+   the edges (edgeFade) instead of an on/off box, same technique as Gulf of California. Unlike
+   that feature, this one also amplifies the *interannual* anomaly/ENSO signal in the Gulf, not
+   just the seasonal cycle -- a real, physically-motivated consequence of being this shallow:
+   whatever is forcing the water (seasonal sun angle, or a warm interannual swing), a thin water
+   column with little thermal inertia responds to it harder than the open ocean does. */
+const PG_LAT0 = 24, PG_LAT1 = 30.5, PG_LON0 = 48, PG_LON1 = 57, PG_FEATHER = 1.5;
+function edgeFade(v, lo, hi, feather) {
+  if (v < lo - feather || v > hi + feather) return 0;
+  if (v < lo) return 0.5 - 0.5 * Math.cos(Math.PI * (v - (lo - feather)) / feather);
+  if (v > hi) return 0.5 - 0.5 * Math.cos(Math.PI * ((hi + feather) - v) / feather);
+  return 1;
+}
+let pgIdx, pgK, pgAnomAmp, pgCeilBoost;
+{ const idx = [], amps = []; pgAnomAmp = new Float32Array(N).fill(1); pgCeilBoost = new Float32Array(N);
+  for (let j = 0; j < NY; j++) { const lat = LAT1 - j * RES, latG = edgeFade(lat, PG_LAT0, PG_LAT1, PG_FEATHER); if (latG <= 0) continue;
+    for (let i = 0; i < NX; i++) { const lon = LON0 + i * RES, lonG = edgeFade(lon, PG_LON0, PG_LON1, PG_FEATHER); if (lonG <= 0) continue;
+      const k = j * NX + i; if (land[k] || contDist[k] > 2.5) continue; const g = latG * lonG;
+      idx.push(k); amps.push(0.9 * Math.exp(-contDist[k] / 1.0) * g); pgAnomAmp[k] = 1 + 0.6 * g;
+      // The latitude-based seaCeil physical ceiling below assumes open-ocean mixing depth --
+      // real, but wrong for a ~50m-deep, nearly landlocked gulf: the Persian Gulf is a
+      // documented real exception to what its latitude alone would predict (published summer
+      // peaks reach the mid-30s C some years), so raise the local ceiling here rather than let
+      // the universal clamp silently cancel out the shelf boost above it.
+      pgCeilBoost[k] = 4 * Math.exp(-contDist[k] / 1.0) * g; } }
+  pgIdx = Int32Array.from(idx); pgK = Float32Array.from(amps); }
+/* Somali upwelling ("the Great Whirl"): one of the strongest, fastest-developing coastal
+   upwelling systems on Earth, driven by the SW monsoon's Findlater Jet reversing the Somali
+   Current each June. Checked directly against the raw climatology: a real cold pool shows up in
+   July centered around 50-54E/6-12N (open water off the Horn of Africa, not hugging the
+   coastline itself -- the real Great Whirl's cold wake is advected offshore, same as the
+   satellite record shows), a good deal warmer than the real, well-published SST drop the most
+   intense years produce there. Modeled as an open-ocean dome like EPAC's Costa Rica Dome rather
+   than a coastal band like Vietnam's upwelling, since that's the real shape of this feature --
+   centered offshore, not distance-from-land. */
+const SOM_LON = 51, SOM_LAT = 9, SOM_RX = 3.5, SOM_RY = 4.5;
+const R_SOM = rect(SOM_LON - 3 * SOM_RX, SOM_LON + 3 * SOM_RX, SOM_LAT - 3 * SOM_RY, SOM_LAT + 3 * SOM_RY);
+
+/* ------------------------------------------------------------------ *
+ *  Simulation state (seeded)
+ * ------------------------------------------------------------------ */
+const START_YEAR = new Date().getUTCFullYear();
+const START_MS = Date.UTC(START_YEAR, 3, 1, 0, 0, 0);
+const P = { warming: 0, variability: 1, seasonal: 1, features: 1, enso: 1, seed: 1 };
+let rs = 1;
+function rand() { rs |= 0; rs = rs + 0x6D2B79F5 | 0; let t = Math.imul(rs ^ rs >>> 15, 1 | rs); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }
+function randn() { let u = 0; while (u === 0) u = rand(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * rand()); }
+
+
+/* ENSO: a stochastic oscillator (3–5 year rhythm, El Niños stronger than La Niñas, biggest in winter) calibrated to the ERSST Niño 3.4 record */
+const ENSO_B = 0.08, ENSO_LIM = 3.4, ENSO_NORM = 1 / Math.sqrt(1 + 2 * ENSO_B * ENSO_B);
+const ENSO_ENV = [1.159, 0.95, 0.72, 0.59, 0.588, 0.613, 0.679, 0.777, 0.876, 1.048, 1.162, 1.213];
+const E_TH = 2 * Math.PI / 45 / 30.4375, E_RHO = Math.pow(0.93, 1 / 30.4375), E_SIG = Math.sqrt(1 - E_RHO * E_RHO), E_C = Math.cos(E_TH), E_S = Math.sin(E_TH);
+const E_HIST = 200, ensoHist = new Float32Array(E_HIST);
+let ensoZr = 0, ensoZi = 0, n34 = 0, ensoHi = 0;
+function ensoEnv(doy) { const p = doy / 365.25 * 12 - 0.5, i = Math.floor(p), t = p - i, M = (x) => ((x % 12) + 12) % 12; return ENSO_ENV[M(i)] * (1 - t) + ENSO_ENV[M(i + 1)] * t; }
+function ensoRaw(doy) { const x = ensoZr, y = (x + ENSO_B * (x * x - 1)) * ENSO_NORM; return ENSO_LIM * Math.tanh(ensoEnv(doy) * y / ENSO_LIM); }
+function ensoStep(doy) {
+  const a = randn(), b = randn(), zr = E_RHO * (ensoZr * E_C - ensoZi * E_S) + E_SIG * a, zi = E_RHO * (ensoZr * E_S + ensoZi * E_C) + E_SIG * b;
+  ensoZr = zr; ensoZi = zi; n34 += (ensoRaw(doy) - n34) * 0.095;
+  ensoHist[ensoHi] = n34; ensoHi = (ensoHi + 1) % E_HIST;
+}
+const ensoLag = (days) => ensoHist[((ensoHi - 1 - days) % E_HIST + E_HIST) % E_HIST];
+function forceEnso(target) {           // jump to a chosen state; the North Indian Ocean then responds with its natural 3–6 month delay
+  const d = simDate(simHour), doy = (d.getTime() - Date.UTC(d.getUTCFullYear(), 0, 1)) / 86400000, yn = target / ensoEnv(doy) / ENSO_NORM;
+  ensoZr = Math.abs(target) < 0.05 ? 0 : (-1 + Math.sqrt(Math.max(0, 1 + 4 * ENSO_B * (ENSO_B + yn)))) / (2 * ENSO_B); ensoZi = 0;
+  n34 = target; ensoHist[(ensoHi - 1 + E_HIST) % E_HIST] = target; anomDirty = true; updateEnsoUI(); refresh();
+}
+
+let simHour = 0, dayCount = 0, pc = new Float32Array(K), gapIdx = 0;
+function initSim(seed) {
+  P.seed = seed; rs = (seed * 2654435761) >>> 0 || 1;
+  for (let k = 0; k < K; k++) pc[k] = randn();
+  gapIdx = randn() * 0.4; dayCount = 0; simHour = 0;
+  ensoZr = randn(); ensoZi = randn(); n34 = 0; ensoHist.fill(0); ensoHi = 0;
+  for (let d = -10950; d < 0; d++) ensoStep((((134 + d) % 365.25) + 365.25) % 365.25);   // 30-year spin-up ending on 15 May
+  anomDirty = true;
+}
+function stepDay() {
+  dayCount++;
+  { const dd = simDate(dayCount * 24); ensoStep((dd.getTime() - Date.UTC(dd.getUTCFullYear(), 0, 1)) / 86400000); }
+  for (let k = 0; k < K; k++) pc[k] = PHI_DAY[k] * pc[k] + Math.sqrt(1 - PHI_DAY[k] * PHI_DAY[k]) * randn();
+  const pg = Math.exp(-1 / 8); gapIdx = pg * gapIdx + Math.sqrt(1 - pg * pg) * randn();   // ~1-week-correlated gap-wind burst index, shared across the three jets (same synoptic cold-front passages drive all of them)
+  anomDirty = true;
+}
+function simDate(h) { return new Date(START_MS + h * 3600000); }
+
+/* ------------------------------------------------------------------ *
+ *  Field computation
+ * ------------------------------------------------------------------ */
+const sst = new Float32Array(N), normal = new Float32Array(N), diff = new Float32Array(N), featN = new Float32Array(N), featD = new Float32Array(N);
+const anomC = new Float32Array(CN), anomF = new Float32Array(N), ensoCo = new Float32Array(CN), ensoF = new Float32Array(N);
+let anomDirty = true;
+const WARM_PEAK_BIAS = 1.0;   // deg C added at the seasonal peak (see computeField) to correct a cool bias there
+
+function computeField() {
+  const d = simDate(simHour), y = d.getUTCFullYear(), doy = (d.getTime() - Date.UTC(y, 0, 1)) / 86400000;
+  const ylen = ((y % 4 === 0 && y % 100 !== 0) || y % 400 === 0) ? 366 : 365, f = doy / ylen;
+  const p = f * 12 - 0.5, m1 = Math.floor(p), w = cr(p - m1), M = (x) => ((x % 12) + 12) % 12;
+  const A0 = climF[M(m1 - 1)], A1 = climF[M(m1)], A2 = climF[M(m1 + 1)], A3 = climF[M(m1 + 2)];
+  const w0 = w[0], w1 = w[1], w2 = w[2], w3 = w[3];
+
+  if (anomDirty) {
+    anomC.fill(0);
+    for (let k = 0; k < K; k++) { const c = pc[k]; if (!c) continue; const o = k * CN; for (let q = 0; q < CN; q++) anomC[q] += c * eofC[o + q]; }
+    upsample(anomC, anomF);
+    const c0 = ensoLag(0), c3 = ensoLag(91), c6 = ensoLag(183);
+    for (let q = 0; q < CN; q++) ensoCo[q] = c0 * ensoC[q] + c3 * ensoC[CN + q] + c6 * ensoC[2 * CN + q];
+    upsample(ensoCo, ensoF); anomDirty = false;
+  }
+
+  /* --- features: featN = climatological (normal) pattern, featD = this year's departures from it --- */
+  featN.fill(0); featD.fill(0);
+  for (let n = 0; n < pgIdx.length; n++) { const k = pgIdx[n], dv = w0 * A0[k] + w1 * A1[k] + w2 * A2[k] + w3 * A3[k] - annual[k]; featN[k] += pgK[n] * dv; }   // Persian Gulf: shallow, nearly landlocked water swings harder than the open Gulf of Oman both ways -- colder in winter AND hotter in summer/fall
+  { // Somali upwelling (Great Whirl): open-ocean cold dome off the Horn of Africa, SW-monsoon-driven, active Jun-Sep, peaks in Aug
+    const s = Math.max(0, Math.cos(2 * Math.PI * (doy - 227) / 365.25));
+    if (s > 0.01) for (let j = R_SOM.j0; j < R_SOM.j0 + R_SOM.h; j++) { const lat = LAT1 - j * RES, dy = (lat - SOM_LAT) / SOM_RY;
+      for (let i = R_SOM.i0; i < R_SOM.i0 + R_SOM.w; i++) { const k = j * NX + i; if (land[k]) continue; const dx = (LON0 + i * RES - SOM_LON) / SOM_RX; featN[k] -= 3.0 * s * Math.exp(-(dx * dx + dy * dy)); } }
+  }
+
+  /* --- combine --- */
+  const fs = P.features, vs = P.variability, sa = P.seasonal, wm = P.warming, es = P.enso, wmUp = Math.max(0, wm), saUp = 1 + (sa - 1) * 0.6;
+  for (let j = 0; j < NY; j++) {
+    const c0Row = seaCeil(LAT1 - j * RES) + wmUp - 1.2, o = j * NX;      // no water is hotter than physics allows for its latitude; a warmer world raises the limit
+    for (let i = 0; i < NX; i++) {
+      const k = o + i, mth = w0 * A0[k] + w1 * A1[k] + w2 * A2[k] + w3 * A3[k], fn = featN[k], dev = mth - annual[k];
+      const peakBoost = WARM_PEAK_BIAS * Math.tanh(Math.max(0, dev) / 1.5);   // climatology reads ~0.5-1.5 C cool right at the seasonal peak (real fall SSTs run warmer); ramps in with dev, capped so it doesn't over-add at high-latitude swings
+      let an = pgAnomAmp[k] * (vs * anomF[k] + es * ensoF[k]); if (an > 2) an = 2 + 1.5 * Math.tanh((an - 2) / 1.5); else if (an < -2) an = -2 - 1.5 * Math.tanh((-an - 2) / 1.5);
+      let nrm = mth + fn + peakBoost, v = annual[k] + (dev > 0 ? saUp : sa) * dev + peakBoost + fs * (fn + vs * featD[k]) + an + wm;   // summer heat saturates: stretching the swing warms summers less than it cools winters
+      if (nrm > 34) nrm = 34 + 1.5 * Math.tanh((nrm - 34) / 1.5); else if (nrm < -1.8) nrm = -1.8 - 1.5 * Math.tanh((-nrm - 1.8) / 1.5);   // soft: real water sometimes runs past the nominal range, it just shouldn't do so without limit
+      const c0 = c0Row + pgCeilBoost[k];
+      if (v > c0) v = c0 + 1.2 * Math.tanh((v - c0) / 1.2);
+      if (v > 38) v = 38 + 1.5 * Math.tanh((v - 38) / 1.5); else if (v < -1.8) v = -1.8 - 1.5 * Math.tanh((-v - 1.8) / 1.5);
+      if (outOfBasin[k]) { sst[k] = NaN; normal[k] = NaN; diff[k] = NaN; } else { sst[k] = v; normal[k] = nrm; diff[k] = v - nrm; }
+    }
+  }
+  updateLakes(f, doy);
+}
+const CEIL_LAT = [0, 10, 20, 25, 30, 35, 38, 40, 45, 50, 55, 60, 70, 80], CEIL_T = [33, 33, 32.6, 32, 31.2, 30, 29, 28.2, 26, 23, 19.5, 16, 9, 3];
+function seaCeil(lat) { return interp1(CEIL_LAT, CEIL_T, Math.abs(lat)); }
+
+function sampleField(arr, lat, lon) {
+  const fx = (lon - LON0) / RES, fy = (LAT1 - lat) / RES;
+  if (fx < 0 || fy < 0 || fx > NX - 1.001 || fy > NY - 1.001) return NaN;
+  const i = Math.floor(fx), j = Math.floor(fy), ax = fx - i, ay = fy - j, p = j * NX + i, q = p + NX;
+  return (arr[p] * (1 - ax) + arr[p + 1] * ax) * (1 - ay) + (arr[q] * (1 - ax) + arr[q + 1] * ax) * ay;
+}
+function isLand(lat, lon) { const i = Math.round((lon - LON0) / RES), j = Math.round((LAT1 - lat) / RES); if (i < 0 || j < 0 || i >= NX || j >= NY) return false; return land[j * NX + i] === 1; }
+
+/* ------------------------------------------------------------------ *
+ *  Colour scales
+ * ------------------------------------------------------------------ */
+function buildLUT(stops, vmin, vmax, n) {
+  const lut = new Uint32Array(n);
+  for (let q = 0; q < n; q++) {
+    const v = vmin + (vmax - vmin) * q / (n - 1); let s = 1; while (s < stops.length - 1 && v > stops[s][0]) s++;
+    const a = stops[s - 1], b = stops[s], t = Math.max(0, Math.min(1, (v - a[0]) / (b[0] - a[0])));
+    const r = Math.round(a[1] + (b[1] - a[1]) * t), g = Math.round(a[2] + (b[2] - a[2]) * t), bl = Math.round(a[3] + (b[3] - a[3]) * t);
+    lut[q] = ((255 << 24) | (bl << 16) | (g << 8) | r) >>> 0;
+  }
+  return lut;
+}
+const SST_STOPS = [[-2,246,246,255],[0,196,196,246],[4,105,96,226],[8,34,52,196],[12,32,112,224],[16,52,178,236],[20,64,214,206],[23,44,190,110],[25.5,40,168,60],[26.5,236,226,32],[28,250,160,24],[29.5,230,60,28],[31,180,16,64],[33,240,110,190],[34,250,190,235]];
+const ANOM_STOPS = [[-3,24,44,176],[-1.5,60,118,226],[-0.5,150,192,244],[0,242,242,242],[0.5,250,200,176],[1.5,238,116,66],[3,158,14,34]];
+const VIEWS = {
+  sst:  { vmin: -2, vmax: 34, lut: buildLUT(SST_STOPS, -2, 34, 721), caption: 'Sea surface temperature, °C', ticks: [0, 10, 20, 26.5, 30], key: 26.5 },
+  anom: { vmin: -3, vmax: 3, lut: buildLUT(ANOM_STOPS, -3, 3, 301), caption: 'Difference from the 1991–2020 normal, °C', ticks: [-3, -2, -1, 0, 1, 2, 3], key: 0 }
+};
+let view = 'sst';
+
+/* ------------------------------------------------------------------ *
+ *  Vector map data: land, lakes, borders
+ * ------------------------------------------------------------------ */
+const mercN = (lat) => { const s = Math.sin(lat * DEG); return 0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI); };
+function buildPolys(list) {
+  return list.map((rings) => {
+    let x0 = 9, x1 = -9, y0 = 9, y1 = -9;
+    const rr = rings.map((flat) => {
+      const n = flat.length / 2, xs = new Float64Array(n), ys = new Float64Array(n); let lx = 0, ly = 0;
+      for (let q = 0; q < n; q++) { lx += flat[q * 2]; ly += flat[q * 2 + 1]; xs[q] = (lx / 100 + 180) / 360; ys[q] = mercN(ly / 100); if (xs[q] < x0) x0 = xs[q]; if (xs[q] > x1) x1 = xs[q]; if (ys[q] < y0) y0 = ys[q]; if (ys[q] > y1) y1 = ys[q]; }
+      return { xs, ys };
+    });
+    return { rings: rr, x0, x1, y0, y1 };
+  });
+}
+function buildLines(list) {
+  return list.map((flat) => {
+    const n = flat.length / 2, xs = new Float64Array(n), ys = new Float64Array(n); let lx = 0, ly = 0, x0 = 9, x1 = -9, y0 = 9, y1 = -9;
+    for (let q = 0; q < n; q++) { lx += flat[q * 2]; ly += flat[q * 2 + 1]; xs[q] = (lx / 100 + 180) / 360; ys[q] = mercN(ly / 100); if (xs[q] < x0) x0 = xs[q]; if (xs[q] > x1) x1 = xs[q]; if (ys[q] < y0) y0 = ys[q]; if (ys[q] > y1) y1 = ys[q]; }
+    return { rings: [{ xs, ys }], x0, x1, y0, y1 };
+  });
+}
+const POLYS = buildPolys(DATA.land), LAKES = buildPolys(DATA.lakes), LAND_OUT = buildPolys(DATA.landOut), B0 = buildLines(DATA.b0), B1 = buildLines(DATA.b1);
+const BXL = (DATA.box[0] + 180) / 360, BXR = (DATA.box[1] + 180) / 360, BYT = mercN(DATA.box[3]), BYB = mercN(DATA.box[2]), EPS = 1e-12;
+const onLine = (a, b, c) => Math.abs(a - c) < EPS && Math.abs(b - c) < EPS;
+const onBox = (x1, y1, x2, y2) => onLine(x1, x2, BXL) || onLine(x1, x2, BXR) || onLine(y1, y2, BYT) || onLine(y1, y2, BYB);
+
+/* ---- lakes: every lake gets its own seasonal temperature ---- */
+const LK_TAB = {   // monthly surface temperatures (°C), Jan..Dec, typical of the five Great Lakes
+  'Lake Superior': [0.8, 0.3, 0.5, 1.6, 3.8, 6.8, 11, 15.5, 13.5, 9.5, 5.5, 2.5], 'Lake Michigan': [1.5, 0.8, 1.2, 3, 6, 11, 17, 21, 18.5, 13, 8, 4],
+  'Lake Huron': [1.5, 0.6, 0.8, 2.6, 5.5, 10, 16, 20, 17.5, 12.5, 8, 4], 'Georgian Bay': [0.8, 0.2, 0.4, 2, 5.5, 10.5, 16.5, 20, 17, 11.5, 6.5, 2.5],
+  'Lake Erie': [1, 0.3, 1.2, 4, 9, 15, 21.5, 24, 21, 15, 8.5, 3.5], 'Lake Ontario': [2.5, 1.5, 1.8, 3.5, 7, 12, 18, 21.5, 19, 13.5, 8.5, 5],
+  'Lake St. Clair': [0.5, 0.2, 2, 6, 12, 19, 24, 25.5, 22, 15, 8, 3]
+};
+const LK_SPECIAL = {
+  // Victoria/Tanganyika/Malawi are here for the East African Rift lakes this basin's own box
+  // reaches into (Uganda/Kenya/Tanzania), not left over from another basin -- real published
+  // mean/amplitude/peak-timing figures, same as Titicaca/Maracaibo.
+  'Lake Titicaca': [13.5, 1.6, 40], 'Lake Victoria': [25.3, 0.9, 60], 'Lake Tanganyika': [26.3, 1.0, 80], 'Lake Malawi': [26.5, 1.5, 55], 'Lake Maracaibo': [28.8, 1.4, 235], 'Lago de Maracaibo': [28.8, 1.4, 235],
+};
+const LK_LAT = [0, 15, 25, 35, 45, 55, 65, 75], LK_TM = [26.5, 26, 24, 18.5, 10.5, 4.5, 1.5, 0.5], LK_A = [1, 2.5, 4.5, 8, 10.5, 11, 9, 7];
+const invMerc = (y) => Math.atan(Math.sinh(Math.PI * (1 - 2 * y))) / DEG;
+const LAKE_META = LAKES.map((p, i) => ({ name: DATA.lakeNames[i] || '', area: DATA.lakeAreas[i], lat: invMerc((p.y0 + p.y1) / 2), lon: (p.x0 + p.x1) / 2 * 360 - 180, h: invMerc(p.y0) - invMerc(p.y1) }));
+const lakeV = new Float32Array(LAKES.length), lakeN = new Float32Array(LAKES.length), lakeMean = new Float32Array(LAKES.length);
+function tabAt(tab, f) { const q = f * 12 - 0.5, i = Math.floor(q), w = cr(q - i), M = (x) => ((x % 12) + 12) % 12; return w[0] * tab[M(i - 1)] + w[1] * tab[M(i)] + w[2] * tab[M(i + 1)] + w[3] * tab[M(i + 2)]; }
+function lakeClim(L, f, doy) {   // -> [normal temperature now, annual mean]
+  const t = LK_TAB[L.name];
+  if (t) return [tabAt(t, f), t.reduce((a, b) => a + b, 0) / 12];
+  const sp = LK_SPECIAL[L.name], a = Math.abs(L.lat); let tm, amp, peak;
+  if (sp) { tm = sp[0]; amp = sp[1]; peak = sp[2]; }
+  else { tm = interp1(LK_LAT, LK_TM, a); amp = interp1(LK_LAT, LK_A, a) * (1 - 0.35 * (1 - Math.exp(-L.area / 1))); peak = 203 + 27 * (1 - Math.exp(-L.area / 0.8)); if (L.lat < 0) peak += 182.6; }
+  let T = tm + amp * Math.cos(2 * Math.PI * (doy - peak) / 365.25);
+  if (T < 0) T = L.area < 1 ? -1.2 : 0;                     // small northern lakes freeze over
+  return [T, tm];
+}
+function updateLakes(f, doy) {
+  const sa = P.seasonal, saUp = 1 + (sa - 1) * 0.6, vs = P.variability, wm = P.warming;
+  for (let i = 0; i < LAKES.length; i++) {
+    const L = LAKE_META[i], c = lakeClim(L, f, doy), T = c[0], tm = c[1];
+    let an = vs * 1.2 * sampleField(anomF, L.lat, L.lon); if (an !== an) an = 0; if (an > 3) an = 3 + 1.2 * Math.tanh((an - 3) / 1.2); else if (an < -3) an = -3 - 1.2 * Math.tanh((-an - 3) / 1.2);
+    let v = tm + (T >= tm ? saUp : sa) * (T - tm) + an + wm * 0.9;
+    const lc0 = seaCeil(L.lat) - 1 + Math.max(0, wm); if (v > lc0) v = lc0 + 1.2 * Math.tanh((v - lc0) / 1.2); if (T >= 0 && v < 0) v = 0;
+    lakeN[i] = T; lakeV[i] = v; lakeMean[i] = tm;
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ *  Map themes
+ * ------------------------------------------------------------------ */
+const THEMES = {
+  nhc:  { name: 'NHC', kind: 'vector', water: '#63a2ca', land: '#bebebe', lake: '#63a2ca', coast: '#6e6e6e', coastW: 0.9,
+          bl: { b1: '#8c8c8c', b1W: 0.8, b0: '#666666', b0W: 1.0 },
+          grid: 'rgba(58,88,118,0.40)', gridW: 0.7, chipBg: 'rgba(255,255,255,0.92)', chipFg: '#1d2b38', chipLine: 'rgba(58,88,118,0.55)', attr: 'Map style after NOAA / National Hurricane Center · Coastlines and borders: Natural Earth' },
+  bm:   { name: 'Blue Marble', kind: 'tiles', water: '#0b1b2f', bl: { b1: 'rgba(255,255,255,0.62)', b1W: 0.8, b0: 'rgba(255,255,255,0.92)', b0W: 1.1, halo: 'rgba(0,0,0,0.38)' },
+          grid: 'rgba(255,255,255,0.30)', gridW: 0.8, chipBg: 'rgba(6,14,26,0.80)', chipFg: '#eaf2fa', chipLine: 'rgba(255,255,255,0.30)',
+          swatch: 'linear-gradient(135deg,#3f5f2c 0 38%,#a08a5a 38% 50%,#0d2a55 50% 100%)', attr: 'Imagery: NASA Blue Marble · SST base: NOAA ERSST v5 1991–2020' },
+  sat:  { name: 'Satellite', kind: 'tiles', water: '#0b1b2f', land: '#5b6b3d', bl: { b1: 'rgba(255,255,255,0.62)', b1W: 0.8, b0: 'rgba(255,255,255,0.92)', b0W: 1.1, halo: 'rgba(0,0,0,0.38)' },
+          grid: 'rgba(255,255,255,0.30)', gridW: 0.8, chipBg: 'rgba(6,14,26,0.80)', chipFg: '#eaf2fa', chipLine: 'rgba(255,255,255,0.30)',
+          attr: 'Imagery © Esri, Maxar, Earthstar Geographics · SST base: NOAA ERSST v5 1991–2020' },
+  plain:{ name: 'Plain', kind: 'vector', water: '#0b1b2f', land: '#34465a', lake: '#0b1b2f', coast: '#62788f', coastW: 0.8, bl: { b1: '#647f9a', b1W: 0.8, b0: '#8ea9c4', b0W: 1.0 },
+          grid: 'rgba(170,200,230,0.16)', gridW: 0.7, chipBg: 'rgba(9,18,32,0.86)', chipFg: '#dbe7f3', chipLine: 'rgba(170,200,230,0.3)', attr: 'Coastlines and borders: Natural Earth · SST base: NOAA ERSST v5 1991–2020' },
+  chart:{ name: 'Chart', kind: 'vector', water: '#cfe3ee', land: '#efe6c9', lake: '#cfe3ee', coast: '#6b6046', coastW: 0.9, bl: { b1: '#a3987c', b1W: 0.8, b0: '#75694f', b0W: 1.0 },
+          grid: 'rgba(60,90,120,0.36)', gridW: 0.7, chipBg: 'rgba(255,252,238,0.94)', chipFg: '#3a3424', chipLine: 'rgba(107,96,70,0.5)', attr: 'Coastlines and borders: Natural Earth · SST base: NOAA ERSST v5 1991–2020' }
+};
+const THEME_ORDER = ['nhc', 'sat', 'plain', 'chart'];   // 'bm' (Blue Marble) stays in THEMES as an internal-only fallback for when Satellite tiles can't load -- no button of its own
+for (const id of THEME_ORDER) { const t = THEMES[id]; if (!t.swatch) t.swatch = 'linear-gradient(135deg,' + t.land + ' 0 50%,' + t.water + ' 50% 100%)'; }
+let TH = THEMES.sat, themeId = 'sat', gridMode = 'off';
+
+/* ------------------------------------------------------------------ *
+ *  City markers: real coastal cities in the basin, hover shows the sim's
+ *  own live reading there (SST, departure from normal, cyclone threshold).
+ * ------------------------------------------------------------------ */
+const CITIES = [
+  // A city entry with sLat/sLon isn't quite on the water itself -- that's the basin's nearest
+  // real coastal point instead, shown labeled as such (never a fabricated "local SST" for a
+  // city that isn't on the coast), same convention as the Atlantic/EPAC/WPAC city lists.
+  // Red Sea (Egypt, Sudan, Eritrea, Saudi Arabia, Yemen)
+  { name: 'Suez', lat: 29.97, lon: 32.55 }, { name: 'Hurghada', lat: 27.26, lon: 33.81 },
+  { name: 'Port Sudan', lat: 19.62, lon: 37.22 }, { name: 'Massawa', lat: 15.61, lon: 39.47 },
+  { name: 'Jeddah', lat: 21.54, lon: 39.17 }, { name: 'Yanbu', lat: 24.09, lon: 38.06 },
+  { name: 'Jizan', lat: 16.89, lon: 42.55 }, { name: 'Al Hudaydah', lat: 14.80, lon: 42.95 },
+  // Gulf of Aden / Horn of Africa
+  { name: 'Djibouti City', lat: 11.59, lon: 43.15 }, { name: 'Aden', lat: 12.79, lon: 45.02 },
+  { name: 'Al Mukalla', lat: 14.53, lon: 49.13 }, { name: 'Berbera', lat: 10.44, lon: 45.02 },
+  { name: 'Bosaso', lat: 11.28, lon: 49.18 }, { name: 'Mogadishu', lat: 2.05, lon: 45.32 },
+  // Persian Gulf / Gulf of Oman (Arabian Peninsula + Iraq + Iran)
+  { name: 'Muscat', lat: 23.61, lon: 58.59 }, { name: 'Salalah', lat: 17.02, lon: 54.09 },
+  { name: 'Sur', lat: 22.57, lon: 59.53 }, { name: 'Dubai', lat: 25.20, lon: 55.27 },
+  { name: 'Abu Dhabi', lat: 24.45, lon: 54.38 }, { name: 'Fujairah', lat: 25.12, lon: 56.34 },
+  { name: 'Doha', lat: 25.29, lon: 51.53 }, { name: 'Manama', lat: 26.23, lon: 50.59 },
+  { name: 'Dammam', lat: 26.43, lon: 50.10 }, { name: 'Kuwait City', lat: 29.38, lon: 47.98 },
+  { name: 'Basra', lat: 30.51, lon: 47.78 },
+  { name: 'Bandar Abbas', lat: 27.19, lon: 56.28 }, { name: 'Bushehr', lat: 28.97, lon: 50.84 },
+  { name: 'Chabahar', lat: 25.29, lon: 60.64 },
+  // Pakistan
+  { name: 'Karachi', lat: 24.86, lon: 67.01 }, { name: 'Gwadar', lat: 25.13, lon: 62.32 },
+  { name: 'Lahore', lat: 31.55, lon: 74.34, sLat: 24.86, sLon: 67.01 },
+  // India, west coast (Arabian Sea)
+  { name: 'Mumbai', lat: 19.08, lon: 72.88 }, { name: 'Surat', lat: 21.17, lon: 72.83 },
+  { name: 'Bhavnagar', lat: 21.77, lon: 72.15 }, { name: 'Porbandar', lat: 21.64, lon: 69.61 },
+  { name: 'Veraval', lat: 20.90, lon: 70.37 }, { name: 'Daman', lat: 20.42, lon: 72.83 },
+  { name: 'Ratnagiri', lat: 16.99, lon: 73.30 }, { name: 'Goa', lat: 15.50, lon: 73.83 },
+  { name: 'Karwar', lat: 14.81, lon: 74.13 }, { name: 'Mangalore', lat: 12.91, lon: 74.86 },
+  { name: 'Kochi', lat: 9.93, lon: 76.27 }, { name: 'Thiruvananthapuram', lat: 8.52, lon: 76.94 },
+  // India, east coast (Bay of Bengal)
+  { name: 'Chennai', lat: 13.08, lon: 80.27 }, { name: 'Puducherry', lat: 11.94, lon: 79.83 },
+  { name: 'Nagapattinam', lat: 10.77, lon: 79.84 }, { name: 'Krishnapatnam', lat: 14.25, lon: 80.12 },
+  { name: 'Machilipatnam', lat: 16.19, lon: 81.14 }, { name: 'Visakhapatnam', lat: 17.69, lon: 83.22 },
+  { name: 'Puri', lat: 19.80, lon: 85.83 }, { name: 'Paradip', lat: 20.32, lon: 86.61 },
+  { name: 'Kolkata', lat: 22.57, lon: 88.36 },
+  // Sri Lanka
+  { name: 'Colombo', lat: 6.93, lon: 79.85 }, { name: 'Trincomalee', lat: 8.57, lon: 81.23 },
+  { name: 'Galle', lat: 6.03, lon: 80.22 },
+  // Maldives
+  { name: 'Malé', lat: 4.18, lon: 73.51 },
+  // Bangladesh
+  { name: 'Chittagong', lat: 22.36, lon: 91.83 }, { name: "Cox's Bazar", lat: 21.44, lon: 91.97 },
+  { name: 'Khulna', lat: 22.82, lon: 89.55 },
+  // Myanmar
+  { name: 'Yangon', lat: 16.87, lon: 96.20 }, { name: 'Sittwe', lat: 20.15, lon: 92.90 },
+  // Inland cities: real places this basin's cyclones and monsoon moisture reach, not on the
+  // water themselves -- see the sLat/sLon note above.
+  { name: 'Cairo', lat: 30.04, lon: 31.24, sLat: 29.97, sLon: 32.55 },
+  { name: 'Riyadh', lat: 24.71, lon: 46.68, sLat: 26.43, sLon: 50.10 },
+  { name: 'Sanaa', lat: 15.37, lon: 44.19, sLat: 14.80, sLon: 42.95 },
+  { name: 'New Delhi', lat: 28.61, lon: 77.21, sLat: 21.64, sLon: 69.61 },
+  { name: 'Ahmedabad', lat: 23.03, lon: 72.59, sLat: 21.77, sLon: 72.15 },
+  { name: 'Pune', lat: 18.52, lon: 73.86, sLat: 19.08, sLon: 72.88 },
+  { name: 'Bangalore', lat: 12.97, lon: 77.59, sLat: 12.91, sLon: 74.86 },
+  { name: 'Hyderabad', lat: 17.39, lon: 78.49, sLat: 17.69, sLon: 83.22 },
+  { name: 'Nagpur', lat: 21.15, lon: 79.09, sLat: 19.08, sLon: 72.88 },
+];
+const cityPx = CITIES.map(() => ({ x: 0, y: 0, onScreen: false }));
+let hoveredCity = -1;
+function drawCities(g, minX, minY, ws) {
+  const on = $('cities').checked;
+  for (let i = 0; i < CITIES.length; i++) {
+    const c = CITIES[i], px = (c.lon + 180) / 360 * ws - minX, py = mercN(c.lat) * ws - minY;
+    const p = cityPx[i]; p.x = px; p.y = py; p.onScreen = on && px > -20 && px < W + 20 && py > -20 && py < H + 20;
+    if (!p.onScreen) continue;
+    const t = sampleField(sst, c.sLat ?? c.lat, c.sLon ?? c.lon), hovered = i === hoveredCity;
+    const r = hovered ? 5.5 : 4;
+    g.beginPath(); g.arc(px, py, r, 0, Math.PI * 2);
+    g.fillStyle = t === t ? cityMarkerColor(t) : '#8a8a8a';
+    g.fill();
+    g.lineWidth = hovered ? 2 : 1.2; g.strokeStyle = hovered ? '#ffffff' : 'rgba(0,0,0,.55)'; g.stroke();
+  }
+}
+function cityMarkerColor(t) {
+  const V = VIEWS.sst, li = Math.max(0, Math.min(V.lut.length - 1, Math.round((t - V.vmin) * (V.lut.length - 1) / (V.vmax - V.vmin))));
+  const c = V.lut[li]; return 'rgb(' + (c & 255) + ',' + ((c >> 8) & 255) + ',' + ((c >> 16) & 255) + ')';
+}
+function cityAt(cx, cy) {
+  let best = -1, bestD = 100;
+  for (let i = 0; i < cityPx.length; i++) { const p = cityPx[i]; if (!p.onScreen) continue; const d = Math.hypot(cx - p.x, cy - p.y); if (d < 9 && d < bestD) { bestD = d; best = i; } }
+  return best;
+}
+function stormImpactAt(lat, lon) {
+  // Placeholder for a future storm/cyclone model (genesis, track, wind field, rain shield,
+  // damage estimate) -- returns null until one actually exists. The "Storm impact" section in
+  // updateCityTip below is always visible (labels included) so the UI is ready, but every value
+  // in it stays a plain "--" dash rather than a fabricated number until this returns real data.
+  // No real storm runs until every basin's ocean simulation is built and the go-ahead is given.
+  // Shape once wired up: { windSustained, windGust (mph), rain72h (in over the last 72h),
+  // deaths, injuries (counts), damagePct (0-100), damageCost (USD) }.
+  return null;
+}
+function updateCityTip(cx, cy) {
+  const tip = $('city-tip');
+  const i = cityAt(cx, cy);
+  if (i !== hoveredCity) { hoveredCity = i; scheduleRender(); }
+  if (i < 0) { tip.style.display = 'none'; return; }
+  const c = CITIES[i], inland = c.sLat !== undefined, t = sampleField(sst, c.sLat ?? c.lat, c.sLon ?? c.lon), n = sampleField(normal, c.sLat ?? c.lat, c.sLon ?? c.lon);
+  const lines = [];
+  if (inland) lines.push('Nearest coastal water');
+  if (t === t) {
+    const dv = t - n, sign = dv >= 0 ? '+' : '−';
+    lines.push(t.toFixed(1) + ' °C');
+    lines.push(sign + Math.abs(dv).toFixed(1) + ' °C vs. normal');
+    lines.push(t >= 26.5 ? 'Above cyclone threshold' : 'Below cyclone threshold');
+  } else {
+    lines.push('Outside the simulated area');
+  }
+  const impact = stormImpactAt(c.lat, c.lon), dash = '—';   // no storm model yet -- labels are always on, values stay a dash until one exists
+  lines.push('<hr>');   // visual divider between the live climate reading above and the (still-placeholder) storm impact below
+  lines.push('Storm impact');
+  lines.push('Sustained winds ' + (impact ? Math.round(impact.windSustained) + ' mph' : dash) + ' · gusts ' + (impact ? Math.round(impact.windGust) + ' mph' : dash));
+  lines.push('Rainfall (72h) ' + (impact ? impact.rain72h.toFixed(1) + ' in' : dash));
+  lines.push('Deaths ' + (impact ? impact.deaths : dash) + ' · Injuries ' + (impact ? impact.injuries : dash));
+  lines.push('Damage ' + (impact ? impact.damagePct.toFixed(0) + '% · $' + (impact.damageCost / 1e6).toFixed(0) + 'M' : dash));
+  tip.querySelector('b').textContent = c.name;
+  tip.querySelector('div').innerHTML = lines.join('<br>');
+  const left = Math.max(8, Math.min(W - 226, cx + 14)), top = Math.max(8, Math.min(H - 185, cy + 14));
+  tip.style.left = left + 'px'; tip.style.top = top + 'px'; tip.style.display = 'block';
+}
+
+/* ------------------------------------------------------------------ *
+ *  Map
+ * ------------------------------------------------------------------ */
+const map = L.map('map', {
+  zoomControl: false, attributionControl: false, minZoom: 5.9, maxZoom: 10, zoomSnap: 0.25, zoomDelta: 0.5, wheelPxPerZoomLevel: 110,
+  zoomAnimation: false, fadeAnimation: false, markerZoomAnimation: false, worldCopyJump: false,
+  maxBounds: [[-6, 32], [30, 98]], maxBoundsViscosity: 1   // hard pan limit: a few degrees beyond the domain box on every side, well inside the data's own padded extent
+});
+L.control.zoom({ position: 'bottomleft' }).addTo(map);
+map.fitBounds([[5, 45], [28, 92]], { animate: false });   // instant: an animated pan here briefly rendered a garbled frame of the embedded base image mid-transition
+const container = map.getContainer();
+
+function makeCanvas(z) { const c = document.createElement('canvas'); c.className = 'overlay'; c.style.zIndex = z; container.appendChild(c); return c; }
+const baseCanvas = makeCanvas(1), sstCanvas = makeCanvas(450), gridCanvas = makeCanvas(460);
+baseCanvas.style.display = 'none';
+const off = document.createElement('canvas');
+
+/* Imagery. Blue Marble is a crop embedded in this file (drawn on baseCanvas, Mercator-correct per scanline in
+   drawEmbeddedBM) — always available, no network dependency. Above zoom 6.6 it optionally fades to live Esri
+   imagery for closer-up sharpness ("detail" layer, opt-in, silently skipped if it can't load). The "Satellite"
+   theme is that same live Esri imagery full-time; if it can't load, it falls back to the (always-reliable) Blue
+   Marble theme. */
+const ESRI = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+const TILESETS = {
+  sat: [ { label: 'Esri World Imagery', url: ESRI, sub: 'abc', maxNative: 18 } ]
+};
+const TS = { sat: { idx: 0, layer: null, offline: false, loaded: false } };
+let detailLayer = null, cspBlocked = false;
+const bmImg = new Image(); let bmReady = false, bmMerc = null;
+bmImg.onload = () => {
+  // Pre-warp the source (plain equirectangular) crop into Mercator space once, into an
+  // offscreen canvas, instead of resampling it live every frame: the old code drew ~1200
+  // individual 1px-tall strips per render (once per row, every time the map moves). A live
+  // render is now a single drawImage from this already-correct bitmap -- much cheaper, and
+  // simpler to reason about.
+  const [BL, BR, BB, BT] = DATA.bmBox, iw = DATA.bmSize[0], ih = DATA.bmSize[1];
+  const rowsPerDeg = ih / (BT - BB), myT = mercN(BT), myB = mercN(BB);
+  bmMerc = document.createElement('canvas'); bmMerc.width = iw; bmMerc.height = ih;
+  const mctx = bmMerc.getContext('2d');
+  for (let r = 0; r < ih; r++) {
+    const my = myT + (myB - myT) * (r + 0.5) / ih, lat = invMerc(my);
+    const sy = Math.max(0, Math.min(ih - 1, (BT - lat) * rowsPerDeg));
+    mctx.drawImage(bmImg, 0, sy, iw, 1, 0, r, iw, 1);
+  }
+  bmReady = true; if (themeId === 'bm') scheduleRender();
+};
+bmImg.src = 'data:image/jpeg;base64,' + DATA.bm;
+document.addEventListener('securitypolicyviolation', (e) => { if (/arcgis/.test(e.blockedURI || '')) { if (!cspBlocked) { cspBlocked = true; refreshNote(); } } });
+function refreshNote() {
+  const n = $('th-note'); let t = '';
+  if (cspBlocked && (themeId === 'sat' || (themeId === 'bm' && $('detail').checked))) t = 'This viewer blocks online images. Open the file in a normal browser tab for live imagery.';
+  n.textContent = t;
+}
+function addTileLayer(id) {
+  const set = TILESETS[id], st = TS[id];
+  if (st.idx >= set.length) { st.layer = null; st.offline = true; tilesExhausted(id); return; }
+  const v = set[st.idx]; let ok = 0, err = 0, dead = false;
+  const lyr = L.tileLayer(v.url, { subdomains: v.sub, minZoom: 2, maxZoom: 10, maxNativeZoom: v.maxNative, noWrap: true, bounds: [[-85.0511, -180], [85.0511, 180]], keepBuffer: 3 });
+  const fail = () => { if (dead) return; dead = true; map.removeLayer(lyr); st.idx++; addTileLayer(id); };
+  lyr.on('tileload', () => { ok++; if (!st.loaded && !dead) { st.loaded = true; refreshNote(); } });
+  lyr.on('tileerror', (e) => {
+    if (e.tile) e.tile.style.visibility = 'hidden';   // don't flash the browser's broken-image icon while we decide what to do
+    if (dead) return; err++;
+    if (ok === 0 && err >= 5) fail();
+    else if (ok > 0 && e.coords.z >= 6 && e.coords.z === lyr.options.maxNativeZoom) { lyr.options.maxNativeZoom = e.coords.z - 1; lyr.redraw(); }
+  });
+  const arm = () => setTimeout(() => { if (dead || ok > 0 || st.layer !== lyr) return; if (map.hasLayer(lyr)) fail(); else arm(); }, 9000); arm();   // silent network hang
+  st.loaded = false; st.layer = lyr; if (themeId === id) lyr.addTo(map); refreshNote();
+}
+function tilesExhausted(id) { toast('Satellite imagery could not load, so Blue Marble is showing instead.'); setTheme('bm'); }
+function startTiles(id) { const st = TS[id]; st.idx = 0; st.offline = false; st.loaded = false; if (st.layer && map.hasLayer(st.layer)) map.removeLayer(st.layer); st.layer = null; addTileLayer(id); }
+function updateDetailOpacity() { if (detailLayer) detailLayer.setOpacity(Math.max(0, Math.min(1, (map.getZoom() - 6.6) / 0.9))); }
+function syncDetail() {
+  const on = themeId === 'bm' && $('detail').checked;
+  $('detail-row').style.display = themeId === 'bm' ? '' : 'none';
+  if (on) {
+    if (!detailLayer) {
+      let ok = 0, err = 0;
+      detailLayer = L.tileLayer(ESRI, { minZoom: 7, maxZoom: 10, maxNativeZoom: 18, noWrap: true, opacity: 0, keepBuffer: 2 });
+      detailLayer.on('tileload', () => { ok++; });
+      detailLayer.on('tileerror', (e) => { if (e.tile) e.tile.style.visibility = 'hidden'; err++; if (ok === 0 && err >= 6 && map.hasLayer(detailLayer)) map.removeLayer(detailLayer); });
+    }
+    if (!map.hasLayer(detailLayer)) detailLayer.addTo(map); updateDetailOpacity();
+  } else if (detailLayer && map.hasLayer(detailLayer)) map.removeLayer(detailLayer);
+}
+function setTheme(id) {
+  themeId = id; TH = THEMES[id];
+  document.querySelectorAll('#themes button').forEach((b) => b.setAttribute('aria-pressed', b.dataset.th === id || (id === 'bm' && b.dataset.th === 'sat')));   // bm is only Satellite's own fallback, not a button of its own -- keep Satellite looking selected instead of showing nothing pressed
+  container.style.background = TH.water;
+  if (id !== 'sat' && TS.sat.layer && map.hasLayer(TS.sat.layer)) map.removeLayer(TS.sat.layer);
+  if (id === 'sat') {
+    const st = TS.sat; if (st.offline || !st.layer) startTiles('sat'); else if (!map.hasLayer(st.layer)) st.layer.addTo(map);
+    baseCanvas.style.display = 'none';
+  } else baseCanvas.style.display = 'block';
+  syncDetail(); refreshNote(); $('attr').textContent = TH.attr + (id === 'bm' && $('detail').checked ? ' · Close-ups: Esri' : ''); scheduleRender();
+}
+function setGridMode(m) { gridMode = m; document.querySelectorAll('#seg-grid button').forEach((b) => b.setAttribute('aria-pressed', b.dataset.g === m)); scheduleRender(); }
+let toastTimer = 0;
+function toast(msg) { const t = $('toast'); t.textContent = msg; t.style.display = 'block'; clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.style.display = 'none'; }, 10000); }
+
+/* ------------------------------------------------------------------ *
+ *  Rendering
+ * ------------------------------------------------------------------ */
+let W = 0, H = 0, DPR = 1, interacting = false, needRender = false;
+let colI = null, colA = null, colF = null, rowJ = null, rowA = null, rowF = null, vals = null, cap = 0;
+function fitCanvases() {
+  const s = map.getSize(); DPR = Math.min(2, window.devicePixelRatio || 1);
+  if (s.x !== W || s.y !== H || sstCanvas.width !== Math.round(W * DPR)) {
+    W = s.x; H = s.y;
+    for (const c of [sstCanvas, baseCanvas, gridCanvas]) { c.width = Math.round(W * DPR); c.height = Math.round(H * DPR); }
+  }
+}
+function paintLand(ctx, list, minX, minY, ws, stroke) {
+  for (const p of list) {
+    const px0 = p.x0 * ws - minX, px1 = p.x1 * ws - minX, py0 = p.y0 * ws - minY, py1 = p.y1 * ws - minY;
+    if (px1 < -4 || px0 > W + 4 || py1 < -4 || py0 > H + 4) continue;
+    ctx.beginPath();
+    for (const r of p.rings) { const n = r.xs.length; ctx.moveTo(r.xs[0] * ws - minX, r.ys[0] * ws - minY); for (let q = 1; q < n; q++) ctx.lineTo(r.xs[q] * ws - minX, r.ys[q] * ws - minY); ctx.closePath(); }
+    ctx.fill('evenodd'); if (stroke) ctx.stroke();
+  }
+}
+function clipLand(ctx, minX, minY, ws) { paintLand(ctx, POLYS, minX, minY, ws, true); }
+const lakeCss = (V, v) => { const ln = V.lut.length - 1; let li = ((v - V.vmin) * ln / (V.vmax - V.vmin) + 0.5) | 0; li = li < 0 ? 0 : li > ln ? ln : li; const c = V.lut[li]; return 'rgb(' + (c & 255) + ',' + ((c >> 8) & 255) + ',' + ((c >> 16) & 255) + ')'; };
+function drawLakes(ctx, minX, minY, ws) {
+  const V = VIEWS[view];
+  for (let i = 0; i < LAKES.length; i++) {
+    const p = LAKES[i], px0 = p.x0 * ws - minX, px1 = p.x1 * ws - minX, py0 = p.y0 * ws - minY, py1 = p.y1 * ws - minY;
+    if (px1 < 0 || px0 > W || py1 < 0 || py0 > H || (px1 - px0 < 0.7 && py1 - py0 < 0.7)) continue;
+    ctx.beginPath();
+    for (const r of p.rings) { const n = r.xs.length; ctx.moveTo(r.xs[0] * ws - minX, r.ys[0] * ws - minY); for (let q = 1; q < n; q++) ctx.lineTo(r.xs[q] * ws - minX, r.ys[q] * ws - minY); ctx.closePath(); }
+    const L = LAKE_META[i];
+    if (view === 'sst') {
+      if (L.h > 1.2 && py1 - py0 > 6) { const gd = Math.min(1.6, 0.35 * L.h), g = ctx.createLinearGradient(0, py0, 0, py1); g.addColorStop(0, lakeCss(V, lakeV[i] - gd)); g.addColorStop(1, lakeCss(V, lakeV[i] + gd)); ctx.fillStyle = g; }
+      else ctx.fillStyle = lakeCss(V, lakeV[i]);
+    } else ctx.fillStyle = lakeCss(V, lakeV[i] - lakeN[i]);
+    ctx.fill('evenodd');
+  }
+}
+function lakeAt(lat, lon) {
+  const nx = (lon + 180) / 360, ny = mercN(lat);
+  for (let i = 0; i < LAKES.length; i++) { const p = LAKES[i]; if (nx < p.x0 || nx > p.x1 || ny < p.y0 || ny > p.y1) continue; let c = false; for (const r of p.rings) if (inRing(r.xs, r.ys, nx, ny)) c = !c; if (c) return i; }
+  return -1;
+}
+
+/* path builders for the vector base map */
+function pathPolys(ctx, list, minX, minY, ws, strokeOnly) {
+  ctx.beginPath();
+  for (const p of list) {
+    const px0 = p.x0 * ws - minX, px1 = p.x1 * ws - minX, py0 = p.y0 * ws - minY, py1 = p.y1 * ws - minY;
+    if (px1 < -4 || px0 > W + 4 || py1 < -4 || py0 > H + 4) continue;
+    for (const r of p.rings) {
+      const n = r.xs.length;
+      if (!strokeOnly) { ctx.moveTo(r.xs[0] * ws - minX, r.ys[0] * ws - minY); for (let q = 1; q < n; q++) ctx.lineTo(r.xs[q] * ws - minX, r.ys[q] * ws - minY); ctx.closePath(); continue; }
+      let pen = false;                                   // stroke coastlines only: skip edges that run along the data-clip boundary
+      for (let q = 0; q < n; q++) {
+        const q2 = (q + 1) % n, x1 = r.xs[q], y1 = r.ys[q], x2 = r.xs[q2], y2 = r.ys[q2];
+        if (onBox(x1, y1, x2, y2)) { pen = false; continue; }
+        if (!pen) { ctx.moveTo(x1 * ws - minX, y1 * ws - minY); pen = true; }
+        ctx.lineTo(x2 * ws - minX, y2 * ws - minY);
+      }
+    }
+  }
+}
+function pathLines(ctx, list, minX, minY, ws) {
+  ctx.beginPath();
+  for (const l of list) {
+    if (l.x1 * ws - minX < -4 || l.x0 * ws - minX > W + 4 || l.y1 * ws - minY < -4 || l.y0 * ws - minY > H + 4) continue;
+    const r = l.rings[0], n = r.xs.length; ctx.moveTo(r.xs[0] * ws - minX, r.ys[0] * ws - minY);
+    for (let q = 1; q < n; q++) ctx.lineTo(r.xs[q] * ws - minX, r.ys[q] * ws - minY);
+  }
+}
+function drawEmbeddedBM(ctx, minX, minY, ws) {
+  if (!bmReady) return;
+  const [BL, BR, BB, BT] = DATA.bmBox, iw = DATA.bmSize[0], ih = DATA.bmSize[1];
+  const lonAt = (x) => (minX + x) / ws * 360 - 180;
+  const xL = Math.max(0, (BL + 180) / 360 * ws - minX), xR = Math.min(W, (BR + 180) / 360 * ws - minX);
+  if (xR <= xL + 1) return;
+  const sx0 = (lonAt(xL) - BL) / (BR - BL) * iw, sx1 = (lonAt(xR) - BL) / (BR - BL) * iw;
+  const yT = mercN(BT) * ws - minY, yB = mercN(BB) * ws - minY;
+  if (yB <= yT + 1) return;
+  // Clip the destination rect to the canvas (and shrink the source rect to match): our image
+  // covers far more latitude than most views show, so the unclipped destination routinely
+  // overflows the canvas by 2-3x its height -- clipping means drawImage only ever scales the
+  // part that's actually visible.
+  const dyT = Math.max(0, yT), dyB = Math.min(H, yB);
+  if (dyB <= dyT) return;
+  const syT = (dyT - yT) / (yB - yT) * ih, syB = (dyB - yT) / (yB - yT) * ih;
+  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(bmMerc, sx0, syT, sx1 - sx0, syB - syT, xL, dyT, xR - xL, dyB - dyT);
+}
+function drawBaseLayer(minX, minY, ws) {
+  const b = baseCanvas.getContext('2d'); b.setTransform(DPR, 0, 0, DPR, 0, 0); b.clearRect(0, 0, W, H);
+  if (TH.kind === 'tiles') { if (themeId === 'bm') drawEmbeddedBM(b, minX, minY, ws); return; }
+  b.lineJoin = 'round'; b.lineCap = 'round';
+  b.fillStyle = TH.land; b.strokeStyle = TH.land; b.lineWidth = 0.8;
+  pathPolys(b, LAND_OUT, minX, minY, ws); b.fill('evenodd'); b.stroke();        // world land beyond the detailed data (stroke hides tile seams)
+  pathPolys(b, POLYS, minX, minY, ws); b.fill('evenodd');
+  b.fillStyle = TH.lake; pathPolys(b, LAKES, minX, minY, ws); b.fill('evenodd');
+  b.strokeStyle = TH.coast; b.lineWidth = TH.coastW;
+  pathPolys(b, POLYS, minX, minY, ws, true); b.stroke();
+  pathPolys(b, LAKES, minX, minY, ws, true); b.stroke();
+}
+function inRing(xs, ys, x, y) { let c = false; for (let i = 0, j = xs.length - 1; i < xs.length; j = i++) if (((ys[i] > y) !== (ys[j] > y)) && (x < (xs[j] - xs[i]) * (y - ys[i]) / (ys[j] - ys[i]) + xs[i])) c = !c; return c; }
+function onLand(nx, ny) { for (const list of [POLYS, LAND_OUT]) for (const p of list) { if (nx < p.x0 || nx > p.x1 || ny < p.y0 || ny > p.y1) continue; let c = false; for (const r of p.rings) if (inRing(r.xs, r.ys, nx, ny)) c = !c; if (c) return true; } return false; }
+
+/* coordinate grid + NHC-style label squares that sit over open water */
+const GRID_STEPS = [0.25, 0.5, 1, 2, 5, 10, 15, 30];
+function coordText(v, isLat) {
+  if (isLat) return (+Math.abs(v).toFixed(2)) + (v > 0 ? 'N' : v < 0 ? 'S' : '');
+  let L = ((v + 540) % 360) - 180; if (Math.abs(L) < 1e-9) L = 0;
+  return (+Math.abs(L).toFixed(2)) + (L > 0 ? 'E' : L < 0 ? 'W' : '');
+}
+function drawBorders(g, minX, minY, ws, z) {
+  const S = TH.bl; g.lineJoin = 'round'; g.lineCap = 'round';
+  const passes = []; if (z >= 4.2) passes.push([B1, S.b1, S.b1W, z < 5 ? 0.6 : 1]); passes.push([B0, S.b0, S.b0W, 1]);
+  for (const [list, col, w, a] of passes) {
+    g.globalAlpha = a;
+    if (S.halo) { pathLines(g, list, minX, minY, ws); g.strokeStyle = S.halo; g.lineWidth = w + 1.6; g.stroke(); }
+    pathLines(g, list, minX, minY, ws); g.strokeStyle = col; g.lineWidth = w; g.stroke();
+  }
+  g.globalAlpha = 1;
+}
+function uiRects() { const out = []; for (const id of ['clock', 'panel', 'dock', 'readout', 'legend']) { const el = $(id); if (!el || el.style.display === 'none') continue; const r = el.getBoundingClientRect(); out.push([r.left - 10, r.top - 10, r.right + 10, r.bottom + 10]); } return out; }
+function drawGrid(minX, minY, ws) {
+  const g = gridCanvas.getContext('2d'); g.setTransform(DPR, 0, 0, DPR, 0, 0); g.clearRect(0, 0, W, H);
+  if ($('borders').checked) drawBorders(g, minX, minY, ws, map.getZoom());
+  drawCities(g, minX, minY, ws);
+  if (gridMode === 'off') return;
+  const ppd = ws / 360, step = GRID_STEPS.find((q) => q * ppd >= 80) || 30;
+  const latAt = (y) => Math.atan(Math.sinh(Math.PI * (1 - 2 * (minY + y) / ws))) / DEG, lonAt = (x) => (minX + x) / ws * 360 - 180;
+  const yOf = (lat) => mercN(lat) * ws - minY, xOf = (lon) => (lon + 180) / 360 * ws - minX;
+  const lon0 = lonAt(0), lon1 = lonAt(W), latT = latAt(0), latB = latAt(H), lons = [], lats = [];
+  g.lineWidth = TH.gridW; g.strokeStyle = TH.grid; g.beginPath();
+  for (let i = Math.ceil(lon0 / step); i * step <= lon1; i++) { const l = +(i * step).toFixed(4); lons.push(l); const x = Math.round(xOf(l)) + 0.5; g.moveTo(x, 0); g.lineTo(x, H); }
+  for (let i = Math.ceil(latB / step); i * step <= latT; i++) { const l = +(i * step).toFixed(4); if (Math.abs(l) > 84) continue; lats.push(l); const y = Math.round(yOf(l)) + 0.5; g.moveTo(0, y); g.lineTo(W, y); }
+  g.stroke();
+  if (gridMode !== 'labels') return;
+  /* one square per grid line, kept in two tidy rails and always over open water and clear of the control cards */
+  g.font = '600 11px ui-monospace,"SF Mono",Menlo,Consolas,monospace'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  const ui = uiRects(), placed = [], CH = 18;
+  const water = (px, py) => {
+    const lat = latAt(py), lon = lonAt(px);
+    if (lon >= LON0 && lon <= DATA.domain.lon1 && lat >= DATA.domain.lat0 && lat <= LAT1) return !isLand(lat, lon);
+    return !onLand((lon + 180) / 360, mercN(lat));
+  };
+  const hit = (a, x, y, w, h) => a.some((r) => x < r[2] && x + w > r[0] && y < r[3] && y + h > r[1]);
+  const tryPlace = (cx, cy, text) => {
+    const w = Math.ceil(g.measureText(text).width) + 12, x = cx - w / 2, y = cy - CH / 2;
+    if (x < 8 || y < 8 || x + w > W - 8 || y + CH > H - 8) return false;
+    if (hit(ui, x, y, w, CH) || hit(placed.map((r) => [r[0] - 4, r[1] - 4, r[0] + r[2] + 4, r[1] + r[3] + 4]), x, y, w, CH)) return false;
+    for (const [dx, dy] of [[0, 0], [-w / 2, 0], [w / 2, 0], [0, -CH / 2], [0, CH / 2], [-w / 2, -CH / 2], [w / 2, CH / 2]]) if (!water(cx + dx, cy + dy)) return false;
+    g.fillStyle = TH.chipBg; g.strokeStyle = TH.chipLine; g.lineWidth = 0.8;
+    g.beginPath(); g.roundRect ? g.roundRect(x, y, w, CH, 3) : g.rect(x, y, w, CH); g.fill(); g.stroke();
+    g.fillStyle = TH.chipFg; g.fillText(text, cx, cy + 0.5); placed.push([x, y, w, CH]); return true;
+  };
+  const railX = W * 0.36, railY = H * 0.30;
+  for (const lat of lats) { const y = Math.round(yOf(lat)) + 0.5, t = coordText(lat, true); for (let d = 0; d <= W * 0.32; d += 12) if (tryPlace(railX + d, y, t) || (d && tryPlace(railX - d, y, t))) break; }
+  for (const lon of lons) { const x = Math.round(xOf(lon)) + 0.5, t = coordText(lon, false); for (let d = 0; d <= H * 0.28; d += 12) if (tryPlace(x, railY + d, t) || (d && tryPlace(x, railY - d, t))) break; }
+}
+const showLine265 = () => $('l265').checked, showLine2 = () => $('l2').checked;
+
+function render() {
+  needRender = false; fitCanvases();
+  const z = map.getZoom(), ws = 256 * Math.pow(2, z), pb = map.getPixelBounds(), minX = pb.min.x, minY = pb.min.y;
+  const ctx = sstCanvas.getContext('2d');
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0); ctx.clearRect(0, 0, W, H);
+
+  const showSST = $('show-sst').checked; $('legend').style.display = showSST ? '' : 'none';
+  if (showSST) {
+  /* SST raster */
+  const sc = interacting ? 0.3 : (W * H > 1.6e6 ? 0.4 : 0.5), sw = Math.max(2, Math.ceil(W * sc)), sh = Math.max(2, Math.ceil(H * sc));
+  if (sw * sh > cap) { cap = sw * sh; vals = new Float32Array(cap); colI = new Int32Array(sw + 2); }
+  if (!colI || colI.length < sw) { colI = new Int32Array(sw + 2); colA = new Float32Array(sw + 2); colF = new Float32Array(sw + 2); }
+  if (!colA || colA.length < sw) { colA = new Float32Array(sw + 2); colF = new Float32Array(sw + 2); }
+  if (!rowJ || rowJ.length < sh) { rowJ = new Int32Array(sh + 2); rowA = new Float32Array(sh + 2); rowF = new Float32Array(sh + 2); }
+  const FADE = 24;   // cells (=6°) over which the overlay fades at the edge of the simulated area
+  for (let x = 0; x < sw; x++) {
+    const wx = minX + (x + 0.5) / sc, lon = wx / ws * 360 - 180, fx = (lon - LON0) / RES;
+    if (fx < 0 || fx > NX - 1.001) { colI[x] = -1; continue; }
+    colI[x] = Math.floor(fx); colA[x] = fx - colI[x]; colF[x] = Math.min(1, fx / FADE, (NX - 1 - fx) / FADE);
+  }
+  for (let y = 0; y < sh; y++) {
+    const wy = minY + (y + 0.5) / sc, lat = Math.atan(Math.sinh(Math.PI * (1 - 2 * wy / ws))) / DEG, fy = (LAT1 - lat) / RES;
+    if (fy < 0 || fy > NY - 1.001) { rowJ[y] = -1; continue; }
+    rowJ[y] = Math.floor(fy); rowA[y] = fy - rowJ[y]; rowF[y] = Math.min(1, fy / FADE, (NY - 1 - fy) / FADE);
+  }
+  if (off.width !== sw || off.height !== sh) { off.width = sw; off.height = sh; }
+  const octx = off.getContext('2d'), img = octx.createImageData(sw, sh), px = new Uint32Array(img.data.buffer);
+  const V = VIEWS[view], src = view === 'sst' ? sst : diff, lut = V.lut, lscale = (lut.length - 1) / (V.vmax - V.vmin), ln = lut.length - 1;
+  let idx = 0;
+  for (let y = 0; y < sh; y++) {
+    const j = rowJ[y];
+    if (j < 0) { for (let x = 0; x < sw; x++) vals[idx++] = NaN; continue; }
+    const ay = rowA[y], r0 = j * NX, r1 = r0 + NX, fy = rowF[y];
+    for (let x = 0; x < sw; x++, idx++) {
+      const i = colI[x];
+      if (i < 0) { vals[idx] = NaN; continue; }
+      const ax = colA[x], p = r0 + i, q = r1 + i;
+      const v = (src[p] * (1 - ax) + src[p + 1] * ax) * (1 - ay) + (src[q] * (1 - ax) + src[q + 1] * ax) * ay;
+      vals[idx] = v;
+      if (v !== v) continue;   // NaN (outside the simulated area, or a different basin): leave transparent, not the coldest colour
+      let li = ((v - V.vmin) * lscale + 0.5) | 0; if (li < 0) li = 0; else if (li > ln) li = ln;
+      const a = (Math.min(colF[x], fy) * 255) | 0;
+      px[idx] = ((a << 24) | (lut[li] & 0xffffff)) >>> 0;
+    }
+  }
+  if (view === 'sst' && (showLine265() || showLine2())) {
+    const l265 = showLine265(), l2 = showLine2();
+    for (let y = 1; y < sh; y++) for (let x = 1; x < sw; x++) {
+      const k = y * sw + x, v = vals[k], vl = vals[k - 1], vt = vals[k - sw];
+      if (v !== v || vl !== vl || vt !== vt) continue;
+      if (l265 && ((v - 26.5) * (vl - 26.5) < 0 || (v - 26.5) * (vt - 26.5) < 0)) { px[k] = (px[k] & 0xff000000) | 0xffffff; continue; }
+      if (l2 && (Math.floor(v * 0.5) !== Math.floor(vl * 0.5) || Math.floor(v * 0.5) !== Math.floor(vt * 0.5))) {
+        const c = px[k]; px[k] = ((c & 0xff000000) | ((((c & 0xff) * 0.62 + 255 * 0.38) | 0)) | (((((c >> 8) & 0xff) * 0.62 + 255 * 0.38) | 0) << 8) | (((((c >> 16) & 0xff) * 0.62 + 255 * 0.38) | 0) << 16)) >>> 0;
+      }
+    }
+  }
+  octx.putImageData(img, 0, 0);
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(off, 0, 0, sw, sh, 0, 0, W, H);
+  ctx.globalCompositeOperation = 'destination-out'; ctx.fillStyle = '#000'; ctx.strokeStyle = '#000'; ctx.lineWidth = 1.3; ctx.lineJoin = 'round';
+  clipLand(ctx, minX, minY, ws);
+  ctx.globalCompositeOperation = 'source-over';
+  drawLakes(ctx, minX, minY, ws);
+  sstCanvas.style.opacity = $('op').value / 100;
+  }
+  drawBaseLayer(minX, minY, ws);
+  drawGrid(minX, minY, ws);
+  updateReadout();
+}
+let renderQueued = false;
+function scheduleRender() { if (renderQueued) return; renderQueued = true; requestAnimationFrame(() => { renderQueued = false; render(); }); }
+map.on('move zoom resize', scheduleRender);
+map.on('movestart zoomstart', () => { interacting = true; });
+map.on('moveend zoomend', () => { interacting = false; scheduleRender(); });
+window.addEventListener('resize', () => { map.invalidateSize(); scheduleRender(); });
+
+/* ------------------------------------------------------------------ *
+ *  Readout + legend
+ * ------------------------------------------------------------------ */
+let pointer = null;
+map.on('mousemove', (e) => { pointer = e.latlng; updateReadout(); updateCityTip(e.containerPoint.x, e.containerPoint.y); });
+map.on('mouseout', () => { pointer = null; updateReadout(); hoveredCity = -1; $('city-tip').style.display = 'none'; });
+$('cities').onchange = () => { hoveredCity = -1; $('city-tip').style.display = 'none'; scheduleRender(); };
+const fmtLL = (lat, lon) => Math.abs(lat).toFixed(1) + '°' + (lat >= 0 ? 'N' : 'S') + ' ' + Math.abs(lon).toFixed(1) + '°' + (lon >= 0 ? 'E' : 'W');
+function updateReadout() {
+  const el = $('readout');
+  if (!pointer) { el.innerHTML = '<b>–</b><div>Move the pointer over the ocean</div>'; return; }
+  const lat = pointer.lat, lon = ((pointer.lng + 540) % 360) - 180;
+  const li = lakeAt(lat, lon);
+  if (li >= 0) { const dv = lakeV[li] - lakeN[li]; el.innerHTML = '<b>' + lakeV[li].toFixed(1) + ' °C</b><div>' + (LAKE_META[li].name || 'Lake') + ' · ' + (dv >= 0 ? '+' : '−') + Math.abs(dv).toFixed(1) + ' °C vs. normal</div>'; return; }
+  const v = sampleField(sst, lat, lon);
+  if (v !== v) el.innerHTML = '<b>–</b><div>Outside the simulated area · ' + fmtLL(lat, lon) + '</div>';
+  else if (isLand(lat, lon)) el.innerHTML = '<b>Land</b><div>' + fmtLL(lat, lon) + '</div>';
+  else { const dv = sampleField(diff, lat, lon); el.innerHTML = '<b>' + v.toFixed(1) + ' °C</b><div>' + (dv >= 0 ? '+' : '−') + Math.abs(dv).toFixed(1) + ' °C vs. normal · ' + fmtLL(lat, lon) + '</div>'; }
+}
+function drawLegend() {
+  const V = VIEWS[view], c = $('legend-canvas'), g = c.getContext('2d'), w = c.width;
+  for (let x = 0; x < w; x++) { const v = V.vmin + (V.vmax - V.vmin) * x / (w - 1), li = Math.max(0, Math.min(V.lut.length - 1, Math.round((v - V.vmin) * (V.lut.length - 1) / (V.vmax - V.vmin)))), p = V.lut[li]; g.fillStyle = 'rgb(' + (p & 255) + ',' + ((p >> 8) & 255) + ',' + ((p >> 16) & 255) + ')'; g.fillRect(x, 0, 1, c.height); }
+  $('ticks').innerHTML = V.ticks.map((t) => '<span class="' + (t === V.key ? 'key' : '') + '" style="left:' + ((t - V.vmin) / (V.vmax - V.vmin) * 100) + '%">' + (view === 'anom' && t > 0 ? '+' : '') + t + '</span>').join('');
+  $('legend-cap').textContent = V.caption;
+}
+
+/* ------------------------------------------------------------------ *
+ *  Clock + transport
+ * ------------------------------------------------------------------ */
+const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const MLET = 'JFMAMJJASOND';
+$('year').innerHTML = MLET.split('').map((l, i) => '<span title="' + MON[i] + '" class="' + ((i >= 3 && i <= 5) || i >= 9 ? 'hs' : '') + '">' + l + '</span>').join('');
+const yearSpans = $('year').children;
+function ensoLabel(v) { const a = Math.abs(v), s = a < 0.5 ? '' : a < 1 ? 'Weak ' : a < 1.5 ? 'Moderate ' : a < 2 ? 'Strong ' : 'Very strong '; return a < 0.5 ? 'Neutral' : s + (v > 0 ? 'El Niño' : 'La Niña'); }
+function updateEnsoUI() {
+  const v = n34, a = Math.abs(v), f = $('gauge-fill');
+  const w = 50 * Math.tanh(a / 3);   // soft: the gauge keeps filling (slowly) past a strong reading instead of pinning flat once it hits a hard "3"
+  f.style.width = w + '%'; f.style.left = (v >= 0 ? 50 : 50 - w) + '%'; f.style.background = v >= 0 ? '#ff9a5c' : '#6aa8ff';
+  $('enso-v').textContent = (v >= 0 ? '+' : '−') + a.toFixed(1);
+  $('enso-l').textContent = ensoLabel(v);
+}
+let lastClock = '';
+function updateClock() {
+  const d = simDate(simHour), hh = String(d.getUTCHours()).padStart(2, '0'), m = d.getUTCMonth(), day = d.getUTCDate(), y = d.getUTCFullYear();
+  const key = simHour + '';
+  if (key === lastClock) return; lastClock = key;
+  $('c-date').textContent = MON[m] + ' ' + day + ', ' + y;
+  $('c-time').innerHTML = hh + ':00<small>UTC</small>';
+  updateEnsoUI();
+  $('c-meta').textContent = 'Day ' + (Math.floor(simHour / 24) + 1);
+  for (let i = 0; i < 12; i++) yearSpans[i].classList.toggle('now', i === m);
+  const y0 = Date.UTC(y, 0, 1), y1 = Date.UTC(y + 1, 0, 1);
+  $('year-bar').firstElementChild.style.width = ((d.getTime() - y0) / (y1 - y0) * 100).toFixed(2) + '%';
+}
+const STEP_MS = 60, SPEEDS = [0.125, 0.25, 0.5, 1, 2, 4, 8, 16, 32, 64];
+let speedIdx = 3, playing = true, acc = 0, lastNow = 0, lastComputeHour = -99, lastComputeAt = 0, dirty = true;
+function updateSpeedUI() {
+  const s = SPEEDS[speedIdx];
+  $('speed-x').textContent = (s < 1 ? s : s) + '×';
+  $('speed-sub').textContent = s >= 1 ? '+' + s + ' h every ' + STEP_MS + ' ms' : '+1 h every ' + Math.round(STEP_MS / s) + ' ms';
+  $('b-slower').disabled = speedIdx === 0; $('b-faster').disabled = speedIdx === SPEEDS.length - 1;
+}
+function setPlaying(p) { playing = p; $('ic-pause').style.display = p ? '' : 'none'; $('ic-play').style.display = p ? 'none' : ''; $('b-play').setAttribute('aria-label', p ? 'Pause' : 'Play'); }
+function advanceHours(n) {
+  const d0 = Math.floor(simHour / 24); simHour += n; const d1 = Math.floor(simHour / 24);
+  for (let d = d0; d < Math.min(d1, d0 + 800); d++) stepDay();
+  dirty = true;
+}
+function refresh(force) { computeField(); lastComputeHour = simHour; lastComputeAt = performance.now(); dirty = false; render(); }
+function frame(now) {
+  const dt = Math.min(250, now - lastNow); lastNow = now;
+  if (playing) {
+    acc += dt * SPEEDS[speedIdx]; const n = Math.floor(acc / STEP_MS);
+    if (n > 0) { acc -= n * STEP_MS; advanceHours(n); updateClock(); }
+  }
+  if (dirty && now - lastComputeAt >= 120 && Math.abs(simHour - lastComputeHour) >= (SPEEDS[speedIdx] < 1 ? 3 : 6)) refresh();
+  requestAnimationFrame(frame);
+}
+function restart() { initSim(P.seed); acc = 0; lastClock = ''; updateClock(); refresh(); }
+
+$('b-play').onclick = () => setPlaying(!playing);
+$('b-slower').onclick = () => { if (speedIdx > 0) { speedIdx--; updateSpeedUI(); } };
+$('b-faster').onclick = () => { if (speedIdx < SPEEDS.length - 1) { speedIdx++; updateSpeedUI(); } };
+$('b-restart').onclick = restart;
+$('p-ensonow').oninput = () => { const t = parseFloat($('p-ensonow').value); $('p-ensonow-o').textContent = ensoLabel(t) + ' (' + (t >= 0 ? '+' : '−') + Math.abs(t).toFixed(1) + ')'; forceEnso(t); };
+window.addEventListener('keydown', (e) => {
+  if (e.target && /INPUT|TEXTAREA/.test(e.target.tagName) && e.target.type !== 'range' && e.target.type !== 'checkbox') return;
+  if (e.code === 'Space') { e.preventDefault(); setPlaying(!playing); }
+  else if (e.key === '[') $('b-slower').click(); else if (e.key === ']') $('b-faster').click();
+  else if (e.key === 'r' || e.key === 'R') restart();
+});
+
+/* panel */
+$('collapse').onclick = () => { const p = $('panel'); p.classList.toggle('collapsed'); $('collapse').innerHTML = p.classList.contains('collapsed') ? '&#9656;' : '&#9662;'; };
+document.querySelectorAll('.subhead').forEach((h) => h.onclick = () => { const sec = h.closest('.subsec'), collapsed = sec.classList.toggle('collapsed'); h.setAttribute('aria-expanded', !collapsed); });
+document.querySelectorAll('#seg-view button').forEach((b) => b.onclick = () => { view = b.dataset.v; document.querySelectorAll('#seg-view button').forEach((x) => x.setAttribute('aria-pressed', x === b)); drawLegend(); scheduleRender(); });
+THEME_ORDER.forEach((id) => { const t = THEMES[id], b = document.createElement('button'); b.dataset.th = id; b.setAttribute('aria-pressed', id === 'sat'); b.innerHTML = '<i style="background:' + t.swatch + '"></i><span>' + t.name + '</span>'; b.onclick = () => setTheme(id); $('themes').appendChild(b); });
+document.querySelectorAll('#seg-grid button').forEach((b) => b.onclick = () => setGridMode(b.dataset.g));
+$('show-sst').onchange = scheduleRender; $('borders').onchange = scheduleRender;
+$('detail').onchange = () => { syncDetail(); $('attr').textContent = TH.attr + (themeId === 'bm' && $('detail').checked ? ' · Close-ups: Esri' : ''); };
+map.on('zoom', updateDetailOpacity);
+$('op').oninput = () => { $('op-o').textContent = $('op').value + '%'; scheduleRender(); };
+$('l265').onchange = scheduleRender; $('l2').onchange = scheduleRender;
+const sliders = [['p-warm', 'warming', (v) => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(1) + ' °C'], ['p-var', 'variability', (v) => v.toFixed(1) + '×'], ['p-sea', 'seasonal', (v) => v.toFixed(2).replace(/0$/, '') + '×'], ['p-feat', 'features', (v) => v.toFixed(2).replace(/0$/, '') + '×'], ['p-enso', 'enso', (v) => v.toFixed(2).replace(/0$/, '') + '×']];
+sliders.forEach(([id, key, fmt]) => { $(id).oninput = () => { P[key] = parseFloat($(id).value); $(id + '-o').textContent = fmt(P[key]); refresh(); }; });
+/* the seed gives each run its own slightly different climate: seasonal swing, currents/upwelling and ENSO strength move by a small but noticeable amount */
+function hash01(seed, k) { let t = (seed ^ Math.imul(k, 0x9E3779B1)) >>> 0; t = Math.imul(t ^ (t >>> 16), 0x85EBCA6B); t = Math.imul(t ^ (t >>> 13), 0xC2B2AE35); t ^= t >>> 16; return (t >>> 0) / 4294967296; }
+function seedJitter(seed, k, lo, hi) { const mag = lo + (hi - lo) * hash01(seed, k * 2 + 1), v = 1 + (hash01(seed, k * 2 + 2) < 0.5 ? -mag : mag); return Math.round(v / 0.05) * 0.05; }
+function seedSliderValues(seed) { return { 'p-sea': seedJitter(seed, 1, 0.08, 0.22), 'p-feat': seedJitter(seed, 2, 0.10, 0.30), 'p-enso': seedJitter(seed, 3, 0.12, 0.40) }; }
+function setSliderValues(vals) { for (const id in vals) $(id).value = vals[id]; sliders.forEach(([id, key, fmt]) => { P[key] = parseFloat($(id).value); $(id + '-o').textContent = fmt(P[key]); }); }
+$('b-reset').onclick = () => { setSliderValues(Object.assign({ 'p-warm': 0, 'p-var': 1 }, $('seed-vary').checked ? seedSliderValues(P.seed) : { 'p-sea': 1, 'p-feat': 1, 'p-enso': 1 })); refresh(); };
+function applySeed(s) { s = Math.max(1, Math.min(999999, Math.floor(s) || 1)); $('seed').value = s; P.seed = s; if ($('seed-vary').checked) setSliderValues(seedSliderValues(s)); restart(); }
+$('seed-vary').onchange = () => { setSliderValues($('seed-vary').checked ? seedSliderValues(P.seed) : { 'p-sea': 1, 'p-feat': 1, 'p-enso': 1 }); refresh(); };
+$('seed').onchange = () => applySeed(parseFloat($('seed').value));
+$('b-newseed').onclick = () => applySeed(1 + Math.floor(Math.random() * 999999));
+
+/* ------------------------------------------------------------------ *
+ *  Start
+ * ------------------------------------------------------------------ */
+setTheme('sat');
+drawLegend(); updateSpeedUI();
+if (window.innerWidth < 700) $('panel').classList.add('collapsed');
+const seed0 = 1 + Math.floor(Math.random() * 999999);
+$('seed').value = seed0; P.seed = seed0; setSliderValues(seedSliderValues(seed0)); initSim(seed0); updateClock();
+refresh();
+$('loading').style.display = 'none';
+lastNow = performance.now(); requestAnimationFrame(frame);
+
+window.SSTSIM = {
+  advance(h) { advanceHours(h); updateClock(); refresh(); },
+  sample(lat, lon) { return { sst: sampleField(sst, lat, lon), normal: sampleField(normal, lat, lon) }; },
+  state() { return { simHour, seed: P.seed, date: simDate(simHour).toISOString(), gapIdx }; },
+  set(k, v) { P[k] = v; refresh(); }, enso() { return { n34, lag0: ensoLag(0), lag3: ensoLag(91), lag6: ensoLag(183) }; }, forceEnso, setView(v) { document.querySelector('#seg-view button[data-v="' + v + '"]').click(); },
+  setPlaying, restart, map, render, setTheme, setGridMode, sliderVals() { return { seasonal: P.seasonal, features: P.features, enso: P.enso, warming: P.warming, variability: P.variability, seed: P.seed }; }, applySeed,
+  bm() {
+    const detail = !!(detailLayer && map.hasLayer(detailLayer));
+    if (themeId === 'sat') { const st = TS.sat; return { theme: 'sat', idx: st.idx, offline: st.offline, loaded: st.loaded, label: st.offline ? 'offline (Blue Marble)' : (TILESETS.sat[st.idx] && TILESETS.sat[st.idx].label), detail, csp: cspBlocked }; }
+    return { theme: themeId, embedded: true, ready: bmReady, detail, csp: cspBlocked };
+  },
+  lakes() { return LAKE_META.map((L, i) => ({ name: L.name, area: L.area, lat: L.lat, lon: L.lon, v: lakeV[i], n: lakeN[i] })); }, ceil: seaCeil, stats() { let mn = 99, mx = -99, nan = 0, km = 0; for (let k = 0; k < N; k++) { const v = sst[k]; if (v !== v) nan++; else { if (v < mn) mn = v; if (v > mx) { mx = v; km = k; } } } return { mn, mx, nan, at: [LAT1 - Math.floor(km / NX) * RES, LON0 + (km % NX) * RES] }; }
+};
+window.__ready = true;
+})();
+</script>
+</body>
+</html>

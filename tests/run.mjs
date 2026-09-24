@@ -11,6 +11,7 @@ const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const ATLANTIC_DIST = join(ROOT, 'dist/atlantic-sst-simulator.html');
 const EPAC_DIST = join(ROOT, 'dist/eastpacific-sst-simulator.html');
 const WPAC_DIST = join(ROOT, 'dist/westpacific-sst-simulator.html');
+const NIO_DIST = join(ROOT, 'dist/nio-sst-simulator.html');
 
 let failed = 0;
 function check(name, cond) {
@@ -38,7 +39,7 @@ async function checkCityMarkers(page, label, lat, lon, expectedName) {
   await page.check('#cities');
 }
 
-for (const [label, dist] of [['Atlantic', ATLANTIC_DIST], ['East Pacific', EPAC_DIST], ['West Pacific', WPAC_DIST]]) {
+for (const [label, dist] of [['Atlantic', ATLANTIC_DIST], ['East Pacific', EPAC_DIST], ['West Pacific', WPAC_DIST], ['North Indian Ocean', NIO_DIST]]) {
   if (!existsSync(dist)) {
     console.error(`${dist} not found — run \`npm run build\` first.`);
     process.exit(1);
@@ -257,6 +258,50 @@ await checkBasin('West Pacific', WPAC_DIST, async (page, label) => {
   await checkCityMarkers(page, label, 14.60, 120.98, 'Manila');
 });
 
+await checkBasin('North Indian Ocean', NIO_DIST, async (page, label) => {
+  // The grid runs 8S-32N, 30E-100E -- deliberately tight (no multi-degree soft-context padding
+  // the way the bigger basins have room for; this one's real basin is compact enough that a big
+  // fade zone would eat a large share of the map for no real benefit). East (100E) matches
+  // WPAC's own west edge exactly, so the two basins hand off cleanly. Unlike the Atlantic's
+  // Mediterranean or EPAC's Gulf of Mexico, the Red Sea and Persian Gulf are real *in-basin*
+  // water here, not masked. The south edge is a coastline-following curve (Somalia, the
+  // Maldives, Sri Lanka), not a flat line at the equator.
+  await page.evaluate(() => window.SSTSIM.map.fitBounds([[35, 60], [55, 90]]));   // toward Central Asia, well past the grid's northern edge
+  await page.waitForTimeout(300);
+  const clampedNorthLat = await page.evaluate(() => window.SSTSIM.map.getBounds().getNorth());
+  check(`[${label}] map cannot pan north past the grid's own northern edge`, clampedNorthLat < 34);
+
+  await page.evaluate(() => window.SSTSIM.map.setView([-25, 55], 5));   // toward the South-West Indian Ocean, well past the grid's southern edge
+  await page.waitForTimeout(300);
+  const clampedSouthLat = await page.evaluate(() => window.SSTSIM.map.getBounds().getSouth());
+  check(`[${label}] map cannot pan south past the basin's own southern edge`, clampedSouthLat > -10);
+
+  const basinSamples = await page.evaluate(() => ({
+    arabianSea: window.SSTSIM.sample(15, 65),           // open Arabian Sea, mid-domain
+    bayOfBengal: window.SSTSIM.sample(15, 88),           // open Bay of Bengal
+    redSea: window.SSTSIM.sample(20, 38),                // marginal sea, real in-basin water
+    persianGulf: window.SSTSIM.sample(27, 50),           // Persian Gulf shelf feature
+    somaliUpwelling: window.SSTSIM.sample(9, 51),        // Great Whirl open-ocean cold dome
+    maldives: window.SSTSIM.sample(3, 73),               // south curve's wiggle room around the Maldives
+    southOfDomain: window.SSTSIM.sample(-9, 60),         // south of the grid's own 8S edge entirely
+    northOfDomain: window.SSTSIM.sample(34, 60),         // north of the grid's own 32N edge
+    southOfSomalia: window.SSTSIM.sample(-3, 45),        // south of the curve near Somalia's own coast -- a different basin
+    openWiggleWater: window.SSTSIM.sample(-4, 60),       // open water south of the equator but inside the curve's wiggle room
+  }));
+  check(`[${label}] open Arabian Sea SST is real data`, Number.isFinite(basinSamples.arabianSea.sst));
+  check(`[${label}] open Bay of Bengal SST is real data`, Number.isFinite(basinSamples.bayOfBengal.sst));
+  check(`[${label}] Red Sea is real in-basin water, not masked`, Number.isFinite(basinSamples.redSea.sst));
+  check(`[${label}] Persian Gulf shelf feature has real SST`, Number.isFinite(basinSamples.persianGulf.sst));
+  check(`[${label}] Somali upwelling (Great Whirl) dome has real SST`, Number.isFinite(basinSamples.somaliUpwelling.sst));
+  check(`[${label}] Maldives (south curve's wiggle room) still has real SST`, Number.isFinite(basinSamples.maldives.sst));
+  check(`[${label}] south of the grid's own southern edge is outside the simulated area`, Number.isNaN(basinSamples.southOfDomain.sst));
+  check(`[${label}] north of the grid's own northern edge is outside the simulated area`, Number.isNaN(basinSamples.northOfDomain.sst));
+  check(`[${label}] south of Somalia's own coast is excluded (a different basin)`, Number.isNaN(basinSamples.southOfSomalia.sst));
+  check(`[${label}] open water in the south curve's wiggle room still has real SST`, Number.isFinite(basinSamples.openWiggleWater.sst));
+
+  await checkCityMarkers(page, label, 19.08, 72.88, 'Mumbai');
+});
+
 // Main menu: basin/mode select, disabled cards stay disabled, Start navigates to the built basin.
 async function checkMenu(basinCardText, expectedDistSuffix) {
   const menuErrors = [];
@@ -266,8 +311,8 @@ async function checkMenu(basinCardText, expectedDistSuffix) {
   await menuPage.goto(pathToFileURL(join(ROOT, 'index.html')).href, { waitUntil: 'load' });
 
   check(`[menu -> ${basinCardText}] Start disabled with nothing picked`, await menuPage.isDisabled('#start'));
-  await menuPage.click('button.card:has-text("Northern Indian Ocean")').catch(() => {});
-  check('disabled basin card ("coming soon") cannot be selected', (await menuPage.getAttribute('button.card:has-text("Northern Indian Ocean")', 'aria-pressed')) === 'false');
+  await menuPage.click('button.card:has-text("Australian Region")').catch(() => {});
+  check('disabled basin card ("coming soon") cannot be selected', (await menuPage.getAttribute('button.card:has-text("Australian Region")', 'aria-pressed')) === 'false');
   await menuPage.click(`button.card:has-text("${basinCardText}")`);
   await menuPage.click('button.card:has-text("Simulation")');
   check(`[menu -> ${basinCardText}] Start enabled once basin + mode picked`, !(await menuPage.isDisabled('#start')));
@@ -279,6 +324,7 @@ async function checkMenu(basinCardText, expectedDistSuffix) {
 await checkMenu('Atlantic', 'atlantic-sst-simulator.html');
 await checkMenu('Eastern Pacific', 'eastpacific-sst-simulator.html');
 await checkMenu('Western Pacific', 'westpacific-sst-simulator.html');
+await checkMenu('Northern Indian Ocean', 'nio-sst-simulator.html');
 
 if (failed) {
   console.error(`\n${failed} check(s) failed.`);
