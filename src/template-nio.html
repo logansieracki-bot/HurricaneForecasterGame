@@ -415,7 +415,7 @@ function interp1(xs, ys, x) { if (x <= xs[0]) return ys[0]; for (let i = 1; i < 
    just the seasonal cycle -- a real, physically-motivated consequence of being this shallow:
    whatever is forcing the water (seasonal sun angle, or a warm interannual swing), a thin water
    column with little thermal inertia responds to it harder than the open ocean does. */
-const PG_LAT0 = 24, PG_LAT1 = 30.5, PG_LON0 = 48, PG_LON1 = 57, PG_FEATHER = 1.5;
+const PG_LAT0 = 24, PG_LAT1 = 30.5, PG_LON0 = 48, PG_LON1 = 57, PG_FEATHER = 0.5;
 function edgeFade(v, lo, hi, feather) {
   if (v < lo - feather || v > hi + feather) return 0;
   if (v < lo) return 0.5 - 0.5 * Math.cos(Math.PI * (v - (lo - feather)) / feather);
@@ -427,13 +427,19 @@ let pgIdx, pgK, pgAnomAmp, pgCeilBoost;
   for (let j = 0; j < NY; j++) { const lat = LAT1 - j * RES, latG = edgeFade(lat, PG_LAT0, PG_LAT1, PG_FEATHER); if (latG <= 0) continue;
     for (let i = 0; i < NX; i++) { const lon = LON0 + i * RES, lonG = edgeFade(lon, PG_LON0, PG_LON1, PG_FEATHER); if (lonG <= 0) continue;
       const k = j * NX + i; if (land[k] || contDist[k] > 2.5) continue; const g = latG * lonG;
-      idx.push(k); amps.push(0.9 * Math.exp(-contDist[k] / 1.0) * g); pgAnomAmp[k] = 1 + 0.6 * g;
+      // No per-cell falloff by distance from shore here (unlike Gulf of California): the whole
+      // Gulf is shallow and narrow enough that "close to land" describes nearly all of its own
+      // water, so decaying by coastal distance just faded the effect out well before the real
+      // coastline -- visibly wrong for a gulf that should read uniformly hot/cold right up to
+      // its own shore. Only the box's own lat/lon edges (the real transition into the wider
+      // Gulf of Oman) taper it, and with a much narrower feather than Gulf of California's own.
+      idx.push(k); amps.push(0.9 * g); pgAnomAmp[k] = 1 + 0.6 * g;
       // The latitude-based seaCeil physical ceiling below assumes open-ocean mixing depth --
       // real, but wrong for a ~50m-deep, nearly landlocked gulf: the Persian Gulf is a
       // documented real exception to what its latitude alone would predict (published summer
       // peaks reach the mid-30s C some years), so raise the local ceiling here rather than let
       // the universal clamp silently cancel out the shelf boost above it.
-      pgCeilBoost[k] = 4 * Math.exp(-contDist[k] / 1.0) * g; } }
+      pgCeilBoost[k] = 4 * g; } }
   pgIdx = Int32Array.from(idx); pgK = Float32Array.from(amps); }
 /* Somali upwelling ("the Great Whirl"): one of the strongest, fastest-developing coastal
    upwelling systems on Earth, driven by the SW monsoon's Findlater Jet reversing the Somali
