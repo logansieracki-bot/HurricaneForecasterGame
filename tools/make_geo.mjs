@@ -169,6 +169,7 @@ const B1_COUNTRIES = {
   eastpacific: ['mx', 'us'],
   westpacific: ['cn', 'jp', 'kr', 'ru', 'id'],
   nio: ['in'],
+  aus: ['au', 'id'],
 };
 // Most packs follow `<code>-admin1-10m.json`; the US pack alone breaks that pattern.
 const B1_FILE = { us: 'us-states-10m.json' };

@@ -1,6 +1,47 @@
 # Roadmap
 
 ## Just landed
+- **Australian Region basin added** -- the fifth live basin, and the first one where the two
+  candidate under-resolved features were checked against the raw climatology and *neither* needed
+  a synthetic correction, a genuinely different outcome from every prior basin's own hot/cold
+  pocket (Gulf of California, Red Sea/Persian Gulf, Kuroshio/Vietnam) -- the honest result of the
+  same verification discipline, not a shortcut:
+  - The **Leeuwin Current** (the poleward-flowing warm current off Western Australia, unusual for
+    running against the eastern-boundary-current norm every other basin's own coastal current
+    follows) already shows up correctly in the raw 2 deg climatology -- a real warm anomaly at the
+    right latitude/season, not washed out the way the Persian Gulf's own narrow shelf was.
+  - The **Gulf of Carpentaria** (a shallow, semi-enclosed sea south of the Arafura Sea, structurally
+    similar to the Persian Gulf/Gulf of California family that needed correction) shows a real
+    seasonal swing at 2 deg resolution without dilution -- wide enough, unlike the Persian Gulf's
+    much narrower shelf, that the coarse grid doesn't need help resolving it.
+  - So, unlike every other basin's own template, this one ships with no synthetic ocean-feature
+    code at all -- the raw climatology carries the whole basin as-is.
+  - Domain: 90E-160E, 44S-4N. West and east are BOM's own standard handoffs to the neighboring
+    South-West Indian Ocean (RSMC La Reunion) and South Pacific (RSMC Nadi) basins -- both hard
+    straight-line edges in open water, unlike every other basin's own coastline-following boundary,
+    since there's no coastline there to follow. South runs well past where real cyclones actually
+    form into real, correctly-cooling subtropical water off WA/Victoria/Tasmania (the same call as
+    EPAC's own Peru/Chile extension or WPAC's Sea of Okhotsk) -- deliberately stopping well short of
+    New Zealand rather than reaching for it, a direct response to the reference screenshot's own
+    city density including NZ. North is the real cutoff, a coastline-following curve mirroring
+    WPAC's own south curve in both direction and spirit -- hugs Indonesia's islands (Sumatra, Java,
+    the Nusa Tenggara chain, Sulawesi, the Maluku islands) but dips a few degrees further north into
+    real basin water between them (Makassar Strait, the Banda Sea, the Arafura/Coral Seas toward
+    New Guinea).
+  - 56 real cities: the WA coast (Broome down to Esperance, tracing the Leeuwin Current's own
+    path), the NT Top End, Queensland's Gulf-of-Carpentaria and Coral Sea coasts, the full NSW/
+    Victoria/Tasmania coast (the domain reaches that far south for real, correctly-cooling water,
+    same call as the domain extension itself), South Australia's Bight, southern Indonesia's Lesser
+    Sunda islands, East Timor, and Papua New Guinea's Coral Sea side -- plus a handful of genuinely
+    inland cities (Alice Springs, Katherine, Canberra, Toowoomba, Kalgoorlie) using the established
+    `sLat`/`sLon` nearest-real-water convention.
+  - Lakes: Danau Toba (Sumatra, shared with WPAC/NIO's own domains) plus 21 Australian salt/
+    ephemeral lakes (Eyre, Torrens, Gairdner, Frome, and others) that hold standing water only
+    rarely -- none got a `LK_SPECIAL` override, since the generic latitude-based estimate is the
+    honest treatment for water that mostly isn't there, not a fabricated seasonal curve.
+  - Cyclone terminology throughout, and a season shading matching BOM's own real single continuous
+    Nov-Apr window (Southern Hemisphere summer) -- unlike NIO's bimodal season, this basin's
+    season doesn't have a monsoon-driven mid-season gap.
 - **North Indian Ocean basin added** -- the fourth live basin, and the first one deliberately built
   *tight*: the real cyclone-relevant basin (Arabian Sea + Bay of Bengal + Red Sea + Persian Gulf)
   is compact enough that the multi-degree soft-context padding the bigger basins have room for
@@ -364,8 +405,8 @@
 - Main menu (`index.html`) has all 9 basins as separate cards (no combining):
   Atlantic, Eastern Pacific, Western Pacific, Northern Indian Ocean, Australian
   Region, South Pacific, South-West Indian Ocean, South Atlantic, Mediterranean.
-  Atlantic and Eastern Pacific (Simulation mode) are live; the rest are "Coming
-  soon."
+  Atlantic, Eastern Pacific, Western Pacific, Northern Indian Ocean and Australian
+  Region (Simulation mode) are live; the rest are "Coming soon."
 - Blue Marble imagery rebuilt to be always-on and network-independent (embedded
   crop instead of a 4-source live tile chain); Satellite theme simplified to one
   provider with an automatic fallback to Blue Marble.
@@ -381,20 +422,13 @@
   of hand-editing a single built HTML file.
 
 ## Next up, in order
-1. **Western Pacific** — Kuroshio + Kuroshio Extension, the West Pacific Warm
-   Pool, monsoon trough effects. ENSO's Atlantic/EPAC regression does not
-   transfer — West Pacific responds differently and needs its own fit.
-2. **Northern Indian Ocean** — Somali Current / Findlater Jet monsoon
-   upwelling, Bay of Bengal's low-salinity warm cap, bimodal (pre-/post-monsoon)
-   cyclone season instead of one summer peak.
-3. **Australian Region** and **South-West Indian Ocean** — separate basins
-   (menu no longer combines them). Both Southern Hemisphere (Nov–Apr season):
-   Leeuwin Current for the Australian side, Agulhas Current for the SW Indian
-   side.
-4. **South Pacific**, **South Atlantic**, **Mediterranean** — lower cyclone
+1. **South-West Indian Ocean** — the Australian Region's own Southern
+   Hemisphere counterpart (Nov–Apr season), Agulhas Current on its western
+   side instead of the Leeuwin Current.
+2. **South Pacific**, **South Atlantic**, **Mediterranean** — lower cyclone
    activity (South Atlantic almost none) or a different storm type entirely
    (Mediterranean "medicanes"); realism bar and priority TBD once the first
-   three are done.
+   is done.
 
 Each basin gets its own `dist/<basin>-sst-simulator.html`, loaded on demand from
 the main menu — no global grid, keeps every basin's build lightweight

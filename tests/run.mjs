@@ -12,6 +12,7 @@ const ATLANTIC_DIST = join(ROOT, 'dist/atlantic-sst-simulator.html');
 const EPAC_DIST = join(ROOT, 'dist/eastpacific-sst-simulator.html');
 const WPAC_DIST = join(ROOT, 'dist/westpacific-sst-simulator.html');
 const NIO_DIST = join(ROOT, 'dist/nio-sst-simulator.html');
+const AUS_DIST = join(ROOT, 'dist/aus-sst-simulator.html');
 
 let failed = 0;
 function check(name, cond) {
@@ -39,7 +40,7 @@ async function checkCityMarkers(page, label, lat, lon, expectedName) {
   await page.check('#cities');
 }
 
-for (const [label, dist] of [['Atlantic', ATLANTIC_DIST], ['East Pacific', EPAC_DIST], ['West Pacific', WPAC_DIST], ['North Indian Ocean', NIO_DIST]]) {
+for (const [label, dist] of [['Atlantic', ATLANTIC_DIST], ['East Pacific', EPAC_DIST], ['West Pacific', WPAC_DIST], ['North Indian Ocean', NIO_DIST], ['Australian Region', AUS_DIST]]) {
   if (!existsSync(dist)) {
     console.error(`${dist} not found — run \`npm run build\` first.`);
     process.exit(1);
@@ -302,6 +303,54 @@ await checkBasin('North Indian Ocean', NIO_DIST, async (page, label) => {
   await checkCityMarkers(page, label, 19.08, 72.88, 'Mumbai');
 });
 
+await checkBasin('Australian Region', AUS_DIST, async (page, label) => {
+  // The grid runs 44S-4N, 90E-160E. West (90E) and east (160E) are BOM's own standard handoffs
+  // to the neighboring South-West Indian Ocean and South Pacific basins -- both hard straight-line
+  // edges in open water, not coastline-following curves. South (44S) runs well past where real
+  // cyclones actually form into real, correctly-cooling subtropical water off WA/Victoria/Tasmania
+  // (the same call as EPAC's Peru/Chile extension or WPAC's Sea of Okhotsk) -- deliberately
+  // stopping well short of New Zealand rather than reaching for it. The north edge is the real
+  // case needing a cutoff, a coastline-following curve mirroring WPAC's own south curve that hugs
+  // Indonesia's islands but dips a few degrees further north in the open water between them.
+  await page.evaluate(() => window.SSTSIM.map.fitBounds([[-30, 60], [10, 85]]));   // toward the South-West Indian Ocean, well past the grid's western edge
+  await page.waitForTimeout(300);
+  const clampedWestLon = await page.evaluate(() => window.SSTSIM.map.getBounds().getWest());
+  check(`[${label}] map cannot pan west past the grid's own western edge`, clampedWestLon > 88);
+
+  await page.evaluate(() => window.SSTSIM.map.fitBounds([[-30, 165], [10, 190]]));   // toward the South Pacific/New Zealand, well past the grid's eastern edge
+  await page.waitForTimeout(300);
+  const clampedEastLon = await page.evaluate(() => window.SSTSIM.map.getBounds().getEast());
+  check(`[${label}] map cannot pan east past the grid's own eastern edge`, clampedEastLon < 162);
+
+  await page.evaluate(() => window.SSTSIM.map.setView([-60, 120], 5));   // toward the Southern Ocean, well past the grid's southern edge
+  await page.waitForTimeout(300);
+  const clampedSouthLat = await page.evaluate(() => window.SSTSIM.map.getBounds().getSouth());
+  check(`[${label}] map cannot pan south past the basin's own southern edge`, clampedSouthLat > -46);
+
+  const basinSamples = await page.evaluate(() => ({
+    timorSea: window.SSTSIM.sample(-12, 128),             // open Timor Sea, mid-domain
+    coralSea: window.SSTSIM.sample(-18, 152),              // open Coral Sea
+    leeuwinCurrent: window.SSTSIM.sample(-30, 113),        // Leeuwin Current band off WA -- verified against raw climatology, no synthetic correction needed
+    gulfOfCarpentaria: window.SSTSIM.sample(-15, 139),     // shallow, semi-enclosed sea, real in-basin water -- also verified, no correction needed
+    openWiggleWater: window.SSTSIM.sample(-2, 118),        // Makassar Strait/Banda Sea, south of the equator but inside the north curve's wiggle room
+    northOfCurve: window.SSTSIM.sample(3, 106),            // north of the curve near Java -- a different basin
+    westOfDomain: window.SSTSIM.sample(-20, 85),           // west of the grid's own 90E edge entirely -- South-West Indian Ocean's territory
+    eastOfDomain: window.SSTSIM.sample(-20, 165),          // east of the grid's own 160E edge entirely -- South Pacific's territory (where New Zealand sits, deliberately excluded)
+    southOfDomain: window.SSTSIM.sample(-46, 120),         // south of the grid's own 44S edge entirely
+  }));
+  check(`[${label}] open Timor Sea SST is real data`, Number.isFinite(basinSamples.timorSea.sst));
+  check(`[${label}] open Coral Sea SST is real data`, Number.isFinite(basinSamples.coralSea.sst));
+  check(`[${label}] Leeuwin Current band has real SST`, Number.isFinite(basinSamples.leeuwinCurrent.sst));
+  check(`[${label}] Gulf of Carpentaria is real in-basin water, not masked`, Number.isFinite(basinSamples.gulfOfCarpentaria.sst));
+  check(`[${label}] open water in the north curve's wiggle room still has real SST`, Number.isFinite(basinSamples.openWiggleWater.sst));
+  check(`[${label}] north of the curve near Java is excluded (a different basin)`, Number.isNaN(basinSamples.northOfCurve.sst));
+  check(`[${label}] west of the grid's own western edge is outside the simulated area`, Number.isNaN(basinSamples.westOfDomain.sst));
+  check(`[${label}] east of the grid's own eastern edge is outside the simulated area`, Number.isNaN(basinSamples.eastOfDomain.sst));
+  check(`[${label}] south of the grid's own southern edge is outside the simulated area`, Number.isNaN(basinSamples.southOfDomain.sst));
+
+  await checkCityMarkers(page, label, -33.87, 151.21, 'Sydney');
+});
+
 // Main menu: basin/mode select, disabled cards stay disabled, Start navigates to the built basin.
 async function checkMenu(basinCardText, expectedDistSuffix) {
   const menuErrors = [];
@@ -311,8 +360,8 @@ async function checkMenu(basinCardText, expectedDistSuffix) {
   await menuPage.goto(pathToFileURL(join(ROOT, 'index.html')).href, { waitUntil: 'load' });
 
   check(`[menu -> ${basinCardText}] Start disabled with nothing picked`, await menuPage.isDisabled('#start'));
-  await menuPage.click('button.card:has-text("Australian Region")').catch(() => {});
-  check('disabled basin card ("coming soon") cannot be selected', (await menuPage.getAttribute('button.card:has-text("Australian Region")', 'aria-pressed')) === 'false');
+  await menuPage.click('button.card:has-text("South Pacific")').catch(() => {});
+  check('disabled basin card ("coming soon") cannot be selected', (await menuPage.getAttribute('button.card:has-text("South Pacific")', 'aria-pressed')) === 'false');
   await menuPage.click(`button.card:has-text("${basinCardText}")`);
   await menuPage.click('button.card:has-text("Simulation")');
   check(`[menu -> ${basinCardText}] Start enabled once basin + mode picked`, !(await menuPage.isDisabled('#start')));
@@ -325,6 +374,7 @@ await checkMenu('Atlantic', 'atlantic-sst-simulator.html');
 await checkMenu('Eastern Pacific', 'eastpacific-sst-simulator.html');
 await checkMenu('Western Pacific', 'westpacific-sst-simulator.html');
 await checkMenu('Northern Indian Ocean', 'nio-sst-simulator.html');
+await checkMenu('Australian Region', 'aus-sst-simulator.html');
 
 if (failed) {
   console.error(`\n${failed} check(s) failed.`);
