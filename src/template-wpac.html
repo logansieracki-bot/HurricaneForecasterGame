@@ -1040,10 +1040,22 @@ function drawBorders(g, minX, minY, ws, z) {
   g.globalAlpha = 1;
 }
 function uiRects() { const out = []; for (const id of ['clock', 'panel', 'dock', 'readout', 'legend']) { const el = $(id); if (!el || el.style.display === 'none') continue; const r = el.getBoundingClientRect(); out.push([r.left - 10, r.top - 10, r.right + 10, r.bottom + 10]); } return out; }
+function drawEquator(g, minX, minY, ws) {
+  // Always on, independent of the Coordinates grid toggle -- a fixed reference line, not one more
+  // optional grid line, so it needs to read clearly over every theme and every SST color underneath
+  // it (a dark halo behind a white dashed line, not just a single thin stroke like the regular grid).
+  const y = Math.round(mercN(0) * ws - minY) + 0.5;
+  if (y < -4 || y > H + 4) return;
+  g.save(); g.setLineDash([9, 5]); g.lineCap = 'butt';
+  g.lineWidth = 3.2; g.strokeStyle = 'rgba(0,0,0,.55)'; g.beginPath(); g.moveTo(0, y); g.lineTo(W, y); g.stroke();
+  g.lineWidth = 1.6; g.strokeStyle = '#ffffff'; g.beginPath(); g.moveTo(0, y); g.lineTo(W, y); g.stroke();
+  g.restore();
+}
 function drawGrid(minX, minY, ws) {
   const g = gridCanvas.getContext('2d'); g.setTransform(DPR, 0, 0, DPR, 0, 0); g.clearRect(0, 0, W, H);
   if ($('borders').checked) drawBorders(g, minX, minY, ws, map.getZoom());
   drawCities(g, minX, minY, ws);
+  drawEquator(g, minX, minY, ws);
   if (gridMode === 'off') return;
   const ppd = ws / 360, step = GRID_STEPS.find((q) => q * ppd >= 80) || 30;
   const latAt = (y) => Math.atan(Math.sinh(Math.PI * (1 - 2 * (minY + y) / ws))) / DEG, lonAt = (x) => (minX + x) / ws * 360 - 180;
