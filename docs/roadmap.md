@@ -38,8 +38,17 @@
   - Real published monthly figures for Lake Victoria, Lake Tanganyika and Lake Malawi -- the same
     East African Rift lakes NIO's own domain reaches into on its own western edge -- reused rather
     than re-derived, since the lakes themselves haven't changed basin. The rest of this basin's own
-    18-lake list (Albert, Moeru, Bangweulu, Kivu, Edward, Kyoga, Rukwa, Kariba, Cahora Bassa,
-    Turkana, Eyasi, Natron, Manyara) gets the generic latitude+area fallback.
+    17-lake list (Albert, Moeru, Bangweulu, Kivu, Edward, Kyoga, Rukwa, Kariba, Cahora Bassa,
+    Eyasi, Natron, Manyara) gets the generic latitude+area fallback.
+  - `padBox` corrected from 3 (the "normal" treatment) to 2 (the tight, no-multi-degree-context
+    treatment NIO's own build established) after a direct reminder that the "small basins don't
+    get the soft-context padding that eats map space" rule applies generally, not just to the
+    basin it was first stated for -- this basin's own 60x44 domain is the same order of size as
+    NIO's own 70x40, so it should have gotten the same tight treatment the first time. Regenerated
+    geo/imagery with the tighter box (28E-92E, 46S-2N instead of 27E-93E, 47S-3N); the only visible
+    change is Lake Turkana dropping out of the lake list, since its own centroid sits just outside
+    the tighter padded box -- the real SST domain itself (30E-90E, 44S-0) and every city/feature
+    coordinate were already within it, so nothing else moved.
   - 34 real cities across Kenya/Tanzania's coast, Comoros, Mozambique, South Africa's Indian Ocean
     coast (stopping at Durban, right at the grid's own real 30E edge -- East London and Port
     Elizabeth sit just past it, on the Cape/Atlantic side of the handoff), Madagascar, and the
