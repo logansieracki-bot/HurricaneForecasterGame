@@ -30,3 +30,4 @@ build({ basin: 'eastpacific', templatePath: join(ROOT, 'src/template-eastpacific
 build({ basin: 'westpacific', templatePath: join(ROOT, 'src/template-wpac.html'), dataPath: join(ROOT, 'data/generated/westpacific-data.json') });
 build({ basin: 'nio', templatePath: join(ROOT, 'src/template-nio.html'), dataPath: join(ROOT, 'data/generated/nio-data.json') });
 build({ basin: 'aus', templatePath: join(ROOT, 'src/template-aus.html'), dataPath: join(ROOT, 'data/generated/aus-data.json') });
+build({ basin: 'swio', templatePath: join(ROOT, 'src/template-swio.html'), dataPath: join(ROOT, 'data/generated/swio-data.json') });

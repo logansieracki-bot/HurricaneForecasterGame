@@ -1,6 +1,53 @@
 # Roadmap
 
 ## Just landed
+- **South-West Indian Ocean basin added** -- the sixth live basin, and the first with no masking
+  curve anywhere in the grid at all. All four box edges turned out to be genuinely clean straight
+  lines rather than needing a coastline-following cutoff: west (30E) and east (90E) are RSMC La
+  Reunion's own published area-of-responsibility boundaries (east matches AUS's own west edge
+  exactly, the same clean handoff already established there; west runs mostly through mainland
+  Africa, which the land mask alone already handles), north (the equator) is IMD's own handoff
+  line -- already resolved on NIO's own side by its own south curve near Somalia, so nothing was
+  left for this basin's edge to hug -- and south (44S) runs well past where real cyclones actually
+  form into real, correctly-cooling Southern Ocean water, the same call as AUS's own southern
+  extension.
+  - **Two real candidate features, checked against the raw climatology, two different honest
+    outcomes:**
+    - The **Agulhas Current** -- one of the strongest western boundary currents on Earth -- got a
+      synthetic warm band, the same shape of fix as WPAC's own Kuroshio. Checked directly: the
+      coast already runs a real 2-4.6C warmer than the open ocean at the same latitude, strongest
+      in austral winter (Aug) not summer, the same real thermal-contrast-sharpest-in-winter pattern
+      as the Gulf Stream/Kuroshio -- but a near-coast vs. a few degrees further offshore check at
+      the same latitude/month came back nearly identical, meaning the concentrated core right at
+      the shelf edge isn't distinguished from the smoother regional gradient. Fixed the same way as
+      Kuroshio: traced the current's own real path (from the Mozambique Channel's exit off northern
+      KwaZulu-Natal down to where it runs off the grid's own 30E edge, short of the real
+      retroflection near the Agulhas Bank) and added a modest warm band along it, timed to the
+      winter maximum already visible in the raw data.
+    - The **Mozambique Channel** needed nothing. Checked directly: the channel runs only modestly
+      warmer than the open ocean at the same latitude, and its own seasonal swing is comparable to
+      (if anything slightly narrower than) the surrounding water -- nothing like the Persian
+      Gulf/Gulf of California pattern of a diluted extreme, since it's a deep channel (average
+      depth well over 1000m), structurally nothing like the shallow shelf seas that family covers.
+    - A third candidate, the **Seychelles-Chagos thermocline ridge**, was ruled out before it
+      became a feature: no distinguishable cold band shows up in the raw climatology's own mean
+      state at 8S, since it's a real but anomaly/IOD-driven subsurface phenomenon, not a
+      mean-climatology SST signal -- already covered by the existing generic ENSO/EOF anomaly
+      system with no special-casing needed, the same honest call as AUS's own ENSO-cyclone
+      relationship.
+  - Real published monthly figures for Lake Victoria, Lake Tanganyika and Lake Malawi -- the same
+    East African Rift lakes NIO's own domain reaches into on its own western edge -- reused rather
+    than re-derived, since the lakes themselves haven't changed basin. The rest of this basin's own
+    18-lake list (Albert, Moeru, Bangweulu, Kivu, Edward, Kyoga, Rukwa, Kariba, Cahora Bassa,
+    Turkana, Eyasi, Natron, Manyara) gets the generic latitude+area fallback.
+  - 34 real cities across Kenya/Tanzania's coast, Comoros, Mozambique, South Africa's Indian Ocean
+    coast (stopping at Durban, right at the grid's own real 30E edge -- East London and Port
+    Elizabeth sit just past it, on the Cape/Atlantic side of the handoff), Madagascar, and the
+    Mascarenes/Seychelles -- Madagascar itself went from the reference screenshot's own single city
+    to eight real coastal cities plus its inland capital, a direct response to the explicit
+    "we could add more to Madagascar city wise" feedback.
+  - Cyclone terminology throughout, and a season shaded Nov-Apr (Southern Hemisphere summer) --
+    the same single continuous window as AUS, not NIO's bimodal split.
 - **Australian Region basin added** -- the fifth live basin, and the first one where the two
   candidate under-resolved features were checked against the raw climatology and *neither* needed
   a synthetic correction, a genuinely different outcome from every prior basin's own hot/cold
@@ -405,8 +452,8 @@
 - Main menu (`index.html`) has all 9 basins as separate cards (no combining):
   Atlantic, Eastern Pacific, Western Pacific, Northern Indian Ocean, Australian
   Region, South Pacific, South-West Indian Ocean, South Atlantic, Mediterranean.
-  Atlantic, Eastern Pacific, Western Pacific, Northern Indian Ocean and Australian
-  Region (Simulation mode) are live; the rest are "Coming soon."
+  Atlantic, Eastern Pacific, Western Pacific, Northern Indian Ocean, Australian
+  Region and South-West Indian Ocean (Simulation mode) are live; the rest are "Coming soon."
 - Blue Marble imagery rebuilt to be always-on and network-independent (embedded
   crop instead of a 4-source live tile chain); Satellite theme simplified to one
   provider with an automatic fallback to Blue Marble.
@@ -422,13 +469,10 @@
   of hand-editing a single built HTML file.
 
 ## Next up, in order
-1. **South-West Indian Ocean** — the Australian Region's own Southern
-   Hemisphere counterpart (Nov–Apr season), Agulhas Current on its western
-   side instead of the Leeuwin Current.
-2. **South Pacific**, **South Atlantic**, **Mediterranean** — lower cyclone
-   activity (South Atlantic almost none) or a different storm type entirely
-   (Mediterranean "medicanes"); realism bar and priority TBD once the first
-   is done.
+1. **South Pacific**, **South Atlantic**, **Mediterranean** — the three
+   remaining basins, coded one at a time. Lower cyclone activity (South
+   Atlantic almost none) or a different storm type entirely (Mediterranean
+   "medicanes"); realism bar and priority TBD once the next one is picked.
 
 Each basin gets its own `dist/<basin>-sst-simulator.html`, loaded on demand from
 the main menu — no global grid, keeps every basin's build lightweight

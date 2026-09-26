@@ -13,6 +13,7 @@ const EPAC_DIST = join(ROOT, 'dist/eastpacific-sst-simulator.html');
 const WPAC_DIST = join(ROOT, 'dist/westpacific-sst-simulator.html');
 const NIO_DIST = join(ROOT, 'dist/nio-sst-simulator.html');
 const AUS_DIST = join(ROOT, 'dist/aus-sst-simulator.html');
+const SWIO_DIST = join(ROOT, 'dist/swio-sst-simulator.html');
 
 let failed = 0;
 function check(name, cond) {
@@ -40,7 +41,7 @@ async function checkCityMarkers(page, label, lat, lon, expectedName) {
   await page.check('#cities');
 }
 
-for (const [label, dist] of [['Atlantic', ATLANTIC_DIST], ['East Pacific', EPAC_DIST], ['West Pacific', WPAC_DIST], ['North Indian Ocean', NIO_DIST], ['Australian Region', AUS_DIST]]) {
+for (const [label, dist] of [['Atlantic', ATLANTIC_DIST], ['East Pacific', EPAC_DIST], ['West Pacific', WPAC_DIST], ['North Indian Ocean', NIO_DIST], ['Australian Region', AUS_DIST], ['South-West Indian Ocean', SWIO_DIST]]) {
   if (!existsSync(dist)) {
     console.error(`${dist} not found — run \`npm run build\` first.`);
     process.exit(1);
@@ -351,6 +352,56 @@ await checkBasin('Australian Region', AUS_DIST, async (page, label) => {
   await checkCityMarkers(page, label, -33.87, 151.21, 'Sydney');
 });
 
+await checkBasin('South-West Indian Ocean', SWIO_DIST, async (page, label) => {
+  // The grid runs 44S-0, 30E-90E -- a first among the live basins in having no masking curve
+  // anywhere at all. East (90E) matches AUS's own west edge exactly; west (30E) is RSMC La
+  // Reunion's own real area-of-responsibility line, running mostly through mainland Africa
+  // (which the land mask alone already handles); north (the equator) is IMD's own handoff line,
+  // already resolved by NIO's own south curve on its side; south (44S) runs well past where real
+  // cyclones actually form into real, correctly-cooling Southern Ocean water, the same call as
+  // AUS's own southern extension. All four are genuinely clean straight lines, not an oversight.
+  await page.evaluate(() => window.SSTSIM.map.fitBounds([[-30, 5], [-10, 28]]));   // toward the Cape/Atlantic side, well past the grid's western edge
+  await page.waitForTimeout(300);
+  const clampedWestLon = await page.evaluate(() => window.SSTSIM.map.getBounds().getWest());
+  check(`[${label}] map cannot pan west past the grid's own western edge`, clampedWestLon > 28);
+
+  await page.evaluate(() => window.SSTSIM.map.fitBounds([[-30, 92], [-10, 120]]));   // toward the Australian region, well past the grid's eastern edge
+  await page.waitForTimeout(300);
+  const clampedEastLon = await page.evaluate(() => window.SSTSIM.map.getBounds().getEast());
+  check(`[${label}] map cannot pan east past the grid's own eastern edge`, clampedEastLon < 92);
+
+  await page.evaluate(() => window.SSTSIM.map.fitBounds([[2, 40], [20, 70]]));   // toward the North Indian Ocean, well past the grid's northern edge
+  await page.waitForTimeout(300);
+  const clampedNorthLat = await page.evaluate(() => window.SSTSIM.map.getBounds().getNorth());
+  check(`[${label}] map cannot pan north past the grid's own northern edge`, clampedNorthLat < 2);
+
+  await page.evaluate(() => window.SSTSIM.map.setView([-60, 55], 5));   // toward the Southern Ocean, well past the grid's southern edge
+  await page.waitForTimeout(300);
+  const clampedSouthLat = await page.evaluate(() => window.SSTSIM.map.getBounds().getSouth());
+  check(`[${label}] map cannot pan south past the basin's own southern edge`, clampedSouthLat > -46);
+
+  const basinSamples = await page.evaluate(() => ({
+    openWater: window.SSTSIM.sample(-20, 65),              // open Indian Ocean, mid-domain
+    agulhasCurrent: window.SSTSIM.sample(-29, 31),          // Agulhas Current band off Durban -- verified against raw climatology, given a synthetic warm band
+    mozambiqueChannel: window.SSTSIM.sample(-18, 40),       // deep channel, real in-basin water -- also verified, no correction needed
+    madagascarEast: window.SSTSIM.sample(-18, 52),          // open ocean east of Madagascar
+    westOfDomain: window.SSTSIM.sample(-20, 25),            // west of the grid's own 30E edge entirely -- the Cape/Atlantic side
+    eastOfDomain: window.SSTSIM.sample(-20, 95),            // east of the grid's own 90E edge entirely -- the Australian region's territory
+    northOfDomain: window.SSTSIM.sample(3, 50),             // north of the grid's own equator edge -- NIO's territory
+    southOfDomain: window.SSTSIM.sample(-46, 50),           // south of the grid's own 44S edge entirely
+  }));
+  check(`[${label}] open Indian Ocean SST is real data`, Number.isFinite(basinSamples.openWater.sst));
+  check(`[${label}] Agulhas Current band has real SST`, Number.isFinite(basinSamples.agulhasCurrent.sst));
+  check(`[${label}] Mozambique Channel is real in-basin water, not masked`, Number.isFinite(basinSamples.mozambiqueChannel.sst));
+  check(`[${label}] open water east of Madagascar has real SST`, Number.isFinite(basinSamples.madagascarEast.sst));
+  check(`[${label}] west of the grid's own western edge is outside the simulated area`, Number.isNaN(basinSamples.westOfDomain.sst));
+  check(`[${label}] east of the grid's own eastern edge is outside the simulated area`, Number.isNaN(basinSamples.eastOfDomain.sst));
+  check(`[${label}] north of the grid's own northern edge is outside the simulated area`, Number.isNaN(basinSamples.northOfDomain.sst));
+  check(`[${label}] south of the grid's own southern edge is outside the simulated area`, Number.isNaN(basinSamples.southOfDomain.sst));
+
+  await checkCityMarkers(page, label, -29.86, 31.02, 'Durban');
+});
+
 // Main menu: basin/mode select, disabled cards stay disabled, Start navigates to the built basin.
 async function checkMenu(basinCardText, expectedDistSuffix) {
   const menuErrors = [];
@@ -375,6 +426,7 @@ await checkMenu('Eastern Pacific', 'eastpacific-sst-simulator.html');
 await checkMenu('Western Pacific', 'westpacific-sst-simulator.html');
 await checkMenu('Northern Indian Ocean', 'nio-sst-simulator.html');
 await checkMenu('Australian Region', 'aus-sst-simulator.html');
+await checkMenu('South-West Indian Ocean', 'swio-sst-simulator.html');
 
 if (failed) {
   console.error(`\n${failed} check(s) failed.`);
