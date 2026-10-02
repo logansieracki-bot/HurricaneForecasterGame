@@ -1,6 +1,26 @@
 # Roadmap
 
 ## Just landed
+- **Found and fixed a real "fading SST" bug, reported directly on SWIO, that turned out to affect
+  every basin's own flat (unmasked) box edges**: a generic render-time overlay-alpha taper
+  (`FADE = 24` cells = 6 deg) baked into the shared template since the original Atlantic build,
+  completely separate from the actual SST *values* (which were always real and correct right to
+  the edge -- `sample()` never returned NaN there, which is why the earlier padBox investigation
+  missed it). The taper fades the overlay's own opacity purely by distance-from-array-edge,
+  regardless of whether that edge is a confident real boundary or a "data gets less certain here"
+  one, so real open-ocean color washed out toward the base map near any basin's own flat edge --
+  worst on a small basin, where 6 deg is a big share of the total box. Confirmed visually on SWIO's
+  own west edge (a visible gray patch over real, correctly-colored Mozambique Channel water) and,
+  once the mechanism was understood, on AUS's own west edge too (same symptom, same root cause).
+  Fixed by shrinking `FADE` to 2 cells (0.5 deg, just enough to avoid a single hard-pixel seam) in
+  every basin whose own box edges are real boundaries rather than fade-appropriate "uncertain past
+  here" ones: SWIO and AUS (both built with no masking on most edges), and NIO -- the original
+  basin the "small basins don't get the soft fade" rule was stated for, where the rule had only
+  ever been applied to geo padding, not this separate render-time mechanism, so the very bug the
+  rule was meant to prevent was still there on its own west/east/north edges. WPAC/EPAC/Atlantic
+  keep the original 6 deg default, since their own domains are large enough that it was never the
+  complaint, and changing it there wasn't asked for. Verified with before/after screenshots on
+  SWIO's own west and south edges (solid color now, no wash-out) and the full 181-check suite.
 - **South-West Indian Ocean basin added** -- the sixth live basin, and the first with no masking
   curve anywhere in the grid at all. All four box edges turned out to be genuinely clean straight
   lines rather than needing a coastline-following cutoff: west (30E) and east (90E) are RSMC La

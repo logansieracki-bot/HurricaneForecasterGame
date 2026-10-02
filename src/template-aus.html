@@ -1024,7 +1024,13 @@ function render() {
   if (!colI || colI.length < sw) { colI = new Int32Array(sw + 2); colA = new Float32Array(sw + 2); colF = new Float32Array(sw + 2); }
   if (!colA || colA.length < sw) { colA = new Float32Array(sw + 2); colF = new Float32Array(sw + 2); }
   if (!rowJ || rowJ.length < sh) { rowJ = new Int32Array(sh + 2); rowA = new Float32Array(sh + 2); rowF = new Float32Array(sh + 2); }
-  const FADE = 24;   // cells (=6°) over which the overlay fades at the edge of the simulated area
+  const FADE = 2;   // cells (=0.5°) over which the overlay fades at the edge of the simulated area -- kept tiny
+                    // (just enough to avoid a single hard-pixel seam) rather than the other basins' own 24-cell/6°
+                    // default: three of this basin's own four box edges (west/east/south) are real, confident
+                    // BOM-boundary or Southern-Ocean-context lines, not a "data gets less certain near here" edge
+                    // (the fourth, north, is already its own coastline-following curve, outOfBasin handles that
+                    // transition on its own) -- the same "small basins don't get the soft fade" rule SWIO's own
+                    // build applies.
   for (let x = 0; x < sw; x++) {
     const wx = minX + (x + 0.5) / sc, lon = wx / ws * 360 - 180, fx = (lon - LON0) / RES;
     if (fx < 0 || fx > NX - 1.001) { colI[x] = -1; continue; }
