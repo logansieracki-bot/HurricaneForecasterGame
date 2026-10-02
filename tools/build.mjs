@@ -31,3 +31,6 @@ build({ basin: 'westpacific', templatePath: join(ROOT, 'src/template-wpac.html')
 build({ basin: 'nio', templatePath: join(ROOT, 'src/template-nio.html'), dataPath: join(ROOT, 'data/generated/nio-data.json') });
 build({ basin: 'aus', templatePath: join(ROOT, 'src/template-aus.html'), dataPath: join(ROOT, 'data/generated/aus-data.json') });
 build({ basin: 'swio', templatePath: join(ROOT, 'src/template-swio.html'), dataPath: join(ROOT, 'data/generated/swio-data.json') });
+build({ basin: 'spac', templatePath: join(ROOT, 'src/template-spac.html'), dataPath: join(ROOT, 'data/generated/spac-data.json') });
+build({ basin: 'satl', templatePath: join(ROOT, 'src/template-satl.html'), dataPath: join(ROOT, 'data/generated/satl-data.json') });
+build({ basin: 'med', templatePath: join(ROOT, 'src/template-med.html'), dataPath: join(ROOT, 'data/generated/med-data.json') });

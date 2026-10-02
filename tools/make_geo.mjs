@@ -64,7 +64,14 @@ function isSliverRing(ring) {
   // coastline (nothing is a hundred-plus degrees long and a hundredth of a degree tall), just
   // a stray seam from the clip. First caught as a fake landmass stretching clear across the
   // Eastern Pacific at one exact latitude, cutting a hole clean across the SST map there.
-  if (isEmptyRing(ring) || ring.length > 8) return false;
+  // Point-count cap exists only to skip the aspect-ratio math for obviously-real, many-point
+  // coastline rings; it's not itself the signal. South Pacific's own antimeridian-crossing clip
+  // (the first basin to clip against two boxes at once) produced a real sliver with 10 points --
+  // past the old cap of 8 -- so raised generously rather than tuned to one exact case; the
+  // aspect-ratio test below (spans several degrees in one dimension, under a tenth of a degree in
+  // the other) is what actually distinguishes a clip artifact from real coastline, whatever its
+  // point count, and no real coastline feature is ever that extreme in both axes at once.
+  if (isEmptyRing(ring) || ring.length > 30) return false;
   try {
     let minLon = 999, maxLon = -999, minLat = 999, maxLat = -999;
     for (const pt of ring) {
@@ -96,25 +103,52 @@ function dropSliverPolygons(geom) {
 }
 
 function clipToBox(fc, box) {
-  // box = [lon0, lat0, lon1, lat1]. Drops empty results; bboxClip throws on some
-  // degenerate inputs, so skip those features rather than fail the whole build.
+  // box = [lon0, lat0, lon1, lat1], or an array of such boxes for a basin whose own domain
+  // crosses the antimeridian for real (South Pacific: 160E to -120/120W) -- turf.bboxClip only
+  // understands a single real [minLon,...,maxLon] rectangle, so a crossing domain is expressed
+  // as two real rectangles (one on each side of the date line) and clipped against both, unioning
+  // whatever each one keeps. Drops empty results; bboxClip throws on some degenerate inputs, so
+  // skip those features rather than fail the whole build.
+  const boxes = Array.isArray(box[0]) ? box : [box];
   const out = { type: 'FeatureCollection', features: [] };
   const feats = fc.type === 'FeatureCollection' ? fc.features : [fc];
   for (const f of feats) {
     if (!f.geometry) continue;
-    try {
-      const clipped = turf.bboxClip(f, box);
-      if (!clipped.geometry) continue;
-      const geom = dropSliverPolygons(clipped.geometry);
-      if (geom && geom.coordinates.length) out.features.push({ ...clipped, geometry: geom });
-    } catch { /* skip degenerate geometry */ }
+    for (const b of boxes) {
+      try {
+        const clipped = turf.bboxClip(f, b);
+        if (!clipped.geometry) continue;
+        const geom = dropSliverPolygons(clipped.geometry);
+        if (geom && geom.coordinates.length) out.features.push({ ...clipped, geometry: geom });
+      } catch { /* skip degenerate geometry */ }
+    }
   }
   return out;
+}
+
+function normalizeForWrap(fc, lon0) {
+  // Walks every ring point, shifting any far on the "wrong" side of lon0 (more than 180 deg
+  // west of it) by +360 -- so a basin whose own domain crosses the antimeridian for real (South
+  // Pacific: a polygon clipped from the eastern box sits at real lon around -180..-117) reads as
+  // one continuous lon0..lon0+360ish frame instead of two disjoint real-coordinate ranges, which
+  // is what every i/j grid-index computation below already assumes. A no-op for every other
+  // basin: nothing in a normal (non-crossing) clip box is ever 180 deg away from its own lon0.
+  const fix = (lon) => (lon < lon0 - 180 ? lon + 360 : lon);
+  const fixRing = (ring) => ring.map(([lon, lat]) => [fix(lon), lat]);
+  const fixGeom = (g) => {
+    if (!g) return g;
+    if (g.type === 'Polygon') return { ...g, coordinates: g.coordinates.map(fixRing) };
+    if (g.type === 'MultiPolygon') return { ...g, coordinates: g.coordinates.map((p) => p.map(fixRing)) };
+    return g;
+  };
+  const feats = fc.type === 'FeatureCollection' ? fc.features : [fc];
+  return { type: 'FeatureCollection', features: feats.map((f) => ({ ...f, geometry: fixGeom(f.geometry) })) };
 }
 
 function rasterizeMask(landFC, lon0, lat1, res, nx, ny) {
   // Point-in-polygon over the fine grid via scanline ray casting per polygon ring,
   // same technique src/template.html's own inRing() uses in the browser.
+  landFC = normalizeForWrap(landFC, lon0);
   const mask = new Uint8Array(nx * ny);
   const polys = [];
   const collect = (g) => {
@@ -187,6 +221,10 @@ function bboxOverlaps(a, b) {   // a, b = [minLon, minLat, maxLon, maxLat]
 }
 
 function loadLakes(clipBox) {
+  // clipBox is a single [minLon,minLat,maxLon,maxLat], or an array of two such boxes for a
+  // basin whose own domain crosses the antimeridian (see clipToBox above) -- a lake is small
+  // enough that it will only ever actually overlap one side, so this just finds whichever one.
+  const boxes = Array.isArray(clipBox[0]) ? clipBox : [clipBox];
   const path = join(ROOT, 'data', 'raw', 'ne_10m_lakes.geojson');
   let fc;
   try { fc = JSON.parse(readFileSync(path, 'utf8')); }
@@ -199,11 +237,12 @@ function loadLakes(clipBox) {
     // doesn't return a clean "empty" result (a MultiPolygon like [[],[]] -- non-empty at the
     // outer-array level, just full of empty rings), so relying on its output shape alone let
     // lakes from clear across the globe (Ladoga, Rukwa, an Iraqi marsh) leak into an early build.
-    if (!bboxOverlaps(turf.bbox(f), clipBox)) continue;
+    const box = boxes.find((b) => bboxOverlaps(turf.bbox(f), b));
+    if (!box) continue;
     const areaKm2 = turf.area(f) / 1e6;   // real area of the WHOLE lake, not just the part inside this basin's box
     if (areaKm2 < LAKE_MIN_AREA_KM2) continue;
     let clipped;
-    try { clipped = turf.bboxClip(f, clipBox); } catch { continue; }
+    try { clipped = turf.bboxClip(f, box); } catch { continue; }
     let geom = clipped.geometry;
     if (!geom) continue;
     geom = dropSliverPolygons(geom);
@@ -235,11 +274,19 @@ export function build(basin, { lon0, lon1, lat0, lat1, padBox }) {
   // past the date line for a basin whose edge *is* the date line -- it's where the neighboring
   // basin starts, not this one's edge fading out. EPAC's west edge does this at -180; WPAC's
   // east edge needs the same treatment at +180, the mirror image of the same antimeridian.
-  const box = [
-    Math.max(-180, lon0 - padBox), Math.min(180, lon1 + padBox),
-    lat0 - padBox, lat1 + padBox,
-  ];
-  const clipBox = [box[0], box[2], box[1], box[3]];   // turf wants [minLon, minLat, maxLon, maxLat]
+  //
+  // A basin whose own domain crosses the antimeridian for real rather than just touching it
+  // (South Pacific: 160E to -120/120W) is a different case from either of those: lon1 < lon0
+  // here is the signal (same convention climate_lib.py's own extract_box uses), and every clip
+  // operation below needs TWO real [minLon,...,maxLon] rectangles, one on each side of the date
+  // line, rather than the one bbox a basin that merely touches 180 gets by with.
+  const wraps = lon1 < lon0;
+  const box = wraps
+    ? [lon0 - padBox, lon1 + padBox, lat0 - padBox, lat1 + padBox]
+    : [Math.max(-180, lon0 - padBox), Math.min(180, lon1 + padBox), lat0 - padBox, lat1 + padBox];
+  const clipBox = wraps
+    ? [[box[0], box[2], 180, box[3]], [-180, box[2], box[1], box[3]]]
+    : [box[0], box[2], box[1], box[3]];   // turf wants [minLon, minLat, maxLon, maxLat]
 
   const worldLand10 = loadTopo('world-atlas/land-10m.json');
   const worldLand50 = loadTopo('world-atlas/land-50m.json');
@@ -262,15 +309,23 @@ export function build(basin, { lon0, lon1, lat0, lat1, padBox }) {
   const b1Clipped = clipToBox({ type: 'FeatureCollection', features: b1Meshes.map((m) => ({ type: 'Feature', geometry: m })) }, clipBox);
 
   const RES = 0.25;
-  const nx = Math.round((lon1 - lon0) / RES) + 1;
+  const nx = Math.round(((wraps ? lon1 + 360 : lon1) - lon0) / RES) + 1;
   const ny = Math.round((lat1 - lat0) / RES) + 1;
-  const maskBox = clipToBox(landFC, [lon0 - 1, lat0 - 1, lon1 + 1, lat1 + 1]);
+  const maskClipBox = wraps
+    ? [[lon0 - 1, lat0 - 1, 180, lat1 + 1], [-180, lat0 - 1, lon1 + 1, lat1 + 1]]
+    : [lon0 - 1, lat0 - 1, lon1 + 1, lat1 + 1];
+  const maskBox = clipToBox(landFC, maskClipBox);
   const mask = rasterizeMask(maskBox, lon0, lat1, RES, nx, ny);
 
   const lk = loadLakes(clipBox);
 
   const out = {
-    box,   // [lonW, lonE, latS, latN] -- the box land/b0/b1 were clipped to, for onBox seam-skipping
+    // [lonW, lonE, latS, latN] -- the box land/b0/b1 were clipped to, for onBox seam-skipping.
+    // For a basin that crosses the antimeridian for real, lonE is shipped as the same "virtual"
+    // (>180) longitude bmBox already uses for its own east edge, not the real wrapped-around
+    // value `box` itself holds (which turf needed in real terms to clip correctly) -- the
+    // client's own BXL/BXR math assumes a single continuous, monotonically increasing frame.
+    box: wraps ? [box[0], box[1] + 360, box[2], box[3]] : box,
     land: encodePolygons(landClipped),
     landOut: encodePolygons(landOutFC),
     b0: encodeLines(b0Clipped),

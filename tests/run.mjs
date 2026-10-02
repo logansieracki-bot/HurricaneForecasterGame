@@ -14,6 +14,9 @@ const WPAC_DIST = join(ROOT, 'dist/westpacific-sst-simulator.html');
 const NIO_DIST = join(ROOT, 'dist/nio-sst-simulator.html');
 const AUS_DIST = join(ROOT, 'dist/aus-sst-simulator.html');
 const SWIO_DIST = join(ROOT, 'dist/swio-sst-simulator.html');
+const SPAC_DIST = join(ROOT, 'dist/spac-sst-simulator.html');
+const SATL_DIST = join(ROOT, 'dist/satl-sst-simulator.html');
+const MED_DIST = join(ROOT, 'dist/med-sst-simulator.html');
 
 let failed = 0;
 function check(name, cond) {
@@ -41,7 +44,7 @@ async function checkCityMarkers(page, label, lat, lon, expectedName) {
   await page.check('#cities');
 }
 
-for (const [label, dist] of [['Atlantic', ATLANTIC_DIST], ['East Pacific', EPAC_DIST], ['West Pacific', WPAC_DIST], ['North Indian Ocean', NIO_DIST], ['Australian Region', AUS_DIST], ['South-West Indian Ocean', SWIO_DIST]]) {
+for (const [label, dist] of [['Atlantic', ATLANTIC_DIST], ['East Pacific', EPAC_DIST], ['West Pacific', WPAC_DIST], ['North Indian Ocean', NIO_DIST], ['Australian Region', AUS_DIST], ['South-West Indian Ocean', SWIO_DIST], ['South Pacific', SPAC_DIST], ['South Atlantic', SATL_DIST], ['Mediterranean', MED_DIST]]) {
   if (!existsSync(dist)) {
     console.error(`${dist} not found — run \`npm run build\` first.`);
     process.exit(1);
@@ -402,6 +405,155 @@ await checkBasin('South-West Indian Ocean', SWIO_DIST, async (page, label) => {
   await checkCityMarkers(page, label, -29.86, 31.02, 'Durban');
 });
 
+await checkBasin('South Pacific', SPAC_DIST, async (page, label) => {
+  // The grid runs 40S-0, 160E-120W (160E to -120/120W) -- RSMC Nadi's own real area-of-
+  // responsibility, the first basin in this app that genuinely crosses the antimeridian rather
+  // than just touching it (WPAC's own east edge sits exactly at 180). Internally this basin uses
+  // a "virtual longitude" convention (the eastern side expressed as real-lon+360, so 120W becomes
+  // 240) for all of Leaflet's own pixel/pan math; map.setView/fitBounds calls below use that
+  // virtual convention, but window.SSTSIM.sample() takes plain real longitude either side of the
+  // date line -- the app's own normLon() helper normalizes it internally, so a test never has to.
+  await page.evaluate(() => window.SSTSIM.map.fitBounds([[-30, 140], [-10, 158]]));   // toward the Australian region, well past the grid's western edge
+  await page.waitForTimeout(300);
+  const clampedWestLon = await page.evaluate(() => window.SSTSIM.map.getBounds().getWest());
+  check(`[${label}] map cannot pan west past the grid's own western edge (160E)`, clampedWestLon > 158);
+
+  await page.evaluate(() => window.SSTSIM.map.fitBounds([[-30, 245], [-10, 270]]));   // toward the open East Pacific, well past the grid's eastern edge (virtual lon)
+  await page.waitForTimeout(300);
+  const clampedEastLon = await page.evaluate(() => window.SSTSIM.map.getBounds().getEast());
+  check(`[${label}] map cannot pan east past the grid's own eastern edge (120W)`, clampedEastLon < 242);
+
+  await page.evaluate(() => window.SSTSIM.map.fitBounds([[5, 180], [25, 210]]));   // toward the West Pacific, well past the grid's northern edge (the equator)
+  await page.waitForTimeout(300);
+  const clampedNorthLat = await page.evaluate(() => window.SSTSIM.map.getBounds().getNorth());
+  check(`[${label}] map cannot pan north past the grid's own northern edge (the equator)`, clampedNorthLat < 2);
+
+  await page.evaluate(() => window.SSTSIM.map.setView([-60, 200], 5));   // toward the Southern Ocean, well past the grid's southern edge
+  await page.waitForTimeout(300);
+  const clampedSouthLat = await page.evaluate(() => window.SSTSIM.map.getBounds().getSouth());
+  check(`[${label}] map cannot pan south past the basin's own southern edge`, clampedSouthLat > -42);
+
+  const basinSamples = await page.evaluate(() => ({
+    nearDateLineWest: window.SSTSIM.sample(-20, 179.5),     // just west of the date line
+    nearDateLineEast: window.SSTSIM.sample(-20, -179.5),    // just east of the date line, real (negative) longitude
+    fiji: window.SSTSIM.sample(-18, 178),                   // Fiji, west side
+    tahiti: window.SSTSIM.sample(-17.5, -149.6),            // French Polynesia, east side, deep into "virtual" territory
+    northOfDomain: window.SSTSIM.sample(3, 180),            // north of the grid's own equator edge
+    southOfDomain: window.SSTSIM.sample(-43, 180),          // south of the grid's own 40S edge
+    westOfDomain: window.SSTSIM.sample(-20, 155),           // west of the grid's own 160E edge -- the Australian region's territory
+    eastOfDomain: window.SSTSIM.sample(-20, -110),          // east of the grid's own 120W edge entirely
+  }));
+  check(`[${label}] SST is continuous across the date line (west side)`, Number.isFinite(basinSamples.nearDateLineWest.sst));
+  check(`[${label}] SST is continuous across the date line (east side)`, Number.isFinite(basinSamples.nearDateLineEast.sst));
+  check(`[${label}] SST either side of the date line is within a plausible range of each other`, Math.abs(basinSamples.nearDateLineWest.sst - basinSamples.nearDateLineEast.sst) < 2);
+  check(`[${label}] Fiji (west side) has real SST`, Number.isFinite(basinSamples.fiji.sst));
+  check(`[${label}] Tahiti/French Polynesia (east side, virtual longitude territory) has real SST`, Number.isFinite(basinSamples.tahiti.sst));
+  check(`[${label}] north of the grid's own northern edge is outside the simulated area`, Number.isNaN(basinSamples.northOfDomain.sst));
+  check(`[${label}] south of the grid's own southern edge is outside the simulated area`, Number.isNaN(basinSamples.southOfDomain.sst));
+  check(`[${label}] west of the grid's own western edge is outside the simulated area`, Number.isNaN(basinSamples.westOfDomain.sst));
+  check(`[${label}] east of the grid's own eastern edge is outside the simulated area`, Number.isNaN(basinSamples.eastOfDomain.sst));
+
+  await checkCityMarkers(page, label, -18.14, 178.42, 'Suva');
+});
+
+await checkBasin('South Atlantic', SATL_DIST, async (page, label) => {
+  // The grid runs 40S-0, 50W-20E -- the real South Atlantic Ocean itself, bounded by Brazil and
+  // southern Africa's own coastlines, with no WMO-recognized RSMC to cite (real activity here is
+  // rare enough -- one confirmed case, Hurricane Catarina in 2004 -- that no warning center has an
+  // official area of responsibility). No masking curve anywhere in this grid.
+  await page.evaluate(() => window.SSTSIM.map.fitBounds([[-30, -75], [-10, -55]]));   // toward South America's interior, well past the grid's western edge
+  await page.waitForTimeout(300);
+  const clampedWestLon = await page.evaluate(() => window.SSTSIM.map.getBounds().getWest());
+  check(`[${label}] map cannot pan west past the grid's own western edge`, clampedWestLon > -55);
+
+  await page.evaluate(() => window.SSTSIM.map.fitBounds([[-30, 25], [-10, 45]]));   // toward southern Africa's interior/the Indian Ocean, well past the grid's eastern edge
+  await page.waitForTimeout(300);
+  const clampedEastLon = await page.evaluate(() => window.SSTSIM.map.getBounds().getEast());
+  check(`[${label}] map cannot pan east past the grid's own eastern edge`, clampedEastLon < 25);
+
+  // This basin's own minZoom was deliberately lowered (4.6, vs ~5.6-5.9 elsewhere) so the default
+  // view can show the whole real basin at once (see src/template-satl.html's own map-init
+  // comment) -- maxBoundsViscosity still snaps the pan back after it settles, but the looser
+  // zoom means the clamp lands close to maxBounds' own padded edge (3N/43S) rather than tight
+  // against the real domain edge (0/40S) the way a basin with a tighter minZoom clamps.
+  await page.evaluate(() => window.SSTSIM.map.fitBounds([[5, -40], [25, -10]]));   // toward the equatorial/North Atlantic, well past the grid's northern edge
+  await page.waitForTimeout(300);
+  const clampedNorthLat = await page.evaluate(() => window.SSTSIM.map.getBounds().getNorth());
+  check(`[${label}] map cannot pan north past the grid's own northern edge (the equator)`, clampedNorthLat < 3.5);
+
+  await page.evaluate(() => window.SSTSIM.map.setView([-60, -20], 5));   // toward the Southern Ocean, well past the grid's southern edge
+  await page.waitForTimeout(300);
+  const clampedSouthLat = await page.evaluate(() => window.SSTSIM.map.getBounds().getSouth());
+  check(`[${label}] map cannot pan south past the basin's own southern edge`, clampedSouthLat > -44);
+
+  const basinSamples = await page.evaluate(() => ({
+    openWater: window.SSTSIM.sample(-20, -20),            // open South Atlantic, mid-domain
+    benguela: window.SSTSIM.sample(-22.5, 10),            // Benguela Current band off Namibia -- verified against raw climatology, no synthetic correction needed
+    brazilCoast: window.SSTSIM.sample(-15, -37),          // Brazil Current band off the Brazilian coast -- also verified, no correction needed
+    northOfDomain: window.SSTSIM.sample(3, -20),          // north of the grid's own equator edge -- the Atlantic basin's own territory
+    southOfDomain: window.SSTSIM.sample(-43, -20),        // south of the grid's own 40S edge
+    westOfDomain: window.SSTSIM.sample(-20, -55),         // west of the grid's own 50W edge entirely -- inside South America
+    eastOfDomain: window.SSTSIM.sample(-20, 25),          // east of the grid's own 20E edge entirely -- inside southern Africa
+  }));
+  check(`[${label}] open South Atlantic SST is real data`, Number.isFinite(basinSamples.openWater.sst));
+  check(`[${label}] Benguela Current band has real SST`, Number.isFinite(basinSamples.benguela.sst));
+  check(`[${label}] Brazil Current band has real SST`, Number.isFinite(basinSamples.brazilCoast.sst));
+  check(`[${label}] north of the grid's own northern edge is outside the simulated area`, Number.isNaN(basinSamples.northOfDomain.sst));
+  check(`[${label}] south of the grid's own southern edge is outside the simulated area`, Number.isNaN(basinSamples.southOfDomain.sst));
+  check(`[${label}] west of the grid's own western edge is outside the simulated area`, Number.isNaN(basinSamples.westOfDomain.sst));
+  check(`[${label}] east of the grid's own eastern edge is outside the simulated area`, Number.isNaN(basinSamples.eastOfDomain.sst));
+
+  await checkCityMarkers(page, label, -22.91, -43.17, 'Rio de Janeiro');
+});
+
+await checkBasin('Mediterranean', MED_DIST, async (page, label) => {
+  // The grid runs 30N-46N, 6W-36E -- the real Mediterranean Sea itself, bounded by the Strait of
+  // Gibraltar on the west, the Levantine coast on the east, the northern Adriatic on the north
+  // (stopping short of the separate Black Sea), and the Libyan coast on the south. No
+  // WMO-recognized RSMC here either -- medicanes get tracked informally, not by a single
+  // designated warning center.
+  await page.evaluate(() => window.SSTSIM.map.fitBounds([[34, -20], [42, -10]]));   // toward the open Atlantic, well past the grid's western edge
+  await page.waitForTimeout(300);
+  const clampedWestLon = await page.evaluate(() => window.SSTSIM.map.getBounds().getWest());
+  check(`[${label}] map cannot pan west past the grid's own western edge (the Strait of Gibraltar)`, clampedWestLon > -10);
+
+  await page.evaluate(() => window.SSTSIM.map.fitBounds([[34, 40], [42, 55]]));   // toward the Middle East's interior, well past the grid's eastern edge
+  await page.waitForTimeout(300);
+  const clampedEastLon = await page.evaluate(() => window.SSTSIM.map.getBounds().getEast());
+  check(`[${label}] map cannot pan east past the grid's own eastern edge`, clampedEastLon < 40);
+
+  await page.evaluate(() => window.SSTSIM.map.fitBounds([[48, 10], [60, 30]]));   // toward continental Europe/the Black Sea, well past the grid's northern edge
+  await page.waitForTimeout(300);
+  const clampedNorthLat = await page.evaluate(() => window.SSTSIM.map.getBounds().getNorth());
+  check(`[${label}] map cannot pan north past the grid's own northern edge`, clampedNorthLat < 50);
+
+  await page.evaluate(() => window.SSTSIM.map.setView([20, 15], 5));   // toward the Sahara, well past the grid's southern edge
+  await page.waitForTimeout(300);
+  const clampedSouthLat = await page.evaluate(() => window.SSTSIM.map.getBounds().getSouth());
+  check(`[${label}] map cannot pan south past the basin's own southern edge`, clampedSouthLat > 25);
+
+  const basinSamples = await page.evaluate(() => ({
+    openWater: window.SSTSIM.sample(36, 18),              // open central Mediterranean, mid-domain
+    gibraltar: window.SSTSIM.sample(35.9, -4.5),          // Alboran Sea, right at the strait
+    aegean: window.SSTSIM.sample(38, 25),                 // Aegean Sea, real in-basin water
+    adriatic: window.SSTSIM.sample(43, 15),               // Adriatic Sea, real in-basin water
+    northOfDomain: window.SSTSIM.sample(47, 15),          // north of the grid's own 46N edge -- past the Black Sea's own boundary
+    southOfDomain: window.SSTSIM.sample(29, 15),          // south of the grid's own 30N edge
+    westOfDomain: window.SSTSIM.sample(38, -8),           // west of the grid's own 6W edge entirely -- the open Atlantic
+    eastOfDomain: window.SSTSIM.sample(38, 38),           // east of the grid's own 36E edge entirely
+  }));
+  check(`[${label}] open Mediterranean SST is real data`, Number.isFinite(basinSamples.openWater.sst));
+  check(`[${label}] Alboran Sea (right at Gibraltar) has real SST`, Number.isFinite(basinSamples.gibraltar.sst));
+  check(`[${label}] Aegean Sea is real in-basin water, not masked`, Number.isFinite(basinSamples.aegean.sst));
+  check(`[${label}] Adriatic Sea is real in-basin water, not masked`, Number.isFinite(basinSamples.adriatic.sst));
+  check(`[${label}] north of the grid's own northern edge is outside the simulated area`, Number.isNaN(basinSamples.northOfDomain.sst));
+  check(`[${label}] south of the grid's own southern edge is outside the simulated area`, Number.isNaN(basinSamples.southOfDomain.sst));
+  check(`[${label}] west of the grid's own western edge is outside the simulated area`, Number.isNaN(basinSamples.westOfDomain.sst));
+  check(`[${label}] east of the grid's own eastern edge is outside the simulated area`, Number.isNaN(basinSamples.eastOfDomain.sst));
+
+  await checkCityMarkers(page, label, 45.44, 12.33, 'Venice');
+});
+
 // Main menu: basin/mode select, disabled cards stay disabled, Start navigates to the built basin.
 async function checkMenu(basinCardText, expectedDistSuffix) {
   const menuErrors = [];
@@ -411,8 +563,10 @@ async function checkMenu(basinCardText, expectedDistSuffix) {
   await menuPage.goto(pathToFileURL(join(ROOT, 'index.html')).href, { waitUntil: 'load' });
 
   check(`[menu -> ${basinCardText}] Start disabled with nothing picked`, await menuPage.isDisabled('#start'));
-  await menuPage.click('button.card:has-text("South Pacific")').catch(() => {});
-  check('disabled basin card ("coming soon") cannot be selected', (await menuPage.getAttribute('button.card:has-text("South Pacific")', 'aria-pressed')) === 'false');
+  // Every basin card is enabled now; "Forecaster" (the other mode) is the one remaining
+  // disabled card in the whole menu, so it's what proves a disabled card can't be selected.
+  await menuPage.click('button.card:has-text("Forecaster")').catch(() => {});
+  check('disabled mode card ("coming soon") cannot be selected', (await menuPage.getAttribute('button.card:has-text("Forecaster")', 'aria-pressed')) === 'false');
   await menuPage.click(`button.card:has-text("${basinCardText}")`);
   await menuPage.click('button.card:has-text("Simulation")');
   check(`[menu -> ${basinCardText}] Start enabled once basin + mode picked`, !(await menuPage.isDisabled('#start')));
@@ -427,6 +581,9 @@ await checkMenu('Western Pacific', 'westpacific-sst-simulator.html');
 await checkMenu('Northern Indian Ocean', 'nio-sst-simulator.html');
 await checkMenu('Australian Region', 'aus-sst-simulator.html');
 await checkMenu('South-West Indian Ocean', 'swio-sst-simulator.html');
+await checkMenu('South Pacific', 'spac-sst-simulator.html');
+await checkMenu('South Atlantic', 'satl-sst-simulator.html');
+await checkMenu('Mediterranean', 'med-sst-simulator.html');
 
 if (failed) {
   console.error(`\n${failed} check(s) failed.`);

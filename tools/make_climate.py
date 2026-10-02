@@ -31,7 +31,9 @@ def build(basin, lon0, lon1, lat0, lat1, k=14):
     enso = cl.enso_regression(anom, times, n34_times, n34_anom)  # (3, CN)
 
     fine_res = 0.25
-    fine_nx = round((lon1 - lon0) / fine_res) + 1
+    # Same antimeridian-crossing convention as extract_box: lon1 < lon0 means the domain wraps
+    # through the date line (South Pacific: 160E to -120/120W), so the real span is (lon1+360)-lon0.
+    fine_nx = round(((lon1 + 360 if lon1 < lon0 else lon1) - lon0) / fine_res) + 1
     fine_ny = round((lat1 - lat0) / fine_res) + 1
     out = {
         "domain": {

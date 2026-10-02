@@ -1,6 +1,67 @@
 # Roadmap
 
 ## Just landed
+- **South Pacific, South Atlantic, and Mediterranean basins added in one batch** -- the last three
+  of the nine basins this app set out to cover, each still its own menu card and its own
+  `dist/<basin>-sst-simulator.html`, not combined.
+  - **South Pacific** is the first basin in this app that genuinely *crosses* the antimeridian,
+    rather than just touching it the way WPAC's own east edge or EPAC's own west edge do (both
+    sit exactly at 180). RSMC Nadi's own real area-of-responsibility runs 160E to 120W, which
+    means real grid columns on both sides of the date line. Built a "virtual longitude" convention
+    to handle it: the eastern side is expressed internally as real-longitude+360 (120W becomes
+    240), so every piece of pixel/pan math that needs a single continuous increasing range --
+    Leaflet's own `maxBounds`/`fitBounds`, the client-side grid-sampling math, city marker
+    placement -- can just use plain arithmetic instead of wrapping logic. `tools/climate_lib.py`'s
+    `extract_box`, `tools/make_climate.py`'s `fine_nx`, and `tools/make_geo.mjs`'s `clipToBox`/
+    `loadLakes`/`rasterizeMask`/`build` all gained antimeridian-aware branches (a new
+    `normalizeForWrap` helper in `make_geo.mjs` shifts land-polygon coordinates that would
+    otherwise straddle the real ±180 seam onto the same virtual range before rasterizing). The
+    client template (`src/template-spac.html`) gained a `normLon()` helper so `sample()`/`isLand()`
+    take plain real longitude on either side of the date line and normalize internally -- only
+    direct Leaflet calls (`map.setView`/`fitBounds`) need the virtual convention explicitly.
+    Found and fixed a real `turf.bboxClip` sliver-ring bug along the way: the new two-box
+    antimeridian clip produced a 10-point degenerate ring (23° wide, 0.05° tall) that slipped past
+    the existing `ring.length > 8` sliver-detection cap, rasterizing as a fake land stripe across
+    open ocean. Raised the cap to 30 and verified zero regression on every other basin via a clean
+    A/B test (confirming a second, unrelated discrepancy was pre-existing dependency/environment
+    drift, not caused by this change, before trusting the fix).
+  - **South Atlantic** and **Mediterranean** are both basins with no WMO-recognized RSMC at all --
+    the first (South Atlantic, real activity here is rare enough that one confirmed case,
+    Hurricane Catarina in 2004, is the only one) and second (Mediterranean medicanes get tracked
+    informally, not by a single designated warning center) basins in this app where that's true.
+    South Atlantic's own box is just the real ocean between Brazil and southern Africa, with no
+    natural authority to cite for its edges. Mediterranean's own box edges, by contrast, are all
+    real named geographic boundaries of the sea itself (the Strait of Gibraltar, the Levantine
+    coast, the Adriatic's own north end stopping short of the separate Black Sea, the Libyan
+    coast) even without an RSMC to draw them. Both get the established "no masking, no soft fade"
+    treatment already proven on SWIO/AUS.
+  - **Mediterranean gets its own season shape**, the first departure from every other basin's own
+    Northern- or Southern-Hemisphere-summer pattern: medicanes peak Sep-Nov and taper off through
+    January, so the season highlight and the simulation's own start date both reflect Sep-Jan
+    instead.
+  - Ocean-feature candidates checked directly against the raw climatology for each new basin, same
+    discipline as every basin before them: South Pacific's East Australian Current extension and
+    SPCZ band, South Atlantic's Brazil Current, and Mediterranean's Gulf of Lion (Mistral-wind) and
+    northern Adriatic (Bora-wind) winter cooling all turned out to be broad, already-resolved
+    gradients rather than a sharp near-coast front the coarse grid was diluting -- no synthetic
+    correction added for any of them. Only South Atlantic's Benguela Current needed nothing for a
+    different reason: already a strong, resolved signal at 2 deg, nothing to add.
+  - Mediterranean's own lake list includes the Dead Sea, a real exception to the generic
+    latitude+area lake-temperature formula (hypersaline, 430m below sea level, true desert
+    climate) -- given a named override (`LK_SPECIAL`) based on its own well-documented real
+    seasonal range rather than letting the generic freshwater-lake formula understate it. Lake
+    Tuz, also unusual (a shallow salt lake that partly dries up every summer), was deliberately
+    left on the generic formula instead of a fabricated override, since the tm/amp/peak shape has
+    no way to represent "goes dry" honestly.
+  - South Atlantic's own default view mirrors the "show the whole real basin" choice SWIO/AUS made
+    for their own less-visually-striking domains: rather than a close-up on the one real feature
+    (Benguela), the default view shows both coastlines at once (Brazil and Africa, open ocean
+    between), the honest whole picture for a basin with no cyclone activity to speak of.
+    Mediterranean's own default view does the same for the opposite reason: the basin is compact
+    and distinctive enough as a whole shape that there's no need to crop it down to one part.
+  - All three wired into `tools/build.mjs`, `index.html`'s main menu, `tests/run.mjs` (city-marker
+    and basin-sample checks, including South Pacific's own antimeridian-specific checks), and the
+    GitHub Pages deploy workflow, alongside the existing six. All nine basins are now live.
 - **Found and fixed a real "fading SST" bug, reported directly on SWIO, that turned out to affect
   every basin's own flat (unmasked) box edges**: a generic render-time overlay-alpha taper
   (`FADE = 24` cells = 6 deg) baked into the shared template since the original Atlantic build,
@@ -481,8 +542,7 @@
 - Main menu (`index.html`) has all 9 basins as separate cards (no combining):
   Atlantic, Eastern Pacific, Western Pacific, Northern Indian Ocean, Australian
   Region, South Pacific, South-West Indian Ocean, South Atlantic, Mediterranean.
-  Atlantic, Eastern Pacific, Western Pacific, Northern Indian Ocean, Australian
-  Region and South-West Indian Ocean (Simulation mode) are live; the rest are "Coming soon."
+  All nine are live (Simulation mode); Forecaster mode is still "Coming soon."
 - Blue Marble imagery rebuilt to be always-on and network-independent (embedded
   crop instead of a 4-source live tile chain); Satellite theme simplified to one
   provider with an automatic fallback to Blue Marble.
@@ -498,10 +558,8 @@
   of hand-editing a single built HTML file.
 
 ## Next up, in order
-1. **South Pacific**, **South Atlantic**, **Mediterranean** — the three
-   remaining basins, coded one at a time. Lower cyclone activity (South
-   Atlantic almost none) or a different storm type entirely (Mediterranean
-   "medicanes"); realism bar and priority TBD once the next one is picked.
+All nine basins are now live; see **Later, not scoped yet** below for what's next
+(Forecaster mode is the big one).
 
 Each basin gets its own `dist/<basin>-sst-simulator.html`, loaded on demand from
 the main menu — no global grid, keeps every basin's build lightweight

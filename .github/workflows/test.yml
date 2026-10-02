@@ -45,6 +45,9 @@ jobs:
             dist/nio-sst-simulator.html
             dist/aus-sst-simulator.html
             dist/swio-sst-simulator.html
+            dist/spac-sst-simulator.html
+            dist/satl-sst-simulator.html
+            dist/med-sst-simulator.html
           if-no-files-found: error
 
       - name: Link the built HTML in the run summary
@@ -88,6 +91,9 @@ jobs:
           cp dist/nio-sst-simulator.html _site/dist/
           cp dist/aus-sst-simulator.html _site/dist/
           cp dist/swio-sst-simulator.html _site/dist/
+          cp dist/spac-sst-simulator.html _site/dist/
+          cp dist/satl-sst-simulator.html _site/dist/
+          cp dist/med-sst-simulator.html _site/dist/
 
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3

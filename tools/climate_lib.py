@@ -30,7 +30,21 @@ def load(path):
 def extract_box(sst, lon0, lon1, lat0, lat1):
     """Coarse-grid slice on a 2 deg grid, returned north-to-south / west-to-east
     (row 0 = lat1) to match how the app's domain.clat0/clon0 are defined."""
-    if lon1 == 180:
+    if lon1 < lon0:
+        # Crosses the antimeridian for real (South Pacific: 160E to -120/120W, unlike
+        # WPAC's own box which only touches it at exactly 180) -- lon1 is given in the
+        # same -180..180 convention as everywhere else, so a lon1 *less than* lon0 is
+        # the signal this box wraps around through the dateline rather than running
+        # backwards. Slice the two real pieces on either side and concat in order: the
+        # western piece up to the last real column before the dateline (178, the same
+        # "stop short, let the eastern piece supply the dateline column itself" trick
+        # the lon1==180 case below uses), then the eastern piece starting exactly at
+        # the dateline's own -180 label through lon1.
+        main = sst.sel(lon=slice(lon0, 178), lat=slice(lat0, lat1))
+        edge = sst.sel(lon=slice(-180, lon1), lat=slice(lat0, lat1))
+        box = xr.concat([main, edge], dim="lon")
+        cnx = int(round(((lon1 + 360) - lon0) / CRES)) + 1
+    elif lon1 == 180:
         # 180E and 180W are the same meridian, but load()'s -180..180 re-index only
         # keeps the -180 label for it (():(180+180)%360-180 == -180), never +180 --
         # so a plain slice(lon0, 180) comes up one column short at the east edge.
@@ -41,10 +55,11 @@ def extract_box(sst, lon0, lon1, lat0, lat1):
         main = sst.sel(lon=slice(lon0, 178), lat=slice(lat0, lat1))
         edge = sst.sel(lon=[-180], lat=slice(lat0, lat1))
         box = xr.concat([main, edge], dim="lon")
+        cnx = int(round((lon1 - lon0) / CRES)) + 1
     else:
         box = sst.sel(lon=slice(lon0, lon1), lat=slice(lat0, lat1))
+        cnx = int(round((lon1 - lon0) / CRES)) + 1
     box = box.sortby("lat", ascending=False)   # north first
-    cnx = int(round((lon1 - lon0) / CRES)) + 1
     cny = int(round((lat1 - lat0) / CRES)) + 1
     assert box.sizes["lon"] == cnx, f"lon size {box.sizes['lon']} != {cnx}"
     assert box.sizes["lat"] == cny, f"lat size {box.sizes['lat']} != {cny}"
