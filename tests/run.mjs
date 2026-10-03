@@ -473,18 +473,35 @@ await checkBasin('South Atlantic', SATL_DIST, async (page, label) => {
 
   // This basin's own minZoom was deliberately lowered (4.6, vs ~5.6-5.9 elsewhere) so the default
   // view can show the whole real basin at once (see src/template-satl.html's own map-init
-  // comment) -- maxBoundsViscosity still snaps the pan back after it settles, but the looser
-  // zoom means the clamp lands close to maxBounds' own padded edge (3N/43S) rather than tight
-  // against the real domain edge (0/40S) the way a basin with a tighter minZoom clamps.
+  // comment). maxBounds is the exact real domain here (0/-40), not a padded context box -- padding
+  // it used to let a user pan+zoom into a corner with zero real SST in view, a real bug this basin
+  // (and Mediterranean) shipped with before it was caught.
   await page.evaluate(() => window.SSTSIM.map.fitBounds([[5, -40], [25, -10]]));   // toward the equatorial/North Atlantic, well past the grid's northern edge
   await page.waitForTimeout(300);
   const clampedNorthLat = await page.evaluate(() => window.SSTSIM.map.getBounds().getNorth());
-  check(`[${label}] map cannot pan north past the grid's own northern edge (the equator)`, clampedNorthLat < 3.5);
+  check(`[${label}] map cannot pan north past the grid's own northern edge (the equator)`, clampedNorthLat < 1.5);
 
   await page.evaluate(() => window.SSTSIM.map.setView([-60, -20], 5));   // toward the Southern Ocean, well past the grid's southern edge
   await page.waitForTimeout(300);
   const clampedSouthLat = await page.evaluate(() => window.SSTSIM.map.getBounds().getSouth());
-  check(`[${label}] map cannot pan south past the basin's own southern edge`, clampedSouthLat > -44);
+  check(`[${label}] map cannot pan south past the basin's own southern edge`, clampedSouthLat > -41.5);
+
+  // The actual bug this basin shipped with: maxZoom + a pan to a maxBounds corner used to be able
+  // to show a view with literally zero real SST, just bare basemap -- sample a small grid across
+  // the full viewport at a real corner to confirm that's no longer possible anywhere reachable.
+  await page.evaluate(() => window.SSTSIM.map.setView([-0.3, -49.7], 10));
+  await page.waitForTimeout(300);
+  const cornerCoverage = await page.evaluate(() => {
+    const b = window.SSTSIM.map.getBounds();
+    const n = b.getNorth(), s = b.getSouth(), e = b.getEast(), w = b.getWest();
+    let real = 0, total = 0;
+    for (let i = 0; i <= 4; i++) for (let j = 0; j <= 4; j++) {
+      total++;
+      if (Number.isFinite(window.SSTSIM.sample(s + (n - s) * i / 4, w + (e - w) * j / 4).sst)) real++;
+    }
+    return real / total;
+  });
+  check(`[${label}] zoomed to maxZoom at a maxBounds corner, the view isn't entirely non-SST`, cornerCoverage > 0.5);
 
   const basinSamples = await page.evaluate(() => ({
     openWater: window.SSTSIM.sample(-20, -20),            // open South Atlantic, mid-domain
@@ -507,45 +524,79 @@ await checkBasin('South Atlantic', SATL_DIST, async (page, label) => {
 });
 
 await checkBasin('Mediterranean', MED_DIST, async (page, label) => {
-  // The grid runs 30N-46N, 6W-36E -- the real Mediterranean Sea itself, bounded by the Strait of
-  // Gibraltar on the west, the Levantine coast on the east, the northern Adriatic on the north
-  // (stopping short of the separate Black Sea), and the Libyan coast on the south. No
-  // WMO-recognized RSMC here either -- medicanes get tracked informally, not by a single
-  // designated warning center.
-  await page.evaluate(() => window.SSTSIM.map.fitBounds([[34, -20], [42, -10]]));   // toward the open Atlantic, well past the grid's western edge
+  // The grid runs 30N-48N, 10W-42E -- the real Mediterranean Sea itself (Strait of Gibraltar to
+  // the Levantine coast, the Libyan coast to the northern Adriatic), widened to also cover the
+  // Black Sea in full (a real marginal sea, treated as real in-basin water the same way NIO treats
+  // the Red Sea/Persian Gulf) and western Spain/Portugal's own Algarve coast on the open-Atlantic
+  // side of Gibraltar. No WMO-recognized RSMC here either -- medicanes get tracked informally, not
+  // by a single designated warning center. maxBounds is the exact real domain here (not a padded
+  // context box) -- a basin that pads maxBounds past the real domain lets a user pan+zoom into a
+  // corner with zero real SST in view, a real bug this basin (and South Atlantic) shipped with
+  // before it was caught, so this basin's own pan-limit checks are a little tighter than most.
+  await page.evaluate(() => window.SSTSIM.map.fitBounds([[34, -24], [42, -14]]));   // toward the open Atlantic, well past the grid's western edge
   await page.waitForTimeout(300);
   const clampedWestLon = await page.evaluate(() => window.SSTSIM.map.getBounds().getWest());
-  check(`[${label}] map cannot pan west past the grid's own western edge (the Strait of Gibraltar)`, clampedWestLon > -10);
+  check(`[${label}] map cannot pan west past the grid's own western edge`, clampedWestLon > -11.5);
 
-  await page.evaluate(() => window.SSTSIM.map.fitBounds([[34, 40], [42, 55]]));   // toward the Middle East's interior, well past the grid's eastern edge
+  await page.evaluate(() => window.SSTSIM.map.fitBounds([[34, 46], [42, 60]]));   // toward the Caucasus/Iran, well past the grid's eastern edge
   await page.waitForTimeout(300);
   const clampedEastLon = await page.evaluate(() => window.SSTSIM.map.getBounds().getEast());
-  check(`[${label}] map cannot pan east past the grid's own eastern edge`, clampedEastLon < 40);
+  check(`[${label}] map cannot pan east past the grid's own eastern edge`, clampedEastLon < 43.5);
 
-  await page.evaluate(() => window.SSTSIM.map.fitBounds([[48, 10], [60, 30]]));   // toward continental Europe/the Black Sea, well past the grid's northern edge
+  await page.evaluate(() => window.SSTSIM.map.fitBounds([[50, 20], [60, 40]]));   // toward Russia's interior, well past the grid's northern edge
   await page.waitForTimeout(300);
   const clampedNorthLat = await page.evaluate(() => window.SSTSIM.map.getBounds().getNorth());
-  check(`[${label}] map cannot pan north past the grid's own northern edge`, clampedNorthLat < 50);
+  check(`[${label}] map cannot pan north past the grid's own northern edge`, clampedNorthLat < 49.5);
 
+  // This basin's own domain is much wider (52 deg) than tall (18 deg), and minZoom is tuned to
+  // the width so the whole thing fits by default -- at that same zoom the viewport is taller in
+  // degrees than the domain itself, so the view legitimately letterboxes a few degrees past the
+  // north/south edges (there's no narrower zoom available to avoid it). The threshold here has
+  // room for that; it's still tight enough to catch an actual failure to clamp.
   await page.evaluate(() => window.SSTSIM.map.setView([20, 15], 5));   // toward the Sahara, well past the grid's southern edge
   await page.waitForTimeout(300);
   const clampedSouthLat = await page.evaluate(() => window.SSTSIM.map.getBounds().getSouth());
-  check(`[${label}] map cannot pan south past the basin's own southern edge`, clampedSouthLat > 25);
+  check(`[${label}] map cannot pan south past the basin's own southern edge`, clampedSouthLat > 20);
+
+  // The actual bug this basin shipped with: maxZoom + a pan to a maxBounds corner used to be able
+  // to show a view with literally zero real SST, just bare basemap -- sample a small grid across
+  // the full viewport at a real corner to confirm that's no longer possible anywhere reachable.
+  await page.evaluate(() => window.SSTSIM.map.setView([47.7, -9.7], 10));
+  await page.waitForTimeout(300);
+  const cornerCoverage = await page.evaluate(() => {
+    const b = window.SSTSIM.map.getBounds();
+    const n = b.getNorth(), s = b.getSouth(), e = b.getEast(), w = b.getWest();
+    let real = 0, total = 0;
+    for (let i = 0; i <= 4; i++) for (let j = 0; j <= 4; j++) {
+      total++;
+      if (Number.isFinite(window.SSTSIM.sample(s + (n - s) * i / 4, w + (e - w) * j / 4).sst)) real++;
+    }
+    return real / total;
+  });
+  check(`[${label}] zoomed to maxZoom at a maxBounds corner, the view isn't entirely non-SST`, cornerCoverage > 0.5);
 
   const basinSamples = await page.evaluate(() => ({
     openWater: window.SSTSIM.sample(36, 18),              // open central Mediterranean, mid-domain
     gibraltar: window.SSTSIM.sample(35.9, -4.5),          // Alboran Sea, right at the strait
     aegean: window.SSTSIM.sample(38, 25),                 // Aegean Sea, real in-basin water
     adriatic: window.SSTSIM.sample(43, 15),               // Adriatic Sea, real in-basin water
-    northOfDomain: window.SSTSIM.sample(47, 15),          // north of the grid's own 46N edge -- past the Black Sea's own boundary
+    blackSea: window.SSTSIM.sample(43, 34),               // Black Sea, real in-basin water now that the domain covers it
+    azov: window.SSTSIM.sample(46, 37),                   // Sea of Azov, real in-basin water
+    westernSpain: window.SSTSIM.sample(36.6, -6.5),       // Cadiz/Gulf of Cadiz, open-Atlantic side of Gibraltar
+    algarve: window.SSTSIM.sample(37, -8),                // Portugal's own Algarve coast
+    northOfDomain: window.SSTSIM.sample(49, 15),          // north of the grid's own 48N edge
     southOfDomain: window.SSTSIM.sample(29, 15),          // south of the grid's own 30N edge
-    westOfDomain: window.SSTSIM.sample(38, -8),           // west of the grid's own 6W edge entirely -- the open Atlantic
-    eastOfDomain: window.SSTSIM.sample(38, 38),           // east of the grid's own 36E edge entirely
+    westOfDomain: window.SSTSIM.sample(38, -11),          // west of the grid's own 10W edge entirely
+    eastOfDomain: window.SSTSIM.sample(38, 43),           // east of the grid's own 42E edge entirely
   }));
   check(`[${label}] open Mediterranean SST is real data`, Number.isFinite(basinSamples.openWater.sst));
   check(`[${label}] Alboran Sea (right at Gibraltar) has real SST`, Number.isFinite(basinSamples.gibraltar.sst));
   check(`[${label}] Aegean Sea is real in-basin water, not masked`, Number.isFinite(basinSamples.aegean.sst));
   check(`[${label}] Adriatic Sea is real in-basin water, not masked`, Number.isFinite(basinSamples.adriatic.sst));
+  check(`[${label}] Black Sea is real in-basin water, not masked`, Number.isFinite(basinSamples.blackSea.sst));
+  check(`[${label}] Sea of Azov is real in-basin water, not masked`, Number.isFinite(basinSamples.azov.sst));
+  check(`[${label}] western Spain (Gulf of Cadiz) has real SST`, Number.isFinite(basinSamples.westernSpain.sst));
+  check(`[${label}] Portugal's own Algarve coast has real SST`, Number.isFinite(basinSamples.algarve.sst));
   check(`[${label}] north of the grid's own northern edge is outside the simulated area`, Number.isNaN(basinSamples.northOfDomain.sst));
   check(`[${label}] south of the grid's own southern edge is outside the simulated area`, Number.isNaN(basinSamples.southOfDomain.sst));
   check(`[${label}] west of the grid's own western edge is outside the simulated area`, Number.isNaN(basinSamples.westOfDomain.sst));

@@ -279,21 +279,28 @@ const land = new Uint8Array(N);                 // 1 = land (0.25° nodes)
    the South Atlantic, there's no WMO-recognized RSMC for the Mediterranean -- medicanes (the
    Mediterranean's own tropical-like cyclones) are real and well-documented but get tracked
    informally by whichever national met service is closest, not a single designated warning
-   center with an official area of responsibility. Unlike the South Atlantic, though, this
-   basin's own box edges aren't an open-ocean judgment call at all -- every edge here is a real,
-   named geographic boundary of the Mediterranean Sea itself:
-   - West (6W) sits just past the Strait of Gibraltar, the real physical gateway between the
-     Mediterranean and the open Atlantic -- a strait about 8 nautical miles wide at its narrowest,
-     so a couple of degrees of padding past it comfortably clears the handoff without reaching
-     back into Atlantic water this app's own Atlantic build already covers.
-   - East (36E) reaches the Levantine Sea's own real eastern edge, just short of the Syrian coast
-     near Latakia -- the Mediterranean's own natural end, not a cut made for this app's convenience.
-   - North (46N) clears the northern Adriatic in full, past Venice and the Gulf of Trieste, and
-     stops just short of the Black Sea's own southern extent -- the Bosphorus strait near Istanbul
-     sits right at this edge, so the Black Sea itself (a real, separate, mostly-landlocked sea with
-     its own distinct water mass) stays out rather than bleeding in as an unlabeled extra basin.
+   center with an official area of responsibility.
+   - West (10W) reaches well past the Strait of Gibraltar -- the real physical gateway between the
+     Mediterranean and the open Atlantic, about 8 nautical miles wide at its narrowest -- into the
+     open Atlantic itself, far enough to cover Cadiz, Huelva, and Portugal's own Algarve coast.
+     That's real water this app's own Atlantic build also reaches (its own box runs to 110W), so
+     there's deliberate overlap here, the same "two basins can legitimately cover the same real
+     water, each with its own basin-appropriate climatology" choice already made for the Atlantic
+     build's own reach into the Mediterranean and South Atlantic before those got their own basins.
+   - East (42E) now reaches the real eastern end of the Black Sea, off the Georgian coast near
+     Batumi -- past the Levantine Sea's own real eastern edge near Latakia, which used to be this
+     basin's own east edge before the Black Sea was added.
+   - North (48N) now clears the Black Sea in full, past the Kerch Strait into the Sea of Azov's own
+     real northern shore near the Don's mouth -- previously this edge stopped just short of the
+     Black Sea entirely (at 46N), treating it as a separate, unlabeled basin; it's real in-basin
+     water now, the same "a real marginal sea is just real water, not masked" treatment NIO gives
+     the Red Sea/Persian Gulf and WPAC gives the Yellow Sea/Bohai/Sea of Japan. The Black Sea's own
+     real climate (checked directly against the raw climatology: a genuine, smooth, already-
+     resolved ~4-7C cooler than the open Mediterranean at the same latitude, strongest in winter --
+     see the ocean-features note below) comes through honestly rather than needing a synthetic
+     correction.
    - South (30N) clears Crete and the Libyan coast with room to spare, deep into water this
-     basin's own real medicanes have actually tracked through.
+     basin's own real medicanes have actually tracked through -- unchanged from before.
    `outOfBasin` stays in the code (the combine loop below still checks it) purely so this
    template keeps the same shape as every other basin's own; it's just never set to 1. */
 const outOfBasin = new Uint8Array(N);
@@ -389,10 +396,11 @@ const contDist = chamfer(cont);
 /* ------------------------------------------------------------------ *
  *  Ocean features the 2° climatology cannot resolve
  *
- *  Two real candidates checked directly against the raw climatology (near-coast vs. a few
- *  degrees offshore, the same test every other basin's own build used), both honestly needing
- *  nothing -- not because nothing's there, but because what's there is a broad, smooth, already-
- *  resolved gradient rather than a sharp localized front a 2 deg grid would dilute:
+ *  Four real candidates checked directly against the raw climatology (near-coast vs. a few
+ *  degrees offshore, or region vs. region at the same latitude, the same tests every other
+ *  basin's own build used), all four honestly needing nothing -- not because nothing's there,
+ *  but because what's there is a broad, smooth, already-resolved gradient rather than a sharp
+ *  localized front a 2 deg grid would dilute:
  *  - The Gulf of Lion's own Mistral-wind winter cooling (the cold, dry wind that funnels down the
  *    Rhone valley) is real, but the raw winter climatology shows a smooth ~1.2C cooling spread
  *    over 4 degrees moving toward the French coast, not a sharp near-shore step -- a basin-scale
@@ -400,8 +408,22 @@ const contDist = chamfer(cont);
  *  - The northern Adriatic's own Bora-wind winter cooling (shallow water, strong cold outflow from
  *    the Dinaric Alps) is real too, and shows the same pattern: a smooth ~2.3C gradient along the
  *    Adriatic's own north-south axis from Trieste down to the Ionian, not a sharp break right at
- *    the Bora's own outflow point. Both are genuine regional trends, well inside what this coarse
- *    a grid (the whole Mediterranean is only 22x9 coarse cells) can already represent honestly.
+ *    the Bora's own outflow point.
+ *  - The Black Sea (added when this basin's own domain grew to cover it in full) is real and
+ *    genuinely, substantially colder than the rest of the Mediterranean -- about 4.5C cooler than
+ *    the Aegean at the same latitude in the annual mean, widening to roughly 7-8C cooler in winter
+ *    (its own continental surroundings and limited exchange with the open Mediterranean through the
+ *    narrow Bosphorus and Dardanelles both drive this) -- but it's a smooth basin-wide difference
+ *    between two whole seas, not a sharp coastal front, so the coarse grid already carries it
+ *    honestly without a synthetic correction.
+ *  - The Gulf of Cadiz/Algarve coast (added along with western Spain) was checked for the
+ *    Portuguese/Iberian upwelling current real oceanography documents there -- a near-coast vs.
+ *    offshore check, including in summer when that upwelling is strongest, came back flat to
+ *    slightly warmer near the coast rather than colder, no concentrated cold core showing up at
+ *    this grid's own resolution at this latitude.
+ *  All four are genuine regional-scale findings, well inside what this coarse a grid (27x10
+ *  coarse cells, up from 22x9 before the Black Sea/western Spain expansion) can already represent
+ *  honestly.
  * ------------------------------------------------------------------ */
 function interp1(xs, ys, x) { if (x <= xs[0]) return ys[0]; for (let i = 1; i < xs.length; i++) if (x <= xs[i]) { const t = (x - xs[i - 1]) / (xs[i] - xs[i - 1]); return ys[i - 1] + t * (ys[i] - ys[i - 1]); } return ys[ys.length - 1]; }
 
@@ -566,9 +588,11 @@ const LK_TAB = {   // monthly surface temperatures (°C), Jan..Dec, typical of t
   'Lake St. Clair': [0.5, 0.2, 2, 6, 12, 19, 24, 25.5, 22, 15, 8, 3]
 };
 const LK_SPECIAL = {
-  // Most of this basin's own lake list (Lake Geneva, Bodensee, Lake Balaton, Lago di Garda, Lake
-  // Skadar, Eğirdir, Beyşehir, the Kakhovka Reservoir, Syvash) is ordinary freshwater lakes the
-  // generic latitude+area formula already treats honestly, same as every other basin's own list.
+  // Most of this basin's own lake list -- Lake Geneva, Bodensee, Lake Balaton, Lago di Garda, Lake
+  // Skadar, Eğirdir, Beyşehir, Lake Van, several Turkish/Iraqi reservoirs (Ataturk, Keban, Lake
+  // Habbaniyah, Tharthar, Razazah), and the Ukrainian/Russian reservoirs the Black Sea expansion
+  // added (Kakhovka, Kremenchuk, Tsimlyansk, Syvash) -- is ordinary freshwater lakes the generic
+  // latitude+area formula already treats honestly, same as every other basin's own list.
   // The Dead Sea is the one real exception worth naming: landlocked, hypersaline, and the lowest
   // exposed point on Earth's own land surface (430m below sea level) in the middle of a true
   // desert -- a combination the generic formula (built around ordinary freshwater lakes) doesn't
@@ -637,9 +661,14 @@ const CITIES = [
   // A city entry with sLat/sLon isn't quite on the water itself -- that's the basin's nearest
   // real coastal point instead, shown labeled as such (never a fabricated "local SST" for a
   // city that isn't on the coast), same convention as every other basin's city list.
-  // Gibraltar / Alboran Sea -- the real gateway this basin's own west edge sits just past
+  // Gibraltar / Alboran Sea -- the real gateway this basin's own west edge now reaches well past
   { name: 'Gibraltar', lat: 36.14, lon: -5.35 }, { name: 'Tangier', lat: 35.76, lon: -5.83 },
   { name: 'Nador', lat: 35.17, lon: -2.93 },
+  // Western Spain / Portugal's own Algarve coast -- the open-Atlantic side this basin's west
+  // edge now reaches, real water the Atlantic build's own box also covers (see the domain-mask
+  // note above on that deliberate overlap)
+  { name: 'Cadiz', lat: 36.53, lon: -6.30 }, { name: 'Huelva', lat: 37.26, lon: -6.95 },
+  { name: 'Faro', lat: 37.02, lon: -7.93 }, { name: 'Lagos', lat: 37.10, lon: -8.67 },
   // Spain
   { name: 'Alicante', lat: 38.35, lon: -0.48 }, { name: 'Valencia', lat: 39.47, lon: -0.38 },
   { name: 'Barcelona', lat: 41.39, lon: 2.17 }, { name: 'Palma de Mallorca', lat: 39.57, lon: 2.65 },
@@ -667,9 +696,17 @@ const CITIES = [
   // Turkey
   { name: 'Izmir', lat: 38.42, lon: 27.14 }, { name: 'Antalya', lat: 36.88, lon: 30.70 },
   { name: 'Mersin', lat: 36.80, lon: 34.63 },
-  // Istanbul sits right at the Bosphorus, the real strait this basin's own north edge brushes
-  // past rather than following into the separate Black Sea -- see the domain-mask note above.
-  { name: 'Istanbul', lat: 41.01, lon: 28.98 },
+  // Istanbul sits right at the Bosphorus, the real strait connecting the Mediterranean (by way
+  // of the Sea of Marmara) to the Black Sea -- both real in-basin water now, see the domain-mask
+  // note above.
+  { name: 'Istanbul', lat: 41.01, lon: 28.98 }, { name: 'Samsun', lat: 41.29, lon: 36.33 },
+  { name: 'Trabzon', lat: 41.00, lon: 39.72 },
+  // Black Sea -- real in-basin water now that this basin's own domain covers it in full
+  { name: 'Varna', lat: 43.21, lon: 27.92 }, { name: 'Burgas', lat: 42.50, lon: 27.47 },
+  { name: 'Constanța', lat: 44.18, lon: 28.65 }, { name: 'Odesa', lat: 46.48, lon: 30.73 },
+  { name: 'Sevastopol', lat: 44.62, lon: 33.53 }, { name: 'Yalta', lat: 44.50, lon: 34.17 },
+  { name: 'Sochi', lat: 43.60, lon: 39.73 }, { name: 'Novorossiysk', lat: 44.72, lon: 37.77 },
+  { name: 'Batumi', lat: 41.65, lon: 41.64 }, { name: 'Poti', lat: 42.15, lon: 41.67 },
   // Cyprus
   { name: 'Limassol', lat: 34.68, lon: 33.04 }, { name: 'Larnaca', lat: 34.92, lon: 33.64 },
   // Levant
@@ -752,9 +789,14 @@ function updateCityTip(cx, cy) {
  *  Map
  * ------------------------------------------------------------------ */
 const map = L.map('map', {
-  zoomControl: false, attributionControl: false, minZoom: 5.2, maxZoom: 10, zoomSnap: 0.25, zoomDelta: 0.5, wheelPxPerZoomLevel: 110,
+  zoomControl: false, attributionControl: false, minZoom: 5.1, maxZoom: 10, zoomSnap: 0.25, zoomDelta: 0.5, wheelPxPerZoomLevel: 110,
   zoomAnimation: false, fadeAnimation: false, markerZoomAnimation: false, worldCopyJump: false,
-  maxBounds: [[28, -8], [48, 38]], maxBoundsViscosity: 1   // hard pan limit: this basin's own real box (no RSMC exists for the Mediterranean either -- see the domain-mask note above), padded a couple of degrees for the data's own padded extent
+  // The hard pan limit is the exact real SST domain, not the geo/imagery pipeline's own padded
+  // context box -- padding it here would let a user pan and zoom all the way into a corner with
+  // zero real SST in view, nothing but bare basemap (a real bug this basin and the South Atlantic
+  // both shipped with before it was caught; every other live basin already matches its own
+  // maxBounds to the real domain exactly, or insets slightly inside it).
+  maxBounds: [[30, -10], [48, 42]], maxBoundsViscosity: 1   // hard pan limit: this basin's own real domain (no RSMC exists for the Mediterranean either -- see the domain-mask note above)
 });
 L.control.zoom({ position: 'bottomleft' }).addTo(map);
 // This basin is compact enough, and distinctive enough as a whole shape (Gibraltar, Italy's own
@@ -762,7 +804,7 @@ L.control.zoom({ position: 'bottomleft' }).addTo(map);
 // than a close-up of any one part of it -- the same "show the whole honest shape" choice as the
 // South Atlantic's own default view, just here because the basin is small rather than because
 // nothing stands out.
-map.fitBounds([[30, -6], [46, 36]], { animate: false });   // instant: an animated pan here briefly rendered a garbled frame of the embedded base image mid-transition
+map.fitBounds([[30, -10], [48, 42]], { animate: false });   // instant: an animated pan here briefly rendered a garbled frame of the embedded base image mid-transition
 const container = map.getContainer();
 
 function makeCanvas(z) { const c = document.createElement('canvas'); c.className = 'overlay'; c.style.zIndex = z; container.appendChild(c); return c; }

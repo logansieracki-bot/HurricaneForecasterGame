@@ -1,6 +1,35 @@
 # Roadmap
 
 ## Just landed
+- **Fixed a real "pan into a dead zone" bug on South Atlantic and Mediterranean, and expanded
+  Mediterranean's own domain to cover the full Black Sea and western Spain/Portugal's Algarve
+  coast.** Both basins' own `maxBounds` had been set to the geo/imagery pipeline's *padded*
+  context box (domain +/- a couple degrees, meant only to give land-polygon/Blue Marble clipping
+  some slack past the data edge) instead of the real SST domain -- letting a user pan and zoom all
+  the way into a corner with zero real SST in view, nothing but bare basemap. Every other live
+  basin already matched its own `maxBounds` to the real domain exactly (AUS, SWIO, South Pacific)
+  or inset slightly inside it (NIO), so this was specifically a mistake made shipping the last two
+  basins, not a systemic issue -- confirmed by an empirical audit (sampling a small grid of points
+  across the viewport at every basin's own maxBounds corner at maxZoom) across all nine basins
+  before touching anything, which also doubled as a direct test of the actual complaint ("make
+  sure zoom is constrained to the SST"). Fixed by setting both basins' `maxBounds` to their exact
+  real domain, the same convention already proven correct elsewhere; added a regression check to
+  each basin's own test block in `tests/run.mjs` (zoom to maxZoom at a real corner, confirm the
+  view isn't entirely non-SST) so this can't silently reappear.
+  - Mediterranean's own domain grew from (30N-46N, 6W-36E) to (30N-48N, 10W-42E) to cover two real
+    water bodies it was leaving out: the Black Sea in full (previously cut off a few degrees short
+    of its own real southern extent, Bosphorus to the north now sitting well inside the domain
+    instead of right at the edge) and western Spain/Portugal's own Algarve coast on the open-
+    Atlantic side of Gibraltar. Both checked directly against the raw climatology before shipping
+    (same discipline as every basin's own ocean-feature check): the Black Sea is genuinely,
+    smoothly ~4.5C cooler than the Aegean in the annual mean (~7-8C in winter), real and already
+    resolved at this grid's own resolution, no synthetic correction needed; the Gulf of Cadiz/
+    Algarve's own near-coast vs. offshore check came back flat (no concentrated upwelling core at
+    this latitude/resolution), also needing nothing. Climatology/geo/imagery pipelines all
+    regenerated for the new domain (padBox unchanged at 2); city list grew to include the Black
+    Sea coast (Odesa, Sevastopol, Varna, Constanța, Sochi, Batumi, and others) and western Spain/
+    Algarve (Cadiz, Huelva, Faro, Lagos); `minZoom` recalibrated (5.0 -> 5.1) for the new, wider
+    (52 deg vs. 42 deg) domain shape.
 - **South Pacific, South Atlantic, and Mediterranean basins added in one batch** -- the last three
   of the nine basins this app set out to cover, each still its own menu card and its own
   `dist/<basin>-sst-simulator.html`, not combined.

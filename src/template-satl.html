@@ -710,7 +710,13 @@ function updateCityTip(cx, cy) {
 const map = L.map('map', {
   zoomControl: false, attributionControl: false, minZoom: 4.6, maxZoom: 10, zoomSnap: 0.25, zoomDelta: 0.5, wheelPxPerZoomLevel: 110,
   zoomAnimation: false, fadeAnimation: false, markerZoomAnimation: false, worldCopyJump: false,
-  maxBounds: [[-43, -53], [3, 23]], maxBoundsViscosity: 1   // hard pan limit: this basin's own real box (no RSMC exists for the South Atlantic -- see the domain-mask note above), padded a few degrees for the data's own padded extent
+  // The hard pan limit is the exact real SST domain, not the geo/imagery pipeline's own padded
+  // context box (which exists purely to give land-polygon/Blue Marble clipping a few degrees of
+  // slack past the data edge, not to be a pannable area) -- padding it here would let a user pan
+  // and zoom all the way into a corner with zero real SST in view, nothing but bare basemap. Every
+  // other live basin either matches its own maxBounds to the real domain exactly (AUS, SWIO, South
+  // Pacific) or insets slightly inside it (NIO); this one now does the same.
+  maxBounds: [[-40, -50], [0, 20]], maxBoundsViscosity: 1   // hard pan limit: this basin's own real domain (no RSMC exists for the South Atlantic -- see the domain-mask note above)
 });
 L.control.zoom({ position: 'bottomleft' }).addTo(map);
 // Unlike every other basin's own default view (a signature current or strait zoomed in close), this
