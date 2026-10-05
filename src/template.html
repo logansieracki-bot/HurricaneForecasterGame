@@ -866,12 +866,27 @@ function updateCityTip(cx, cy) {
 /* ------------------------------------------------------------------ *
  *  Map
  * ------------------------------------------------------------------ */
+const MAX_BOUNDS = [[2, -102], [55, 22]];   // hard pan limit: north Atlantic basin only -- specifically keeps South America and the South Atlantic out of reach (their own future basin), with room south of the Main Development Region
 const map = L.map('map', {
-  zoomControl: false, attributionControl: false, minZoom: 5, maxZoom: 10, zoomSnap: 0.25, zoomDelta: 0.5, wheelPxPerZoomLevel: 110,
+  zoomControl: false, attributionControl: false, maxZoom: 10, zoomSnap: 0.25, zoomDelta: 0.5, wheelPxPerZoomLevel: 110,
   zoomAnimation: false, fadeAnimation: false, markerZoomAnimation: false, worldCopyJump: false,
-  maxBounds: [[2, -102], [55, 22]], maxBoundsViscosity: 1   // hard pan limit: north Atlantic basin only -- specifically keeps South America and the South Atlantic out of reach (their own future basin), with room south of the Main Development Region
+  maxBounds: MAX_BOUNDS, maxBoundsViscosity: 1
 });
 L.control.zoom({ position: 'bottomleft' }).addTo(map);
+// minZoom can't be a fixed number: it depends on the viewer's own actual screen size, since the
+// same zoom level shows proportionally more real-world area on a wider monitor. A hardcoded value
+// tuned against one test viewport either wastes zoom-out room on a small screen or, on a wide
+// enough one, lets the user zoom out past maxBounds into a sea of bare basemap with zero real SST
+// in view -- a real bug a couple of basins shipped with before a user caught it on an ultrawide
+// monitor. Computed fresh from the map's own actual pixel size instead, both now and on every
+// resize (see the resize handler below), so the floor is always "maxBounds just fills whatever
+// screen this actually is," on any device, not a guess tuned for one. getBoundsZoom() itself
+// floors to the nearest zoomSnap step so the bounds are never cropped, which leaves a little
+// residual overflow (the next snap step up can be up to one full step too zoomed-out) -- bumping
+// by one zoomSnap closes that gap, at the cost of a sliver of the domain's very edge not being
+// reachable at the absolute minimum zoom, a far smaller and bounded tradeoff.
+function syncMinZoom() { const z = map.getBoundsZoom(MAX_BOUNDS, false) + map.options.zoomSnap; map.setMinZoom(z); if (map.getZoom() < z) map.setZoom(z); }
+syncMinZoom();
 map.fitBounds([[10, -90], [40, -20]], { animate: false });   // instant: an animated pan here briefly rendered a garbled frame of the embedded base image mid-transition
 const container = map.getContainer();
 
@@ -1217,7 +1232,7 @@ function scheduleRender() { if (renderQueued) return; renderQueued = true; reque
 map.on('move zoom resize', scheduleRender);
 map.on('movestart zoomstart', () => { interacting = true; });
 map.on('moveend zoomend', () => { interacting = false; scheduleRender(); });
-window.addEventListener('resize', () => { map.invalidateSize(); scheduleRender(); });
+window.addEventListener('resize', () => { map.invalidateSize(); syncMinZoom(); scheduleRender(); });
 
 /* ------------------------------------------------------------------ *
  *  Readout + legend

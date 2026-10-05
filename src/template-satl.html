@@ -707,18 +707,26 @@ function updateCityTip(cx, cy) {
 /* ------------------------------------------------------------------ *
  *  Map
  * ------------------------------------------------------------------ */
+// The hard pan limit is the exact real SST domain, not the geo/imagery pipeline's own padded
+// context box (which exists purely to give land-polygon/Blue Marble clipping a few degrees of
+// slack past the data edge, not to be a pannable area) -- padding it here would let a user pan
+// and zoom all the way into a corner with zero real SST in view, nothing but bare basemap. Every
+// other live basin either matches its own maxBounds to the real domain exactly (AUS, SWIO, South
+// Pacific) or insets slightly inside it (NIO); this one now does the same.
+const MAX_BOUNDS = [[-40, -50], [0, 20]];   // hard pan limit: this basin's own real domain (no RSMC exists for the South Atlantic -- see the domain-mask note above)
 const map = L.map('map', {
-  zoomControl: false, attributionControl: false, minZoom: 4.6, maxZoom: 10, zoomSnap: 0.25, zoomDelta: 0.5, wheelPxPerZoomLevel: 110,
+  zoomControl: false, attributionControl: false, maxZoom: 10, zoomSnap: 0.25, zoomDelta: 0.5, wheelPxPerZoomLevel: 110,
   zoomAnimation: false, fadeAnimation: false, markerZoomAnimation: false, worldCopyJump: false,
-  // The hard pan limit is the exact real SST domain, not the geo/imagery pipeline's own padded
-  // context box (which exists purely to give land-polygon/Blue Marble clipping a few degrees of
-  // slack past the data edge, not to be a pannable area) -- padding it here would let a user pan
-  // and zoom all the way into a corner with zero real SST in view, nothing but bare basemap. Every
-  // other live basin either matches its own maxBounds to the real domain exactly (AUS, SWIO, South
-  // Pacific) or insets slightly inside it (NIO); this one now does the same.
-  maxBounds: [[-40, -50], [0, 20]], maxBoundsViscosity: 1   // hard pan limit: this basin's own real domain (no RSMC exists for the South Atlantic -- see the domain-mask note above)
+  maxBounds: MAX_BOUNDS, maxBoundsViscosity: 1
 });
 L.control.zoom({ position: 'bottomleft' }).addTo(map);
+// minZoom is computed dynamically from the viewer's own actual screen size, not a hardcoded guess
+// -- see src/template.html's own map-init comment for why a fixed number doesn't work (a wide
+// enough monitor can zoom out past maxBounds into bare basemap with zero real SST in view; this
+// basin's own minZoom used to be hardcoded deliberately low to show the whole basin by default,
+// which is exactly the combination that made the bug worst here).
+function syncMinZoom() { const z = map.getBoundsZoom(MAX_BOUNDS, false) + map.options.zoomSnap; map.setMinZoom(z); if (map.getZoom() < z) map.setZoom(z); }
+syncMinZoom();
 // Unlike every other basin's own default view (a signature current or strait zoomed in close), this
 // one starts zoomed out to the real basin itself -- Brazil on one side, Africa on the other, open ocean
 // between, nothing dramatic at any single point. That honest "two continents, empty water" framing is
@@ -1067,7 +1075,7 @@ function scheduleRender() { if (renderQueued) return; renderQueued = true; reque
 map.on('move zoom resize', scheduleRender);
 map.on('movestart zoomstart', () => { interacting = true; });
 map.on('moveend zoomend', () => { interacting = false; scheduleRender(); });
-window.addEventListener('resize', () => { map.invalidateSize(); scheduleRender(); });
+window.addEventListener('resize', () => { map.invalidateSize(); syncMinZoom(); scheduleRender(); });
 
 /* ------------------------------------------------------------------ *
  *  Readout + legend

@@ -1,6 +1,27 @@
 # Roadmap
 
 ## Just landed
+- **Fixed the actual root cause of the zoom/dead-zone bug: `minZoom` is now computed dynamically
+  from the viewer's own real screen size, on all nine basins, not a hardcoded guess.** The previous
+  fix (matching `maxBounds` to the real domain) stopped a user from *panning* into a dead zone, but
+  a user reported still being able to *zoom out* into one on Mediterranean -- on their own wide
+  monitor, zooming all the way out showed all of Europe from Ireland to the Caspian Sea, almost
+  entirely bare basemap with a small patch of real SST in the middle. Root cause: every basin's own
+  `minZoom` was a fixed number tuned by testing against one assumed viewport width (1280px) --
+  harmless on a basin with headroom to spare, but South Atlantic and Mediterranean both had
+  `minZoom` deliberately pushed low on purpose (to show the whole basin by default), leaving no
+  margin before a wider real screen busted straight through `maxBounds`. Confirmed directly: at the
+  old hardcoded `minZoom`, a 2000px-wide browser window showed up to 30 degrees of pure overflow
+  beyond Mediterranean's own real domain. The fix uses Leaflet's own `getBoundsZoom()`, called both
+  at load and on every window resize, to find the zoom level where `maxBounds` just fills whatever
+  screen the map is actually running on -- bumped up by one `zoomSnap` step past Leaflet's own
+  floor-rounded result (which guarantees the bounds are never cropped at the cost of a little
+  residual slack) to close that gap too. Verified across viewport widths from 360px (phone) to
+  3440px (ultrawide) on all nine basins: overflow now stays near zero regardless of absolute screen
+  size, dropping to just the ordinary letterbox margin any "fit to bounds" map tool shows when a
+  region's own aspect ratio doesn't exactly match the viewer's screen shape (bounded by that
+  mismatch alone, not by how wide the screen is) -- a fundamentally different, much smaller effect
+  than the open-ended bug reported. Full 190+ check suite still green.
 - **Fixed a real "pan into a dead zone" bug on South Atlantic and Mediterranean, and expanded
   Mediterranean's own domain to cover the full Black Sea and western Spain/Portugal's Algarve
   coast.** Both basins' own `maxBounds` had been set to the geo/imagery pipeline's *padded*

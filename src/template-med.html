@@ -788,17 +788,26 @@ function updateCityTip(cx, cy) {
 /* ------------------------------------------------------------------ *
  *  Map
  * ------------------------------------------------------------------ */
+// The hard pan limit is the exact real SST domain, not the geo/imagery pipeline's own padded
+// context box -- padding it here would let a user pan and zoom all the way into a corner with
+// zero real SST in view, nothing but bare basemap (a real bug this basin and the South Atlantic
+// both shipped with before it was caught; every other live basin already matches its own
+// maxBounds to the real domain exactly, or insets slightly inside it).
+const MAX_BOUNDS = [[30, -10], [48, 42]];   // hard pan limit: this basin's own real domain (no RSMC exists for the Mediterranean either -- see the domain-mask note above)
 const map = L.map('map', {
-  zoomControl: false, attributionControl: false, minZoom: 5.1, maxZoom: 10, zoomSnap: 0.25, zoomDelta: 0.5, wheelPxPerZoomLevel: 110,
+  zoomControl: false, attributionControl: false, maxZoom: 10, zoomSnap: 0.25, zoomDelta: 0.5, wheelPxPerZoomLevel: 110,
   zoomAnimation: false, fadeAnimation: false, markerZoomAnimation: false, worldCopyJump: false,
-  // The hard pan limit is the exact real SST domain, not the geo/imagery pipeline's own padded
-  // context box -- padding it here would let a user pan and zoom all the way into a corner with
-  // zero real SST in view, nothing but bare basemap (a real bug this basin and the South Atlantic
-  // both shipped with before it was caught; every other live basin already matches its own
-  // maxBounds to the real domain exactly, or insets slightly inside it).
-  maxBounds: [[30, -10], [48, 42]], maxBoundsViscosity: 1   // hard pan limit: this basin's own real domain (no RSMC exists for the Mediterranean either -- see the domain-mask note above)
+  maxBounds: MAX_BOUNDS, maxBoundsViscosity: 1
 });
 L.control.zoom({ position: 'bottomleft' }).addTo(map);
+// minZoom is computed dynamically from the viewer's own actual screen size, not a hardcoded guess
+// -- see src/template.html's own map-init comment for why a fixed number doesn't work. This
+// basin's own minZoom used to be hardcoded deliberately low (to show the whole basin by default,
+// see the fitBounds comment below) -- on a wide enough real monitor, that was exactly the
+// combination that let the view zoom out past maxBounds into a sea of bare basemap with no real
+// SST anywhere in sight, which is what a user actually caught and reported.
+function syncMinZoom() { const z = map.getBoundsZoom(MAX_BOUNDS, false) + map.options.zoomSnap; map.setMinZoom(z); if (map.getZoom() < z) map.setZoom(z); }
+syncMinZoom();
 // This basin is compact enough, and distinctive enough as a whole shape (Gibraltar, Italy's own
 // boot, the Aegean's own islands), that the default view shows the entire real sea at once rather
 // than a close-up of any one part of it -- the same "show the whole honest shape" choice as the
@@ -1149,7 +1158,7 @@ function scheduleRender() { if (renderQueued) return; renderQueued = true; reque
 map.on('move zoom resize', scheduleRender);
 map.on('movestart zoomstart', () => { interacting = true; });
 map.on('moveend zoomend', () => { interacting = false; scheduleRender(); });
-window.addEventListener('resize', () => { map.invalidateSize(); scheduleRender(); });
+window.addEventListener('resize', () => { map.invalidateSize(); syncMinZoom(); scheduleRender(); });
 
 /* ------------------------------------------------------------------ *
  *  Readout + legend

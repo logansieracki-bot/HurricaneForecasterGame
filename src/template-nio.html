@@ -804,12 +804,18 @@ function updateCityTip(cx, cy) {
 /* ------------------------------------------------------------------ *
  *  Map
  * ------------------------------------------------------------------ */
+const MAX_BOUNDS = [[-6, 32], [30, 98]];   // hard pan limit: a few degrees beyond the domain box on every side, well inside the data's own padded extent
 const map = L.map('map', {
-  zoomControl: false, attributionControl: false, minZoom: 5.9, maxZoom: 10, zoomSnap: 0.25, zoomDelta: 0.5, wheelPxPerZoomLevel: 110,
+  zoomControl: false, attributionControl: false, maxZoom: 10, zoomSnap: 0.25, zoomDelta: 0.5, wheelPxPerZoomLevel: 110,
   zoomAnimation: false, fadeAnimation: false, markerZoomAnimation: false, worldCopyJump: false,
-  maxBounds: [[-6, 32], [30, 98]], maxBoundsViscosity: 1   // hard pan limit: a few degrees beyond the domain box on every side, well inside the data's own padded extent
+  maxBounds: MAX_BOUNDS, maxBoundsViscosity: 1
 });
 L.control.zoom({ position: 'bottomleft' }).addTo(map);
+// minZoom is computed dynamically from the viewer's own actual screen size, not a hardcoded guess
+// -- see src/template.html's own map-init comment for why a fixed number doesn't work (a wide
+// enough monitor can zoom out past maxBounds into bare basemap with zero real SST in view).
+function syncMinZoom() { const z = map.getBoundsZoom(MAX_BOUNDS, false) + map.options.zoomSnap; map.setMinZoom(z); if (map.getZoom() < z) map.setZoom(z); }
+syncMinZoom();
 map.fitBounds([[5, 45], [28, 92]], { animate: false });   // instant: an animated pan here briefly rendered a garbled frame of the embedded base image mid-transition
 const container = map.getContainer();
 
@@ -1154,7 +1160,7 @@ function scheduleRender() { if (renderQueued) return; renderQueued = true; reque
 map.on('move zoom resize', scheduleRender);
 map.on('movestart zoomstart', () => { interacting = true; });
 map.on('moveend zoomend', () => { interacting = false; scheduleRender(); });
-window.addEventListener('resize', () => { map.invalidateSize(); scheduleRender(); });
+window.addEventListener('resize', () => { map.invalidateSize(); syncMinZoom(); scheduleRender(); });
 
 /* ------------------------------------------------------------------ *
  *  Readout + legend
