@@ -1,6 +1,27 @@
 # Roadmap
 
 ## Just landed
+- **Widened AUS and SWIO's own domains east to close out the remaining letterbox the minZoom fix
+  couldn't solve on its own.** The dynamic-minZoom fix stops the dead-zone from growing with
+  screen size, but it can't make a basin's own box perfectly match every viewer's own aspect
+  ratio -- a basin whose real shape is notably taller/narrower than a typical wide screen (16:9)
+  still shows a real, if bounded, strip of bare basemap on the sides at the zoomed-out floor. AUS
+  (70x48, aspect 1.46:1) and SWIO (60x44, aspect 1.36:1) were the two most visibly affected,
+  reported directly by a user after the minZoom fix landed. Fixed by widening real SST coverage
+  itself east on both -- AUS from 160E to 176E (into the South Pacific's own real territory: Coral
+  Sea, Tasman Sea, New Caledonia, Vanuatu's own west edge, and nearly all of New Zealand), SWIO
+  from 90E to 108E (into AUS's own real territory, and since SWIO has no coastline-following curve
+  at all, a little of southern Sumatra/Java's own coast too) -- both landing close to a 16:9
+  aspect ratio. Both extensions are deliberate basin-to-basin overlap, the same "two basins can
+  legitimately cover the same real water" choice already made for the Atlantic's own reach into
+  the Mediterranean and South Atlantic. Checked the new water against the raw climatology before
+  shipping, same as every basin's own ocean-feature check: AUS's own East Australian Current
+  extension into the Tasman Sea and SWIO's own Java upwelling both came back as smooth, already-
+  resolved gradients, neither needing a synthetic correction. Regenerated both basins' full
+  climatology/geo/imagery pipelines, extended AUS's own north masking curve two more anchor
+  points to the new edge, added real cities in both new areas (Honiara, Port Vila, Nouméa, and
+  most of New Zealand for AUS; the Cocos Islands, Christmas Island, and southern Sumatra/Java for
+  SWIO), and updated both basins' own maxBounds/test suite to match.
 - **Fixed the actual root cause of the zoom/dead-zone bug: `minZoom` is now computed dynamically
   from the viewer's own real screen size, on all nine basins, not a hardcoded guess.** The previous
   fix (matching `maxBounds` to the real domain) stopped a user from *panning* into a dead zone, but

@@ -275,24 +275,40 @@ function b64i16(s) { const u = b64bytes(s); return new Int16Array(u.buffer, 0, u
 const land = new Uint8Array(N);                 // 1 = land (0.25° nodes)
 { const mb = b64bytes(DATA.mask); for (let k = 0; k < N; k++) land[k] = (mb[k >> 3] >> (7 - (k & 7))) & 1; }
 
-/* No masking on the west/east/south edges: this grid's box edges already ARE the real basin
-   lines there. West (90E) and east (160E) are BOM's own standard handoffs to the neighboring
-   South-West Indian Ocean (RSMC La Reunion) and South Pacific (RSMC Nadi) basins -- both sit in
-   open water away from any coastline complexity, so unlike every other basin's own boundary,
-   these are just straight lines, no coastline-following curve needed. South (44S) runs well
-   past where real cyclones actually form (mostly north of 25-30S) into real, correctly-cooling
-   subtropical water off WA/Victoria/Tasmania -- context, the same call as EPAC's own Peru/Chile
-   extension or WPAC's Sea of Okhotsk, deliberately stopping well short of New Zealand rather
-   than reaching for it.
+/* West (90E) and south (44S) are unchanged from this basin's own original build: west is BOM's
+   own standard handoff to the South-West Indian Ocean (RSMC La Reunion), a straight line in open
+   water; south runs well past where real cyclones actually form (mostly north of 25-30S) into
+   real, correctly-cooling subtropical water off WA/Victoria/Tasmania -- context, the same call
+   as EPAC's own Peru/Chile extension or WPAC's Sea of Okhotsk.
 
-   The *north* edge is the real case needing a cutoff -- the mirror image of WPAC's own south
-   cutoff, both in direction and in spirit: not a strict line at the equator, since Indonesia's
-   own islands (Sumatra, Java, the Nusa Tenggara chain, Sulawesi, the Maluku islands) sit right
-   at or just south of it, while the open water between them (Makassar Strait, the Banda Sea,
-   the Arafura/Coral Seas toward New Guinea) is unambiguous basin water with real wiggle room to
-   dip a few degrees further north. */
-const NORTH_LON = [90, 95, 100, 106, 112, 118, 125, 132, 140, 148, 155, 160];
-const NORTH_LAT = [1, 1, 1, 0, 2, 4, 3, 2, 3, 2, 1, 1];
+   East (160E) used to be BOM's own standard handoff to the South Pacific (RSMC Nadi) too, but
+   this basin's own box was widened past it (160E to 176E) for a reason that has nothing to do
+   with real basin boundaries: at this basin's own original 70x48 aspect ratio, a typical wide
+   monitor's own minZoom view showed a meaningful strip of bare basemap on the sides even after
+   minZoom itself was fixed to track real screen size (see src/template.html's own map-init
+   comment) -- a real aspect-ratio mismatch between this basin's own shape and a real screen's,
+   not a bug in the zoom math. Widening the real SST coverage itself to a ~16:9-ish aspect ratio
+   (86x48) closes that gap with genuine simulated water instead of empty padding. The extension
+   reaches into the South Pacific's own real territory (Coral Sea, Tasman Sea, as far as New
+   Caledonia and the western edge of Vanuatu, and the western half of New Zealand) -- the same
+   "two basins can legitimately cover the same real water, each with its own basin-appropriate
+   climatology" choice already made for the Atlantic build's own reach into the Mediterranean and
+   South Atlantic before those got their own basins. A near-coast vs. offshore check of the Tasman
+   Sea/East Australian Current's own extension into the new area (same test as every basin's own
+   ocean-feature check) came back as a smooth, already-resolved regional gradient, not a
+   concentrated core needing a synthetic correction -- see the ocean-features note below.
+
+   The *north* edge is the one real cutoff in this basin's own box -- the mirror image of WPAC's
+   own south cutoff, both in direction and in spirit: not a strict line at the equator, since
+   Indonesia's own islands (Sumatra, Java, the Nusa Tenggara chain, Sulawesi, the Maluku islands)
+   sit right at or just south of it, while the open water between them (Makassar Strait, the
+   Banda Sea, the Arafura/Coral Seas toward New Guinea) is unambiguous basin water with real
+   wiggle room to dip a few degrees further north. The curve's own last two anchor points (168E,
+   176E) continue flat at the same ~1N it was already holding by 155-160E -- the new eastern
+   stretch (the Solomon Sea's own southern approach, open Coral Sea otherwise) has no further
+   island chain crossing the equator to follow, so there's nothing left to curve around. */
+const NORTH_LON = [90, 95, 100, 106, 112, 118, 125, 132, 140, 148, 155, 160, 168, 176];
+const NORTH_LAT = [1, 1, 1, 0, 2, 4, 3, 2, 3, 2, 1, 1, 1, 1];
 const outOfBasin = new Uint8Array(N);
 {
   const colCut = new Float32Array(NX);
@@ -394,7 +410,7 @@ const contDist = chamfer(cont);
 /* ------------------------------------------------------------------ *
  *  Ocean features the 2° climatology cannot resolve
  *
- *  Checked directly against the raw climatology for this basin's two candidate
+ *  Checked directly against the raw climatology for this basin's two original candidate
  *  under-resolved features -- the Leeuwin Current (the poleward-flowing warm current
  *  off WA, unusual for running against the eastern-boundary-current norm) and the
  *  Gulf of Carpentaria (a shallow, semi-enclosed sea south of the Arafura Sea) --
@@ -402,7 +418,15 @@ const contDist = chamfer(cont);
  *  reproduces both realistically (the Leeuwin's warm anomaly and the Gulf's shallow-
  *  water seasonal swing both show up in the raw data at the right time and place,
  *  unlike the Persian Gulf/Gulf of California family of enclosed seas that the 2 deg
- *  grid dilutes). So, unlike the other basins, none are added here.
+ *  grid dilutes).
+ *
+ *  A third candidate came with the eastern extension (160E to 176E, added to fix a real
+ *  aspect-ratio letterbox on wide screens, see the domain-mask note above): the East
+ *  Australian Current's own path into the Tasman Sea. Checked the same way -- a near-
+ *  coast vs. a few degrees offshore comparison off NSW -- and it came back as a smooth,
+ *  already-resolved regional gradient (roughly 23.0C near the coast easing to 21.9C six
+ *  degrees out), not a concentrated core the coarse grid is diluting. So, still, none
+ *  are added here.
  * ------------------------------------------------------------------ */
 function interp1(xs, ys, x) { if (x <= xs[0]) return ys[0]; for (let i = 1; i < xs.length; i++) if (x <= xs[i]) { const t = (x - xs[i - 1]) / (xs[i] - xs[i - 1]); return ys[i - 1] + t * (ys[i] - ys[i - 1]); } return ys[ys.length - 1]; }
 
@@ -664,6 +688,17 @@ const CITIES = [
   { name: 'Dili', lat: -8.56, lon: 125.57 },
   // Papua New Guinea (Coral Sea / Gulf of Papua side)
   { name: 'Port Moresby', lat: -9.44, lon: 147.18 }, { name: 'Daru', lat: -9.08, lon: 143.21 },
+  { name: 'Lae', lat: -6.73, lon: 146.99 }, { name: 'Rabaul', lat: -4.20, lon: 152.18 },
+  // Solomon Islands / Vanuatu / New Caledonia -- real water this basin's own box now reaches as
+  // part of the eastern extension (see the domain-mask note above)
+  { name: 'Honiara', lat: -9.43, lon: 159.95 }, { name: 'Port Vila', lat: -17.73, lon: 168.32 },
+  { name: 'Noumea', lat: -22.28, lon: 166.46 },
+  // New Zealand -- the eastern extension now reaches almost all of it (East Cape and the
+  // Chatham Islands, past 176E, are the one real piece still outside this basin's own box)
+  { name: 'Auckland', lat: -36.85, lon: 174.76 },
+  { name: 'New Plymouth', lat: -39.06, lon: 174.08 }, { name: 'Wellington', lat: -41.29, lon: 174.78 },
+  { name: 'Nelson', lat: -41.27, lon: 173.28 }, { name: 'Christchurch', lat: -43.53, lon: 172.64 },
+  { name: 'Dunedin', lat: -45.87, lon: 170.50 }, { name: 'Invercargill', lat: -46.41, lon: 168.35 },
   // Inland cities: real places this basin's cyclones and their remnants reach, not on the
   // water themselves -- see the sLat/sLon note above.
   { name: 'Alice Springs', lat: -23.70, lon: 133.88, sLat: -12.46, sLon: 130.84 },
@@ -740,7 +775,7 @@ function updateCityTip(cx, cy) {
 /* ------------------------------------------------------------------ *
  *  Map
  * ------------------------------------------------------------------ */
-const MAX_BOUNDS = [[-44, 90], [4, 160]];   // hard pan limit: the real BOM Australian-region boundary itself
+const MAX_BOUNDS = [[-44, 90], [4, 176]];   // hard pan limit: this basin's own real domain (BOM's own boundary on the west/south; the east edge is widened past BOM's own line, see the domain-mask note above)
 const map = L.map('map', {
   zoomControl: false, attributionControl: false, maxZoom: 10, zoomSnap: 0.25, zoomDelta: 0.5, wheelPxPerZoomLevel: 110,
   zoomAnimation: false, fadeAnimation: false, markerZoomAnimation: false, worldCopyJump: false,

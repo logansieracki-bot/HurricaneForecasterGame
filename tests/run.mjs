@@ -308,23 +308,27 @@ await checkBasin('North Indian Ocean', NIO_DIST, async (page, label) => {
 });
 
 await checkBasin('Australian Region', AUS_DIST, async (page, label) => {
-  // The grid runs 44S-4N, 90E-160E. West (90E) and east (160E) are BOM's own standard handoffs
-  // to the neighboring South-West Indian Ocean and South Pacific basins -- both hard straight-line
-  // edges in open water, not coastline-following curves. South (44S) runs well past where real
+  // The grid runs 44S-4N, 90E-176E. West (90E) is BOM's own standard handoff to the South-West
+  // Indian Ocean, a hard straight-line edge in open water. South (44S) runs well past where real
   // cyclones actually form into real, correctly-cooling subtropical water off WA/Victoria/Tasmania
-  // (the same call as EPAC's Peru/Chile extension or WPAC's Sea of Okhotsk) -- deliberately
-  // stopping well short of New Zealand rather than reaching for it. The north edge is the real
-  // case needing a cutoff, a coastline-following curve mirroring WPAC's own south curve that hugs
-  // Indonesia's islands but dips a few degrees further north in the open water between them.
+  // (the same call as EPAC's Peru/Chile extension or WPAC's Sea of Okhotsk). East used to be BOM's
+  // own 160E handoff to the South Pacific too, but was widened to 176E to fix a real aspect-ratio
+  // letterbox on wide screens (see src/template-aus.html's own domain-mask comment) -- real
+  // simulated water now reaches the Coral Sea, Tasman Sea, New Caledonia, Vanuatu's own west edge,
+  // and nearly all of New Zealand, deliberately overlapping the South Pacific basin's own
+  // territory (the same "two basins can cover the same real water" choice as Atlantic/Mediterranean).
+  // The north edge is the real cutoff, a coastline-following curve mirroring WPAC's own south
+  // curve that hugs Indonesia's islands but dips a few degrees further north in the open water
+  // between them, now extended flat out to the new 176E edge.
   await page.evaluate(() => window.SSTSIM.map.fitBounds([[-30, 60], [10, 85]]));   // toward the South-West Indian Ocean, well past the grid's western edge
   await page.waitForTimeout(300);
   const clampedWestLon = await page.evaluate(() => window.SSTSIM.map.getBounds().getWest());
   check(`[${label}] map cannot pan west past the grid's own western edge`, clampedWestLon > 88);
 
-  await page.evaluate(() => window.SSTSIM.map.fitBounds([[-30, 165], [10, 190]]));   // toward the South Pacific/New Zealand, well past the grid's eastern edge
+  await page.evaluate(() => window.SSTSIM.map.fitBounds([[-30, 180], [10, 200]]));   // toward Fiji/the central South Pacific, well past the grid's own widened eastern edge
   await page.waitForTimeout(300);
   const clampedEastLon = await page.evaluate(() => window.SSTSIM.map.getBounds().getEast());
-  check(`[${label}] map cannot pan east past the grid's own eastern edge`, clampedEastLon < 162);
+  check(`[${label}] map cannot pan east past the grid's own eastern edge`, clampedEastLon < 178);
 
   await page.evaluate(() => window.SSTSIM.map.setView([-60, 120], 5));   // toward the Southern Ocean, well past the grid's southern edge
   await page.waitForTimeout(300);
@@ -336,42 +340,52 @@ await checkBasin('Australian Region', AUS_DIST, async (page, label) => {
     coralSea: window.SSTSIM.sample(-18, 152),              // open Coral Sea
     leeuwinCurrent: window.SSTSIM.sample(-30, 113),        // Leeuwin Current band off WA -- verified against raw climatology, no synthetic correction needed
     gulfOfCarpentaria: window.SSTSIM.sample(-15, 139),     // shallow, semi-enclosed sea, real in-basin water -- also verified, no correction needed
+    tasmanSea: window.SSTSIM.sample(-35, 165),             // East Australian Current's own extension into the Tasman Sea -- also verified, no correction needed
+    newCaledonia: window.SSTSIM.sample(-20, 165),          // the new eastern extension's own real SST
+    newZealand: window.SSTSIM.sample(-36, 175.5),          // Auckland area, now reachable
     openWiggleWater: window.SSTSIM.sample(-2, 118),        // Makassar Strait/Banda Sea, south of the equator but inside the north curve's wiggle room
     northOfCurve: window.SSTSIM.sample(3, 106),            // north of the curve near Java -- a different basin
     westOfDomain: window.SSTSIM.sample(-20, 85),           // west of the grid's own 90E edge entirely -- South-West Indian Ocean's territory
-    eastOfDomain: window.SSTSIM.sample(-20, 165),          // east of the grid's own 160E edge entirely -- South Pacific's territory (where New Zealand sits, deliberately excluded)
+    eastOfDomain: window.SSTSIM.sample(-20, 178),          // east of the grid's own widened 176E edge entirely
     southOfDomain: window.SSTSIM.sample(-46, 120),         // south of the grid's own 44S edge entirely
   }));
   check(`[${label}] open Timor Sea SST is real data`, Number.isFinite(basinSamples.timorSea.sst));
   check(`[${label}] open Coral Sea SST is real data`, Number.isFinite(basinSamples.coralSea.sst));
   check(`[${label}] Leeuwin Current band has real SST`, Number.isFinite(basinSamples.leeuwinCurrent.sst));
   check(`[${label}] Gulf of Carpentaria is real in-basin water, not masked`, Number.isFinite(basinSamples.gulfOfCarpentaria.sst));
+  check(`[${label}] Tasman Sea (eastern extension) has real SST`, Number.isFinite(basinSamples.tasmanSea.sst));
+  check(`[${label}] New Caledonia area (eastern extension) has real SST`, Number.isFinite(basinSamples.newCaledonia.sst));
+  check(`[${label}] New Zealand/Auckland area (eastern extension) has real SST`, Number.isFinite(basinSamples.newZealand.sst));
   check(`[${label}] open water in the north curve's wiggle room still has real SST`, Number.isFinite(basinSamples.openWiggleWater.sst));
   check(`[${label}] north of the curve near Java is excluded (a different basin)`, Number.isNaN(basinSamples.northOfCurve.sst));
   check(`[${label}] west of the grid's own western edge is outside the simulated area`, Number.isNaN(basinSamples.westOfDomain.sst));
-  check(`[${label}] east of the grid's own eastern edge is outside the simulated area`, Number.isNaN(basinSamples.eastOfDomain.sst));
+  check(`[${label}] east of the grid's own widened eastern edge is outside the simulated area`, Number.isNaN(basinSamples.eastOfDomain.sst));
   check(`[${label}] south of the grid's own southern edge is outside the simulated area`, Number.isNaN(basinSamples.southOfDomain.sst));
 
   await checkCityMarkers(page, label, -33.87, 151.21, 'Sydney');
 });
 
 await checkBasin('South-West Indian Ocean', SWIO_DIST, async (page, label) => {
-  // The grid runs 44S-0, 30E-90E -- a first among the live basins in having no masking curve
-  // anywhere at all. East (90E) matches AUS's own west edge exactly; west (30E) is RSMC La
-  // Reunion's own real area-of-responsibility line, running mostly through mainland Africa
-  // (which the land mask alone already handles); north (the equator) is IMD's own handoff line,
-  // already resolved by NIO's own south curve on its side; south (44S) runs well past where real
-  // cyclones actually form into real, correctly-cooling Southern Ocean water, the same call as
-  // AUS's own southern extension. All four are genuinely clean straight lines, not an oversight.
+  // The grid runs 44S-0, 30E-108E -- still no masking curve anywhere in it. West (30E) is RSMC La
+  // Reunion's own real area-of-responsibility line, running mostly through mainland Africa (which
+  // the land mask alone already handles); north (the equator) is IMD's own handoff line, already
+  // resolved by NIO's own south curve on its side; south (44S) runs well past where real cyclones
+  // actually form into real, correctly-cooling Southern Ocean water, the same call as AUS's own
+  // southern extension. East used to be RSMC La Reunion's own 90E line (matching AUS's own west
+  // edge exactly) but was widened to 108E for the same reason AUS's own east edge was widened:
+  // fixing a real aspect-ratio letterbox on wide screens (see src/template-swio.html's own
+  // domain-mask comment) -- the extension reaches into AUS's own real territory and, since this
+  // basin has no coastline-following curve at all, a little of southern Sumatra and Java's own
+  // coast too, both legitimate per the same reasoning used for AUS's own extension.
   await page.evaluate(() => window.SSTSIM.map.fitBounds([[-30, 5], [-10, 28]]));   // toward the Cape/Atlantic side, well past the grid's western edge
   await page.waitForTimeout(300);
   const clampedWestLon = await page.evaluate(() => window.SSTSIM.map.getBounds().getWest());
   check(`[${label}] map cannot pan west past the grid's own western edge`, clampedWestLon > 28);
 
-  await page.evaluate(() => window.SSTSIM.map.fitBounds([[-30, 92], [-10, 120]]));   // toward the Australian region, well past the grid's eastern edge
+  await page.evaluate(() => window.SSTSIM.map.fitBounds([[-30, 110], [-10, 140]]));   // toward the Australian region's own interior, well past the grid's own widened eastern edge
   await page.waitForTimeout(300);
   const clampedEastLon = await page.evaluate(() => window.SSTSIM.map.getBounds().getEast());
-  check(`[${label}] map cannot pan east past the grid's own eastern edge`, clampedEastLon < 92);
+  check(`[${label}] map cannot pan east past the grid's own eastern edge`, clampedEastLon < 110);
 
   await page.evaluate(() => window.SSTSIM.map.fitBounds([[2, 40], [20, 70]]));   // toward the North Indian Ocean, well past the grid's northern edge
   await page.waitForTimeout(300);
@@ -388,8 +402,10 @@ await checkBasin('South-West Indian Ocean', SWIO_DIST, async (page, label) => {
     agulhasCurrent: window.SSTSIM.sample(-29, 31),          // Agulhas Current band off Durban -- verified against raw climatology, given a synthetic warm band
     mozambiqueChannel: window.SSTSIM.sample(-18, 40),       // deep channel, real in-basin water -- also verified, no correction needed
     madagascarEast: window.SSTSIM.sample(-18, 52),          // open ocean east of Madagascar
+    cocosIslands: window.SSTSIM.sample(-12, 97),            // the new eastern extension's own real SST
+    christmasIsland: window.SSTSIM.sample(-10.5, 105.5),    // also in the new eastern extension
     westOfDomain: window.SSTSIM.sample(-20, 25),            // west of the grid's own 30E edge entirely -- the Cape/Atlantic side
-    eastOfDomain: window.SSTSIM.sample(-20, 95),            // east of the grid's own 90E edge entirely -- the Australian region's territory
+    eastOfDomain: window.SSTSIM.sample(-20, 110),           // east of the grid's own widened 108E edge entirely
     northOfDomain: window.SSTSIM.sample(3, 50),             // north of the grid's own equator edge -- NIO's territory
     southOfDomain: window.SSTSIM.sample(-46, 50),           // south of the grid's own 44S edge entirely
   }));
@@ -397,8 +413,10 @@ await checkBasin('South-West Indian Ocean', SWIO_DIST, async (page, label) => {
   check(`[${label}] Agulhas Current band has real SST`, Number.isFinite(basinSamples.agulhasCurrent.sst));
   check(`[${label}] Mozambique Channel is real in-basin water, not masked`, Number.isFinite(basinSamples.mozambiqueChannel.sst));
   check(`[${label}] open water east of Madagascar has real SST`, Number.isFinite(basinSamples.madagascarEast.sst));
+  check(`[${label}] Cocos Islands area (eastern extension) has real SST`, Number.isFinite(basinSamples.cocosIslands.sst));
+  check(`[${label}] Christmas Island area (eastern extension) has real SST`, Number.isFinite(basinSamples.christmasIsland.sst));
   check(`[${label}] west of the grid's own western edge is outside the simulated area`, Number.isNaN(basinSamples.westOfDomain.sst));
-  check(`[${label}] east of the grid's own eastern edge is outside the simulated area`, Number.isNaN(basinSamples.eastOfDomain.sst));
+  check(`[${label}] east of the grid's own widened eastern edge is outside the simulated area`, Number.isNaN(basinSamples.eastOfDomain.sst));
   check(`[${label}] north of the grid's own northern edge is outside the simulated area`, Number.isNaN(basinSamples.northOfDomain.sst));
   check(`[${label}] south of the grid's own southern edge is outside the simulated area`, Number.isNaN(basinSamples.southOfDomain.sst));
 

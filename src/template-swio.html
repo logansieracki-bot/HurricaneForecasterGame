@@ -276,12 +276,10 @@ const land = new Uint8Array(N);                 // 1 = land (0.25° nodes)
 { const mb = b64bytes(DATA.mask); for (let k = 0; k < N; k++) land[k] = (mb[k >> 3] >> (7 - (k & 7))) & 1; }
 
 /* No masking anywhere in this grid -- a first among the live basins, and a genuinely different
-   case from every other one rather than an oversight. All four box edges are real, clean lines
-   with no coastline complexity to hug:
-   - West (30E) and east (90E) are RSMC La Reunion's own published area-of-responsibility
-     boundaries. East matches AUS's own west edge exactly, the same clean handoff already
-     established there; west runs through mainland Africa at most latitudes, which the land mask
-     already handles on its own, no ocean-side wiggle needed.
+   case from every other one rather than an oversight. West, north and south are real, clean
+   lines with no coastline complexity to hug:
+   - West (30E) is RSMC La Reunion's own published area-of-responsibility boundary, running
+     through mainland Africa at most latitudes, which the land mask already handles on its own.
    - North (0, the equator) is IMD's own handoff line to NIO -- NIO's own domain already extends
      south past the equator with its own real data and its own coastline-hugging curve near
      Somalia, so there's no coastal complexity left for this basin's own edge to resolve; a flat
@@ -290,6 +288,18 @@ const land = new Uint8Array(N);                 // 1 = land (0.25° nodes)
      real, correctly-cooling Southern Ocean water -- context, the same call as AUS's own southern
      extension or EPAC's Peru/Chile edge -- and there's no landmass or island group down there
      (Prince Edward/Marion sit further south still) to complicate it either.
+   East (90E) used to be RSMC La Reunion's own real boundary too, matching AUS's own west edge
+   exactly -- now widened to 108E for the same reason AUS's own east edge was widened: this
+   basin's own 60x44 shape was narrower than a typical wide screen, so even the minZoom fix
+   (tracking real screen size, see src/template.html's own map-init comment) still left a real
+   strip of bare basemap on the sides at common aspect ratios. The extension reaches into AUS's
+   own real territory (the same water AUS's own west edge already covers, legitimate overlap, the
+   same choice made for AUS's own eastern extension) and, since there's no coastline-following
+   curve on this basin's own box at all, lets a little of Sumatra's and Java's own southern coast
+   show up too -- the land mask clips it the same honest way it clips every other coastline this
+   app renders, not a special case. A near-coast vs. offshore check of the Java upwelling in the
+   new area (same test as every basin's own ocean-feature check) came back flat, no concentrated
+   cold core at this resolution -- see the ocean-features note below.
    `outOfBasin` stays in the code (the combine loop below still checks it) purely so this
    template keeps the same shape as every other basin's own; it's just never set to 1. */
 const outOfBasin = new Uint8Array(N);
@@ -385,7 +395,7 @@ const contDist = chamfer(cont);
 /* ------------------------------------------------------------------ *
  *  Ocean features the 2° climatology cannot resolve
  *
- *  Two real candidates checked directly against the raw climatology, with two different honest
+ *  Three real candidates checked directly against the raw climatology, with different honest
  *  outcomes -- not a template applied uniformly:
  *  - The Mozambique Channel (between Madagascar and the mainland) needed nothing: its water runs
  *    only modestly warmer than the open ocean at the same latitude, and its seasonal swing is
@@ -394,6 +404,10 @@ const contDist = chamfer(cont);
  *    the Persian Gulf/Gulf of California family the coarse grid actually dilutes.
  *  - The Agulhas Current got the opposite answer, the same shape of fix as WPAC's own Kuroshio:
  *    see the note just below.
+ *  - The Java upwelling (added when this basin's own eastern extension reached into southern
+ *    Sumatra/Java's own waters) needed nothing either: a near-coast vs. offshore check, including
+ *    in the southeast monsoon season when it's strongest, came back flat -- no concentrated cold
+ *    core distinguishable from the surrounding open ocean at this grid's own resolution.
  * ------------------------------------------------------------------ */
 const colOf = (lon) => Math.round((lon - LON0) / RES), rowOf = (lat) => Math.round((LAT1 - lat) / RES);
 function rect(lon0, lon1, lat0, lat1) { const i0 = colOf(lon0), i1 = colOf(lon1), j0 = rowOf(lat1), j1 = rowOf(lat0); return { i0, j0, w: i1 - i0 + 1, h: j1 - j0 + 1 }; }
@@ -690,6 +704,11 @@ const CITIES = [
   // Mascarenes / Seychelles
   { name: 'Saint-Denis', lat: -20.88, lon: 55.45 }, { name: 'Port Louis', lat: -20.16, lon: 57.50 },
   { name: 'Victoria', lat: -4.62, lon: 55.45 },
+  // Cocos (Keeling) Islands, Christmas Island, southern Sumatra/Java -- real water this basin's
+  // own box now reaches as part of the eastern extension (see the domain-mask note above)
+  { name: 'West Island', lat: -12.12, lon: 96.90 }, { name: 'Flying Fish Cove', lat: -10.42, lon: 105.68 },
+  { name: 'Bengkulu', lat: -3.80, lon: 102.27 }, { name: 'Bandar Lampung', lat: -5.43, lon: 105.26 },
+  { name: 'Pelabuhan Ratu', lat: -6.99, lon: 106.55 },
   // Inland cities: real places this basin's cyclones and their remnants reach, not on the
   // water themselves -- see the sLat/sLon note above.
   { name: 'Antananarivo', lat: -18.88, lon: 47.51, sLat: -18.15, sLon: 49.41 },
@@ -765,7 +784,7 @@ function updateCityTip(cx, cy) {
 /* ------------------------------------------------------------------ *
  *  Map
  * ------------------------------------------------------------------ */
-const MAX_BOUNDS = [[-44, 30], [0, 90]];   // hard pan limit: the real RSMC La Reunion area-of-responsibility boundary itself
+const MAX_BOUNDS = [[-44, 30], [0, 108]];   // hard pan limit: this basin's own real domain (west/north/south are RSMC La Reunion's own boundary; east is widened past it, see the domain-mask note above)
 const map = L.map('map', {
   zoomControl: false, attributionControl: false, maxZoom: 10, zoomSnap: 0.25, zoomDelta: 0.5, wheelPxPerZoomLevel: 110,
   zoomAnimation: false, fadeAnimation: false, markerZoomAnimation: false, worldCopyJump: false,
