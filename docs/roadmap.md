@@ -1,6 +1,37 @@
 # Roadmap
 
 ## Just landed
+- **Fixed a real, if hairline, "water but no SST" bug at the extreme south/east edge of every
+  basin's own grid, found while running down a user's "dead zone" report.** The specific spot the
+  user flagged (open South Atlantic near Brazil, a flat satellite tile with a real 24.9C reading
+  at the cursor) checked out as real data and a live-tile-provider rendering quirk, not a bug --
+  confirmed directly via `sample()` at that exact coordinate and neighbors, and the user agreed no
+  fix was needed there. But auditing every basin's own reachable area for the *general* class of
+  bug (any point with real water and no real SST) turned up something real: `sampleField()`'s own
+  bound check (`fx > NX - 1.001`) was tuned to stop the bilinear lookup from reading one cell past
+  the fine grid's own last column/row -- it did that, but it also rejected the literal last column/
+  row itself as a side effect (`fx === NX - 1`, the real domain edge, is not `> NX - 1.001`, so it
+  passed the check, then still wasn't a valid two-point lookup), turning the outermost sliver of
+  every basin's own south/east edge into a dead strip -- real water, zero SST, rendered fully
+  transparent. Too thin (under 0.001 grid cells, a few tens of meters in real terms) for anyone to
+  have noticed by panning, but a real gap all the same, and the same bound check (duplicated in the
+  main render loop) meant it wasn't just a `sample()`-API quirk -- the rendered map itself had the
+  same hairline gap. Fixed by clamping the lookup's own index to the second-to-last column/row
+  instead of excluding the last one outright, on both the climatology grid (`make_climate.py` was
+  never the problem -- `apply_fill()` already fills every invalid cell) and this upsampled render
+  grid, across all nine basins. Verified with a dense grid-sampling audit across each basin's own
+  real maxBounds: South Atlantic, Mediterranean, South Pacific, and South-West Indian Ocean (the
+  four basins with no basin-boundary masking of their own) now show zero gaps, down from 49 each;
+  West Pacific and the Australian Region dropped partway (their own edges partly, not fully,
+  coincide with the bug); Atlantic, East Pacific, and North Indian Ocean were unaffected either way,
+  since their own data domains already extend past `maxBounds` with padding to spare. The remaining
+  gaps on every basin are the already-documented, deliberate different-ocean exclusions (the Pacific
+  side of Panama, the Gulf of Mexico/Caribbean, the Indonesian straits, the water south of Somalia/
+  the Maldives) -- real water, correctly left blank because a *different* basin models it with its
+  own basin-appropriate climatology, the same "two basins can cover the same real water" precedent
+  used everywhere else in this app. Filling those in from this basin's own data would reintroduce
+  the exact mislabeled-ocean bug already fixed once for the Gulf of Mexico and the Gulf of Panama,
+  so they stay excluded on purpose.
 - **Widened AUS and SWIO's own domains east to close out the remaining letterbox the minZoom fix
   couldn't solve on its own.** The dynamic-minZoom fix stops the dead-zone from growing with
   screen size, but it can't make a basin's own box perfectly match every viewer's own aspect

@@ -553,8 +553,8 @@ function seaCeil(lat) { return interp1(CEIL_LAT, CEIL_T, Math.abs(lat)); }
 
 function sampleField(arr, lat, lon) {
   const fx = (lon - LON0) / RES, fy = (LAT1 - lat) / RES;
-  if (fx < 0 || fy < 0 || fx > NX - 1.001 || fy > NY - 1.001) return NaN;
-  const i = Math.floor(fx), j = Math.floor(fy), ax = fx - i, ay = fy - j, p = j * NX + i, q = p + NX;
+  if (fx < 0 || fy < 0 || fx > NX - 1 + 1e-6 || fy > NY - 1 + 1e-6) return NaN;
+  const i = Math.min(Math.floor(fx), NX - 2), j = Math.min(Math.floor(fy), NY - 2), ax = fx - i, ay = fy - j, p = j * NX + i, q = p + NX;
   return (arr[p] * (1 - ax) + arr[p + 1] * ax) * (1 - ay) + (arr[q] * (1 - ax) + arr[q + 1] * ax) * ay;
 }
 function isLand(lat, lon) { const i = Math.round((lon - LON0) / RES), j = Math.round((LAT1 - lat) / RES); if (i < 0 || j < 0 || i >= NX || j >= NY) return false; return land[j * NX + i] === 1; }
@@ -1082,13 +1082,13 @@ function render() {
                     // "small basins don't get the soft fade" rule already applied to this basin's own geo padding.
   for (let x = 0; x < sw; x++) {
     const wx = minX + (x + 0.5) / sc, lon = wx / ws * 360 - 180, fx = (lon - LON0) / RES;
-    if (fx < 0 || fx > NX - 1.001) { colI[x] = -1; continue; }
-    colI[x] = Math.floor(fx); colA[x] = fx - colI[x]; colF[x] = Math.min(1, fx / FADE, (NX - 1 - fx) / FADE);
+    if (fx < 0 || fx > NX - 1 + 1e-6) { colI[x] = -1; continue; }
+    colI[x] = Math.min(Math.floor(fx), NX - 2); colA[x] = fx - colI[x]; colF[x] = Math.min(1, fx / FADE, (NX - 1 - fx) / FADE);
   }
   for (let y = 0; y < sh; y++) {
     const wy = minY + (y + 0.5) / sc, lat = Math.atan(Math.sinh(Math.PI * (1 - 2 * wy / ws))) / DEG, fy = (LAT1 - lat) / RES;
-    if (fy < 0 || fy > NY - 1.001) { rowJ[y] = -1; continue; }
-    rowJ[y] = Math.floor(fy); rowA[y] = fy - rowJ[y]; rowF[y] = Math.min(1, fy / FADE, (NY - 1 - fy) / FADE);
+    if (fy < 0 || fy > NY - 1 + 1e-6) { rowJ[y] = -1; continue; }
+    rowJ[y] = Math.min(Math.floor(fy), NY - 2); rowA[y] = fy - rowJ[y]; rowF[y] = Math.min(1, fy / FADE, (NY - 1 - fy) / FADE);
   }
   if (off.width !== sw || off.height !== sh) { off.width = sw; off.height = sh; }
   const octx = off.getContext('2d'), img = octx.createImageData(sw, sh), px = new Uint32Array(img.data.buffer);
