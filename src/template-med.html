@@ -801,12 +801,12 @@ const map = L.map('map', {
 });
 L.control.zoom({ position: 'bottomleft' }).addTo(map);
 // minZoom is computed dynamically from the viewer's own actual screen size, not a hardcoded guess
-// -- see src/template.html's own map-init comment for why a fixed number doesn't work. This
-// basin's own minZoom used to be hardcoded deliberately low (to show the whole basin by default,
-// see the fitBounds comment below) -- on a wide enough real monitor, that was exactly the
-// combination that let the view zoom out past maxBounds into a sea of bare basemap with no real
-// SST anywhere in sight, which is what a user actually caught and reported.
-function syncMinZoom() { const z = map.getBoundsZoom(MAX_BOUNDS, false) + map.options.zoomSnap; map.setMinZoom(z); if (map.getZoom() < z) map.setZoom(z); }
+// -- see src/template.html's own map-init comment for the full reasoning. Uses getBoundsZoom's own
+// inside=true mode: the most-zoomed-out level at which the *view* still fits entirely inside
+// maxBounds, so minZoom can never show bare basemap past the domain's own edge, even if that means
+// not fitting the whole basin on screen at once on a mismatched aspect ratio -- this basin's own
+// wide, short box (52x18) is exactly that kind of mismatch against a typical 16:9 screen.
+function syncMinZoom() { const z = map.getBoundsZoom(MAX_BOUNDS, true); map.setMinZoom(z); if (map.getZoom() < z) map.setZoom(z); }
 syncMinZoom();
 // This basin is compact enough, and distinctive enough as a whole shape (Gibraltar, Italy's own
 // boot, the Aegean's own islands), that the default view shows the entire real sea at once rather

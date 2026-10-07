@@ -883,18 +883,35 @@ const map = L.map('map', {
 });
 L.control.zoom({ position: 'bottomleft' }).addTo(map);
 // minZoom can't be a fixed number: it depends on the viewer's own actual screen size, since the
-// same zoom level shows proportionally more real-world area on a wider monitor. A hardcoded value
-// tuned against one test viewport either wastes zoom-out room on a small screen or, on a wide
-// enough one, lets the user zoom out past maxBounds into a sea of bare basemap with zero real SST
-// in view -- a real bug a couple of basins shipped with before a user caught it on an ultrawide
-// monitor. Computed fresh from the map's own actual pixel size instead, both now and on every
-// resize (see the resize handler below), so the floor is always "maxBounds just fills whatever
-// screen this actually is," on any device, not a guess tuned for one. getBoundsZoom() itself
-// floors to the nearest zoomSnap step so the bounds are never cropped, which leaves a little
-// residual overflow (the next snap step up can be up to one full step too zoomed-out) -- bumping
-// by one zoomSnap closes that gap, at the cost of a sliver of the domain's very edge not being
-// reachable at the absolute minimum zoom, a far smaller and bounded tradeoff.
-function syncMinZoom() { const z = map.getBoundsZoom(MAX_BOUNDS, false) + map.options.zoomSnap; map.setMinZoom(z); if (map.getZoom() < z) map.setZoom(z); }
+// same zoom level shows proportionally more real-world area on a wider monitor. Computed fresh
+// from the map's own actual pixel size instead, both now and on every resize (see the resize
+// handler below).
+//
+// getBoundsZoom(bounds, inside) can mean either of two opposite things. inside=false (the first
+// version of this fix) finds the most-zoomed-out level at which the *bounds* still fit entirely
+// inside the view -- "always show the whole basin." That only constrains one axis, though: unless
+// the screen's own aspect ratio happens to match the basin's own box, the other axis overshoots
+// past the bounds, showing bare basemap with zero real SST beyond the domain's own edge --
+// unbounded on a hardcoded minZoom (the original bug, caught on an ultrawide monitor), and still a
+// real, if bounded, letterbox even after minZoom itself started tracking real screen size (AUS and
+// SWIO both needed their own domains widened east to chase that down basin-by-basin, before this
+// was understood as one root cause rather than two unrelated reports).
+//
+// inside=true flips which axis is the limiting one: the most-zoomed-out level at which the *view*
+// stays entirely inside bounds, so the map can never show anything past the domain's own edge, on
+// any screen size or aspect ratio, with no basin-specific widening needed to chase it there. Its
+// own tradeoff is the mirror image: minZoom may no longer fit the *entire* basin on screen at once
+// on a mismatched aspect ratio -- the user can still pan to whatever corner got cropped out, just
+// not see the whole box simultaneously at the most zoomed-out step. Real SST everywhere the map
+// can actually show beats showing the whole basin with a strip of bare basemap on the side, so
+// this app takes that tradeoff on purpose.
+//
+// The rounding direction flips with it, for the same reason: inside=false floors the raw zoom to
+// the nearest zoomSnap step (favoring "more zoomed out," so the old code bumped it back up by one
+// zoomSnap to close the residual overflow that left); inside=true instead ceils ("more zoomed in"),
+// already safe in the direction this needs -- no bump, since adding one would just crop more of the
+// basin than the fix actually requires.
+function syncMinZoom() { const z = map.getBoundsZoom(MAX_BOUNDS, true); map.setMinZoom(z); if (map.getZoom() < z) map.setZoom(z); }
 syncMinZoom();
 map.fitBounds([[10, -90], [40, -20]], { animate: false });   // instant: an animated pan here briefly rendered a garbled frame of the embedded base image mid-transition
 const container = map.getContainer();

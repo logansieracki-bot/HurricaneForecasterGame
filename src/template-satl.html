@@ -721,11 +721,11 @@ const map = L.map('map', {
 });
 L.control.zoom({ position: 'bottomleft' }).addTo(map);
 // minZoom is computed dynamically from the viewer's own actual screen size, not a hardcoded guess
-// -- see src/template.html's own map-init comment for why a fixed number doesn't work (a wide
-// enough monitor can zoom out past maxBounds into bare basemap with zero real SST in view; this
-// basin's own minZoom used to be hardcoded deliberately low to show the whole basin by default,
-// which is exactly the combination that made the bug worst here).
-function syncMinZoom() { const z = map.getBoundsZoom(MAX_BOUNDS, false) + map.options.zoomSnap; map.setMinZoom(z); if (map.getZoom() < z) map.setZoom(z); }
+// -- see src/template.html's own map-init comment for the full reasoning. Uses getBoundsZoom's own
+// inside=true mode: the most-zoomed-out level at which the *view* still fits entirely inside
+// maxBounds, so minZoom can never show bare basemap past the domain's own edge, even if that means
+// not fitting the whole basin on screen at once on a mismatched aspect ratio.
+function syncMinZoom() { const z = map.getBoundsZoom(MAX_BOUNDS, true); map.setMinZoom(z); if (map.getZoom() < z) map.setZoom(z); }
 syncMinZoom();
 // Unlike every other basin's own default view (a signature current or strait zoomed in close), this
 // one starts zoomed out to the real basin itself -- Brazil on one side, Africa on the other, open ocean

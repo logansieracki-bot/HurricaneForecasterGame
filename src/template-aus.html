@@ -783,9 +783,11 @@ const map = L.map('map', {
 });
 L.control.zoom({ position: 'bottomleft' }).addTo(map);
 // minZoom is computed dynamically from the viewer's own actual screen size, not a hardcoded guess
-// -- see src/template.html's own map-init comment for why a fixed number doesn't work (a wide
-// enough monitor can zoom out past maxBounds into bare basemap with zero real SST in view).
-function syncMinZoom() { const z = map.getBoundsZoom(MAX_BOUNDS, false) + map.options.zoomSnap; map.setMinZoom(z); if (map.getZoom() < z) map.setZoom(z); }
+// -- see src/template.html's own map-init comment for the full reasoning. Uses getBoundsZoom's own
+// inside=true mode: the most-zoomed-out level at which the *view* still fits entirely inside
+// maxBounds, so minZoom can never show bare basemap past the domain's own edge, even if that means
+// not fitting the whole basin on screen at once on a mismatched aspect ratio.
+function syncMinZoom() { const z = map.getBoundsZoom(MAX_BOUNDS, true); map.setMinZoom(z); if (map.getZoom() < z) map.setZoom(z); }
 syncMinZoom();
 map.fitBounds([[-33, 98], [3, 152]], { animate: false });   // instant: an animated pan here briefly rendered a garbled frame of the embedded base image mid-transition
 const container = map.getContainer();

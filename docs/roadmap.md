@@ -1,6 +1,29 @@
 # Roadmap
 
 ## Just landed
+- **Flipped minZoom to Leaflet's own `getBoundsZoom(bounds, inside=true)` mode on all nine basins,
+  so the most-zoomed-out view can never show anything beyond a basin's own real domain, on any
+  screen size or aspect ratio.** The hairline edge-interpolation fix below was real, but a user
+  correctly pointed out it wasn't what they were actually seeing -- including on South Pacific,
+  which that fix had already made spotless by the `sample()`-level audit used to verify it. The
+  actual visible issue was the *other* half of the dynamic-minZoom work: `inside=false` (the mode
+  in use since that fix landed) finds the most-zoomed-out level at which the whole *basin* still
+  fits on screen, which only constrains one axis -- unless the screen's own aspect ratio happens to
+  match the basin's own box shape, the other axis overshoots past the domain into bare basemap. AUS
+  and SWIO had their own domains widened east earlier to chase this down basin-by-basin, which
+  helped but didn't fully close it on every aspect ratio, and every other basin still had the same
+  exposure. `inside=true` asks the opposite question -- the most-zoomed-out level at which the
+  *view* stays entirely inside the basin -- which bounds the overshoot to zero on every axis at
+  once, by construction, with no per-basin tuning. The tradeoff, accepted deliberately per explicit
+  instruction: minZoom may no longer fit an entire basin's own box on screen simultaneously when its
+  shape doesn't match the viewer's own screen -- the user can still pan to whatever corner is
+  cropped out of the default view, just not see the whole thing at once at the lowest zoom step.
+  Verified geometrically (not just by sampling): compared the actual rendered viewport bounds
+  against each basin's own real domain across five aspect ratios from a 390px phone to a 3440px
+  ultrawide, on all nine basins -- zero overflow anywhere beyond Leaflet's own built-in sub-pixel
+  anti-jitter tolerance (it deliberately skips re-centering for a <=1px correction, baked into
+  `_limitCenter` itself) -- and confirmed visually with screenshots at a 3.14:1 aspect ratio, wider
+  than any real monitor, showing full-bleed SST with no basemap margin on any edge.
 - **Fixed a real, if hairline, "water but no SST" bug at the extreme south/east edge of every
   basin's own grid, found while running down a user's "dead zone" report.** The specific spot the
   user flagged (open South Atlantic near Brazil, a flat satellite tile with a real 24.9C reading
