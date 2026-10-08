@@ -68,6 +68,13 @@ nothing to run by hand.
   when the seasonal swing is stretched; shelf effect only cools.
 - Seeds fix the random year and nudge seasonal swing / currents / ENSO strength
   by roughly 10–35% (checkbox turns it off).
+- Humidity (Atlantic only so far): 700 hPa relative humidity, same shape as SST
+  (real ERA5 2007–2021 monthly climatology + its own 6 EOFs/ENSO fit), a third
+  option in the Temperature/SST Anomaly view toggle. Only `variability`/`enso`
+  drive it (not `warming`/`seasonal`/`features` — see `tools/make_humidity.py`
+  and the humidity combine loop in `computeField()` for why). Data comes from
+  the public ARCO-ERA5 archive on Google Cloud Storage, not NOAA directly (see
+  `climate_lib.py`'s `load_era5_rh700()`).
 
 ## Imagery
 The "Blue Marble" theme is a crop **embedded in the build** (`data.bm`, drawn on

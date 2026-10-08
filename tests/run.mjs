@@ -164,6 +164,26 @@ await checkBasin('Atlantic', ATLANTIC_DIST, async (page, label) => {
   check(`[${label}] Pacific side of Panama is excluded (wrong ocean)`, Number.isNaN(basinSamples.gulfOfPanama.sst));
   check(`[${label}] Caribbean side (Cartagena) still has real SST`, Number.isFinite(basinSamples.cartagena.sst));
 
+  // 700 hPa relative humidity: same outOfBasin mask as SST (reusing the samples already taken
+  // above), real values in-basin, sane 0-100% range, NaN everywhere SST is also NaN.
+  check(`[${label}] open North Atlantic 700 hPa humidity is real data`, Number.isFinite(basinSamples.openAtlantic.humid) && basinSamples.openAtlantic.humid >= 0 && basinSamples.openAtlantic.humid <= 100);
+  check(`[${label}] South Atlantic 700 hPa humidity is excluded, same mask as SST`, Number.isNaN(basinSamples.southAtlantic.humid));
+
+  // Humidity view: a third option in the same segmented control as Temperature/SST Anomaly --
+  // selecting it should swap the legend to the humidity scale and leave SST's own data intact
+  // underneath (switching views never recomputes the field, just which array gets painted).
+  await page.evaluate(() => window.SSTSIM.setView('humid'));
+  await page.waitForTimeout(200);
+  const humidViewState = await page.evaluate(() => ({
+    pressed: document.querySelector('#seg-view button[data-v="humid"]').getAttribute('aria-pressed'),
+    caption: document.getElementById('legend-cap').textContent,
+    sample: window.SSTSIM.sample(20, -50),
+  }));
+  check(`[${label}] Humidity button becomes pressed when selected`, humidViewState.pressed === 'true');
+  check(`[${label}] legend caption switches to the humidity scale`, humidViewState.caption === '700 hPa relative humidity, %');
+  check(`[${label}] SST data is still real underneath the Humidity view`, Number.isFinite(humidViewState.sample.sst));
+  await page.evaluate(() => window.SSTSIM.setView('sst'));   // leave the page in its default state for any checks after this one
+
   await checkCityMarkers(page, label, 25.76, -80.19, 'Miami');
 });
 

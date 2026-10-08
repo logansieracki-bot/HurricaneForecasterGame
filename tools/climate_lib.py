@@ -102,20 +102,26 @@ def apply_fill(vals2d, invalid, iterations=300):
     return out
 
 
-def monthly_climatology(box, fill):
-    """12 x (cny*cnx) climatology, deg C, averaged over BASE_YEARS."""
+def monthly_climatology(box, fill, base_years=BASE_YEARS):
+    """12 x (cny*cnx) climatology, deg C, averaged over base_years. Defaults to the module's
+    own BASE_YEARS (ERSST's 1991-2020 baseline) so every existing SST call site is unaffected
+    -- a humidity build passes its own, deliberately shorter window explicitly (see
+    make_humidity.py) rather than silently inheriting SST's, since .sel(time=slice(...)) on a
+    non-overlapping range returns an empty/partial selection with no error, not an exception."""
     invalid = fill
-    y0, y1 = BASE_YEARS
+    y0, y1 = base_years
     sub = box.sel(time=slice(f"{y0}-01-01", f"{y1}-12-31"))
     clim = sub.groupby("time.month").mean("time").transpose("month", "lat", "lon").values
     clim = np.stack([apply_fill(clim[m], invalid) for m in range(12)])
     return clim.reshape(12, -1)   # (12, cny*cnx), row-major matching cny,cnx
 
 
-def anomalies(box, clim12, fill):
-    """Monthly anomalies over EOF_YEARS relative to the (already-filled) BASE_YEARS climatology."""
+def anomalies(box, clim12, fill, eof_years=EOF_YEARS):
+    """Monthly anomalies over eof_years relative to the (already-filled) climatology. Defaults
+    to the module's own EOF_YEARS for the same backward-compatibility reason as
+    monthly_climatology's own base_years parameter."""
     invalid = fill
-    y0, y1 = EOF_YEARS
+    y0, y1 = eof_years
     sub = box.sel(time=slice(f"{y0}-01-01", f"{y1}-12-31"))
     months = sub["time"].dt.month.values
     raw = sub.transpose("time", "lat", "lon").values
@@ -180,3 +186,102 @@ def enso_regression(anom_box, box_times, n34_times, n34_anom, lags_months=(0, 3,
 def encode_i16(arr, scale):
     q = np.round(arr * scale).astype(np.int16)
     return base64.b64encode(q.tobytes()).decode("ascii")
+
+
+ERA5_ZARR = "gcs://gcp-public-data-arco-era5/ar/1959-2022-6h-240x121_equiangular_with_poles_conservative.zarr"
+
+
+def load_era5_rh700(target_lat, target_lon, year0, year1, level=700,
+                     zarr_path=ERA5_ZARR, cache_path=None):
+    """Loads ERA5 reanalysis mid-level relative humidity from the public, unauthenticated
+    ARCO-ERA5 archive on Google Cloud Storage (NOAA's own servers are blocked by this
+    environment's network policy; GCS is not -- confirmed directly, see the humidity plan).
+
+    Pulls every 6-hourly reading in [year0, year1] and derives relative humidity at each
+    individual reading first (RH is nonlinear in specific humidity/temperature, so
+    deriving-then-averaging is the correct order, not averaging-then-deriving), then averages
+    into one true monthly mean per (year, month) -- the same real quantity
+    monthly_climatology()/anomalies() already compute for SST, not a single-day proxy.
+
+    An earlier version of this function sampled only one day a month (the cloud archive's own
+    chunking bundles every pressure level and the whole globe into each time-chunk touched, so
+    that seemed like the only way to keep a multi-year pull tractable). Measured against the
+    live store, the real cost turned out to be dramatically lower than that conservative
+    estimate -- a full year of true monthly means (all ~1460 six-hourly readings) took about
+    20s, not the many minutes a naive byte-count suggested -- so the single-day proxy's own
+    real cost savings weren't worth what it was costing in data quality: it injected enough
+    synoptic weather noise into the interannual anomaly field that the EOF decomposition's own
+    singular-value spectrum came back essentially flat (mode 1 explained only ~2.5% of
+    variance, no elbow at all) and the measured per-mode persistence was noise-dominated
+    (several modes' own lag-1 autocorrelation came back negative). True monthly means fixed
+    both -- caught by actually checking the EOF spectrum before shipping, not assumed.
+
+    Regrids onto target_lat/target_lon -- pass load()'s own ERSST lat/lon arrays here, not a
+    generic/hardcoded grid -- because ERA5's own native grid (1.5 deg) doesn't match ERSST's
+    (2.0 deg, baked into this module's own CRES constant and extract_box()'s own size
+    assertions). Regridding onto ERSST's exact coordinates up front means every downstream
+    function in this file (extract_box, land_fill_indices, apply_fill, compute_eofs,
+    enso_regression, encode_i16) needs zero changes, and the client's own single upsample()
+    closure (sized once from DATA.domain) can be shared between SST and humidity verbatim.
+
+    Returns a DataArray shaped exactly like load()'s own ERSST output (ascending lat, -180..180
+    lon, one timestep per (year,month), dated the 15th as a nominal label) so it feeds
+    extract_box() completely unchanged.
+
+    Caches its own pulled/derived/regridded *global* result at cache_path (small, one value per
+    basin-independent (year,month)) so a rerun -- including a future basin's own humidity
+    build -- doesn't re-hit GCS at all."""
+    import os
+    if cache_path and os.path.exists(cache_path):
+        return xr.open_dataarray(cache_path)
+
+    ds = xr.open_zarr(zarr_path, storage_options={"token": "anon"}, chunks=None)
+    sub_all = ds[["specific_humidity", "temperature"]].sel(level=level, method="nearest")
+
+    # Pull and reduce one year at a time, not the whole [year0, year1] range in a single
+    # .load() -- loading all years of raw 6-hourly global data at once (~5GB+ of float32 before
+    # any of xarray's own intermediate copies during derive/groupby/regrid, each of which can
+    # duplicate the array) OOM-killed this process the first time this was tried on the real 15-
+    # year range in this container (15GB RAM). One year's worth stays comfortably bounded (a
+    # single year measured at ~339MB raw), and the per-year monthly-mean result kept afterward
+    # is tiny, so peak memory stays roughly year-sized regardless of how many years this spans.
+    yearly_monthly = []
+    for year in range(year0, year1 + 1):
+        sub = sub_all.sel(time=sub_all["time"].dt.year == year).load()
+
+        # Bolton (1980)/Tetens saturation vapor pressure, then saturation specific humidity,
+        # then RH -- per individual 6-hourly reading, before any averaging (see docstring above).
+        t_c = sub["temperature"] - 273.15
+        e_sat = 6.112 * np.exp(17.67 * t_c / (t_c + 243.5))
+        q_sat = 0.622 * e_sat / (level - 0.378 * e_sat)
+        rh = 100.0 * sub["specific_humidity"] / q_sat
+
+        # True monthly mean: every reading in the month, not a single sampled day.
+        rh = rh.assign_coords(month=rh["time"].dt.month)
+        rh_year = rh.groupby("month").mean("time").compute()
+        new_times = np.array([f"{year}-{m:02d}-15" for m in rh_year["month"].values], dtype="datetime64[ns]")
+        rh_year = rh_year.rename({"month": "time"}).assign_coords(time=new_times)
+        yearly_monthly.append(rh_year)
+        del sub, rh   # this year's raw/derived arrays are no longer needed once reduced
+
+    rh_monthly = xr.concat(yearly_monthly, dim="time").sortby("time")
+
+    # ERA5's own longitude runs 0..358.5; re-wrap to -180..180, same convention load() already
+    # uses for ERSST, before regridding onto ERSST's own exact coordinates.
+    lon180 = ((rh_monthly["longitude"] + 180) % 360) - 180
+    rh_monthly = rh_monthly.assign_coords(longitude=lon180).sortby("longitude").sortby("latitude")
+    rh_monthly = rh_monthly.rename({"latitude": "lat", "longitude": "lon"})
+    rh_monthly = rh_monthly.interp(lat=target_lat, lon=target_lon, method="linear")
+    rh_monthly = rh_monthly.clip(0, 100)
+    # load()'s own ERSST output is always (time, lat, lon) -- match that explicitly rather
+    # than trust whatever order falls out of the groupby/regrid chain above. land_fill_indices
+    # and the (12, cny*cnx)/(T, cny*cnx) reshapes downstream assume this exact lat-major order
+    # (caught by testing this function directly against real data before building on it: it
+    # came out (time, lon, lat) without this transpose -- a silent transpose bug, not a crash).
+    rh_monthly = rh_monthly.transpose("time", "lat", "lon")
+    rh_monthly.name = "rh700"
+
+    if cache_path:
+        os.makedirs(os.path.dirname(cache_path), exist_ok=True)
+        rh_monthly.to_netcdf(cache_path)
+    return rh_monthly

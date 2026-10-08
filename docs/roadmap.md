@@ -1,6 +1,70 @@
 # Roadmap
 
 ## Just landed
+- **Added a real humidity system: 700 hPa relative humidity, Atlantic basin, as a third option in
+  the Temperature/SST Anomaly view toggle.** The app's first non-SST field. Mid-level RH is the
+  standard moisture ingredient real tropical-cyclogenesis genesis-potential indices use (dry
+  mid-level air chokes a developing storm) -- the user explicitly asked for this field over
+  precipitable water, accepting the higher data-fetch cost, since it's the more scientifically
+  central one for a hurricane-focused app.
+
+  Data source: NOAA's own servers are blocked by this project's build environment's network
+  policy (same reason ERSST itself is pulled from a GitHub mirror, not NOAA directly) -- found
+  and verified a public, unauthenticated ERA5 reanalysis archive instead (`gs://gcp-public-data-
+  arco-era5` on Google Cloud Storage), confirmed reachable and working by actually opening it and
+  pulling real data, not just reading its metadata. `tools/climate_lib.py`'s own `load_era5_rh700()`
+  derives RH from specific humidity + temperature at the exact 700 hPa level (Bolton 1980/Tetens),
+  per-timestep before any averaging (RH is nonlinear, so deriving-then-averaging is the correct
+  order), regridded onto ERSST's own exact lat/lon grid (not a generic one -- ERA5's native 1.5°
+  grid doesn't match ERSST's 2°, and matching them exactly is what lets every other function in
+  `climate_lib.py`, and the client's own single `upsample()` closure, stay completely unchanged).
+
+  First attempt sampled only one day a month, reasoning the cloud archive's own chunking (every
+  pressure level + the whole globe bundled into each time-chunk touched) made a full multi-year
+  pull impractical. Measured against the live store, the real cost was dramatically lower than
+  that conservative estimate -- but the single-day proxy's own noise cost was real: it left the
+  EOF decomposition's singular-value spectrum essentially flat (no elbow, several modes' own
+  measured persistence coming back negative). Switched to true monthly means once the real cost
+  was known, exactly fixing both -- caught by actually checking the EOF spectrum before shipping,
+  not assumed. A second real failure mode, also caught by testing rather than assuming: pulling
+  all 15 years of raw hourly-resolution data into memory at once OOM-killed the build in this
+  container; fixed by reducing year-by-year instead (one year's own raw data stays bounded, the
+  small post-reduction monthly means are all that's kept across years).
+
+  15-year baseline (2007-2021, not SST's own 30) -- a deliberate tradeoff, not an official climate
+  normal, bounded by ERSST's own time axis (which Niño 3.4 depends on) ending in 2021. `K=6` EOF
+  modes (fewer than SST's 14, matched to the smaller sample count). A dense verification pass
+  before any client-side work: confirmed ERA5 has real values everywhere including land (so the
+  land-diffusion-fill machinery built for SST's own ocean-only data finds nothing to do and
+  harmlessly no-ops); confirmed the real, dominant seasonal signal at 700 hPa/15°N is the
+  ITCZ/West African Monsoon's own seasonal migration, not the Saharan Air Layer this plan
+  originally expected to be the headline feature -- a real, legitimate tropical feature either
+  way, just a different one than first assumed, exactly the kind of thing this project's "check
+  real data before claiming a feature" discipline exists to catch. (Mode 2 of the EOF decomposition
+  does show a real, SAL-corridor-localized pattern of interannual variability -- suggestive, not
+  conclusively identified as SAL specifically; reported honestly rather than either overclaimed
+  in the UI or dismissed.)
+
+  Client-side: humidity gets its own independent AR(1) interannual-variability state (its own EOF
+  modes, its own persistence, evolved in the same daily `stepDay()` tick as SST's), but shares the
+  same simulated Niño 3.4 index SST's own ENSO response already uses -- one real physical ENSO
+  event drives both fields, with each one's own real regression fit. Deliberately only
+  `variability`/`enso` drive it, not `warming`/`seasonal`/`features` (meaningless, SST-specific, or
+  mechanism-mismatched for a %RH field respectively -- see the humidity combine loop's own
+  comment in `computeField()`). A new, additive combine pass, not interleaved into SST's own dense
+  hand-tuned loop. New dry-to-moist color stops (brown/tan to green/teal), deliberately a
+  different palette family from both SST's own cold-blue-to-hot-red scale and the anomaly view's
+  diverging one. Two existing call sites needed a real fix for a third view to work at all, found
+  by grepping every reference to the view state rather than guessing: `render()`'s own color-field
+  selection (otherwise Humidity would have painted the *SST anomaly* field using the humidity
+  scale) and `drawLakes()`'s view branch (otherwise every lake would have rendered as uniformly
+  "driest," since its only two branches were `'sst'` and an `else` built for the anomaly view
+  specifically).
+
+  Atlantic only, this pass -- matching how every one of this project's other 9 basins got built:
+  one basin, verified end to end, before any wider rollout. The other 8 are an explicit future
+  pass, and should be mechanically easier to repeat (the `climate_lib.py` changes are two
+  backward-compatible optional parameters plus one new function, not a fork).
 - **Flipped minZoom to Leaflet's own `getBoundsZoom(bounds, inside=true)` mode on all nine basins,
   so the most-zoomed-out view can never show anything beyond a basin's own real domain, on any
   screen size or aspect ratio.** The hairline edge-interpolation fix below was real, but a user

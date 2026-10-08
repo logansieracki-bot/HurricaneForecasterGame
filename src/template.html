@@ -158,6 +158,7 @@ canvas.overlay{position:absolute;left:0;top:0;width:100%;height:100%;pointer-eve
         <div class="row seg" id="seg-view" role="group" aria-label="Map layer">
           <button data-v="sst" aria-pressed="true">Temperature</button>
           <button data-v="anom" aria-pressed="false">SST Anomaly</button>
+          <button data-v="humid" aria-pressed="false">Humidity</button>
         </div>
         <div class="row">
           <div class="sl"><label for="op">Overlay strength</label><output id="op-o">85%</output></div>
@@ -316,6 +317,20 @@ const ensoC = new Float32Array(3 * CN);          // Atlantic response to Niño 3
 { const a = b64i16(DATA.enso); for (let q = 0; q < a.length; q++) ensoC[q] = a[q] / 1000; }
 const PHI_DAY = DATA.phi.map((p) => Math.pow(Math.max(0.3, p), 1 / 30.44));
 
+/* 700 hPa relative humidity (% RH), decoded the same way as the SST arrays above but from
+   DATA.humidity -- a separate, nested object (not spread into DATA's own top level) because
+   SST and humidity share the exact same key names (domain/K/clim/eof/enso/phi); nesting avoids
+   either one silently clobbering the other. Own independent K (humidity's own EOF fit, not
+   necessarily the same count as SST's). */
+const KH = DATA.humidity.K;
+const humidClimC = [];                          // 12 coarse monthly climatologies (% RH)
+{ const a = b64i16(DATA.humidity.clim); for (let m = 0; m < 12; m++) { const f = new Float32Array(CN); for (let c = 0; c < CN; c++) f[c] = a[m * CN + c] / 10; humidClimC.push(f); } }
+const humidEofC = new Float32Array(KH * CN);     // interannual patterns (% RH per +1σ of each mode)
+{ const a = b64i16(DATA.humidity.eof); for (let q = 0; q < a.length; q++) humidEofC[q] = a[q] / 1000; }
+const humidEnsoC = new Float32Array(3 * CN);     // response to Niño 3.4 at lags 0, 3, 6 months (% RH per °C)
+{ const a = b64i16(DATA.humidity.enso); for (let q = 0; q < a.length; q++) humidEnsoC[q] = a[q] / 1000; }
+const PHI_DAY_H = DATA.humidity.phi.map((p) => Math.pow(Math.max(0.3, p), 1 / 30.44));
+
 /* Catmull-Rom weights */
 function cr(t) { const t2 = t * t, t3 = t2 * t; return [-0.5 * t3 + t2 - 0.5 * t, 1.5 * t3 - 2.5 * t2 + 1, -1.5 * t3 + 2 * t2 + 0.5 * t, 0.5 * t3 - 0.5 * t2]; }
 
@@ -355,6 +370,8 @@ const upsample = (function () {
 
 const climF = [], annual = new Float32Array(N);
 for (let m = 0; m < 12; m++) { const f = new Float32Array(N); upsample(climC[m], f); climF.push(f); for (let k = 0; k < N; k++) annual[k] += f[k] / 12; }
+const humidClimF = [];
+for (let m = 0; m < 12; m++) { const f = new Float32Array(N); upsample(humidClimC[m], f); humidClimF.push(f); }
 
 /* ------------------------------------------------------------------ *
  *  Static geography: coast distances, continental mask
@@ -474,10 +491,11 @@ function forceEnso(target) {           // jump to a chosen state; the Atlantic t
   n34 = target; ensoHist[(ensoHi - 1 + E_HIST) % E_HIST] = target; anomDirty = true; updateEnsoUI(); refresh();
 }
 
-let simHour = 0, dayCount = 0, pc = new Float32Array(K), gsShift = 0, eddies = [], nextShed = 0, lcDip = 0;
+let simHour = 0, dayCount = 0, pc = new Float32Array(K), pcH = new Float32Array(KH), gsShift = 0, eddies = [], nextShed = 0, lcDip = 0;
 function initSim(seed) {
   P.seed = seed; rs = (seed * 2654435761) >>> 0 || 1;
   for (let k = 0; k < K; k++) pc[k] = randn();
+  for (let k = 0; k < KH; k++) pcH[k] = randn();
   gsShift = randn() * 0.6; eddies = []; lcDip = 0; dayCount = 0; simHour = 0;
   nextShed = 40 + rand() * 200;
   ensoZr = randn(); ensoZi = randn(); n34 = 0; ensoHist.fill(0); ensoHi = 0;
@@ -489,6 +507,7 @@ function stepDay() {
   dayCount++;
   { const dd = simDate(dayCount * 24); ensoStep((dd.getTime() - Date.UTC(dd.getUTCFullYear(), 0, 1)) / 86400000); }
   for (let k = 0; k < K; k++) pc[k] = PHI_DAY[k] * pc[k] + Math.sqrt(1 - PHI_DAY[k] * PHI_DAY[k]) * randn();
+  for (let k = 0; k < KH; k++) pcH[k] = PHI_DAY_H[k] * pcH[k] + Math.sqrt(1 - PHI_DAY_H[k] * PHI_DAY_H[k]) * randn();
   const pg = Math.exp(-1 / 365); gsShift = pg * gsShift + Math.sqrt(1 - pg * pg) * 0.6 * randn();
   lcDip *= 0.978;
   if (dayCount >= nextShed) { eddies.push({ x: -87.6, y: 26.4, age: 0 }); nextShed = dayCount + 100 + rand() * 320; lcDip = 1; }
@@ -503,6 +522,8 @@ function simDate(h) { return new Date(START_MS + h * 3600000); }
  * ------------------------------------------------------------------ */
 const sst = new Float32Array(N), normal = new Float32Array(N), diff = new Float32Array(N), featN = new Float32Array(N), featD = new Float32Array(N);
 const anomC = new Float32Array(CN), anomF = new Float32Array(N), ensoCo = new Float32Array(CN), ensoF = new Float32Array(N);
+const humid = new Float32Array(N);
+const humidAnomC = new Float32Array(CN), humidAnomF = new Float32Array(N), humidEnsoCo = new Float32Array(CN), humidEnsoF = new Float32Array(N);
 let anomDirty = true;
 const WARM_PEAK_BIAS = 1.0;   // deg C added at the seasonal peak (see computeField) to correct a cool bias there
 
@@ -520,7 +541,15 @@ function computeField() {
     upsample(anomC, anomF);
     const c0 = ensoLag(0), c3 = ensoLag(91), c6 = ensoLag(183);
     for (let q = 0; q < CN; q++) ensoCo[q] = c0 * ensoC[q] + c3 * ensoC[CN + q] + c6 * ensoC[2 * CN + q];
-    upsample(ensoCo, ensoF); anomDirty = false;
+    upsample(ensoCo, ensoF);
+
+    humidAnomC.fill(0);
+    for (let k = 0; k < KH; k++) { const c = pcH[k]; if (!c) continue; const o = k * CN; for (let q = 0; q < CN; q++) humidAnomC[q] += c * humidEofC[o + q]; }
+    upsample(humidAnomC, humidAnomF);
+    for (let q = 0; q < CN; q++) humidEnsoCo[q] = c0 * humidEnsoC[q] + c3 * humidEnsoC[CN + q] + c6 * humidEnsoC[2 * CN + q];
+    upsample(humidEnsoCo, humidEnsoF);
+
+    anomDirty = false;
   }
 
   /* --- features: featN = climatological (normal) pattern, featD = this year's departures from it --- */
@@ -594,6 +623,32 @@ function computeField() {
       if (outOfBasin[k]) { sst[k] = NaN; normal[k] = NaN; diff[k] = NaN; } else { sst[k] = v; normal[k] = nrm; diff[k] = v - nrm; }
     }
   }
+
+  /* --- humidity: a separate, additive pass, not interleaved into the SST loop above --- *
+   * Deliberately only driven by P.variability/P.enso, not P.warming/P.seasonal/P.features:
+   * P.warming ("+N °C") is meaningless for a %RH field; P.features is explicitly SST's own
+   * ocean-current/upwelling correction, and this build's own point is that any real humidity
+   * feature (e.g. the Saharan Air Layer) comes through from raw data with no synthetic help;
+   * P.seasonal stretches SST's seasonal swing relative to SST's own annual mean, a mechanism
+   * humidity doesn't have -- its 12-month climatology already carries its own real seasonal
+   * cycle (the ITCZ/West African Monsoon's own migration, see the make_humidity.py build notes)
+   * directly, with nothing to stretch. P.variability/P.enso are the two sliders whose meaning
+   * is generic across any EOF/ENSO-regression-derived field, physically defensible since one
+   * real ENSO event drives both fields' own interannual variability. */
+  const hvs = P.variability, hes = P.enso;
+  const HA0 = humidClimF[M(m1 - 1)], HA1 = humidClimF[M(m1)], HA2 = humidClimF[M(m1 + 1)], HA3 = humidClimF[M(m1 + 2)];
+  for (let j = 0; j < NY; j++) {
+    const o = j * NX;
+    for (let i = 0; i < NX; i++) {
+      const k = o + i;
+      if (outOfBasin[k]) { humid[k] = NaN; continue; }
+      const mth = w0 * HA0[k] + w1 * HA1[k] + w2 * HA2[k] + w3 * HA3[k];
+      let v = mth + hvs * humidAnomF[k] + hes * humidEnsoF[k];
+      if (v > 100) v = 100 + 4 * Math.tanh((v - 100) / 4); else if (v < 2) v = 2 - 4 * Math.tanh((2 - v) / 4);   // soft: real RH can edge past [2,100] without ever doing so without limit
+      humid[k] = v;
+    }
+  }
+
   updateLakes(f, doy);
 }
 const CEIL_LAT = [0, 10, 20, 25, 30, 35, 38, 40, 45, 50, 55, 60, 70, 80], CEIL_T = [33, 33, 32.6, 32, 31.2, 30, 29, 28.2, 26, 23, 19.5, 16, 9, 3];
@@ -631,9 +686,18 @@ function buildLUT(stops, vmin, vmax, n) {
 }
 const SST_STOPS = [[-2,246,246,255],[0,196,196,246],[4,105,96,226],[8,34,52,196],[12,32,112,224],[16,52,178,236],[20,64,214,206],[23,44,190,110],[25.5,40,168,60],[26.5,236,226,32],[28,250,160,24],[29.5,230,60,28],[31,180,16,64],[33,240,110,190],[34,250,190,235]];
 const ANOM_STOPS = [[-3,24,44,176],[-1.5,60,118,226],[-0.5,150,192,244],[0,242,242,242],[0.5,250,200,176],[1.5,238,116,66],[3,158,14,34]];
+// Dry (brown/tan) -> moist (green/teal), deliberately a different palette family from both
+// SST_STOPS (cold-blue to hot-red) and ANOM_STOPS (blue-white-red diverging) so Humidity reads
+// as a different kind of field at a glance, not "another temperature map." Loosely in the same
+// palette family NOAA/CIRA's own SAL/moisture products use.
+const HUMID_STOPS = [[0,120,72,36],[15,163,110,60],[30,198,158,100],[45,224,201,155],[60,200,219,176],[75,130,196,170],[90,60,158,160],[100,20,110,140]];
 const VIEWS = {
-  sst:  { vmin: -2, vmax: 34, lut: buildLUT(SST_STOPS, -2, 34, 721), caption: 'Sea surface temperature, °C', ticks: [0, 10, 20, 26.5, 30], key: 26.5 },
-  anom: { vmin: -3, vmax: 3, lut: buildLUT(ANOM_STOPS, -3, 3, 301), caption: 'Difference from the 1991–2020 normal, °C', ticks: [-3, -2, -1, 0, 1, 2, 3], key: 0 }
+  sst:   { vmin: -2, vmax: 34, lut: buildLUT(SST_STOPS, -2, 34, 721), caption: 'Sea surface temperature, °C', ticks: [0, 10, 20, 26.5, 30], key: 26.5 },
+  anom:  { vmin: -3, vmax: 3, lut: buildLUT(ANOM_STOPS, -3, 3, 301), caption: 'Difference from the 1991–2020 normal, °C', ticks: [-3, -2, -1, 0, 1, 2, 3], key: 0 },
+  // key: 70 is a reasonable, illustrative "moist enough to support deep convection" round
+  // number consistent with genesis-potential-index literature's general range -- not an
+  // authoritative cutoff.
+  humid: { vmin: 0, vmax: 100, lut: buildLUT(HUMID_STOPS, 0, 100, 501), caption: '700 hPa relative humidity, %', ticks: [20, 40, 55, 70, 85], key: 70 }
 };
 let view = 'sst';
 
@@ -848,7 +912,7 @@ function updateCityTip(cx, cy) {
   const i = cityAt(cx, cy);
   if (i !== hoveredCity) { hoveredCity = i; scheduleRender(); }
   if (i < 0) { tip.style.display = 'none'; return; }
-  const c = CITIES[i], inland = c.sLat !== undefined, t = sampleField(sst, c.sLat ?? c.lat, c.sLon ?? c.lon), n = sampleField(normal, c.sLat ?? c.lat, c.sLon ?? c.lon);
+  const c = CITIES[i], inland = c.sLat !== undefined, t = sampleField(sst, c.sLat ?? c.lat, c.sLon ?? c.lon), n = sampleField(normal, c.sLat ?? c.lat, c.sLon ?? c.lon), h = sampleField(humid, c.sLat ?? c.lat, c.sLon ?? c.lon);
   const lines = [];
   if (inland) lines.push('Nearest coastal water');
   if (t === t) {
@@ -856,6 +920,7 @@ function updateCityTip(cx, cy) {
     lines.push(t.toFixed(1) + ' °C');
     lines.push(sign + Math.abs(dv).toFixed(1) + ' °C vs. normal');
     lines.push(t >= 26.5 ? 'Above hurricane threshold' : 'Below hurricane threshold');
+    if (h === h) lines.push(h.toFixed(0) + '% RH @ 700mb');
   } else {
     lines.push('Outside the simulated area');
   }
@@ -1045,6 +1110,11 @@ function drawLakes(ctx, minX, minY, ws) {
     if (view === 'sst') {
       if (L.h > 1.2 && py1 - py0 > 6) { const gd = Math.min(1.6, 0.35 * L.h), g = ctx.createLinearGradient(0, py0, 0, py1); g.addColorStop(0, lakeCss(V, lakeV[i] - gd)); g.addColorStop(1, lakeCss(V, lakeV[i] + gd)); ctx.fillStyle = g; }
       else ctx.fillStyle = lakeCss(V, lakeV[i]);
+    } else if (view === 'humid') {
+      // No physical basis for a lake having its own distinct 700 hPa RH the way it has its own
+      // distinct SST (depth/thermal mass) -- just show the real field value at the lake's
+      // own location, not a borrowed SST-anomaly-shaped quantity.
+      ctx.fillStyle = lakeCss(V, sampleField(humid, L.lat, L.lon));
     } else ctx.fillStyle = lakeCss(V, lakeV[i] - lakeN[i]);
     ctx.fill('evenodd');
   }
@@ -1211,7 +1281,7 @@ function render() {
   }
   if (off.width !== sw || off.height !== sh) { off.width = sw; off.height = sh; }
   const octx = off.getContext('2d'), img = octx.createImageData(sw, sh), px = new Uint32Array(img.data.buffer);
-  const V = VIEWS[view], src = view === 'sst' ? sst : diff, lut = V.lut, lscale = (lut.length - 1) / (V.vmax - V.vmin), ln = lut.length - 1;
+  const V = VIEWS[view], src = view === 'sst' ? sst : view === 'humid' ? humid : diff, lut = V.lut, lscale = (lut.length - 1) / (V.vmax - V.vmin), ln = lut.length - 1;
   let idx = 0;
   for (let y = 0; y < sh; y++) {
     const j = rowJ[y];
@@ -1390,7 +1460,7 @@ lastNow = performance.now(); requestAnimationFrame(frame);
 
 window.SSTSIM = {
   advance(h) { advanceHours(h); updateClock(); refresh(); },
-  sample(lat, lon) { return { sst: sampleField(sst, lat, lon), normal: sampleField(normal, lat, lon) }; },
+  sample(lat, lon) { return { sst: sampleField(sst, lat, lon), normal: sampleField(normal, lat, lon), humid: sampleField(humid, lat, lon) }; },
   state() { return { simHour, seed: P.seed, date: simDate(simHour).toISOString(), eddies: eddies.length, gsShift }; },
   set(k, v) { P[k] = v; refresh(); }, enso() { return { n34, lag0: ensoLag(0), lag3: ensoLag(91), lag6: ensoLag(183) }; }, forceEnso, setView(v) { document.querySelector('#seg-view button[data-v="' + v + '"]').click(); },
   setPlaying, restart, map, render, setTheme, setGridMode, sliderVals() { return { seasonal: P.seasonal, features: P.features, enso: P.enso, warming: P.warming, variability: P.variability, seed: P.seed }; }, applySeed,
