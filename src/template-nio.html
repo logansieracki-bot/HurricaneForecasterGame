@@ -178,8 +178,8 @@ canvas.overlay{position:absolute;left:0;top:0;width:100%;height:100%;pointer-eve
             <button data-g="off" aria-pressed="true">Off</button><button data-g="grid" aria-pressed="false">Grid</button><button data-g="labels" aria-pressed="false">Labels</button>
           </div>
         </div>
-        <label class="chk"><input type="checkbox" id="l265" checked> 26.5 °C line (cyclone threshold)</label>
-        <label class="chk"><input type="checkbox" id="l2"> Isotherms every 2 °C</label>
+        <label class="chk"><input type="checkbox" id="l265" checked><span id="l265-label"> 26.5 °C line (cyclone threshold)</span></label>
+        <label class="chk"><input type="checkbox" id="l2"><span id="l2-label"> Contour lines every 2 °C</span></label>
       </div>
     </section>
     <section class="subsec collapsed" id="sec-exp">
@@ -580,8 +580,8 @@ function buildLUT(stops, vmin, vmax, n) {
 const SST_STOPS = [[-2,246,246,255],[0,196,196,246],[4,105,96,226],[8,34,52,196],[12,32,112,224],[16,52,178,236],[20,64,214,206],[23,44,190,110],[25.5,40,168,60],[26.5,236,226,32],[28,250,160,24],[29.5,230,60,28],[31,180,16,64],[33,240,110,190],[34,250,190,235]];
 const ANOM_STOPS = [[-3,24,44,176],[-1.5,60,118,226],[-0.5,150,192,244],[0,242,242,242],[0.5,250,200,176],[1.5,238,116,66],[3,158,14,34]];
 const VIEWS = {
-  sst:  { vmin: -2, vmax: 34, lut: buildLUT(SST_STOPS, -2, 34, 721), caption: 'Sea surface temperature, °C', ticks: [0, 10, 20, 26.5, 30], key: 26.5 },
-  anom: { vmin: -3, vmax: 3, lut: buildLUT(ANOM_STOPS, -3, 3, 301), caption: 'Difference from the 1991–2020 normal, °C', ticks: [-3, -2, -1, 0, 1, 2, 3], key: 0 }
+  sst:  { vmin: -2, vmax: 34, lut: buildLUT(SST_STOPS, -2, 34, 721), caption: 'Sea surface temperature, °C', ticks: [0, 10, 20, 26.5, 30], key: 26.5, step: 2, unit: ' °C', keyLabel: 'cyclone threshold' },
+  anom: { vmin: -3, vmax: 3, lut: buildLUT(ANOM_STOPS, -3, 3, 301), caption: 'Difference from the 1991–2020 normal, °C', ticks: [-3, -2, -1, 0, 1, 2, 3], key: 0, step: 1, unit: ' °C', keyLabel: 'normal' }
 };
 let view = 'sst';
 
@@ -784,7 +784,7 @@ function updateCityTip(cx, cy) {
     const dv = t - n, sign = dv >= 0 ? '+' : '−';
     lines.push(t.toFixed(1) + ' °C');
     lines.push(sign + Math.abs(dv).toFixed(1) + ' °C vs. normal');
-    lines.push(t >= 26.5 ? 'Above cyclone threshold' : 'Below cyclone threshold');
+    lines.push(t >= VIEWS.sst.key ? 'Above ' + VIEWS.sst.keyLabel : 'Below ' + VIEWS.sst.keyLabel);
   } else {
     lines.push('Outside the simulated area');
   }
@@ -1081,6 +1081,11 @@ function drawGrid(minX, minY, ws) {
   for (const lon of lons) { const x = Math.round(xOf(lon)) + 0.5, t = coordText(lon, false); for (let d = 0; d <= H * 0.28; d += 12) if (tryPlace(x, railY + d, t) || (d && tryPlace(x, railY - d, t))) break; }
 }
 const showLine265 = () => $('l265').checked, showLine2 = () => $('l2').checked;
+function updateThresholdLabels() {
+  const V = VIEWS[view];
+  $('l265-label').textContent = ' ' + V.key + V.unit + ' line (' + V.keyLabel + ')';
+  $('l2-label').textContent = ' Contour lines every ' + V.step + V.unit;
+}
 
 function render() {
   needRender = false; fitCanvases();
@@ -1133,13 +1138,13 @@ function render() {
       px[idx] = ((a << 24) | (lut[li] & 0xffffff)) >>> 0;
     }
   }
-  if (view === 'sst' && (showLine265() || showLine2())) {
-    const l265 = showLine265(), l2 = showLine2();
+  if (showLine265() || showLine2()) {
+    const l265 = showLine265(), l2 = showLine2(), key = V.key, step = V.step;
     for (let y = 1; y < sh; y++) for (let x = 1; x < sw; x++) {
       const k = y * sw + x, v = vals[k], vl = vals[k - 1], vt = vals[k - sw];
       if (v !== v || vl !== vl || vt !== vt) continue;
-      if (l265 && ((v - 26.5) * (vl - 26.5) < 0 || (v - 26.5) * (vt - 26.5) < 0)) { px[k] = (px[k] & 0xff000000) | 0xffffff; continue; }
-      if (l2 && (Math.floor(v * 0.5) !== Math.floor(vl * 0.5) || Math.floor(v * 0.5) !== Math.floor(vt * 0.5))) {
+      if (l265 && ((v - key) * (vl - key) < 0 || (v - key) * (vt - key) < 0)) { px[k] = (px[k] & 0xff000000) | 0xffffff; continue; }
+      if (l2 && (Math.floor(v / step) !== Math.floor(vl / step) || Math.floor(v / step) !== Math.floor(vt / step))) {
         const c = px[k]; px[k] = ((c & 0xff000000) | ((((c & 0xff) * 0.62 + 255 * 0.38) | 0)) | (((((c >> 8) & 0xff) * 0.62 + 255 * 0.38) | 0) << 8) | (((((c >> 16) & 0xff) * 0.62 + 255 * 0.38) | 0) << 16)) >>> 0;
       }
     }
@@ -1259,7 +1264,7 @@ window.addEventListener('keydown', (e) => {
 /* panel */
 $('collapse').onclick = () => { const p = $('panel'); p.classList.toggle('collapsed'); $('collapse').innerHTML = p.classList.contains('collapsed') ? '&#9656;' : '&#9662;'; };
 document.querySelectorAll('.subhead').forEach((h) => h.onclick = () => { const sec = h.closest('.subsec'), collapsed = sec.classList.toggle('collapsed'); h.setAttribute('aria-expanded', !collapsed); });
-document.querySelectorAll('#seg-view button').forEach((b) => b.onclick = () => { view = b.dataset.v; document.querySelectorAll('#seg-view button').forEach((x) => x.setAttribute('aria-pressed', x === b)); drawLegend(); scheduleRender(); });
+document.querySelectorAll('#seg-view button').forEach((b) => b.onclick = () => { view = b.dataset.v; document.querySelectorAll('#seg-view button').forEach((x) => x.setAttribute('aria-pressed', x === b)); drawLegend(); updateThresholdLabels(); scheduleRender(); });
 THEME_ORDER.forEach((id) => { const t = THEMES[id], b = document.createElement('button'); b.dataset.th = id; b.setAttribute('aria-pressed', id === 'sat'); b.innerHTML = '<i style="background:' + t.swatch + '"></i><span>' + t.name + '</span>'; b.onclick = () => setTheme(id); $('themes').appendChild(b); });
 document.querySelectorAll('#seg-grid button').forEach((b) => b.onclick = () => setGridMode(b.dataset.g));
 $('show-sst').onchange = scheduleRender; $('borders').onchange = scheduleRender;
@@ -1284,7 +1289,7 @@ $('b-newseed').onclick = () => applySeed(1 + Math.floor(Math.random() * 999999))
  *  Start
  * ------------------------------------------------------------------ */
 setTheme('sat');
-drawLegend(); updateSpeedUI();
+drawLegend(); updateThresholdLabels(); updateSpeedUI();
 if (window.innerWidth < 700) $('panel').classList.add('collapsed');
 const seed0 = 1 + Math.floor(Math.random() * 999999);
 $('seed').value = seed0; P.seed = seed0; setSliderValues(seedSliderValues(seed0)); initSim(seed0); updateClock();

@@ -119,6 +119,36 @@ async function checkBasin(label, dist, extra) {
   const ensoState = await page.evaluate(() => window.SSTSIM.enso());
   check(`[${label}] Set ENSO now slider forces the Nino 3.4 index`, Math.abs(ensoState.n34 - 2.5) < 0.05);
 
+  // Hurricane/typhoon/cyclone threshold + contour-line overlay used to be SST-only -- switching
+  // to the Anomaly view must swap the checkbox labels away from the SST-specific "26.5 .. 2 °C"
+  // wording, and toggling the key-line checkbox must still visibly change what's rendered (not
+  // just the label), proving the overlay-drawing code itself generalized, not just its text.
+  const sstLabels = await page.evaluate(() => ({ l265: document.getElementById('l265-label').textContent, l2: document.getElementById('l2-label').textContent }));
+  check(`[${label}] SST view's key-line checkbox label mentions 26.5`, sstLabels.l265.includes('26.5'));
+  check(`[${label}] SST view's step-line checkbox label mentions its 2 °C step`, sstLabels.l2.includes('2') && sstLabels.l2.includes('°C'));
+
+  await page.evaluate(() => window.SSTSIM.setView('anom'));
+  await page.waitForTimeout(200);
+  const anomLabels = await page.evaluate(() => ({ l265: document.getElementById('l265-label').textContent, l2: document.getElementById('l2-label').textContent }));
+  check(`[${label}] Anomaly view's key-line checkbox label drops the SST-specific "26.5"/threshold wording`, !anomLabels.l265.includes('26.5') && !/threshold/i.test(anomLabels.l265));
+  check(`[${label}] Anomaly view's step-line checkbox label reflects its own 1 °C step`, anomLabels.l2.includes('1') && anomLabels.l2.includes('°C'));
+
+  const overlayChecksum = () => page.evaluate(() => {
+    const c = document.querySelectorAll('canvas.overlay')[1], g = c.getContext('2d'), d = g.getImageData(0, 0, c.width, c.height).data;
+    let sum = 0; for (let i = 0; i < d.length; i += 97) sum = (sum + d[i]) >>> 0;
+    return sum;
+  });
+  await page.check('#l265');
+  await page.waitForTimeout(300);
+  const sumWithLine = await overlayChecksum();
+  await page.uncheck('#l265');
+  await page.waitForTimeout(300);
+  const sumWithoutLine = await overlayChecksum();
+  check(`[${label}] toggling the key-line checkbox in the Anomaly view visibly changes the rendered overlay`, sumWithLine !== sumWithoutLine);
+  await page.check('#l265');
+  await page.evaluate(() => window.SSTSIM.setView('sst'));   // restore default state before basin-specific `extra` checks run
+  await page.waitForTimeout(200);
+
   await extra(page, label);
 
   await browser.close();
@@ -182,6 +212,22 @@ await checkBasin('Atlantic', ATLANTIC_DIST, async (page, label) => {
   check(`[${label}] Humidity button becomes pressed when selected`, humidViewState.pressed === 'true');
   check(`[${label}] legend caption switches to the humidity scale`, humidViewState.caption === '700 hPa relative humidity, %');
   check(`[${label}] SST data is still real underneath the Humidity view`, Number.isFinite(humidViewState.sample.sst));
+
+  // The generalized threshold concept covers humidity too, not just SST: its own key/step/
+  // keyLabel in the checkbox label, and a parallel "Above/Below" tooltip line next to the
+  // existing SST one (the tooltip always shows both fields together, regardless of view).
+  const humidLabels = await page.evaluate(() => ({ l265: document.getElementById('l265-label').textContent, l2: document.getElementById('l2-label').textContent }));
+  check(`[${label}] Humidity view's key-line checkbox label mentions its own 70% key, not 26.5`, humidLabels.l265.includes('70') && !humidLabels.l265.includes('26.5'));
+
+  await page.evaluate(([lat, lon]) => window.SSTSIM.map.setView([lat, lon], 6), [25.76, -80.19]);
+  await page.waitForTimeout(300);
+  const miamiPt = await page.evaluate(([lat, lon]) => { const p = window.SSTSIM.map.latLngToContainerPoint([lat, lon]); return { x: p.x, y: p.y }; }, [25.76, -80.19]);
+  await page.mouse.move(miamiPt.x, miamiPt.y);
+  await page.waitForTimeout(200);
+  const miamiTip = await page.evaluate(() => document.getElementById('city-tip').textContent);
+  check(`[${label}] city tooltip still shows the SST hurricane-threshold line in the Humidity view`, /Above hurricane threshold|Below hurricane threshold/.test(miamiTip));
+  check(`[${label}] city tooltip gains a parallel humidity-threshold line`, /Above genesis-favorable humidity threshold|Below genesis-favorable humidity threshold/.test(miamiTip));
+
   await page.evaluate(() => window.SSTSIM.setView('sst'));   // leave the page in its default state for any checks after this one
 
   await checkCityMarkers(page, label, 25.76, -80.19, 'Miami');

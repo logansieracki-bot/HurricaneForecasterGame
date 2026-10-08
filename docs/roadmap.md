@@ -1,6 +1,36 @@
 # Roadmap
 
 ## Just landed
+- **Generalized the hurricane-threshold line and contour-line overlay beyond SST, across all 9
+  basins.** Both features -- the "26.5 °C line (hurricane/typhoon/cyclone threshold)" checkbox
+  and "Isotherms every 2 °C" -- were hardcoded to the raw SST field and gated to `view === 'sst'`
+  in every basin template: switching to the SST Anomaly view (all 9 basins) or Humidity (Atlantic
+  only) left the checkboxes checked but silently inert, still showing SST-specific wording for a
+  view that wasn't SST. Every `VIEWS[*]` entry already carried a `key` property (the legend's own
+  tick-bolding already consumed it generically); this added `step`/`unit`/`keyLabel` alongside it,
+  so the checkbox labels, the contour-drawing math, and the city tooltip's "Above/Below X
+  threshold" line all now read from whichever view is active instead of a hardcoded `26.5`/`2`.
+  The SST view's own rendering is bit-for-bit unchanged (0.5 is an exact power of two, so `v/2`
+  and the old `v*0.5` agree exactly, and `key`/`step` literally equal `26.5`/`2` for that view) --
+  this is a pure generalization, not a visual change to existing behavior. In the Anomaly view
+  (all 9 basins) the key line now reads "0 °C line (normal)"; in Atlantic's Humidity view it reads
+  "70% line (genesis-favorable humidity threshold)", and the city tooltip gained a parallel
+  above/below line for humidity next to the existing SST one, extending the same threshold concept
+  to a second field rather than leaving it SST-only.
+
+  All 9 basin templates carry this logic copy-pasted (not shared via include), identical except
+  for the threshold wording itself (hurricane / typhoon / cyclone, preserved exactly per basin).
+  Verified byte-identical across every file via direct grep before touching anything -- zero
+  structural deviations found. Implemented by hand in Atlantic first and visually verified (3
+  views, both checkboxes, a city hover) before propagating; the other 8 basins were updated via a
+  small script doing literal-substring replacement with an exact-one-match assertion per edit, so
+  any unexpected deviation would have thrown instead of silently corrupting a file -- it didn't.
+  `tests/run.mjs` gained checks (inside the shared `checkBasin()`, so they run for all 9 basins
+  automatically) that switching to the Anomaly view drops the SST-specific wording and that
+  toggling the key-line checkbox visibly changes the rendered overlay pixels in a non-SST view,
+  not just the label text -- proving the drawing code itself generalized. Full suite: 335 checks,
+  zero failures.
+
 - **Added a real humidity system: 700 hPa relative humidity, Atlantic basin, as a third option in
   the Temperature/SST Anomaly view toggle.** The app's first non-SST field. Mid-level RH is the
   standard moisture ingredient real tropical-cyclogenesis genesis-potential indices use (dry
