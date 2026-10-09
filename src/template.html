@@ -689,15 +689,22 @@ const ANOM_STOPS = [[-3,24,44,176],[-1.5,60,118,226],[-0.5,150,192,244],[0,242,2
 // Dry (brown/tan) -> moist (green/teal), deliberately a different palette family from both
 // SST_STOPS (cold-blue to hot-red) and ANOM_STOPS (blue-white-red diverging) so Humidity reads
 // as a different kind of field at a glance, not "another temperature map." Loosely in the same
-// palette family NOAA/CIRA's own SAL/moisture products use.
-const HUMID_STOPS = [[0,120,72,36],[15,163,110,60],[30,198,158,100],[45,224,201,155],[60,200,219,176],[75,130,196,170],[90,60,158,160],[100,20,110,140]];
+// palette family NOAA/CIRA's own SAL/moisture products use. Stops are deliberately denser below
+// 60% than above it -- see the VIEWS.humid comment below for why that's where the real data lives.
+const HUMID_STOPS = [[0,120,72,36],[10,150,96,50],[22,180,130,78],[34,206,170,118],[46,224,201,155],[58,200,219,176],[70,150,205,173],[85,80,175,163],[100,20,110,140]];
 const VIEWS = {
   sst:   { vmin: -2, vmax: 34, lut: buildLUT(SST_STOPS, -2, 34, 721), caption: 'Sea surface temperature, °C', ticks: [0, 10, 20, 26.5, 30], key: 26.5, step: 2, unit: ' °C', keyLabel: 'hurricane threshold' },
   anom:  { vmin: -3, vmax: 3, lut: buildLUT(ANOM_STOPS, -3, 3, 301), caption: 'Difference from the 1991–2020 normal, °C', ticks: [-3, -2, -1, 0, 1, 2, 3], key: 0, step: 1, unit: ' °C', keyLabel: 'normal' },
-  // key: 70 is a reasonable, illustrative "moist enough to support deep convection" round
-  // number consistent with genesis-potential-index literature's general range -- not an
-  // authoritative cutoff.
-  humid: { vmin: 0, vmax: 100, lut: buildLUT(HUMID_STOPS, 0, 100, 501), caption: '700 hPa relative humidity, %', ticks: [20, 40, 55, 70, 85], key: 70, step: 15, unit: '%', keyLabel: 'genesis-favorable humidity threshold' }
+  // key: 70 (and HUMID_STOPS' own spacing) was originally picked from genesis-potential-index
+  // literature, which describes INSTANTANEOUS/synoptic conditions. This field is a monthly
+  // CLIMATOLOGICAL MEAN (same architecture as SST), and a mean structurally can't show a
+  // transient moist pulse -- checked directly against all 15 real ERA5 years (2007-2021) at
+  // the Gulf/MDR/Caribbean: peak-season (Aug/Sep) monthly means there never exceed ~68%, with
+  // most years landing 43-60%, and the wettest point/month/year in the entire record is 68.5%.
+  // key: 58 sits near the real basin-wide p75 for peak season (honestly reachable, not a value
+  // this field can only approach in the extreme tail) -- "favorable" here means "wetter than
+  // typical for this field," not an absolute instantaneous-genesis cutoff.
+  humid: { vmin: 0, vmax: 100, lut: buildLUT(HUMID_STOPS, 0, 100, 501), caption: '700 hPa relative humidity, %', ticks: [15, 30, 46, 58, 75], key: 58, step: 10, unit: '%', keyLabel: 'favorable for development' }
 };
 let view = 'sst';
 

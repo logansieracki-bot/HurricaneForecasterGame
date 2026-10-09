@@ -1,6 +1,42 @@
 # Roadmap
 
 ## Just landed
+- **Recalibrated the Humidity view's color scale and "favorable" threshold against real data, after
+  the user noticed the Gulf/MDR looked dry almost no matter what -- moderate El Niño, peak season,
+  it didn't matter.** Checked all 15 real ERA5 years (2007-2021) rather than guess: peak-season
+  (Aug/Sep) monthly-mean 700 hPa RH at the Gulf/MDR/Caribbean *never exceeds ~68%* in the entire
+  record, typically landing 43-60%. The old `key: 70` ("genesis-favorable") threshold and
+  `HUMID_STOPS`' own spacing were picked from genesis-potential-index literature describing
+  *instantaneous/synoptic* conditions; this field is a monthly *climatological mean* (same
+  architecture as SST), which structurally can't show a transient moist pulse -- so the threshold
+  was, in effect, unreachable. Not a bug in the data, the EOF fit, or the ENSO regression (whose
+  signs are physically correct: El Niño wets the Gulf, dries the MDR, matching known
+  teleconnections) -- just a threshold calibrated for a different kind of quantity than the one
+  being shown.
+
+  Lowered `key` to 58% (near the real basin-wide p75 for peak season -- honestly reachable, not a
+  value this field can only approach in the extreme tail) and redesigned `HUMID_STOPS` to
+  concentrate color resolution in the 0-58% band where the Gulf/MDR/Caribbean actually spends its
+  time, instead of spreading it evenly across 0-100% when the top third is rarely reached there.
+  Relabeled the key as "favorable for development" rather than an absolute genesis cutoff, since
+  that's what a climatological-mean threshold honestly represents. Because the hurricane-threshold
+  generalization work (above) had already made every consumer of this -- the checkbox label, the
+  contour-line math, the tooltip's above/below line, the legend's tick-bolding -- read from
+  `VIEWS.humid` generically, this fix was a one-place change in `template.html` (plus matching
+  test updates), not a multi-file one. Full suite: 335 checks, zero regressions.
+
+  Confirmed visually: forcing a moderate/strong El Niño and fast-forwarding to September now shows
+  a real contour line through the Gulf/Caribbean with genuine color differentiation (parts of the
+  Gulf and the SAL corridor crossing into "favorable" teal, the MDR and central Caribbean staying
+  below it) instead of a near-uniform dry-brown wash across the whole basin regardless of ENSO
+  phase. A deeper follow-up is scoped but not started: the real *day-to-day* (synoptic-timescale)
+  variability in 700 hPa RH is much larger than the modest interannual spread this climatology-
+  based field can represent (real tropical waves, SAL outbreaks) -- a future pass could layer a
+  faster-decorrelating noise process on top of this same backbone, calibrated against real
+  6-hourly ERA5 data, so the field can genuinely flash moist or dry like actual weather rather
+  than just drifting slowly with the seasons/ENSO/EOF state.
+
+
 - **Generalized the hurricane-threshold line and contour-line overlay beyond SST, across all 9
   basins.** Both features -- the "26.5 °C line (hurricane/typhoon/cyclone threshold)" checkbox
   and "Isotherms every 2 °C" -- were hardcoded to the raw SST field and gated to `view === 'sst'`

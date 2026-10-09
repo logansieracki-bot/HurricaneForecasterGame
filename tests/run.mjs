@@ -217,7 +217,7 @@ await checkBasin('Atlantic', ATLANTIC_DIST, async (page, label) => {
   // keyLabel in the checkbox label, and a parallel "Above/Below" tooltip line next to the
   // existing SST one (the tooltip always shows both fields together, regardless of view).
   const humidLabels = await page.evaluate(() => ({ l265: document.getElementById('l265-label').textContent, l2: document.getElementById('l2-label').textContent }));
-  check(`[${label}] Humidity view's key-line checkbox label mentions its own 70% key, not 26.5`, humidLabels.l265.includes('70') && !humidLabels.l265.includes('26.5'));
+  check(`[${label}] Humidity view's key-line checkbox label mentions its own 58% key, not 26.5`, humidLabels.l265.includes('58') && !humidLabels.l265.includes('26.5'));
 
   await page.evaluate(([lat, lon]) => window.SSTSIM.map.setView([lat, lon], 6), [25.76, -80.19]);
   await page.waitForTimeout(300);
@@ -226,7 +226,7 @@ await checkBasin('Atlantic', ATLANTIC_DIST, async (page, label) => {
   await page.waitForTimeout(200);
   const miamiTip = await page.evaluate(() => document.getElementById('city-tip').textContent);
   check(`[${label}] city tooltip still shows the SST hurricane-threshold line in the Humidity view`, /Above hurricane threshold|Below hurricane threshold/.test(miamiTip));
-  check(`[${label}] city tooltip gains a parallel humidity-threshold line`, /Above genesis-favorable humidity threshold|Below genesis-favorable humidity threshold/.test(miamiTip));
+  check(`[${label}] city tooltip gains a parallel humidity-threshold line`, /Above favorable for development|Below favorable for development/.test(miamiTip));
 
   await page.evaluate(() => window.SSTSIM.setView('sst'));   // leave the page in its default state for any checks after this one
 
