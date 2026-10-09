@@ -1,6 +1,41 @@
 # Roadmap
 
 ## Just landed
+- **Added real day-to-day ("synoptic") weather variability to the Humidity view** -- the
+  follow-up flagged in the previous recalibration entry below. A monthly climatology (even
+  recalibrated to a realistic threshold) can only drift slowly with season/ENSO/interannual
+  state; it can never show a transient moist pulse or dry outbreak, so a point could sit on the
+  "unfavorable" side of the line for an entire simulated season even though real weather would
+  have crossed it repeatedly. Checked 5 real years (2017-2021) of actual daily ERA5 data before
+  building anything: an EOF approach (the same technique already used for interannual
+  variability) was tried first and abandoned, because the real singular-value spectrum came back
+  essentially flat (top 15 modes explain only ~22% of variance) -- unlike interannual variability
+  (dominated by ENSO, a genuinely basin-wide coherent pattern), real day-to-day RH anomalies here
+  decorrelate in space by only ~16-20° (~1800-2200 km, matching the real wavelength of African
+  easterly waves), short relative to this basin's own size, so the field looks like many
+  quasi-independent weather systems rather than a few dominant basin-wide shapes.
+
+  Instead, every coarse grid cell gets its own independent AR(1) process at that cell's own real,
+  directly-measured amplitude (std ~14-18 % RH at the Gulf/MDR/Caribbean, confirmed against the
+  raw data, not assumed) and persistence (~1.7-2.1 day e-folding, matching real synoptic memory) --
+  the existing bicubic `upsample()` (same closure already used for every other field) supplies
+  the spatial smoothing between cells. Client-side, this needed one genuine optimization: since
+  every cell evolves independently (no few-mode pattern to lean on), naively stepping all ~4300
+  cells on every simulated day would cost real time on a large fast-forward jump -- fixed by using
+  the exact closed-form N-step AR(1) identity (phi^nStep, the same identity `PHI_DAY`/`PHI_DAY_H`
+  already use in reverse to turn a monthly phi into a daily one) to advance any number of skipped
+  days in one shot, same amortized-until-needed shape the existing `anomDirty` flag already gives
+  the interannual modes' own expansion step.
+
+  New "Day-to-day weather" slider (0-3x, default 1x, Atlantic-only like the rest of humidity) --
+  humidity's own slider with no SST equivalent, since real SST doesn't swing day to day the way
+  real mid-level humidity does. Confirmed working end-to-end: at the default setting, the Gulf of
+  Mexico swung from 37.6% to 76.6% relative humidity across just 12 simulated days, crossing the
+  58% "favorable for development" line repeatedly -- real hurricane seasons have favorable windows
+  that open and close, not a single static state. Setting the slider to 0 cleanly falls back to
+  the smooth climatology-only behavior. Full suite: 338 checks, zero regressions.
+
+- **Recalibrated the Humidity view's color scale and "favorable" threshold against real data, after
 - **Recalibrated the Humidity view's color scale and "favorable" threshold against real data, after
   the user noticed the Gulf/MDR looked dry almost no matter what -- moderate El Niño, peak season,
   it didn't matter.** Checked all 15 real ERA5 years (2007-2021) rather than guess: peak-season

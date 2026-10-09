@@ -43,12 +43,30 @@ export function mergeHumidity(basin, dataFileName) {
   return out;
 }
 
+// Layers a basin's own <basin>-humidity-synoptic.json (day-to-day weather-timescale noise,
+// see make_humidity_synoptic.py) onto an already-merged, humidity-bearing data file, nested
+// under humidity.synoptic -- the synoptic file has no domain of its own (it shares the parent
+// humidity object's exact grid by construction) and no keys that collide with humidity's own
+// top-level ones (K/clim/eof/enso/phi), so a flat merge into the `humidity` object is safe.
+export function mergeHumiditySynoptic(basin, dataFileName) {
+  const dataPath = join(GEN, dataFileName);
+  const existing = JSON.parse(readFileSync(dataPath, 'utf8'));
+  const synoptic = JSON.parse(readFileSync(join(GEN, `${basin}-humidity-synoptic.json`), 'utf8'));
+  const out = { ...existing, humidity: { ...existing.humidity, synoptic } };
+  writeFileSync(dataPath, JSON.stringify(out));
+  console.log(`wrote ${dataPath} (added humidity.synoptic key)`);
+  return out;
+}
+
 if (import.meta.url === `file://${process.argv[1]}`) {
   const [basin, mode, dataFileName] = process.argv.slice(2);
-  if (!basin) { console.error('usage: node tools/merge_data.mjs <basin>\n       node tools/merge_data.mjs <basin> --humidity <data-file-name>'); process.exit(1); }
+  if (!basin) { console.error('usage: node tools/merge_data.mjs <basin>\n       node tools/merge_data.mjs <basin> --humidity <data-file-name>\n       node tools/merge_data.mjs <basin> --humidity-synoptic <data-file-name>'); process.exit(1); }
   if (mode === '--humidity') {
     if (!dataFileName) { console.error('usage: node tools/merge_data.mjs <basin> --humidity <data-file-name>'); process.exit(1); }
     mergeHumidity(basin, dataFileName);
+  } else if (mode === '--humidity-synoptic') {
+    if (!dataFileName) { console.error('usage: node tools/merge_data.mjs <basin> --humidity-synoptic <data-file-name>'); process.exit(1); }
+    mergeHumiditySynoptic(basin, dataFileName);
   } else {
     merge(basin);
   }

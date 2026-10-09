@@ -196,6 +196,10 @@ canvas.overlay{position:absolute;left:0;top:0;width:100%;height:100%;pointer-eve
           <input id="p-var" type="range" min="0" max="3" step="0.1" value="1">
         </div>
         <div class="row">
+          <div class="sl"><label for="p-wx">Day-to-day weather (humidity)</label><output id="p-wx-o">1.0×</output></div>
+          <input id="p-wx" type="range" min="0" max="3" step="0.1" value="1">
+        </div>
+        <div class="row">
           <div class="sl"><label for="p-sea">Seasonal swing</label><output id="p-sea-o">1.0×</output></div>
           <input id="p-sea" type="range" min="0" max="2" step="0.05" value="1">
         </div>
@@ -331,6 +335,26 @@ const humidEnsoC = new Float32Array(3 * CN);     // response to Niño 3.4 at lag
 { const a = b64i16(DATA.humidity.enso); for (let q = 0; q < a.length; q++) humidEnsoC[q] = a[q] / 1000; }
 const PHI_DAY_H = DATA.humidity.phi.map((p) => Math.pow(Math.max(0.3, p), 1 / 30.44));
 
+/* Day-to-day ("synoptic") humidity weather noise -- tropical waves, SAL outbreaks, the things
+   that make a real hurricane season's moisture flicker favorable/unfavorable over days, which a
+   monthly climatology can never show on its own (it's averaged away by construction). Checked
+   directly against 5 real years of daily ERA5 data before building this (see
+   make_humidity_synoptic.py's own docstring): unlike SST's and humidity's own interannual
+   variability, this does NOT decompose into a few dominant basin-wide EOF modes (the real
+   singular-value spectrum came back flat) -- real day-to-day RH anomalies here decorrelate in
+   space by about 16-20°, a short range versus this basin's own size, more like many
+   independent weather systems than one coherent pattern. So instead of eofC/pc-style mode
+   patterns, every coarse cell gets its own independent AR(1) process at that cell's own real,
+   measured amplitude (humidSynStdC) and persistence (humidSynPhiC) -- the existing upsample()
+   bicubic closure (same one used for every other field) is what supplies the spatial smoothing
+   between cells, not a shared spatial pattern. humidSynPhiC is already a real DAILY lag-1
+   autocorrelation (unlike PHI_DAY/PHI_DAY_H above, this needs no ^(1/30.44) monthly->daily
+   conversion -- it was fit directly from day-apart samples). */
+const humidSynStdC = new Float32Array(CN);
+{ const a = b64i16(DATA.humidity.synoptic.std); for (let q = 0; q < CN; q++) humidSynStdC[q] = a[q] / 10; }
+const humidSynPhiC = new Float32Array(CN);
+{ const a = b64i16(DATA.humidity.synoptic.phi); for (let q = 0; q < CN; q++) humidSynPhiC[q] = a[q] / 1000; }
+
 /* Catmull-Rom weights */
 function cr(t) { const t2 = t * t, t3 = t2 * t; return [-0.5 * t3 + t2 - 0.5 * t, 1.5 * t3 - 2.5 * t2 + 1, -1.5 * t3 + 2 * t2 + 0.5 * t, 0.5 * t3 - 0.5 * t2]; }
 
@@ -465,7 +489,7 @@ const R_CAN = rect(-26, -6.5, 10, 45), R_BEN = rect(4, 22, -37, -10), R_VEN = re
  * ------------------------------------------------------------------ */
 const START_YEAR = new Date().getUTCFullYear();
 const START_MS = Date.UTC(START_YEAR, 5, 1, 0, 0, 0);
-const P = { warming: 0, variability: 1, seasonal: 1, features: 1, enso: 1, seed: 1 };
+const P = { warming: 0, variability: 1, seasonal: 1, features: 1, enso: 1, synoptic: 1, seed: 1 };
 let rs = 1;
 function rand() { rs |= 0; rs = rs + 0x6D2B79F5 | 0; let t = Math.imul(rs ^ rs >>> 15, 1 | rs); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }
 function randn() { let u = 0; while (u === 0) u = rand(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * rand()); }
@@ -492,10 +516,14 @@ function forceEnso(target) {           // jump to a chosen state; the Atlantic t
 }
 
 let simHour = 0, dayCount = 0, pc = new Float32Array(K), pcH = new Float32Array(KH), gsShift = 0, eddies = [], nextShed = 0, lcDip = 0;
+const humidSynC = new Float32Array(CN);   // per-cell AR(1) state, °C-like units (% RH) directly -- no mode/pattern expansion, see decode comment above
+let lastSynDay = 0;
 function initSim(seed) {
   P.seed = seed; rs = (seed * 2654435761) >>> 0 || 1;
   for (let k = 0; k < K; k++) pc[k] = randn();
   for (let k = 0; k < KH; k++) pcH[k] = randn();
+  for (let q = 0; q < CN; q++) humidSynC[q] = randn() * humidSynStdC[q];
+  lastSynDay = 0;
   gsShift = randn() * 0.6; eddies = []; lcDip = 0; dayCount = 0; simHour = 0;
   nextShed = 40 + rand() * 200;
   ensoZr = randn(); ensoZi = randn(); n34 = 0; ensoHist.fill(0); ensoHi = 0;
@@ -524,6 +552,7 @@ const sst = new Float32Array(N), normal = new Float32Array(N), diff = new Float3
 const anomC = new Float32Array(CN), anomF = new Float32Array(N), ensoCo = new Float32Array(CN), ensoF = new Float32Array(N);
 const humid = new Float32Array(N);
 const humidAnomC = new Float32Array(CN), humidAnomF = new Float32Array(N), humidEnsoCo = new Float32Array(CN), humidEnsoF = new Float32Array(N);
+const humidSynF = new Float32Array(N);
 let anomDirty = true;
 const WARM_PEAK_BIAS = 1.0;   // deg C added at the seasonal peak (see computeField) to correct a cool bias there
 
@@ -548,6 +577,25 @@ function computeField() {
     upsample(humidAnomC, humidAnomF);
     for (let q = 0; q < CN; q++) humidEnsoCo[q] = c0 * humidEnsoC[q] + c3 * humidEnsoC[CN + q] + c6 * humidEnsoC[2 * CN + q];
     upsample(humidEnsoCo, humidEnsoF);
+
+    // Synoptic weather noise: advance every cell's own independent AR(1) state by however many
+    // simulated days passed since the last recompute, in one shot -- phi^nStep is the exact
+    // closed form for an AR(1) process observed nStep steps apart (the same identity PHI_DAY/
+    // PHI_DAY_H already use in reverse to turn a *monthly* phi into an equivalent *daily* one),
+    // so this is mathematically identical to actually stepping through each intervening day one
+    // at a time, not an approximation. Keeps a big time-jump (fast-forwarding months) O(CN) once
+    // here, not O(CN * days-skipped) -- the same amortized-until-needed shape anomDirty itself
+    // already gives pc/pcH's own mode-expansion above, just applied to a per-cell state instead
+    // of a per-mode one.
+    const nStep = dayCount - lastSynDay;
+    if (nStep > 0) {
+      for (let q = 0; q < CN; q++) {
+        const p = Math.pow(humidSynPhiC[q], nStep);
+        humidSynC[q] = p * humidSynC[q] + Math.sqrt(Math.max(0, 1 - p * p)) * humidSynStdC[q] * randn();
+      }
+      lastSynDay = dayCount;
+    }
+    upsample(humidSynC, humidSynF);
 
     anomDirty = false;
   }
@@ -625,17 +673,19 @@ function computeField() {
   }
 
   /* --- humidity: a separate, additive pass, not interleaved into the SST loop above --- *
-   * Deliberately only driven by P.variability/P.enso, not P.warming/P.seasonal/P.features:
-   * P.warming ("+N °C") is meaningless for a %RH field; P.features is explicitly SST's own
-   * ocean-current/upwelling correction, and this build's own point is that any real humidity
-   * feature (e.g. the Saharan Air Layer) comes through from raw data with no synthetic help;
-   * P.seasonal stretches SST's seasonal swing relative to SST's own annual mean, a mechanism
-   * humidity doesn't have -- its 12-month climatology already carries its own real seasonal
-   * cycle (the ITCZ/West African Monsoon's own migration, see the make_humidity.py build notes)
-   * directly, with nothing to stretch. P.variability/P.enso are the two sliders whose meaning
-   * is generic across any EOF/ENSO-regression-derived field, physically defensible since one
-   * real ENSO event drives both fields' own interannual variability. */
-  const hvs = P.variability, hes = P.enso;
+   * Deliberately only driven by P.variability/P.enso/P.synoptic, not P.warming/P.seasonal/
+   * P.features: P.warming ("+N °C") is meaningless for a %RH field; P.features is explicitly
+   * SST's own ocean-current/upwelling correction, and this build's own point is that any real
+   * humidity feature (e.g. the Saharan Air Layer) comes through from raw data with no synthetic
+   * help; P.seasonal stretches SST's seasonal swing relative to SST's own annual mean, a
+   * mechanism humidity doesn't have -- its 12-month climatology already carries its own real
+   * seasonal cycle (the ITCZ/West African Monsoon's own migration, see the make_humidity.py
+   * build notes) directly, with nothing to stretch. P.variability/P.enso are the two sliders
+   * whose meaning is generic across any EOF/ENSO-regression-derived field, physically defensible
+   * since one real ENSO event drives both fields' own interannual variability. P.synoptic has no
+   * SST equivalent at all -- real SST doesn't swing day to day the way real mid-level humidity
+   * does, so this is humidity's own slider (see humidSynC's own decode-block comment above). */
+  const hvs = P.variability, hes = P.enso, hws = P.synoptic;
   const HA0 = humidClimF[M(m1 - 1)], HA1 = humidClimF[M(m1)], HA2 = humidClimF[M(m1 + 1)], HA3 = humidClimF[M(m1 + 2)];
   for (let j = 0; j < NY; j++) {
     const o = j * NX;
@@ -643,7 +693,7 @@ function computeField() {
       const k = o + i;
       if (outOfBasin[k]) { humid[k] = NaN; continue; }
       const mth = w0 * HA0[k] + w1 * HA1[k] + w2 * HA2[k] + w3 * HA3[k];
-      let v = mth + hvs * humidAnomF[k] + hes * humidEnsoF[k];
+      let v = mth + hvs * humidAnomF[k] + hes * humidEnsoF[k] + hws * humidSynF[k];
       if (v > 100) v = 100 + 4 * Math.tanh((v - 100) / 4); else if (v < 2) v = 2 - 4 * Math.tanh((2 - v) / 4);   // soft: real RH can edge past [2,100] without ever doing so without limit
       humid[k] = v;
     }
@@ -1448,14 +1498,14 @@ $('detail').onchange = () => { syncDetail(); $('attr').textContent = TH.attr + (
 map.on('zoom', updateDetailOpacity);
 $('op').oninput = () => { $('op-o').textContent = $('op').value + '%'; scheduleRender(); };
 $('l265').onchange = scheduleRender; $('l2').onchange = scheduleRender;
-const sliders = [['p-warm', 'warming', (v) => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(1) + ' °C'], ['p-var', 'variability', (v) => v.toFixed(1) + '×'], ['p-sea', 'seasonal', (v) => v.toFixed(2).replace(/0$/, '') + '×'], ['p-feat', 'features', (v) => v.toFixed(2).replace(/0$/, '') + '×'], ['p-enso', 'enso', (v) => v.toFixed(2).replace(/0$/, '') + '×']];
+const sliders = [['p-warm', 'warming', (v) => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(1) + ' °C'], ['p-var', 'variability', (v) => v.toFixed(1) + '×'], ['p-wx', 'synoptic', (v) => v.toFixed(1) + '×'], ['p-sea', 'seasonal', (v) => v.toFixed(2).replace(/0$/, '') + '×'], ['p-feat', 'features', (v) => v.toFixed(2).replace(/0$/, '') + '×'], ['p-enso', 'enso', (v) => v.toFixed(2).replace(/0$/, '') + '×']];
 sliders.forEach(([id, key, fmt]) => { $(id).oninput = () => { P[key] = parseFloat($(id).value); $(id + '-o').textContent = fmt(P[key]); refresh(); }; });
 /* the seed gives each run its own slightly different climate: seasonal swing, currents/upwelling and ENSO strength move by a small but noticeable amount */
 function hash01(seed, k) { let t = (seed ^ Math.imul(k, 0x9E3779B1)) >>> 0; t = Math.imul(t ^ (t >>> 16), 0x85EBCA6B); t = Math.imul(t ^ (t >>> 13), 0xC2B2AE35); t ^= t >>> 16; return (t >>> 0) / 4294967296; }
 function seedJitter(seed, k, lo, hi) { const mag = lo + (hi - lo) * hash01(seed, k * 2 + 1), v = 1 + (hash01(seed, k * 2 + 2) < 0.5 ? -mag : mag); return Math.round(v / 0.05) * 0.05; }
 function seedSliderValues(seed) { return { 'p-sea': seedJitter(seed, 1, 0.08, 0.22), 'p-feat': seedJitter(seed, 2, 0.10, 0.30), 'p-enso': seedJitter(seed, 3, 0.12, 0.40) }; }
 function setSliderValues(vals) { for (const id in vals) $(id).value = vals[id]; sliders.forEach(([id, key, fmt]) => { P[key] = parseFloat($(id).value); $(id + '-o').textContent = fmt(P[key]); }); }
-$('b-reset').onclick = () => { setSliderValues(Object.assign({ 'p-warm': 0, 'p-var': 1 }, $('seed-vary').checked ? seedSliderValues(P.seed) : { 'p-sea': 1, 'p-feat': 1, 'p-enso': 1 })); refresh(); };
+$('b-reset').onclick = () => { setSliderValues(Object.assign({ 'p-warm': 0, 'p-var': 1, 'p-wx': 1 }, $('seed-vary').checked ? seedSliderValues(P.seed) : { 'p-sea': 1, 'p-feat': 1, 'p-enso': 1 })); refresh(); };
 function applySeed(s) { s = Math.max(1, Math.min(999999, Math.floor(s) || 1)); $('seed').value = s; P.seed = s; if ($('seed-vary').checked) setSliderValues(seedSliderValues(s)); restart(); }
 $('seed-vary').onchange = () => { setSliderValues($('seed-vary').checked ? seedSliderValues(P.seed) : { 'p-sea': 1, 'p-feat': 1, 'p-enso': 1 }); refresh(); };
 $('seed').onchange = () => applySeed(parseFloat($('seed').value));
@@ -1478,7 +1528,7 @@ window.SSTSIM = {
   sample(lat, lon) { return { sst: sampleField(sst, lat, lon), normal: sampleField(normal, lat, lon), humid: sampleField(humid, lat, lon) }; },
   state() { return { simHour, seed: P.seed, date: simDate(simHour).toISOString(), eddies: eddies.length, gsShift }; },
   set(k, v) { P[k] = v; refresh(); }, enso() { return { n34, lag0: ensoLag(0), lag3: ensoLag(91), lag6: ensoLag(183) }; }, forceEnso, setView(v) { document.querySelector('#seg-view button[data-v="' + v + '"]').click(); },
-  setPlaying, restart, map, render, setTheme, setGridMode, sliderVals() { return { seasonal: P.seasonal, features: P.features, enso: P.enso, warming: P.warming, variability: P.variability, seed: P.seed }; }, applySeed,
+  setPlaying, restart, map, render, setTheme, setGridMode, sliderVals() { return { seasonal: P.seasonal, features: P.features, enso: P.enso, warming: P.warming, variability: P.variability, synoptic: P.synoptic, seed: P.seed }; }, applySeed,
   bm() {
     const detail = !!(detailLayer && map.hasLayer(detailLayer));
     if (themeId === 'sat') { const st = TS.sat; return { theme: 'sat', idx: st.idx, offline: st.offline, loaded: st.loaded, label: st.offline ? 'offline (Blue Marble)' : (TILESETS.sat[st.idx] && TILESETS.sat[st.idx].label), detail, csp: cspBlocked }; }

@@ -70,11 +70,18 @@ nothing to run by hand.
   by roughly 10–35% (checkbox turns it off).
 - Humidity (Atlantic only so far): 700 hPa relative humidity, same shape as SST
   (real ERA5 2007–2021 monthly climatology + its own 6 EOFs/ENSO fit), a third
-  option in the Temperature/SST Anomaly view toggle. Only `variability`/`enso`
-  drive it (not `warming`/`seasonal`/`features` — see `tools/make_humidity.py`
-  and the humidity combine loop in `computeField()` for why). Data comes from
-  the public ARCO-ERA5 archive on Google Cloud Storage, not NOAA directly (see
-  `climate_lib.py`'s `load_era5_rh700()`).
+  option in the Temperature/SST Anomaly view toggle. Only `variability`/`enso`/
+  `synoptic` drive it (not `warming`/`seasonal`/`features` — see
+  `tools/make_humidity.py` and the humidity combine loop in `computeField()`
+  for why). Data comes from the public ARCO-ERA5 archive on Google Cloud
+  Storage, not NOAA directly (see `climate_lib.py`'s `load_era5_rh700()`).
+  Also carries real day-to-day ("synoptic") weather noise on top of the
+  monthly climatology — a per-cell AR(1) process at each cell's own real
+  measured amplitude/persistence (not a shared EOF pattern; a real spectrum
+  check found this field doesn't decompose into a few dominant modes the way
+  interannual variability does — see `tools/make_humidity_synoptic.py`),
+  driven by its own `synoptic` slider since real SST doesn't swing day to day
+  the way mid-level humidity does.
 
 ## Imagery
 The "Blue Marble" theme is a crop **embedded in the build** (`data.bm`, drawn on

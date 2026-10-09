@@ -228,6 +228,21 @@ await checkBasin('Atlantic', ATLANTIC_DIST, async (page, label) => {
   check(`[${label}] city tooltip still shows the SST hurricane-threshold line in the Humidity view`, /Above hurricane threshold|Below hurricane threshold/.test(miamiTip));
   check(`[${label}] city tooltip gains a parallel humidity-threshold line`, /Above favorable for development|Below favorable for development/.test(miamiTip));
 
+  // Day-to-day ("synoptic") weather noise: a monthly climatology alone can't flicker day to
+  // day, so this is a real second mechanism, not just the slow interannual/ENSO drift --
+  // confirm the "Day-to-day weather" slider defaults to 1x and genuinely gates real variation.
+  check(`[${label}] "Day-to-day weather" slider defaults to 1x`, (await page.evaluate(() => window.SSTSIM.sliderVals())).synoptic === 1);
+  const withNoise = [];
+  for (let d = 0; d < 8; d++) { await page.evaluate(() => window.SSTSIM.advance(24)); withNoise.push((await page.evaluate(() => window.SSTSIM.sample(25, -90))).humid); }
+  const stdOf = (xs) => { const m = xs.reduce((a, b) => a + b, 0) / xs.length; return Math.sqrt(xs.reduce((a, b) => a + (b - m) ** 2, 0) / xs.length); };
+  check(`[${label}] humidity genuinely varies day to day at the default slider setting`, stdOf(withNoise) > 1);
+
+  await page.evaluate(() => window.SSTSIM.set('synoptic', 0));
+  const withoutNoise = [];
+  for (let d = 0; d < 8; d++) { await page.evaluate(() => window.SSTSIM.advance(24)); withoutNoise.push((await page.evaluate(() => window.SSTSIM.sample(25, -90))).humid); }
+  check(`[${label}] setting the slider to 0 flattens day-to-day humidity`, stdOf(withoutNoise) < stdOf(withNoise));
+  await page.evaluate(() => window.SSTSIM.set('synoptic', 1));   // restore default before any checks after this one
+
   await page.evaluate(() => window.SSTSIM.setView('sst'));   // leave the page in its default state for any checks after this one
 
   await checkCityMarkers(page, label, 25.76, -80.19, 'Miami');

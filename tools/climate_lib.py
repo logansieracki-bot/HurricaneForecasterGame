@@ -285,3 +285,68 @@ def load_era5_rh700(target_lat, target_lon, year0, year1, level=700,
         os.makedirs(os.path.dirname(cache_path), exist_ok=True)
         rh_monthly.to_netcdf(cache_path)
     return rh_monthly
+
+
+def load_era5_rh700_daily(target_lat, target_lon, year0, year1, months=None, level=700,
+                           zarr_path=ERA5_ZARR, cache_path=None):
+    """Like load_era5_rh700, but reduces to DAILY means, not monthly -- for characterizing
+    synoptic-timescale (day-to-day: tropical waves, SAL outbreaks) variability, which a monthly
+    climatology structurally can't show (it's averaged away). Not a replacement for
+    load_era5_rh700 -- this is a different real quantity, used by a different build script
+    (make_humidity_synoptic.py, not make_humidity.py).
+
+    Same per-timestep RH derivation and same year-by-year loading as load_era5_rh700 (see its
+    own docstring for why -- one year's raw 6-hourly data stays memory-bounded regardless of how
+    many years this spans; loading the whole range in one .load() OOM-killed the build the first
+    time this was tried on the monthly version of this pull).
+
+    `months`, if given (e.g. range(6,12) for June-November), restricts to those calendar months
+    before regridding -- real hurricane-season synoptic character (SAL activity, tropical wave
+    trains) differs from the rest of the year, and this is for calibrating a noise process
+    that's only added during gameplay seasons that matter, not an annual-average one. This does
+    NOT reduce network cost (the archive's own time-only chunking means every day in range still
+    pulls its whole chunk regardless, see ERA5_ZARR's own docstring) -- only the post-download
+    memory/compute shrinks, by skipping the reduction work on months this build doesn't need.
+
+    Returns one value per (day, lat, lon), dated at that real calendar day (not day-15 proxy
+    dates the monthly version uses) -- feeds anomalies() unchanged, since that function only
+    ever keys off each timestamp's own calendar month, never its exact day-of-month."""
+    import os
+    if cache_path and os.path.exists(cache_path):
+        return xr.open_dataarray(cache_path)
+
+    ds = xr.open_zarr(zarr_path, storage_options={"token": "anon"}, chunks=None)
+    sub_all = ds[["specific_humidity", "temperature"]].sel(level=level, method="nearest")
+
+    yearly_daily = []
+    for year in range(year0, year1 + 1):
+        mask = sub_all["time"].dt.year == year
+        if months is not None:
+            mask = mask & sub_all["time"].dt.month.isin(list(months))
+        sub = sub_all.sel(time=mask).load()
+
+        t_c = sub["temperature"] - 273.15
+        e_sat = 6.112 * np.exp(17.67 * t_c / (t_c + 243.5))
+        q_sat = 0.622 * e_sat / (level - 0.378 * e_sat)
+        rh = 100.0 * sub["specific_humidity"] / q_sat
+
+        rh = rh.assign_coords(day=rh["time"].dt.floor("D"))
+        rh_year = rh.groupby("day").mean("time").compute()
+        rh_year = rh_year.rename({"day": "time"})
+        yearly_daily.append(rh_year)
+        del sub, rh
+
+    rh_daily = xr.concat(yearly_daily, dim="time").sortby("time")
+
+    lon180 = ((rh_daily["longitude"] + 180) % 360) - 180
+    rh_daily = rh_daily.assign_coords(longitude=lon180).sortby("longitude").sortby("latitude")
+    rh_daily = rh_daily.rename({"latitude": "lat", "longitude": "lon"})
+    rh_daily = rh_daily.interp(lat=target_lat, lon=target_lon, method="linear")
+    rh_daily = rh_daily.clip(0, 100)
+    rh_daily = rh_daily.transpose("time", "lat", "lon")
+    rh_daily.name = "rh700"
+
+    if cache_path:
+        os.makedirs(os.path.dirname(cache_path), exist_ok=True)
+        rh_daily.to_netcdf(cache_path)
+    return rh_daily
