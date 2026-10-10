@@ -359,6 +359,24 @@ await checkBasin('Atlantic', ATLANTIC_DIST, async (page, label) => {
   check(`[${label}] forced El Nino raises MDR wind shear vs. forced La Nina (real teleconnection)`, elNinoShear > laNinaShear);
   await page.evaluate(() => window.SSTSIM.restart());   // clears the forced ENSO state and re-spins-up normally
 
+  // Wind Shear's own day-to-day ("synoptic") noise, Phase 2 -- real upper-level trough
+  // passages/jet streaks on top of Phase 1's climatology+ENSO base, same mirrored pattern as
+  // humidity's own synoptic check above, but through its own dedicated P.shearSynoptic slider
+  // (not P.synoptic -- see the shear combine-loop comment in template.html for why this field
+  // gets its own, mechanistically distinct from humidity's day-to-day noise). Sampled at the
+  // same MDR point (12,-45) the ENSO-sign check above already uses, well clear of any coastline.
+  check(`[${label}] "Day-to-day weather (wind shear)" slider defaults to 1x`, (await page.evaluate(() => window.SSTSIM.sliderVals())).shearSynoptic === 1);
+  const withShearNoise = [];
+  for (let d = 0; d < 8; d++) { await page.evaluate(() => window.SSTSIM.advance(24)); withShearNoise.push((await page.evaluate(() => window.SSTSIM.sample(12, -45))).shear); }
+  check(`[${label}] wind shear genuinely varies day to day at the default slider setting (real synoptic noise, not frozen)`, stdOf(withShearNoise) > 1);
+
+  await page.evaluate(() => window.SSTSIM.set('shearSynoptic', 0));
+  const withoutShearNoise = [];
+  for (let d = 0; d < 8; d++) { await page.evaluate(() => window.SSTSIM.advance(24)); withoutShearNoise.push((await page.evaluate(() => window.SSTSIM.sample(12, -45))).shear); }
+  check(`[${label}] setting the slider to 0 flattens day-to-day wind shear`, stdOf(withoutShearNoise) < stdOf(withShearNoise));
+  await page.evaluate(() => window.SSTSIM.set('shearSynoptic', 1));   // restore default before any checks after this one
+  await page.evaluate(() => window.SSTSIM.restart());   // clears the 16 simulated days of drift above, same reasoning as the ENSO check's own closing restart
+
   // The bottom-left readout's own Shear branch (Atlantic-only, so checked here rather than in
   // the shared checkBasin() body above, which only exercises sst/anom -- every basin has those).
   // Re-hover explicitly rather than relying on `pointer` still holding its value from the

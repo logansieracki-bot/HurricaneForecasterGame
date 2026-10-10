@@ -201,6 +201,10 @@ canvas.overlay{position:absolute;left:0;top:0;width:100%;height:100%;pointer-eve
           <input id="p-wx" type="range" min="0" max="3" step="0.1" value="1">
         </div>
         <div class="row">
+          <div class="sl"><label for="p-wxs">Day-to-day weather (wind shear)</label><output id="p-wxs-o">1.0×</output></div>
+          <input id="p-wxs" type="range" min="0" max="3" step="0.1" value="1">
+        </div>
+        <div class="row">
           <div class="sl"><label for="p-sea">Seasonal swing</label><output id="p-sea-o">1.0×</output></div>
           <input id="p-sea" type="range" min="0" max="2" step="0.05" value="1">
         </div>
@@ -369,6 +373,36 @@ const humidSynStdC = new Float32Array(CN);
 const humidSynPhiC = new Float32Array(CN);
 { const a = b64i16(DATA.humidity.synoptic.phi); for (let q = 0; q < CN; q++) humidSynPhiC[q] = a[q] / 1000; }
 
+/* Day-to-day ("synoptic") wind shear weather noise -- upper-level trough passages and jet
+   streaks, the things that make a real hurricane season's shear flicker favorable/unfavorable
+   over days, which Phase 1's monthly climatology can never show on its own. Checked directly
+   against 5 real years of daily ERA5 data, restricted to this basin's own Jun-Nov season (see
+   make_shear_synoptic.py's own docstring) before building this, the same discipline every other
+   field here follows: UNLIKE humidity's own synoptic layer above, this one does partially
+   decompose into a few dominant modes -- the real singular-value spectrum has a genuine elbow
+   (mode 1 alone explains 14.3% of this basin's own domain-wide daily variance, roughly 3-4x any
+   other single mode), a coherent, elongated, jet-latitude-shift-like pattern that a per-cell-
+   independent approach (what humidity uses) would miss entirely. So this is a HYBRID, not a
+   copy of either existing design: a small-k EOF component (shearSynEofC/shearSynPhiC, same
+   technique as the interannual variability arrays above -- shearSynPhiC is already a real DAILY
+   lag-1 autocorrelation per mode, fit directly from day-apart PC samples, so unlike PHI_DAY_S
+   above it needs no ^(1/30.44) monthly->daily conversion) plus a per-cell AR(1) residual on top
+   (shearSynResidStdC/shearSynResidPhiC, same technique as humidSynStdC/humidSynPhiC above) for
+   the leftover local variance those modes don't reach. The residual was fit on (real anomaly -
+   EOF reconstruction), never the raw anomaly, so the two layers' variance isn't double-counted.
+   k=15, not the interannual layers' own k=6 default: the real cumulative variance explained
+   keeps climbing meaningfully past 6 modes (31%->47% at k=15) and specifically helps most where
+   the real jet actually lives (mid/high latitudes, not the tropics) -- see docs/roadmap.md for
+   the full real numbers this was calibrated against. */
+const KSS = DATA.shear.synoptic.K;
+const shearSynEofC = new Float32Array(KSS * CN);   // jet-pattern EOF patterns (kt per +1σ of each mode)
+{ const a = b64i16(DATA.shear.synoptic.eof); for (let q = 0; q < a.length; q++) shearSynEofC[q] = a[q] / 1000; }
+const shearSynPhiC = DATA.shear.synoptic.phi;       // already real daily lag-1 autocorrelation per mode, no conversion needed
+const shearSynResidStdC = new Float32Array(CN);
+{ const a = b64i16(DATA.shear.synoptic.residStd); for (let q = 0; q < CN; q++) shearSynResidStdC[q] = a[q] / 10; }
+const shearSynResidPhiC = new Float32Array(CN);
+{ const a = b64i16(DATA.shear.synoptic.residPhi); for (let q = 0; q < CN; q++) shearSynResidPhiC[q] = a[q] / 1000; }
+
 /* Catmull-Rom weights */
 function cr(t) { const t2 = t * t, t3 = t2 * t; return [-0.5 * t3 + t2 - 0.5 * t, 1.5 * t3 - 2.5 * t2 + 1, -1.5 * t3 + 2 * t2 + 0.5 * t, 0.5 * t3 - 0.5 * t2]; }
 
@@ -505,7 +539,7 @@ const R_CAN = rect(-26, -6.5, 10, 45), R_BEN = rect(4, 22, -37, -10), R_VEN = re
  * ------------------------------------------------------------------ */
 const START_YEAR = new Date().getUTCFullYear();
 const START_MS = Date.UTC(START_YEAR, 5, 1, 0, 0, 0);
-const P = { warming: 0, variability: 1, seasonal: 1, features: 1, enso: 1, synoptic: 1, seed: 1 };
+const P = { warming: 0, variability: 1, seasonal: 1, features: 1, enso: 1, synoptic: 1, shearSynoptic: 1, seed: 1 };
 let rs = 1;
 function rand() { rs |= 0; rs = rs + 0x6D2B79F5 | 0; let t = Math.imul(rs ^ rs >>> 15, 1 | rs); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }
 function randn() { let u = 0; while (u === 0) u = rand(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * rand()); }
@@ -534,6 +568,15 @@ function forceEnso(target) {           // jump to a chosen state; the Atlantic t
 let simHour = 0, dayCount = 0, pc = new Float32Array(K), pcH = new Float32Array(KH), pcS = new Float32Array(KS), gsShift = 0, eddies = [], nextShed = 0, lcDip = 0;
 const humidSynC = new Float32Array(CN);   // per-cell AR(1) *generator* state, % RH directly -- no mode/pattern expansion, see decode comment above
 let lastSynDay = 0;
+// Shear's own synoptic noise is a hybrid (see decode comment above): pcSS is the daily-advancing
+// EOF *generator* state for the jet-pattern modes (mirrors pc/pcH/pcS's own per-day update, just
+// driven by the closed-form phi^nStep step below instead of stepDay() -- shearSynResidC below
+// needs that closed form regardless, since it's O(CN) per step, so pcSS uses the same mechanism
+// to stay on the exact same simulated day as its own residual counterpart at every fast-forward
+// jump, rather than drifting out of sync the way a stepDay()-driven, 800-day-capped update could).
+const pcSS = new Float32Array(KSS);
+const shearSynResidC = new Float32Array(CN);   // per-cell AR(1) residual *generator* state, kt -- same role as humidSynC above, fit on the leftover variance after removing the EOF reconstruction
+let lastShearSynDay = 0;
 // Two FINE-resolution daily snapshots -- synPrev at day boundary synDay, synCur at synDay+1 --
 // linearly blended by the fraction of the way through the current day every render, so the
 // field evolves continuously hour to hour like real weather instead of holding one value for an
@@ -546,13 +589,18 @@ let lastSynDay = 0;
 // more than one day between renders, which it routinely does at high speed.
 const humidSynPrev = new Float32Array(N), humidSynCur = new Float32Array(N);
 let synDay = -999;   // which day humidSynPrev is pinned to (humidSynCur is always synDay+1); forces a build on first use
+const shearSynPrev = new Float32Array(N), shearSynCur = new Float32Array(N);
+let shearSynDay = -999;
 function initSim(seed) {
   P.seed = seed; rs = (seed * 2654435761) >>> 0 || 1;
   for (let k = 0; k < K; k++) pc[k] = randn();
   for (let k = 0; k < KH; k++) pcH[k] = randn();
   for (let k = 0; k < KS; k++) pcS[k] = randn();
+  for (let k = 0; k < KSS; k++) pcSS[k] = randn();
   for (let q = 0; q < CN; q++) humidSynC[q] = randn() * humidSynStdC[q];
+  for (let q = 0; q < CN; q++) shearSynResidC[q] = randn() * shearSynResidStdC[q];
   lastSynDay = 0; synDay = -999;
+  lastShearSynDay = 0; shearSynDay = -999;
   gsShift = randn() * 0.6; eddies = []; lcDip = 0; dayCount = 0; simHour = 0;
   nextShed = 40 + rand() * 200;
   ensoZr = randn(); ensoZi = randn(); n34 = 0; ensoHist.fill(0); ensoHi = 0;
@@ -616,6 +664,78 @@ function ensureSynDay(d) {
   synDay = d;
 }
 
+// Shear's own synoptic noise, same closed-form phi^nStep technique as advanceSynTo above,
+// applied to BOTH generator states at once (the small KSS-length EOF PC vector and the CN-length
+// per-cell residual) so they stay pinned to the exact same simulated day as each other at every
+// fast-forward jump, however large.
+const shearSynCoarse = new Float32Array(CN);   // scratch: EOF jet-pattern reconstruction + per-cell residual, summed at coarse resolution before the one upsample below -- NOT two separate upsamples, since upsample()'s own local min/max clamp (see its declaration comment) needs to see the combined noise field to clamp correctly, not each piece separately
+
+// Real shear anomalies correlate meaningfully between nearby cells (2-5 deg apart: +0.69 to
+// +0.94, fading out by 15-20 deg -- see decode comment above) -- drawing each coarse (2 deg)
+// cell's own daily random shock fully independently, as a naive per-cell AR(1) would, throws
+// that real local coherence away entirely. This was tried first and confirmed (by actually
+// rendering it, not assumed) to look wrong: pure static rather than a weather-like field,
+// because upsample()'s own bicubic smoothing can't manufacture correlation between coarse
+// samples that were never correlated to begin with, and its own overshoot clamp (see its
+// declaration comment) ends up active almost everywhere instead of rarely, since nearly every
+// adjacent coarse pair looks like a "sharp jump" to it. Fixed at the source instead of fighting
+// it downstream: each day's random shock is still drawn independently per cell, then passed
+// through one separable smoothing pass (X then Y) before use, a 5-tap kernel [a2,a1,c,a1,a2]
+// reaching 2 coarse cells (4 deg) either side, close to the real measured correlation length.
+// Weights are relative [1,3,6,3,1], L2-normalized (divided by sqrt(1+9+36+9+1)=sqrt(56)) so
+// sum(w^2)=1 exactly -- for i.i.d. unit-variance inputs that gives an EXACTLY unit-variance
+// output at every interior cell with no empirical re-calibration needed (Var of a weighted sum
+// of independent unit-variance terms is just the sum of the weights' own squares), and critically
+// the X-pass's own output across different ROWS stays mutually independent (each row's X-pass
+// only ever touches that row's own input values), so the following Y-pass's variance works out
+// exactly unit too, by the same reasoning applied once more. (Iterating this same kernel on its
+// own already-smoothed output, tried first, does NOT stay unit-variance past the first round --
+// the independence argument breaks down, and this specific kernel's sum-of-weights exceeds 1, so
+// repeated rounds blow up geometrically, confirmed empirically: std grew to ~5x after 3 rounds.
+// A single wider pass avoids that instability entirely while reaching the same footprint.)
+const SW2 = 1 / Math.sqrt(56), SW1 = 3 / Math.sqrt(56), SW0 = 6 / Math.sqrt(56);
+const shearSynInnov = new Float32Array(CN), shearSynInnovX = new Float32Array(CN);
+function smoothedShearInnovation() {
+  for (let q = 0; q < CN; q++) shearSynInnov[q] = randn();
+  for (let r = 0; r < CNY; r++) {
+    const ro = r * CNX;
+    for (let c = 0; c < CNX; c++) {
+      const c2l = Math.max(0, c - 2), c1l = Math.max(0, c - 1), c1r = Math.min(CNX - 1, c + 1), c2r = Math.min(CNX - 1, c + 2);
+      shearSynInnovX[ro + c] = SW2 * shearSynInnov[ro + c2l] + SW1 * shearSynInnov[ro + c1l] + SW0 * shearSynInnov[ro + c] + SW1 * shearSynInnov[ro + c1r] + SW2 * shearSynInnov[ro + c2r];
+    }
+  }
+  for (let r = 0; r < CNY; r++) {
+    const r2u = Math.max(0, r - 2) * CNX, r1u = Math.max(0, r - 1) * CNX, ro = r * CNX, r1d = Math.min(CNY - 1, r + 1) * CNX, r2d = Math.min(CNY - 1, r + 2) * CNX;
+    for (let c = 0; c < CNX; c++) shearSynInnov[ro + c] = SW2 * shearSynInnovX[r2u + c] + SW1 * shearSynInnovX[r1u + c] + SW0 * shearSynInnovX[ro + c] + SW1 * shearSynInnovX[r1d + c] + SW2 * shearSynInnovX[r2d + c];
+  }
+  return shearSynInnov;
+}
+function advanceShearSynTo(targetDay) {
+  const nStep = targetDay - lastShearSynDay;
+  if (nStep <= 0) return;
+  for (let k = 0; k < KSS; k++) {
+    const p = Math.pow(shearSynPhiC[k], nStep);
+    pcSS[k] = p * pcSS[k] + Math.sqrt(Math.max(0, 1 - p * p)) * randn();
+  }
+  const innov = smoothedShearInnovation();
+  for (let q = 0; q < CN; q++) {
+    const p = Math.pow(shearSynResidPhiC[q], nStep);
+    shearSynResidC[q] = p * shearSynResidC[q] + Math.sqrt(Math.max(0, 1 - p * p)) * shearSynResidStdC[q] * innov[q];
+  }
+  lastShearSynDay = targetDay;
+}
+function buildShearSynCoarse() {
+  shearSynCoarse.fill(0);
+  for (let k = 0; k < KSS; k++) { const c = pcSS[k]; if (!c) continue; const o = k * CN; for (let q = 0; q < CN; q++) shearSynCoarse[q] += c * shearSynEofC[o + q]; }
+  for (let q = 0; q < CN; q++) shearSynCoarse[q] += shearSynResidC[q];
+}
+function ensureShearSynDay(d) {
+  if (d === shearSynDay) return;
+  advanceShearSynTo(d); buildShearSynCoarse(); upsample(shearSynCoarse, shearSynPrev);
+  advanceShearSynTo(d + 1); buildShearSynCoarse(); upsample(shearSynCoarse, shearSynCur);
+  shearSynDay = d;
+}
+
 function computeField() {
   const d = simDate(simHour), y = d.getUTCFullYear(), doy = (d.getTime() - Date.UTC(y, 0, 1)) / 86400000;
   const ylen = ((y % 4 === 0 && y % 100 !== 0) || y % 400 === 0) ? 366 : 365, f = doy / ylen;
@@ -631,6 +751,7 @@ function computeField() {
   // humidSynPrev/humidSynCur's own declaration comment for why plain linear is enough here).
   const synD = Math.floor(simHour / 24), synT = simHour / 24 - synD;
   ensureSynDay(synD);
+  ensureShearSynDay(synD);   // same day boundary/fraction as humidity's own blend just above -- one simulated clock, shared across both fields' synoptic layers
   const sp0 = 1 - synT, sp1 = synT;
 
   if (anomDirty) {
@@ -757,17 +878,25 @@ function computeField() {
   }
 
   /* --- wind shear: a third separate, additive pass, same shape as humidity's own above.
-   * Phase 1 only (climatology + EOF interannual variability + ENSO regression) -- no day-to-day
-   * synoptic layer yet, that's an explicit deferred follow-up, the same order humidity's own
-   * synoptic layer was added well after its climatology+ENSO base shipped and was confirmed
-   * good (see docs/roadmap.md). Driven only by P.variability/P.enso, for the same reasons
+   * Climatology + EOF interannual variability + ENSO regression (Phase 1), plus its own
+   * day-to-day synoptic layer (Phase 2, the hybrid EOF+residual noise decoded above) --
+   * the same two-phase order humidity's own synoptic layer was added well after its
+   * climatology+ENSO base shipped and was confirmed good (see docs/roadmap.md). The
+   * interannual terms are driven only by P.variability/P.enso, for the same reasons
    * humidity's own combine pass gives above: P.warming is meaningless for a kt field,
    * P.seasonal/P.features are SST-current-specific mechanisms shear has no equivalent of (its
    * own 12-month climatology already carries the real seasonal cycle -- low in hurricane
    * season, high in winter, the jet stream's own real migration -- directly, nothing to
    * stretch), and one real ENSO event driving both fields' own interannual variability is just
-   * as physically defensible here as it is for humidity. */
-  const svs = P.variability, ses = P.enso;
+   * as physically defensible here as it is for humidity. The synoptic term has its own
+   * dedicated slider (P.shearSynoptic, not P.synoptic) -- real day-to-day shear noise (jet
+   * meandering, trough passages) is mechanistically distinct from humidity's own (tropical
+   * waves, SAL outbreaks), confirmed by the very different real structure each one's own build
+   * script found (shear's real EOF elbow vs. humidity's flat spectrum), matching this
+   * codebase's existing precedent of giving a field its own slider once it has no real
+   * equivalent in a field that already has one (same reasoning P.synoptic itself was added
+   * for, see its own decode-block comment above). */
+  const svs = P.variability, ses = P.enso, sws = P.shearSynoptic;
   const SA0 = shearClimF[M(m1 - 1)], SA1 = shearClimF[M(m1)], SA2 = shearClimF[M(m1 + 1)], SA3 = shearClimF[M(m1 + 2)];
   for (let j = 0; j < NY; j++) {
     const o = j * NX;
@@ -775,7 +904,8 @@ function computeField() {
       const k = o + i;
       if (outOfBasin[k]) { shear[k] = NaN; continue; }
       const mth = w0 * SA0[k] + w1 * SA1[k] + w2 * SA2[k] + w3 * SA3[k];
-      let v = mth + svs * shearAnomF[k] + ses * shearEnsoF[k];
+      const syn = sp0 * shearSynPrev[k] + sp1 * shearSynCur[k];
+      let v = mth + svs * shearAnomF[k] + ses * shearEnsoF[k] + sws * syn;
       if (v > 115) v = 115 + 10 * Math.tanh((v - 115) / 10); else if (v < 2) v = 2 - 4 * Math.tanh((2 - v) / 4);   // soft: real shear can edge past this basin's own observed [4,106.5] climatological range without ever doing so without limit, same spirit as every other field's own soft clamp
       shear[k] = v;
     }
@@ -1617,14 +1747,14 @@ $('detail').onchange = () => { syncDetail(); $('attr').textContent = TH.attr + (
 map.on('zoom', updateDetailOpacity);
 $('op').oninput = () => { $('op-o').textContent = $('op').value + '%'; scheduleRender(); };
 $('l265').onchange = scheduleRender; $('l2').onchange = scheduleRender;
-const sliders = [['p-warm', 'warming', (v) => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(1) + ' °C'], ['p-var', 'variability', (v) => v.toFixed(1) + '×'], ['p-wx', 'synoptic', (v) => v.toFixed(1) + '×'], ['p-sea', 'seasonal', (v) => v.toFixed(2).replace(/0$/, '') + '×'], ['p-feat', 'features', (v) => v.toFixed(2).replace(/0$/, '') + '×'], ['p-enso', 'enso', (v) => v.toFixed(2).replace(/0$/, '') + '×']];
+const sliders = [['p-warm', 'warming', (v) => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(1) + ' °C'], ['p-var', 'variability', (v) => v.toFixed(1) + '×'], ['p-wx', 'synoptic', (v) => v.toFixed(1) + '×'], ['p-wxs', 'shearSynoptic', (v) => v.toFixed(1) + '×'], ['p-sea', 'seasonal', (v) => v.toFixed(2).replace(/0$/, '') + '×'], ['p-feat', 'features', (v) => v.toFixed(2).replace(/0$/, '') + '×'], ['p-enso', 'enso', (v) => v.toFixed(2).replace(/0$/, '') + '×']];
 sliders.forEach(([id, key, fmt]) => { $(id).oninput = () => { P[key] = parseFloat($(id).value); $(id + '-o').textContent = fmt(P[key]); refresh(); }; });
 /* the seed gives each run its own slightly different climate: seasonal swing, currents/upwelling and ENSO strength move by a small but noticeable amount */
 function hash01(seed, k) { let t = (seed ^ Math.imul(k, 0x9E3779B1)) >>> 0; t = Math.imul(t ^ (t >>> 16), 0x85EBCA6B); t = Math.imul(t ^ (t >>> 13), 0xC2B2AE35); t ^= t >>> 16; return (t >>> 0) / 4294967296; }
 function seedJitter(seed, k, lo, hi) { const mag = lo + (hi - lo) * hash01(seed, k * 2 + 1), v = 1 + (hash01(seed, k * 2 + 2) < 0.5 ? -mag : mag); return Math.round(v / 0.05) * 0.05; }
 function seedSliderValues(seed) { return { 'p-sea': seedJitter(seed, 1, 0.08, 0.22), 'p-feat': seedJitter(seed, 2, 0.10, 0.30), 'p-enso': seedJitter(seed, 3, 0.12, 0.40) }; }
 function setSliderValues(vals) { for (const id in vals) $(id).value = vals[id]; sliders.forEach(([id, key, fmt]) => { P[key] = parseFloat($(id).value); $(id + '-o').textContent = fmt(P[key]); }); }
-$('b-reset').onclick = () => { setSliderValues(Object.assign({ 'p-warm': 0, 'p-var': 1, 'p-wx': 1 }, $('seed-vary').checked ? seedSliderValues(P.seed) : { 'p-sea': 1, 'p-feat': 1, 'p-enso': 1 })); refresh(); };
+$('b-reset').onclick = () => { setSliderValues(Object.assign({ 'p-warm': 0, 'p-var': 1, 'p-wx': 1, 'p-wxs': 1 }, $('seed-vary').checked ? seedSliderValues(P.seed) : { 'p-sea': 1, 'p-feat': 1, 'p-enso': 1 })); refresh(); };
 function applySeed(s) { s = Math.max(1, Math.min(999999, Math.floor(s) || 1)); $('seed').value = s; P.seed = s; if ($('seed-vary').checked) setSliderValues(seedSliderValues(s)); restart(); }
 $('seed-vary').onchange = () => { setSliderValues($('seed-vary').checked ? seedSliderValues(P.seed) : { 'p-sea': 1, 'p-feat': 1, 'p-enso': 1 }); refresh(); };
 $('seed').onchange = () => applySeed(parseFloat($('seed').value));
@@ -1647,7 +1777,7 @@ window.SSTSIM = {
   sample(lat, lon) { return { sst: sampleField(sst, lat, lon), normal: sampleField(normal, lat, lon), humid: sampleField(humid, lat, lon), shear: sampleField(shear, lat, lon) }; },
   state() { return { simHour, seed: P.seed, date: simDate(simHour).toISOString(), eddies: eddies.length, gsShift }; },
   set(k, v) { P[k] = v; refresh(); }, enso() { return { n34, lag0: ensoLag(0), lag3: ensoLag(91), lag6: ensoLag(183) }; }, forceEnso, setView(v) { document.querySelector('#seg-view button[data-v="' + v + '"]').click(); },
-  setPlaying, restart, map, render, setTheme, setGridMode, sliderVals() { return { seasonal: P.seasonal, features: P.features, enso: P.enso, warming: P.warming, variability: P.variability, synoptic: P.synoptic, seed: P.seed }; }, applySeed, isLand,
+  setPlaying, restart, map, render, setTheme, setGridMode, sliderVals() { return { seasonal: P.seasonal, features: P.features, enso: P.enso, warming: P.warming, variability: P.variability, synoptic: P.synoptic, shearSynoptic: P.shearSynoptic, seed: P.seed }; }, applySeed, isLand,
   bm() {
     const detail = !!(detailLayer && map.hasLayer(detailLayer));
     if (themeId === 'sat') { const st = TS.sat; return { theme: 'sat', idx: st.idx, offline: st.offline, loaded: st.loaded, label: st.offline ? 'offline (Blue Marble)' : (TILESETS.sat[st.idx] && TILESETS.sat[st.idx].label), detail, csp: cspBlocked }; }

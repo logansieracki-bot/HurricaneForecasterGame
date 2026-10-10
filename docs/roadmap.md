@@ -1,6 +1,57 @@
 # Roadmap
 
 ## Just landed
+- **Added Wind Shear Phase 2: real day-to-day ("synoptic") noise on top of Phase 1's climatology
+  + ENSO base.** The user asked for Phase 2 directly, alongside separate feedback (with a real
+  GFS 300 hPa jet-stream chart attached for comparison) that the Phase 1 field didn't read as a
+  prominent, definable jet -- both pointed at the same root cause: a monthly-climatology-based
+  field structurally can't show a transient jet streak, the exact limitation that motivated
+  Humidity's own Phase 2 before this one.
+
+  Checked directly whether shear's real daily structure should copy Humidity's own synoptic
+  design (pure per-cell AR(1) -- its real spectrum came back flat) rather than assume it would:
+  it doesn't. 5 years of real daily ERA5 200-850 hPa shear, restricted to the Atlantic's own
+  Jun-Nov season (not the full year -- winter jet variability is 1.5-2x stronger and would
+  otherwise dominate the fit), shows a genuine EOF elbow -- mode 1 alone explains 14.3% of
+  domain-wide daily variance, roughly 3-4x any other single mode, cumulative top 6 = 31.3%, top
+  15 = 47.3% (diminishing fast past that: top 20 only adds 5.7% more). So this is a hybrid, not a
+  copy of either existing pattern: a 15-mode EOF component for the coherent, elongated,
+  jet-latitude-shift-like part, plus a per-cell AR(1) residual (same technique as Humidity's own)
+  fit on the leftover variance after removing the EOF reconstruction, so the two layers' variance
+  isn't double-counted. k=15 over the interannual layers' own k=6 default because the extra modes
+  specifically help most where the real jet lives: at a North Atlantic storm-track point, k=15
+  explains 31% of local variance vs k=6's 9%, while even k=15 only reaches 27% at the tropical
+  MDR (where genesis actually happens) -- confirming the EOF modes track the real jet's own
+  latitude, not the tropics, and that the residual layer still carries most of the real day-to-day
+  variability at genesis-relevant latitudes (residual std there: 8.5-19.7 kt, smoothed).
+
+  A first version, built and rendered before shipping (not just eyeballed from the numbers), hit a
+  real bug worth recording: drawing each coarse (2°) cell's own daily residual shock fully
+  independently -- correct by the real per-cell variance accounting, and the same simplification
+  Humidity's own synoptic layer already uses -- rendered as pure static rather than a weather-like
+  field. Real shear anomalies correlate +0.69 to +0.94 at 2-5° (checked directly, not assumed);
+  throwing that away entirely meant upsample()'s own bicubic smoothing had nothing coherent to
+  interpolate between, and its own overshoot clamp ended up active almost everywhere instead of
+  rarely, since nearly every adjacent coarse pair looked like a "sharp jump" to it. Fixed at the
+  source: each day's random shock is spatially smoothed before use with a separable 5-tap kernel
+  (weights [1,3,6,3,1], L2-normalized), chosen because it gives an *exactly* unit-variance output
+  for i.i.d. input with no empirical re-calibration needed, while reaching a correlation length
+  (near-zero by ~16-20°, verified directly) matching the real measured one. (A simpler first
+  attempt -- iterating a smaller exact-variance kernel on its own output -- was tried and
+  rejected: confirmed empirically to be unstable, not just imprecise, with std growing to ~5x
+  after 3 rounds, since the kernel's own DC gain exceeds 1 and the exact-variance argument only
+  holds for a single pass on true i.i.d. input.) Re-rendered after the fix: smooth, organic,
+  realistically evolving day to day, visually comparable to Humidity's own already-shipped
+  synoptic view, with Phase 1's own broad climatological gradient still visible underneath.
+
+  Its own dedicated `Day-to-day weather (wind shear)` slider (`P.shearSynoptic`), not a reuse of
+  Humidity's -- the two fields' day-to-day noise is mechanistically distinct (confirmed by the
+  very different real structure each one's own build script found), the same reasoning that
+  already justified giving Humidity's own synoptic layer a dedicated slider instead of reusing
+  `variability`/`enso`. Atlantic only, matching Phase 1's own scope; day-to-day noise for the
+  other 8 basins' eventual shear rollout is a separate, later step. Full suite: 423 checks (up
+  from 420), zero regressions, confirmed clean on two separate full runs.
+
 - **Fixed the bottom-left hover readout to reflect whichever view is selected, not just SST.**
   The user flagged this directly: switching to Anomaly/Humidity/Wind Shear changed the legend
   and city tooltips but the readout card under the mouse kept reporting SST regardless -- the
@@ -1090,5 +1141,5 @@ again building EPAC):**
   not started; Simulation mode across basins comes first.
 - Radar/satellite storm imagery (synthetic, generated from the sim's own storm
   state — not a real tile provider).
-- Wind Shear's own day-to-day synoptic noise layer (Phase 2 -- Phase 1, climatology + ENSO
-  only, is done, Atlantic only) and rolling Wind Shear out to the other 8 basins.
+- Rolling Wind Shear (climatology + EOF + ENSO + its own day-to-day synoptic noise, all now
+  done for the Atlantic) out to the other 8 basins.

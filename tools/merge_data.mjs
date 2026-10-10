@@ -74,9 +74,23 @@ export function mergeShear(basin, dataFileName) {
   return out;
 }
 
+// Layers a basin's own <basin>-shear-synoptic.json (day-to-day weather-timescale shear noise,
+// see make_shear_synoptic.py) onto an already-merged, shear-bearing data file, nested under
+// shear.synoptic -- exact same shape and reasoning as mergeHumiditySynoptic above (no domain of
+// its own; no top-level key collisions with shear's own K/clim/eof/enso/phi).
+export function mergeShearSynoptic(basin, dataFileName) {
+  const dataPath = join(GEN, dataFileName);
+  const existing = JSON.parse(readFileSync(dataPath, 'utf8'));
+  const synoptic = JSON.parse(readFileSync(join(GEN, `${basin}-shear-synoptic.json`), 'utf8'));
+  const out = { ...existing, shear: { ...existing.shear, synoptic } };
+  writeFileSync(dataPath, JSON.stringify(out));
+  console.log(`wrote ${dataPath} (added shear.synoptic key)`);
+  return out;
+}
+
 if (import.meta.url === `file://${process.argv[1]}`) {
   const [basin, mode, dataFileName] = process.argv.slice(2);
-  if (!basin) { console.error('usage: node tools/merge_data.mjs <basin>\n       node tools/merge_data.mjs <basin> --humidity <data-file-name>\n       node tools/merge_data.mjs <basin> --humidity-synoptic <data-file-name>\n       node tools/merge_data.mjs <basin> --shear <data-file-name>'); process.exit(1); }
+  if (!basin) { console.error('usage: node tools/merge_data.mjs <basin>\n       node tools/merge_data.mjs <basin> --humidity <data-file-name>\n       node tools/merge_data.mjs <basin> --humidity-synoptic <data-file-name>\n       node tools/merge_data.mjs <basin> --shear <data-file-name>\n       node tools/merge_data.mjs <basin> --shear-synoptic <data-file-name>'); process.exit(1); }
   if (mode === '--humidity') {
     if (!dataFileName) { console.error('usage: node tools/merge_data.mjs <basin> --humidity <data-file-name>'); process.exit(1); }
     mergeHumidity(basin, dataFileName);
@@ -86,6 +100,9 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   } else if (mode === '--shear') {
     if (!dataFileName) { console.error('usage: node tools/merge_data.mjs <basin> --shear <data-file-name>'); process.exit(1); }
     mergeShear(basin, dataFileName);
+  } else if (mode === '--shear-synoptic') {
+    if (!dataFileName) { console.error('usage: node tools/merge_data.mjs <basin> --shear-synoptic <data-file-name>'); process.exit(1); }
+    mergeShearSynoptic(basin, dataFileName);
   } else {
     merge(basin);
   }

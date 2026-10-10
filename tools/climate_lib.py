@@ -429,3 +429,58 @@ def load_era5_shear(target_lat, target_lon, year0, year1, level_upper=200, level
         os.makedirs(os.path.dirname(cache_path), exist_ok=True)
         shear_monthly.to_netcdf(cache_path)
     return shear_monthly
+
+
+def load_era5_shear_daily(target_lat, target_lon, year0, year1, months=None,
+                           level_upper=200, level_lower=850, zarr_path=ERA5_ZARR, cache_path=None):
+    """Like load_era5_shear, but reduces to DAILY vector means, not monthly -- for characterizing
+    synoptic-timescale (day-to-day: upper-level trough passages, jet streaks) shear variability,
+    which a monthly climatology structurally can't show. Same averaging order as load_era5_shear
+    (average u/v across every 6-hourly reading in the day FIRST, then take the magnitude of the
+    vector difference between levels ONCE) -- confirmed directly (scratch investigation, see
+    docs/roadmap.md's Phase 2 entry) that real daily shear built this way gives a believable
+    12-23 kt peak-season MDR/Caribbean/Gulf daily std and 0.68-0.72 lag-1 autocorrelation there,
+    same shape as load_era5_shear's own monthly validation, not re-litigated per call site.
+
+    Same year-by-year loading (bounded memory, same reason as load_era5_rh700_daily), `months`
+    filter (restricts to a basin's own real season before regridding, same reasoning as
+    load_era5_rh700_daily -- does not reduce network cost, only post-download memory/compute),
+    lon rewrap + regrid, m/s->kt conversion, and (time, lat, lon) output shape as load_era5_shear
+    -- feeds extract_box()/anomalies() unchanged."""
+    import os
+    if cache_path and os.path.exists(cache_path):
+        return xr.open_dataarray(cache_path)
+
+    ds = xr.open_zarr(zarr_path, storage_options={"token": "anon"}, chunks=None)
+    sub_all = ds[["u_component_of_wind", "v_component_of_wind"]].sel(
+        level=[level_upper, level_lower], method="nearest")
+
+    yearly_daily = []
+    for year in range(year0, year1 + 1):
+        mask = sub_all["time"].dt.year == year
+        if months is not None:
+            mask = mask & sub_all["time"].dt.month.isin(list(months))
+        sub = sub_all.sel(time=mask).load()
+
+        sub = sub.assign_coords(day=sub["time"].dt.floor("D"))
+        uv = sub.groupby("day").mean("time").compute()
+        du = uv["u_component_of_wind"].sel(level=level_upper) - uv["u_component_of_wind"].sel(level=level_lower)
+        dv = uv["v_component_of_wind"].sel(level=level_upper) - uv["v_component_of_wind"].sel(level=level_lower)
+        shear_year = np.sqrt(du ** 2 + dv ** 2).rename({"day": "time"})
+        yearly_daily.append(shear_year)
+        del sub, uv, du, dv
+
+    shear_daily = xr.concat(yearly_daily, dim="time").sortby("time")
+
+    lon180 = ((shear_daily["longitude"] + 180) % 360) - 180
+    shear_daily = shear_daily.assign_coords(longitude=lon180).sortby("longitude").sortby("latitude")
+    shear_daily = shear_daily.rename({"latitude": "lat", "longitude": "lon"})
+    shear_daily = shear_daily.interp(lat=target_lat, lon=target_lon, method="linear")
+    shear_daily = shear_daily * 1.943844   # m/s -> kt
+    shear_daily = shear_daily.clip(0, None).transpose("time", "lat", "lon")
+    shear_daily.name = "shear"
+
+    if cache_path:
+        os.makedirs(os.path.dirname(cache_path), exist_ok=True)
+        shear_daily.to_netcdf(cache_path)
+    return shear_daily

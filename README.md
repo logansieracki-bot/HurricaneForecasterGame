@@ -89,26 +89,52 @@ nothing to run by hand.
   59%, Mediterranean 49% — each using that basin's own real hemisphere-
   appropriate cyclone season (Southern Hemisphere basins and the bimodal
   North Indian Ocean do not share the Atlantic's Jun–Nov window).
-- Wind Shear (Atlantic only, Phase 1): 200–850 hPa deep-layer vertical wind
-  shear in knots, the standard NHC/SHIPS definition, a fourth option in the
-  view toggle. Same architecture as Humidity (real ERA5 2007–2021 monthly
-  climatology + its own 6 EOFs/ENSO fit), driven by `variability`/`enso`
-  only — no synoptic layer yet, so no new slider either (see
-  `tools/make_shear.py` and the shear combine loop in `computeField()`).
-  Averages `u_component_of_wind`/`v_component_of_wind` at 200/850 hPa over
-  each month *first*, then takes the vector-difference magnitude once (not
-  the other order — checked directly, deriving the magnitude per 6-hourly
-  reading and averaging *that* instead runs 5–17 kt high everywhere sampled
-  and makes low-shear hurricane season look falsely hostile; see
-  `climate_lib.py`'s `load_era5_shear()`). `key: 20` (kt) is the real NHC/
-  SHIPS "low shear" threshold, confirmed against real data as a genuine,
-  roughly 44/56 split in the MDR/Caribbean/Gulf during peak season, not
-  stuck on one side. Color polarity is the opposite of Humidity's own: low
-  shear is favorable here. No jet-stream visualization — ENSO drives the
+- Wind Shear (Atlantic only): 200–850 hPa deep-layer vertical wind shear in
+  knots, the standard NHC/SHIPS definition, a fourth option in the view
+  toggle. Climatology + EOF interannual variability + ENSO regression (real
+  ERA5 2007–2021 monthly data, its own 6 EOFs/ENSO fit), driven by
+  `variability`/`enso` (see `tools/make_shear.py` and the shear combine loop
+  in `computeField()`). Averages `u_component_of_wind`/`v_component_of_wind`
+  at 200/850 hPa over each month *first*, then takes the vector-difference
+  magnitude once (not the other order — checked directly, deriving the
+  magnitude per 6-hourly reading and averaging *that* instead runs 5–17 kt
+  high everywhere sampled and makes low-shear hurricane season look falsely
+  hostile; see `climate_lib.py`'s `load_era5_shear()`). `key: 20` (kt) is the
+  real NHC/SHIPS "low shear" threshold, confirmed against real data as a
+  genuine, roughly 44/56 split in the MDR/Caribbean/Gulf during peak season,
+  not stuck on one side. Color polarity is the opposite of Humidity's own:
+  low shear is favorable here. No jet-stream visualization — ENSO drives the
   field's values (the real teleconnection, confirmed both in the raw ERA5
   regression and with a live end-to-end test forcing El Niño vs. La Niña),
   the same way Gulf Stream physics drive SST with no current layer of its
   own.
+
+  Also carries real day-to-day ("synoptic") shear noise on top of the
+  monthly climatology — upper-level trough passages and jet streaks, the
+  things a monthly mean can't show and that make the climatological-only
+  field read as too static/diffuse to look like a real jet. Unlike
+  Humidity's own synoptic layer (pure per-cell AR(1) — its real spectrum is
+  flat), shear's real daily anomalies (checked against 5 years of ERA5,
+  restricted to Jun–Nov) showed a genuine EOF elbow — a coherent,
+  jet-latitude-shift-like mode 1 alone explaining 14.3% of domain variance —
+  so this is a hybrid: a 15-mode EOF component (`shearSynEofC`/`shearSynPhiC`,
+  already-daily phi) plus a per-cell AR(1) residual on the leftover variance
+  (`shearSynResidStdC`/`shearSynResidPhiC`, fit on anomaly-minus-EOF-
+  reconstruction so the two layers' variance isn't double-counted) — see
+  `tools/make_shear_synoptic.py`. Its own `Day-to-day weather (wind shear)`
+  slider (`P.shearSynoptic`), separate from Humidity's, since the two
+  fields' day-to-day noise is mechanistically distinct, confirmed by the
+  very different real structure each one's own build script found. Drawing
+  each coarse (2°) cell's own daily random shock fully independently (the
+  same simplification Humidity's own synoptic layer uses) looked like pure
+  static once actually rendered here — real shear anomalies correlate
+  +0.69 to +0.94 at 2–5°, a real local coherence an independent-per-cell
+  model throws away entirely, and upsample()'s own bicubic smoothing can't
+  manufacture correlation between coarse samples that were never correlated
+  to begin with. Fixed with an exactly variance-preserving separable
+  smoothing pass on each day's random shock before use (see the
+  `smoothedShearInnovation()` comment in `src/template.html`), calibrated to
+  the real measured correlation length, not guessed.
 
 ## Imagery
 The "Blue Marble" theme is a crop **embedded in the build** (`data.bm`, drawn on
@@ -130,9 +156,9 @@ check that Satellite still resolves to something usable.
   yet. Until that pipeline exists, treat `data/generated/data.json` as a
   checked-in asset, not a regenerable build artifact.
 - Domain is the North Atlantic basin only; SST south of the equator and in the
-  Mediterranean/Black Sea is intentionally masked out (they're future basins),
-  and ENSO changes SST, humidity, and (Atlantic-only Phase 1) wind shear, but has no
-  day-to-day synoptic shear noise layer yet.
+  Mediterranean/Black Sea is intentionally masked out (they're future basins).
+  ENSO changes SST and humidity in all 9 basins, but wind shear (climatology +
+  EOF + ENSO + its own day-to-day synoptic noise) is still Atlantic-only.
 - ERSST at 2° is warm-biased in coastal cells; several corrections are hand-tuned
   (see the shelf, Northeast shelf, Gulf Stream blocks in `src/template.html`).
 - Only Atlantic + Simulation mode are wired up in the main menu. The other 8
