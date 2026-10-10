@@ -273,6 +273,52 @@ await checkBasin('Atlantic', ATLANTIC_DIST, async (page, label) => {
   check(`[${label}] setting the slider to 0 flattens day-to-day humidity`, stdOf(withoutNoise) < stdOf(withNoise));
   await page.evaluate(() => window.SSTSIM.set('synoptic', 1));   // restore default before any checks after this one
 
+  // Wind Shear view (Phase 1: climatology + EOF interannual variability + ENSO regression,
+  // Atlantic only for now -- no day-to-day synoptic layer yet, see docs/roadmap.md). Checked
+  // against real ERA5 200-850 hPa wind before building anything (see make_shear.py) -- low
+  // shear is favorable here, the opposite polarity from Humidity's own "high is favorable."
+  await page.evaluate(() => window.SSTSIM.setView('shear'));
+  await page.waitForTimeout(200);
+  const shearViewState = await page.evaluate(() => ({
+    pressed: document.querySelector('#seg-view button[data-v="shear"]').getAttribute('aria-pressed'),
+    caption: document.getElementById('legend-cap').textContent,
+    l265: document.getElementById('l265-label').textContent,
+    l2: document.getElementById('l2-label').textContent,
+  }));
+  check(`[${label}] Wind Shear button becomes pressed when selected`, shearViewState.pressed === 'true');
+  check(`[${label}] legend caption switches to the wind shear scale`, shearViewState.caption === '200–850 hPa wind shear, kt');
+  check(`[${label}] Shear view's key-line checkbox label mentions its own 20kt key, not 26.5 or 58`, shearViewState.l265.includes('20') && !shearViewState.l265.includes('26.5') && !shearViewState.l265.includes('58'));
+
+  const shearSample = await page.evaluate(() => window.SSTSIM.sample(20, -50));
+  check(`[${label}] open-ocean wind shear sample is real data in a sane range`, Number.isFinite(shearSample.shear) && shearSample.shear >= 0 && shearSample.shear < 200);
+
+  await page.evaluate(([lat, lon]) => window.SSTSIM.map.setView([lat, lon], 6), [25.76, -80.19]);
+  await page.waitForTimeout(300);
+  const miamiPt2 = await page.evaluate(([lat, lon]) => { const p = window.SSTSIM.map.latLngToContainerPoint([lat, lon]); return { x: p.x, y: p.y }; }, [25.76, -80.19]);
+  await page.mouse.move(miamiPt2.x, miamiPt2.y);
+  await page.waitForTimeout(200);
+  const miamiTip2 = await page.evaluate(() => document.getElementById('city-tip').textContent);
+  check(`[${label}] city tooltip gains a parallel shear-threshold line`, /Above disruptive shear threshold|Below disruptive shear threshold/.test(miamiTip2));
+
+  // Real ENSO-sign regression check, the shear-side analogue of the already-verified "El Nino
+  // wets the Gulf, dries the MDR" humidity finding -- a genuinely new kind of automated check
+  // (no existing test does this for humidity's own ENSO regression, that was only ever
+  // confirmed visually during development, see docs/roadmap.md). forceEnso() only seeds the
+  // MOST RECENT slot of the ENSO history ring buffer (see its own comment in template.html:
+  // "the Atlantic then responds with its natural 3-6 month delay"), so this advances the sim
+  // ~190 simulated days after each forced value -- enough for the lag-6-month term to fully
+  // phase in -- before sampling, and restarts (same seed) between the two runs so only the ENSO
+  // forcing differs, not the random EOF-mode draw.
+  await page.evaluate(() => window.SSTSIM.forceEnso(2.0));
+  await page.evaluate(() => window.SSTSIM.advance(24 * 190));
+  const elNinoShear = (await page.evaluate(() => window.SSTSIM.sample(12, -45))).shear;
+  await page.evaluate(() => window.SSTSIM.restart());
+  await page.evaluate(() => window.SSTSIM.forceEnso(-2.0));
+  await page.evaluate(() => window.SSTSIM.advance(24 * 190));
+  const laNinaShear = (await page.evaluate(() => window.SSTSIM.sample(12, -45))).shear;
+  check(`[${label}] forced El Nino raises MDR wind shear vs. forced La Nina (real teleconnection)`, elNinoShear > laNinaShear);
+  await page.evaluate(() => window.SSTSIM.restart());   // clears the forced ENSO state and re-spins-up normally
+
   await page.evaluate(() => window.SSTSIM.setView('sst'));   // leave the page in its default state for any checks after this one
 
   await checkCityMarkers(page, label, 25.76, -80.19, 'Miami');

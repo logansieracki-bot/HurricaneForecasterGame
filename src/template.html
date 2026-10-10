@@ -159,6 +159,7 @@ canvas.overlay{position:absolute;left:0;top:0;width:100%;height:100%;pointer-eve
           <button data-v="sst" aria-pressed="true">Temperature</button>
           <button data-v="anom" aria-pressed="false">SST Anomaly</button>
           <button data-v="humid" aria-pressed="false">Humidity</button>
+          <button data-v="shear" aria-pressed="false">Wind Shear</button>
         </div>
         <div class="row">
           <div class="sl"><label for="op">Overlay strength</label><output id="op-o">85%</output></div>
@@ -335,6 +336,19 @@ const humidEnsoC = new Float32Array(3 * CN);     // response to Niño 3.4 at lag
 { const a = b64i16(DATA.humidity.enso); for (let q = 0; q < a.length; q++) humidEnsoC[q] = a[q] / 1000; }
 const PHI_DAY_H = DATA.humidity.phi.map((p) => Math.pow(Math.max(0.3, p), 1 / 30.44));
 
+/* 200-850 hPa deep-layer vertical wind shear (kt), decoded the same way as humidity above but
+   from DATA.shear -- Phase 1 only (climatology + EOF interannual variability + ENSO
+   regression), no synoptic/day-to-day layer yet (see humidSynC's own block below for what that
+   would look like once a follow-up adds one). Own independent K (shear's own EOF fit). */
+const KS = DATA.shear.K;
+const shearClimC = [];                          // 12 coarse monthly climatologies (kt)
+{ const a = b64i16(DATA.shear.clim); for (let m = 0; m < 12; m++) { const f = new Float32Array(CN); for (let c = 0; c < CN; c++) f[c] = a[m * CN + c] / 10; shearClimC.push(f); } }
+const shearEofC = new Float32Array(KS * CN);     // interannual patterns (kt per +1σ of each mode)
+{ const a = b64i16(DATA.shear.eof); for (let q = 0; q < a.length; q++) shearEofC[q] = a[q] / 1000; }
+const shearEnsoC = new Float32Array(3 * CN);     // response to Niño 3.4 at lags 0, 3, 6 months (kt per °C)
+{ const a = b64i16(DATA.shear.enso); for (let q = 0; q < a.length; q++) shearEnsoC[q] = a[q] / 1000; }
+const PHI_DAY_S = DATA.shear.phi.map((p) => Math.pow(Math.max(0.3, p), 1 / 30.44));
+
 /* Day-to-day ("synoptic") humidity weather noise -- tropical waves, SAL outbreaks, the things
    that make a real hurricane season's moisture flicker favorable/unfavorable over days, which a
    monthly climatology can never show on its own (it's averaged away by construction). Checked
@@ -396,6 +410,8 @@ const climF = [], annual = new Float32Array(N);
 for (let m = 0; m < 12; m++) { const f = new Float32Array(N); upsample(climC[m], f); climF.push(f); for (let k = 0; k < N; k++) annual[k] += f[k] / 12; }
 const humidClimF = [];
 for (let m = 0; m < 12; m++) { const f = new Float32Array(N); upsample(humidClimC[m], f); humidClimF.push(f); }
+const shearClimF = [];
+for (let m = 0; m < 12; m++) { const f = new Float32Array(N); upsample(shearClimC[m], f); shearClimF.push(f); }
 
 /* ------------------------------------------------------------------ *
  *  Static geography: coast distances, continental mask
@@ -515,7 +531,7 @@ function forceEnso(target) {           // jump to a chosen state; the Atlantic t
   n34 = target; ensoHist[(ensoHi - 1 + E_HIST) % E_HIST] = target; anomDirty = true; updateEnsoUI(); refresh();
 }
 
-let simHour = 0, dayCount = 0, pc = new Float32Array(K), pcH = new Float32Array(KH), gsShift = 0, eddies = [], nextShed = 0, lcDip = 0;
+let simHour = 0, dayCount = 0, pc = new Float32Array(K), pcH = new Float32Array(KH), pcS = new Float32Array(KS), gsShift = 0, eddies = [], nextShed = 0, lcDip = 0;
 const humidSynC = new Float32Array(CN);   // per-cell AR(1) *generator* state, % RH directly -- no mode/pattern expansion, see decode comment above
 let lastSynDay = 0;
 // Two FINE-resolution daily snapshots -- synPrev at day boundary synDay, synCur at synDay+1 --
@@ -534,6 +550,7 @@ function initSim(seed) {
   P.seed = seed; rs = (seed * 2654435761) >>> 0 || 1;
   for (let k = 0; k < K; k++) pc[k] = randn();
   for (let k = 0; k < KH; k++) pcH[k] = randn();
+  for (let k = 0; k < KS; k++) pcS[k] = randn();
   for (let q = 0; q < CN; q++) humidSynC[q] = randn() * humidSynStdC[q];
   lastSynDay = 0; synDay = -999;
   gsShift = randn() * 0.6; eddies = []; lcDip = 0; dayCount = 0; simHour = 0;
@@ -548,6 +565,7 @@ function stepDay() {
   { const dd = simDate(dayCount * 24); ensoStep((dd.getTime() - Date.UTC(dd.getUTCFullYear(), 0, 1)) / 86400000); }
   for (let k = 0; k < K; k++) pc[k] = PHI_DAY[k] * pc[k] + Math.sqrt(1 - PHI_DAY[k] * PHI_DAY[k]) * randn();
   for (let k = 0; k < KH; k++) pcH[k] = PHI_DAY_H[k] * pcH[k] + Math.sqrt(1 - PHI_DAY_H[k] * PHI_DAY_H[k]) * randn();
+  for (let k = 0; k < KS; k++) pcS[k] = PHI_DAY_S[k] * pcS[k] + Math.sqrt(1 - PHI_DAY_S[k] * PHI_DAY_S[k]) * randn();
   const pg = Math.exp(-1 / 365); gsShift = pg * gsShift + Math.sqrt(1 - pg * pg) * 0.6 * randn();
   lcDip *= 0.978;
   if (dayCount >= nextShed) { eddies.push({ x: -87.6, y: 26.4, age: 0 }); nextShed = dayCount + 100 + rand() * 320; lcDip = 1; }
@@ -564,6 +582,8 @@ const sst = new Float32Array(N), normal = new Float32Array(N), diff = new Float3
 const anomC = new Float32Array(CN), anomF = new Float32Array(N), ensoCo = new Float32Array(CN), ensoF = new Float32Array(N);
 const humid = new Float32Array(N);
 const humidAnomC = new Float32Array(CN), humidAnomF = new Float32Array(N), humidEnsoCo = new Float32Array(CN), humidEnsoF = new Float32Array(N);
+const shear = new Float32Array(N);
+const shearAnomC = new Float32Array(CN), shearAnomF = new Float32Array(N), shearEnsoCo = new Float32Array(CN), shearEnsoF = new Float32Array(N);
 let anomDirty = true;
 const WARM_PEAK_BIAS = 1.0;   // deg C added at the seasonal peak (see computeField) to correct a cool bias there
 
@@ -626,6 +646,12 @@ function computeField() {
     upsample(humidAnomC, humidAnomF);
     for (let q = 0; q < CN; q++) humidEnsoCo[q] = c0 * humidEnsoC[q] + c3 * humidEnsoC[CN + q] + c6 * humidEnsoC[2 * CN + q];
     upsample(humidEnsoCo, humidEnsoF);
+
+    shearAnomC.fill(0);
+    for (let k = 0; k < KS; k++) { const c = pcS[k]; if (!c) continue; const o = k * CN; for (let q = 0; q < CN; q++) shearAnomC[q] += c * shearEofC[o + q]; }
+    upsample(shearAnomC, shearAnomF);
+    for (let q = 0; q < CN; q++) shearEnsoCo[q] = c0 * shearEnsoC[q] + c3 * shearEnsoC[CN + q] + c6 * shearEnsoC[2 * CN + q];
+    upsample(shearEnsoCo, shearEnsoF);
 
     anomDirty = false;
   }
@@ -730,6 +756,31 @@ function computeField() {
     }
   }
 
+  /* --- wind shear: a third separate, additive pass, same shape as humidity's own above.
+   * Phase 1 only (climatology + EOF interannual variability + ENSO regression) -- no day-to-day
+   * synoptic layer yet, that's an explicit deferred follow-up, the same order humidity's own
+   * synoptic layer was added well after its climatology+ENSO base shipped and was confirmed
+   * good (see docs/roadmap.md). Driven only by P.variability/P.enso, for the same reasons
+   * humidity's own combine pass gives above: P.warming is meaningless for a kt field,
+   * P.seasonal/P.features are SST-current-specific mechanisms shear has no equivalent of (its
+   * own 12-month climatology already carries the real seasonal cycle -- low in hurricane
+   * season, high in winter, the jet stream's own real migration -- directly, nothing to
+   * stretch), and one real ENSO event driving both fields' own interannual variability is just
+   * as physically defensible here as it is for humidity. */
+  const svs = P.variability, ses = P.enso;
+  const SA0 = shearClimF[M(m1 - 1)], SA1 = shearClimF[M(m1)], SA2 = shearClimF[M(m1 + 1)], SA3 = shearClimF[M(m1 + 2)];
+  for (let j = 0; j < NY; j++) {
+    const o = j * NX;
+    for (let i = 0; i < NX; i++) {
+      const k = o + i;
+      if (outOfBasin[k]) { shear[k] = NaN; continue; }
+      const mth = w0 * SA0[k] + w1 * SA1[k] + w2 * SA2[k] + w3 * SA3[k];
+      let v = mth + svs * shearAnomF[k] + ses * shearEnsoF[k];
+      if (v > 115) v = 115 + 10 * Math.tanh((v - 115) / 10); else if (v < 2) v = 2 - 4 * Math.tanh((2 - v) / 4);   // soft: real shear can edge past this basin's own observed [4,106.5] climatological range without ever doing so without limit, same spirit as every other field's own soft clamp
+      shear[k] = v;
+    }
+  }
+
   updateLakes(f, doy);
 }
 const CEIL_LAT = [0, 10, 20, 25, 30, 35, 38, 40, 45, 50, 55, 60, 70, 80], CEIL_T = [33, 33, 32.6, 32, 31.2, 30, 29, 28.2, 26, 23, 19.5, 16, 9, 3];
@@ -773,6 +824,14 @@ const ANOM_STOPS = [[-3,24,44,176],[-1.5,60,118,226],[-0.5,150,192,244],[0,242,2
 // palette family NOAA/CIRA's own SAL/moisture products use. Stops are deliberately denser below
 // 60% than above it -- see the VIEWS.humid comment below for why that's where the real data lives.
 const HUMID_STOPS = [[0,120,72,36],[10,150,96,50],[22,180,130,78],[34,206,170,118],[46,224,201,155],[58,200,219,176],[70,150,205,173],[85,80,175,163],[100,20,110,140]];
+// Favorable (low shear, green) -> hostile (high shear, red/maroon) -- the OPPOSITE direction
+// from HUMID_STOPS, since for shear low is favorable, not high. Denser below ~40 kt than above
+// it: real climatological 200-850 hPa shear across the genesis-relevant MDR/Caribbean/Gulf
+// during peak season (checked against all 15 real ERA5 years, 2007-2021) spans roughly 4-70 kt
+// with a median of 22.3 kt there -- the basin's full range (including deep-winter North
+// Atlantic storm-track values up to ~107 kt) only matters at the extreme high end, same
+// principle HUMID_STOPS already uses for the Gulf/MDR's own typical range.
+const SHEAR_STOPS = [[0,20,120,60],[10,70,165,70],[15,150,195,80],[20,230,210,70],[25,235,170,60],[30,225,120,50],[40,210,70,45],[55,175,35,45],[75,130,20,60],[110,80,15,75]];
 const VIEWS = {
   sst:   { vmin: -2, vmax: 34, lut: buildLUT(SST_STOPS, -2, 34, 721), caption: 'Sea surface temperature, °C', ticks: [0, 10, 20, 26.5, 30], key: 26.5, step: 2, unit: ' °C', keyLabel: 'hurricane threshold' },
   anom:  { vmin: -3, vmax: 3, lut: buildLUT(ANOM_STOPS, -3, 3, 301), caption: 'Difference from the 1991–2020 normal, °C', ticks: [-3, -2, -1, 0, 1, 2, 3], key: 0, step: 1, unit: ' °C', keyLabel: 'normal' },
@@ -785,7 +844,16 @@ const VIEWS = {
   // key: 58 sits near the real basin-wide p75 for peak season (honestly reachable, not a value
   // this field can only approach in the extreme tail) -- "favorable" here means "wetter than
   // typical for this field," not an absolute instantaneous-genesis cutoff.
-  humid: { vmin: 0, vmax: 100, lut: buildLUT(HUMID_STOPS, 0, 100, 501), caption: '700 hPa relative humidity, %', ticks: [15, 30, 46, 58, 75], key: 58, step: 10, unit: '%', keyLabel: 'favorable for development' }
+  humid: { vmin: 0, vmax: 100, lut: buildLUT(HUMID_STOPS, 0, 100, 501), caption: '700 hPa relative humidity, %', ticks: [15, 30, 46, 58, 75], key: 58, step: 10, unit: '%', keyLabel: 'favorable for development' },
+  // key: 20 kt is the real NHC/SHIPS operational "low shear" threshold -- unlike Humidity's own
+  // original key, checked directly against real data first and confirmed genuinely reachable
+  // both ways here, not stuck on one side: across the real 15-year climatology for the
+  // MDR/Caribbean/Gulf in peak season, 44% of (cell, month) values fall below 20 kt and 56%
+  // above, a real, meaningful split (median there is 22.3 kt). Low shear is favorable for
+  // development here, the opposite polarity from Humidity's own "high is favorable" -- keyLabel
+  // is phrased so the existing generic ">= key ? Above : Below" tooltip/checkbox wording
+  // (updateCityTip/updateThresholdLabels) reads correctly either way with no code changes.
+  shear: { vmin: 0, vmax: 110, lut: buildLUT(SHEAR_STOPS, 0, 110, 551), caption: '200–850 hPa wind shear, kt', ticks: [10, 20, 30, 55, 80], key: 20, step: 10, unit: ' kt', keyLabel: 'disruptive shear threshold' }
 };
 let view = 'sst';
 
@@ -1000,7 +1068,7 @@ function updateCityTip(cx, cy) {
   const i = cityAt(cx, cy);
   if (i !== hoveredCity) { hoveredCity = i; scheduleRender(); }
   if (i < 0) { tip.style.display = 'none'; return; }
-  const c = CITIES[i], inland = c.sLat !== undefined, t = sampleField(sst, c.sLat ?? c.lat, c.sLon ?? c.lon), n = sampleField(normal, c.sLat ?? c.lat, c.sLon ?? c.lon), h = sampleField(humid, c.sLat ?? c.lat, c.sLon ?? c.lon);
+  const c = CITIES[i], inland = c.sLat !== undefined, t = sampleField(sst, c.sLat ?? c.lat, c.sLon ?? c.lon), n = sampleField(normal, c.sLat ?? c.lat, c.sLon ?? c.lon), h = sampleField(humid, c.sLat ?? c.lat, c.sLon ?? c.lon), s = sampleField(shear, c.sLat ?? c.lat, c.sLon ?? c.lon);
   const lines = [];
   if (inland) lines.push('Nearest coastal water');
   if (t === t) {
@@ -1011,6 +1079,10 @@ function updateCityTip(cx, cy) {
     if (h === h) {
       lines.push(h.toFixed(0) + '% RH @ 700mb');
       lines.push(h >= VIEWS.humid.key ? 'Above ' + VIEWS.humid.keyLabel : 'Below ' + VIEWS.humid.keyLabel);
+    }
+    if (s === s) {
+      lines.push(s.toFixed(0) + ' kt shear');
+      lines.push(s >= VIEWS.shear.key ? 'Above ' + VIEWS.shear.keyLabel : 'Below ' + VIEWS.shear.keyLabel);
     }
   } else {
     lines.push('Outside the simulated area');
@@ -1206,6 +1278,10 @@ function drawLakes(ctx, minX, minY, ws) {
       // distinct SST (depth/thermal mass) -- just show the real field value at the lake's
       // own location, not a borrowed SST-anomaly-shaped quantity.
       ctx.fillStyle = lakeCss(V, sampleField(humid, L.lat, L.lon));
+    } else if (view === 'shear') {
+      // Same reasoning as the humid branch above -- no physical basis for a lake having its
+      // own distinct deep-layer wind shear, just show the real field value overhead.
+      ctx.fillStyle = lakeCss(V, sampleField(shear, L.lat, L.lon));
     } else ctx.fillStyle = lakeCss(V, lakeV[i] - lakeN[i]);
     ctx.fill('evenodd');
   }
@@ -1377,7 +1453,7 @@ function render() {
   }
   if (off.width !== sw || off.height !== sh) { off.width = sw; off.height = sh; }
   const octx = off.getContext('2d'), img = octx.createImageData(sw, sh), px = new Uint32Array(img.data.buffer);
-  const V = VIEWS[view], src = view === 'sst' ? sst : view === 'humid' ? humid : diff, lut = V.lut, lscale = (lut.length - 1) / (V.vmax - V.vmin), ln = lut.length - 1;
+  const V = VIEWS[view], src = view === 'sst' ? sst : view === 'humid' ? humid : view === 'shear' ? shear : diff, lut = V.lut, lscale = (lut.length - 1) / (V.vmax - V.vmin), ln = lut.length - 1;
   let idx = 0;
   for (let y = 0; y < sh; y++) {
     const j = rowJ[y];
@@ -1556,7 +1632,7 @@ lastNow = performance.now(); requestAnimationFrame(frame);
 
 window.SSTSIM = {
   advance(h) { advanceHours(h); updateClock(); refresh(); },
-  sample(lat, lon) { return { sst: sampleField(sst, lat, lon), normal: sampleField(normal, lat, lon), humid: sampleField(humid, lat, lon) }; },
+  sample(lat, lon) { return { sst: sampleField(sst, lat, lon), normal: sampleField(normal, lat, lon), humid: sampleField(humid, lat, lon), shear: sampleField(shear, lat, lon) }; },
   state() { return { simHour, seed: P.seed, date: simDate(simHour).toISOString(), eddies: eddies.length, gsShift }; },
   set(k, v) { P[k] = v; refresh(); }, enso() { return { n34, lag0: ensoLag(0), lag3: ensoLag(91), lag6: ensoLag(183) }; }, forceEnso, setView(v) { document.querySelector('#seg-view button[data-v="' + v + '"]').click(); },
   setPlaying, restart, map, render, setTheme, setGridMode, sliderVals() { return { seasonal: P.seasonal, features: P.features, enso: P.enso, warming: P.warming, variability: P.variability, synoptic: P.synoptic, seed: P.seed }; }, applySeed,

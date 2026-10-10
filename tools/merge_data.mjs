@@ -58,15 +58,34 @@ export function mergeHumiditySynoptic(basin, dataFileName) {
   return out;
 }
 
+// Layers a basin's own <basin>-shear.json (200-850 hPa deep-layer wind shear climatology +
+// EOF + ENSO regression, Phase 1 -- see make_shear.py) onto an already-merged data file, same
+// shape as mergeHumidity above and for the same reason: <basin>-shear.json has the exact same
+// top-level keys (domain,K,clim,eof,enso,phi) as both <basin>-climate.json and
+// <basin>-humidity.json, so nesting under a new top-level `shear` key (domain dropped, same
+// reasoning as mergeHumidity's own) avoids clobbering either one.
+export function mergeShear(basin, dataFileName) {
+  const dataPath = join(GEN, dataFileName);
+  const existing = JSON.parse(readFileSync(dataPath, 'utf8'));
+  const { domain, ...shearRest } = JSON.parse(readFileSync(join(GEN, `${basin}-shear.json`), 'utf8'));
+  const out = { ...existing, shear: shearRest };
+  writeFileSync(dataPath, JSON.stringify(out));
+  console.log(`wrote ${dataPath} (added shear key)`);
+  return out;
+}
+
 if (import.meta.url === `file://${process.argv[1]}`) {
   const [basin, mode, dataFileName] = process.argv.slice(2);
-  if (!basin) { console.error('usage: node tools/merge_data.mjs <basin>\n       node tools/merge_data.mjs <basin> --humidity <data-file-name>\n       node tools/merge_data.mjs <basin> --humidity-synoptic <data-file-name>'); process.exit(1); }
+  if (!basin) { console.error('usage: node tools/merge_data.mjs <basin>\n       node tools/merge_data.mjs <basin> --humidity <data-file-name>\n       node tools/merge_data.mjs <basin> --humidity-synoptic <data-file-name>\n       node tools/merge_data.mjs <basin> --shear <data-file-name>'); process.exit(1); }
   if (mode === '--humidity') {
     if (!dataFileName) { console.error('usage: node tools/merge_data.mjs <basin> --humidity <data-file-name>'); process.exit(1); }
     mergeHumidity(basin, dataFileName);
   } else if (mode === '--humidity-synoptic') {
     if (!dataFileName) { console.error('usage: node tools/merge_data.mjs <basin> --humidity-synoptic <data-file-name>'); process.exit(1); }
     mergeHumiditySynoptic(basin, dataFileName);
+  } else if (mode === '--shear') {
+    if (!dataFileName) { console.error('usage: node tools/merge_data.mjs <basin> --shear <data-file-name>'); process.exit(1); }
+    mergeShear(basin, dataFileName);
   } else {
     merge(basin);
   }

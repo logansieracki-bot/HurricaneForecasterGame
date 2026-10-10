@@ -1,6 +1,54 @@
 # Roadmap
 
 ## Just landed
+- **Added a real, ENSO-modulated Wind Shear field -- Atlantic only, Phase 1.** The user asked to
+  brainstorm wind shear realism tied to ENSO and the jet stream; after confirming scope (no
+  separate jet-stream visual -- ENSO only needs to drive the shear *field's values* realistically,
+  the same way Gulf Stream physics already drive SST with no rendered "current" layer of its
+  own; and climatology+ENSO first, day-to-day synoptic noise as an explicit later follow-up,
+  mirroring exactly how Humidity itself was staged), this mirrors Humidity's own architecture
+  end to end: real ERA5 data, monthly climatology + EOF interannual variability + an ENSO
+  regression, a new "Wind Shear" view.
+
+  200-850 hPa deep-layer vertical wind shear is the standard NHC/SHIPS definition -- confirmed
+  both `u_component_of_wind` and `v_component_of_wind` exist in the same ARCO-ERA5 archive
+  Humidity already reads from, at exact native 200 hPa and 850 hPa levels (no interpolation
+  needed), same chunking cost as the existing RH pull. Averaging order was a genuinely open
+  question, resolved against real data rather than assumed: averaging u/v across every 6-hourly
+  reading in a month *first*, then taking the magnitude of the vector difference between levels
+  *once*, gives MDR peak-season values of 16-26 kt matching real published climatology; the
+  alternative (deriving instantaneous shear magnitude per reading, then averaging those) ran
+  systematically 5-17 kt higher everywhere sampled (Jensen's-inequality bias on a vector norm)
+  and made the climatologically "low shear" hurricane season look falsely hostile -- the first
+  method was used.
+
+  `key: 20` (kt, the real NHC/SHIPS "low shear" operational threshold) was checked against the
+  real 15-year (2007-2021) climatology before being hardcoded, the same discipline that caught
+  Humidity's own originally-unreachable 70% threshold: across the genesis-relevant MDR/
+  Caribbean/Gulf region in peak season, 44% of real (cell, month) values fall below 20 kt and
+  56% above -- a real, meaningful, genuinely-crossable split, not stuck on one side. Full basin
+  range (including deep-winter North Atlantic storm-track values) is 4-106.5 kt. Color polarity
+  (`SHEAR_STOPS`) runs the *opposite* direction from `HUMID_STOPS`: low shear is favorable here,
+  not high.
+
+  The ENSO sign was checked at the data level (El Nino years show measurably higher MDR shear
+  than La Nina years, matching the real, well-documented teleconnection -- El Nino strengthens
+  upper-tropospheric westerlies over the tropical Atlantic, the shear-side analogue of this
+  codebase's own already-verified "El Nino wets the Gulf, dries the MDR" humidity finding) *and*
+  confirmed end to end in the live simulator: a new automated test forces a strong El Nino and a
+  strong La Nina from the same seed, advances each ~190 simulated days (enough for `forceEnso`'s
+  own documented 3-6 month lag terms to fully phase in), and checks that forced El Nino produces
+  higher MDR shear -- a genuinely new kind of regression check this codebase didn't have before
+  (Humidity's own ENSO sign was only ever confirmed visually during development).
+
+  Phase 1 only: climatology + EOF + ENSO, no day-to-day synoptic shear layer yet (explicit
+  follow-up, once this base is confirmed good -- the same order Humidity's own synoptic layer
+  was added well after its climatology+ENSO base shipped), and needed zero new sliders as a
+  result (reuses the existing `variability`/`enso` sliders exactly as Humidity's own combine
+  pass does, for the same reason: one real ENSO event drives both fields' own interannual
+  variability). Atlantic only for now, a deliberate test basin before any wider rollout. Full
+  suite: 392 checks, zero regressions.
+
 - **Rolled out the full humidity system -- climatology, ENSO fit, and the day-to-day synoptic
   noise layer -- from Atlantic-only to all 8 remaining basins** (East Pacific, West Pacific,
   North Indian Ocean, Australian Region, South-West Indian Ocean, South Pacific, South Atlantic,
@@ -1010,4 +1058,5 @@ again building EPAC):**
   not started; Simulation mode across basins comes first.
 - Radar/satellite storm imagery (synthetic, generated from the sim's own storm
   state — not a real tile provider).
-- Winds/shear fields (ENSO currently only touches SST).
+- Wind Shear's own day-to-day synoptic noise layer (Phase 2 -- Phase 1, climatology + ENSO
+  only, is done, Atlantic only) and rolling Wind Shear out to the other 8 basins.

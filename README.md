@@ -89,6 +89,26 @@ nothing to run by hand.
   59%, Mediterranean 49% — each using that basin's own real hemisphere-
   appropriate cyclone season (Southern Hemisphere basins and the bimodal
   North Indian Ocean do not share the Atlantic's Jun–Nov window).
+- Wind Shear (Atlantic only, Phase 1): 200–850 hPa deep-layer vertical wind
+  shear in knots, the standard NHC/SHIPS definition, a fourth option in the
+  view toggle. Same architecture as Humidity (real ERA5 2007–2021 monthly
+  climatology + its own 6 EOFs/ENSO fit), driven by `variability`/`enso`
+  only — no synoptic layer yet, so no new slider either (see
+  `tools/make_shear.py` and the shear combine loop in `computeField()`).
+  Averages `u_component_of_wind`/`v_component_of_wind` at 200/850 hPa over
+  each month *first*, then takes the vector-difference magnitude once (not
+  the other order — checked directly, deriving the magnitude per 6-hourly
+  reading and averaging *that* instead runs 5–17 kt high everywhere sampled
+  and makes low-shear hurricane season look falsely hostile; see
+  `climate_lib.py`'s `load_era5_shear()`). `key: 20` (kt) is the real NHC/
+  SHIPS "low shear" threshold, confirmed against real data as a genuine,
+  roughly 44/56 split in the MDR/Caribbean/Gulf during peak season, not
+  stuck on one side. Color polarity is the opposite of Humidity's own: low
+  shear is favorable here. No jet-stream visualization — ENSO drives the
+  field's values (the real teleconnection, confirmed both in the raw ERA5
+  regression and with a live end-to-end test forcing El Niño vs. La Niña),
+  the same way Gulf Stream physics drive SST with no current layer of its
+  own.
 
 ## Imagery
 The "Blue Marble" theme is a crop **embedded in the build** (`data.bm`, drawn on
@@ -111,7 +131,8 @@ check that Satellite still resolves to something usable.
   checked-in asset, not a regenerable build artifact.
 - Domain is the North Atlantic basin only; SST south of the equator and in the
   Mediterranean/Black Sea is intentionally masked out (they're future basins),
-  and ENSO changes SST but not winds or shear yet.
+  and ENSO changes SST, humidity, and (Atlantic-only Phase 1) wind shear, but has no
+  day-to-day synoptic shear noise layer yet.
 - ERSST at 2° is warm-biased in coastal cells; several corrections are hand-tuned
   (see the shelf, Northeast shelf, Gulf Stream blocks in `src/template.html`).
 - Only Atlantic + Simulation mode are wired up in the main menu. The other 8
