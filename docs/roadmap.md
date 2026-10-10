@@ -1,6 +1,41 @@
 # Roadmap
 
 ## Just landed
+- **Fixed the synoptic humidity noise snapping once a day instead of evolving continuously.**
+  The previous entry's per-cell AR(1) state only got a fresh value inside the `anomDirty` block,
+  which only runs once per *simulated day* -- so the field held one static value all day, then
+  jumped to a new one at the boundary, a real visible stepping artifact caught by actually
+  watching it run at high speed rather than assuming the per-cell math being correct meant the
+  animation was too. Fixed the same way `climF`'s own monthly climatology already avoids this:
+  keep two daily snapshots (today's day-boundary value and tomorrow's) and blend them by the
+  fraction of the way through the current day, every render, not just when the state changes.
+  Plain linear, not climF's own cubic spline across 4 months -- there's no real smooth curve to
+  approximate for day-to-day noise, and two snapshots instead of four avoids a real correctness
+  trap a first version of this (window-of-4) ran into: when the sim skips 2-3 days between
+  renders at high speed, which it routinely does above ~16x, naively regenerating a sliding
+  window from the *current* generator state can silently reuse an already-advanced value for a
+  slot meant to represent an earlier day. The two-snapshot version sidesteps this instead of
+  patching around it: by construction, the day asked for next is always either exactly where the
+  per-cell generator already sits or strictly ahead of it, never behind, so the same closed-form
+  jump used before stays correct with no window-overlap bookkeeping at all. Confirmed by sampling
+  every simulated hour across a full day: smooth, gradually-changing steps (max/mean hour-to-hour
+  ratio 2.5x) instead of one dominant jump, while the real day-to-day variability itself (a point
+  swinging ~20-30 points over a handful of days) is unchanged. Full suite: 338 checks, zero
+  regressions.
+
+  Separately, checked with real data whether this field's own dryness could make genesis look
+  impossible even when everything else is favorable: across 2017-2021 real June-November days,
+  the Gulf of Mexico and Cabo Verde area clear the 58% "favorable" line about a third of the
+  time, the Caribbean about 29%, and the Main Development Region itself (genuinely the driest of
+  the four, consistent with known climatology) about 17% -- real, not rare-to-the-point-of-
+  impossible, and there's no genesis/formation model built yet for this threshold to gate, so
+  nothing downstream depends on it today. Worth keeping in mind whenever that system gets built,
+  though: a hard "must clear 58%" gate would make the MDR specifically form storms the least
+  often of the four, which happens to track reality (real waves routinely fail there on moisture
+  alone) rather than fight it -- so the right design is probably humidity as a continuous
+  probability modifier, the way real genesis-potential indices already use it, not a hard cutoff.
+
+
 - **Added real day-to-day ("synoptic") weather variability to the Humidity view** -- the
   follow-up flagged in the previous recalibration entry below. A monthly climatology (even
   recalibrated to a realistic threshold) can only drift slowly with season/ENSO/interannual

@@ -516,14 +516,26 @@ function forceEnso(target) {           // jump to a chosen state; the Atlantic t
 }
 
 let simHour = 0, dayCount = 0, pc = new Float32Array(K), pcH = new Float32Array(KH), gsShift = 0, eddies = [], nextShed = 0, lcDip = 0;
-const humidSynC = new Float32Array(CN);   // per-cell AR(1) state, °C-like units (% RH) directly -- no mode/pattern expansion, see decode comment above
+const humidSynC = new Float32Array(CN);   // per-cell AR(1) *generator* state, % RH directly -- no mode/pattern expansion, see decode comment above
 let lastSynDay = 0;
+// Two FINE-resolution daily snapshots -- synPrev at day boundary synDay, synCur at synDay+1 --
+// linearly blended by the fraction of the way through the current day every render, so the
+// field evolves continuously hour to hour like real weather instead of holding one value for an
+// entire simulated day and jumping at the boundary (a real, visible stepping artifact an earlier
+// version of this had -- caught by actually watching it run at high speed, not assumed smooth
+// just because the per-cell math itself was correct). Plain linear, not a wider spline like
+// climF's own monthly blend: there's no real underlying smooth curve to approximate for day-to-
+// day noise the way there is for a true seasonal cycle, and two snapshots (not four) means
+// there's no "which old slots can I still reuse" bookkeeping to get wrong when the sim skips
+// more than one day between renders, which it routinely does at high speed.
+const humidSynPrev = new Float32Array(N), humidSynCur = new Float32Array(N);
+let synDay = -999;   // which day humidSynPrev is pinned to (humidSynCur is always synDay+1); forces a build on first use
 function initSim(seed) {
   P.seed = seed; rs = (seed * 2654435761) >>> 0 || 1;
   for (let k = 0; k < K; k++) pc[k] = randn();
   for (let k = 0; k < KH; k++) pcH[k] = randn();
   for (let q = 0; q < CN; q++) humidSynC[q] = randn() * humidSynStdC[q];
-  lastSynDay = 0;
+  lastSynDay = 0; synDay = -999;
   gsShift = randn() * 0.6; eddies = []; lcDip = 0; dayCount = 0; simHour = 0;
   nextShed = 40 + rand() * 200;
   ensoZr = randn(); ensoZi = randn(); n34 = 0; ensoHist.fill(0); ensoHi = 0;
@@ -552,9 +564,37 @@ const sst = new Float32Array(N), normal = new Float32Array(N), diff = new Float3
 const anomC = new Float32Array(CN), anomF = new Float32Array(N), ensoCo = new Float32Array(CN), ensoF = new Float32Array(N);
 const humid = new Float32Array(N);
 const humidAnomC = new Float32Array(CN), humidAnomF = new Float32Array(N), humidEnsoCo = new Float32Array(CN), humidEnsoF = new Float32Array(N);
-const humidSynF = new Float32Array(N);
 let anomDirty = true;
 const WARM_PEAK_BIAS = 1.0;   // deg C added at the seasonal peak (see computeField) to correct a cool bias there
+
+// Advances the synoptic AR(1) *generator* (coarse, humidSynC) forward to exactly `targetDay`,
+// in one closed-form step regardless of how many days that skips -- phi^nStep is the exact
+// identity for an AR(1) process observed nStep steps apart (the same one PHI_DAY/PHI_DAY_H
+// already use in reverse to turn a *monthly* phi into an equivalent *daily* one), so this is
+// mathematically identical to actually stepping through each intervening day one at a time.
+function advanceSynTo(targetDay) {
+  const nStep = targetDay - lastSynDay;
+  if (nStep <= 0) return;
+  for (let q = 0; q < CN; q++) {
+    const p = Math.pow(humidSynPhiC[q], nStep);
+    humidSynC[q] = p * humidSynC[q] + Math.sqrt(Math.max(0, 1 - p * p)) * humidSynStdC[q] * randn();
+  }
+  lastSynDay = targetDay;
+}
+// Pins humidSynPrev/humidSynCur to day boundaries d/d+1. Correct regardless of how far `d` has
+// jumped since the last call (one day forward, same day re-entered, or many days skipped at
+// high speed) -- advanceSynTo(d) always lands on either the generator's current position
+// (no-op, reuses the still-correct value) or strictly ahead of it, never behind: the previous
+// call always left lastSynDay at (old d)+1, and `d` only ever increases, so `d >= (old d)+1` ==
+// lastSynDay whenever this needs to do anything. Cheap even on a huge fast-forward jump
+// (measured: well under 1ms for CN=4332) since it's two O(CN) closed-form steps, not O(CN *
+// days skipped).
+function ensureSynDay(d) {
+  if (d === synDay) return;
+  advanceSynTo(d); upsample(humidSynC, humidSynPrev);
+  advanceSynTo(d + 1); upsample(humidSynC, humidSynCur);
+  synDay = d;
+}
 
 function computeField() {
   const d = simDate(simHour), y = d.getUTCFullYear(), doy = (d.getTime() - Date.UTC(y, 0, 1)) / 86400000;
@@ -563,6 +603,15 @@ function computeField() {
   const A0 = climF[M(m1 - 1)], A1 = climF[M(m1)], A2 = climF[M(m1 + 1)], A3 = climF[M(m1 + 2)];
   const w0 = w[0], w1 = w[1], w2 = w[2], w3 = w[3];
   const wf = 0.5 + 0.5 * Math.cos(2 * Math.PI * (f - 45 / 365.25));        // 1 in mid-February, 0 in mid-August
+
+  // Synoptic weather noise's own day-fraction blend, computed every render (not just when
+  // anomDirty fires) so it evolves continuously through the day -- same spirit as the monthly
+  // w0..w3 blend above (interpolate every render, not just when the underlying state changes),
+  // just linear between 2 daily snapshots instead of a cubic spline across 4 monthly ones (see
+  // humidSynPrev/humidSynCur's own declaration comment for why plain linear is enough here).
+  const synD = Math.floor(simHour / 24), synT = simHour / 24 - synD;
+  ensureSynDay(synD);
+  const sp0 = 1 - synT, sp1 = synT;
 
   if (anomDirty) {
     anomC.fill(0);
@@ -577,25 +626,6 @@ function computeField() {
     upsample(humidAnomC, humidAnomF);
     for (let q = 0; q < CN; q++) humidEnsoCo[q] = c0 * humidEnsoC[q] + c3 * humidEnsoC[CN + q] + c6 * humidEnsoC[2 * CN + q];
     upsample(humidEnsoCo, humidEnsoF);
-
-    // Synoptic weather noise: advance every cell's own independent AR(1) state by however many
-    // simulated days passed since the last recompute, in one shot -- phi^nStep is the exact
-    // closed form for an AR(1) process observed nStep steps apart (the same identity PHI_DAY/
-    // PHI_DAY_H already use in reverse to turn a *monthly* phi into an equivalent *daily* one),
-    // so this is mathematically identical to actually stepping through each intervening day one
-    // at a time, not an approximation. Keeps a big time-jump (fast-forwarding months) O(CN) once
-    // here, not O(CN * days-skipped) -- the same amortized-until-needed shape anomDirty itself
-    // already gives pc/pcH's own mode-expansion above, just applied to a per-cell state instead
-    // of a per-mode one.
-    const nStep = dayCount - lastSynDay;
-    if (nStep > 0) {
-      for (let q = 0; q < CN; q++) {
-        const p = Math.pow(humidSynPhiC[q], nStep);
-        humidSynC[q] = p * humidSynC[q] + Math.sqrt(Math.max(0, 1 - p * p)) * humidSynStdC[q] * randn();
-      }
-      lastSynDay = dayCount;
-    }
-    upsample(humidSynC, humidSynF);
 
     anomDirty = false;
   }
@@ -693,7 +723,8 @@ function computeField() {
       const k = o + i;
       if (outOfBasin[k]) { humid[k] = NaN; continue; }
       const mth = w0 * HA0[k] + w1 * HA1[k] + w2 * HA2[k] + w3 * HA3[k];
-      let v = mth + hvs * humidAnomF[k] + hes * humidEnsoF[k] + hws * humidSynF[k];
+      const syn = sp0 * humidSynPrev[k] + sp1 * humidSynCur[k];
+      let v = mth + hvs * humidAnomF[k] + hes * humidEnsoF[k] + hws * syn;
       if (v > 100) v = 100 + 4 * Math.tanh((v - 100) / 4); else if (v < 2) v = 2 - 4 * Math.tanh((2 - v) / 4);   // soft: real RH can edge past [2,100] without ever doing so without limit
       humid[k] = v;
     }
