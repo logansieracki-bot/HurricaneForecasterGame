@@ -1,6 +1,38 @@
 # Roadmap
 
 ## Just landed
+- **Fixed the bottom-left hover readout to reflect whichever view is selected, not just SST.**
+  The user flagged this directly: switching to Anomaly/Humidity/Wind Shear changed the legend
+  and city tooltips but the readout card under the mouse kept reporting SST regardless -- the
+  same class of per-view bug `drawLakes()` and `updateCityTip()` had already been fixed for,
+  just never applied here. `updateReadout()` is now fully generic over `VIEWS[view]` (unit, key,
+  keyLabel), branches on the field array per view (sst/humid/shear/diff), and reuses the
+  existing `'Above '/'Below '+keyLabel` convention for every non-SST view while leaving SST's
+  own "vs. normal" delta format untouched. Switching views now also refreshes the readout
+  immediately on click, not just on the next mouse move.
+
+  Two real side-fixes came out of building this, not just test convenience: `stats()` (the
+  debug hook used to find a basin's warmest real point) only ever checked `outOfBasin[k]`, never
+  `land[k]`, so it could return a land cell with a physically meaningless interpolated "SST" --
+  confirmed concretely, Atlantic's own warmest point was landing right at the Red Sea coast. And
+  a new `isLand` debug hook is now exposed on `window.SSTSIM` across all 9 basins (it already
+  existed internally; it just wasn't reachable from outside).
+
+  Verifying this safely needed its own small piece of infrastructure: a reliable way to find a
+  guaranteed-real, non-land hover point for automated testing, basin-agnostic, with no hardcoded
+  coordinates. Two naive approaches both failed for real geographic reasons before landing on a
+  third: `stats()`'s own point can sit exactly on a basin's domain edge (confirmed at Atlantic's
+  `lon1=40`), where `maxBounds` clamping means a programmatic pan doesn't land where the pixel
+  math expects; and a basin's own map-center point isn't reliably open ocean either (Australian
+  Region's center is the Kimberley coast, Mediterranean's is southern Italy -- both genuinely
+  land, which the readout correctly reported, just not usable as a test point). The working
+  approach scans a grid within the *current* viewport (`map.getBounds()`, no panning at all) for
+  the first point that's simultaneously non-land and has a finite sample.
+
+  Full suite: 420 checks (up from 392), zero regressions, confirmed clean on two separate full
+  runs after a one-off unrelated South Pacific humidity-sample timing flake on an earlier run
+  didn't reproduce.
+
 - **Added a real, ENSO-modulated Wind Shear field -- Atlantic only, Phase 1.** The user asked to
   brainstorm wind shear realism tied to ENSO and the jet stream; after confirming scope (no
   separate jet-stream visual -- ENSO only needs to drive the shear *field's values* realistically,

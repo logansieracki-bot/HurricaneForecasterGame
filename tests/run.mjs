@@ -163,6 +163,46 @@ async function checkBasin(label, dist, extra) {
   check(`[${label}] Anomaly view's key-line checkbox label drops the SST-specific "26.5"/threshold wording`, !anomLabels.l265.includes('26.5') && !/threshold/i.test(anomLabels.l265));
   check(`[${label}] Anomaly view's step-line checkbox label reflects its own 1 °C step`, anomLabels.l2.includes('1') && anomLabels.l2.includes('°C'));
 
+  // The bottom-left hover readout used to be hardcoded to always show SST regardless of the
+  // active view -- switching views should change what it reports, not just the legend (the
+  // same class of bug drawLakes() and updateCityTip() already had to fix per view). Scans the
+  // CURRENT viewport (map.getBounds(), no panning -- panning near a basin's own edge can run
+  // into maxBounds clamping, landing the cursor off the visible map, confirmed hitting exactly
+  // this with stats()'s own warmest-point in Atlantic, right at lon1) for a real, non-land
+  // point -- the map's own default center isn't a safe assumption either, confirmed landing on
+  // actual terrain for Australian Region (Kimberley coast) and Mediterranean (southern Italy,
+  // which is geographically central to that basin). The view checks just above already left
+  // `view` on 'anom' -- reset to 'sst' first so the upcoming SST-readout assertion isn't
+  // silently checking the Anomaly view instead.
+  await page.evaluate(() => window.SSTSIM.setView('sst'));
+  await page.waitForTimeout(150);
+  const readoutPt = await page.evaluate(() => {
+    const b = window.SSTSIM.map.getBounds();
+    for (let i = 1; i < 8; i++) {
+      for (let j = 1; j < 8; j++) {
+        const lat = b.getSouth() + (b.getNorth() - b.getSouth()) * i / 8;
+        const lon = b.getWest() + (b.getEast() - b.getWest()) * j / 8;
+        if (window.SSTSIM.isLand(lat, lon)) continue;
+        if (!Number.isFinite(window.SSTSIM.sample(lat, lon).sst)) continue;
+        const p = window.SSTSIM.map.latLngToContainerPoint([lat, lon]);
+        return { x: p.x, y: p.y };
+      }
+    }
+    return null;
+  });
+  check(`[${label}] found a real open-ocean point in the current view to hover`, readoutPt !== null);
+  await page.mouse.move(readoutPt.x, readoutPt.y);
+  await page.waitForTimeout(150);
+  const readoutSst = await page.evaluate(() => document.getElementById('readout').textContent);
+  check(`[${label}] readout shows a real °C SST value with vs.-normal context`, /°C/.test(readoutSst) && /vs\. normal/.test(readoutSst));
+
+  await page.evaluate(() => window.SSTSIM.setView('anom'));
+  await page.waitForTimeout(150);
+  const readoutAnom = await page.evaluate(() => document.getElementById('readout').textContent);
+  check(`[${label}] switching to the Anomaly view changes what the readout reports, not just the legend`, readoutAnom !== readoutSst && !/vs\. normal/.test(readoutAnom));
+
+  await page.evaluate(() => window.SSTSIM.setView('sst'));   // leave the page in its default state for any checks after this one
+
   const overlayChecksum = () => page.evaluate(() => {
     const c = document.querySelectorAll('canvas.overlay')[1], g = c.getContext('2d'), d = g.getImageData(0, 0, c.width, c.height).data;
     let sum = 0; for (let i = 0; i < d.length; i += 97) sum = (sum + d[i]) >>> 0;
@@ -318,6 +358,31 @@ await checkBasin('Atlantic', ATLANTIC_DIST, async (page, label) => {
   const laNinaShear = (await page.evaluate(() => window.SSTSIM.sample(12, -45))).shear;
   check(`[${label}] forced El Nino raises MDR wind shear vs. forced La Nina (real teleconnection)`, elNinoShear > laNinaShear);
   await page.evaluate(() => window.SSTSIM.restart());   // clears the forced ENSO state and re-spins-up normally
+
+  // The bottom-left readout's own Shear branch (Atlantic-only, so checked here rather than in
+  // the shared checkBasin() body above, which only exercises sst/anom -- every basin has those).
+  // Re-hover explicitly rather than relying on `pointer` still holding its value from the
+  // shared check much earlier -- plenty of interaction (ENSO forcing, restarts) has happened
+  // since, and this shouldn't depend on exactly what did or didn't clear it.
+  await page.evaluate(() => window.SSTSIM.setView('shear'));
+  const shearPt = await page.evaluate(() => {
+    const b = window.SSTSIM.map.getBounds();
+    for (let i = 1; i < 8; i++) {
+      for (let j = 1; j < 8; j++) {
+        const lat = b.getSouth() + (b.getNorth() - b.getSouth()) * i / 8;
+        const lon = b.getWest() + (b.getEast() - b.getWest()) * j / 8;
+        if (window.SSTSIM.isLand(lat, lon)) continue;
+        if (!Number.isFinite(window.SSTSIM.sample(lat, lon).sst)) continue;
+        const p = window.SSTSIM.map.latLngToContainerPoint([lat, lon]);
+        return { x: p.x, y: p.y };
+      }
+    }
+    return null;
+  });
+  await page.mouse.move(shearPt.x, shearPt.y);
+  await page.waitForTimeout(150);
+  const shearReadout = await page.evaluate(() => document.getElementById('readout').textContent);
+  check(`[${label}] readout shows a real kt shear value with its own threshold context`, /kt/.test(shearReadout) && /(Above|Below) disruptive shear threshold/.test(shearReadout));
 
   await page.evaluate(() => window.SSTSIM.setView('sst'));   // leave the page in its default state for any checks after this one
 

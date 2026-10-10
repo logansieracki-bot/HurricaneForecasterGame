@@ -1243,12 +1243,24 @@ function updateReadout() {
   const el = $('readout');
   if (!pointer) { el.innerHTML = '<b>–</b><div>Move the pointer over the ocean</div>'; return; }
   const lat = pointer.lat, lon = ((pointer.lng + 540) % 360) - 180;
+  // °C gets SST's existing one-decimal precision; % matches the whole-number precision
+  // updateCityTip() already uses for humidity.
+  const V = VIEWS[view], dp = V.unit === ' °C' ? 1 : 0;
   const li = lakeAt(lat, lon);
-  if (li >= 0) { const dv = lakeV[li] - lakeN[li]; el.innerHTML = '<b>' + lakeV[li].toFixed(1) + ' °C</b><div>' + (LAKE_META[li].name || 'Lake') + ' · ' + (dv >= 0 ? '+' : '−') + Math.abs(dv).toFixed(1) + ' °C vs. normal</div>'; return; }
-  const v = sampleField(sst, lat, lon);
+  if (li >= 0) {
+    if (view === 'sst') { const dv = lakeV[li] - lakeN[li]; el.innerHTML = '<b>' + lakeV[li].toFixed(1) + ' °C</b><div>' + (LAKE_META[li].name || 'Lake') + ' · ' + (dv >= 0 ? '+' : '−') + Math.abs(dv).toFixed(1) + ' °C vs. normal</div>'; return; }
+    // No physical basis for a lake having its own distinct anomaly/humidity reading -- same
+    // reasoning drawLakes() already uses, just applied to the readout instead of a pixel.
+    const lv = view === 'humid' ? sampleField(humid, lat, lon) : lakeV[li] - lakeN[li];
+    el.innerHTML = '<b>' + lv.toFixed(dp) + V.unit + '</b><div>' + (LAKE_META[li].name || 'Lake') + ' · ' + (lv >= V.key ? 'Above ' : 'Below ') + V.keyLabel + '</div>';
+    return;
+  }
+  const src = view === 'sst' ? sst : view === 'humid' ? humid : diff;
+  const v = sampleField(src, lat, lon);
   if (v !== v) el.innerHTML = '<b>–</b><div>Outside the simulated area · ' + fmtLL(lat, lon) + '</div>';
   else if (isLand(lat, lon)) el.innerHTML = '<b>Land</b><div>' + fmtLL(lat, lon) + '</div>';
-  else { const dv = sampleField(diff, lat, lon); el.innerHTML = '<b>' + v.toFixed(1) + ' °C</b><div>' + (dv >= 0 ? '+' : '−') + Math.abs(dv).toFixed(1) + ' °C vs. normal · ' + fmtLL(lat, lon) + '</div>'; }
+  else if (view === 'sst') { const dv = sampleField(diff, lat, lon); el.innerHTML = '<b>' + v.toFixed(1) + ' °C</b><div>' + (dv >= 0 ? '+' : '−') + Math.abs(dv).toFixed(1) + ' °C vs. normal · ' + fmtLL(lat, lon) + '</div>'; }
+  else el.innerHTML = '<b>' + v.toFixed(dp) + V.unit + '</b><div>' + (v >= V.key ? 'Above ' : 'Below ') + V.keyLabel + ' · ' + fmtLL(lat, lon) + '</div>';
 }
 function drawLegend() {
   const V = VIEWS[view], c = $('legend-canvas'), g = c.getContext('2d'), w = c.width;
@@ -1326,7 +1338,7 @@ window.addEventListener('keydown', (e) => {
 /* panel */
 $('collapse').onclick = () => { const p = $('panel'); p.classList.toggle('collapsed'); $('collapse').innerHTML = p.classList.contains('collapsed') ? '&#9656;' : '&#9662;'; };
 document.querySelectorAll('.subhead').forEach((h) => h.onclick = () => { const sec = h.closest('.subsec'), collapsed = sec.classList.toggle('collapsed'); h.setAttribute('aria-expanded', !collapsed); });
-document.querySelectorAll('#seg-view button').forEach((b) => b.onclick = () => { view = b.dataset.v; document.querySelectorAll('#seg-view button').forEach((x) => x.setAttribute('aria-pressed', x === b)); drawLegend(); updateThresholdLabels(); scheduleRender(); });
+document.querySelectorAll('#seg-view button').forEach((b) => b.onclick = () => { view = b.dataset.v; document.querySelectorAll('#seg-view button').forEach((x) => x.setAttribute('aria-pressed', x === b)); drawLegend(); updateThresholdLabels(); updateReadout(); scheduleRender(); });
 THEME_ORDER.forEach((id) => { const t = THEMES[id], b = document.createElement('button'); b.dataset.th = id; b.setAttribute('aria-pressed', id === 'sat'); b.innerHTML = '<i style="background:' + t.swatch + '"></i><span>' + t.name + '</span>'; b.onclick = () => setTheme(id); $('themes').appendChild(b); });
 document.querySelectorAll('#seg-grid button').forEach((b) => b.onclick = () => setGridMode(b.dataset.g));
 $('show-sst').onchange = scheduleRender; $('borders').onchange = scheduleRender;
@@ -1364,13 +1376,13 @@ window.SSTSIM = {
   sample(lat, lon) { return { sst: sampleField(sst, lat, lon), normal: sampleField(normal, lat, lon), humid: sampleField(humid, lat, lon) }; },
   state() { return { simHour, seed: P.seed, date: simDate(simHour).toISOString(), gapIdx }; },
   set(k, v) { P[k] = v; refresh(); }, enso() { return { n34, lag0: ensoLag(0), lag3: ensoLag(91), lag6: ensoLag(183) }; }, forceEnso, setView(v) { document.querySelector('#seg-view button[data-v="' + v + '"]').click(); },
-  setPlaying, restart, map, render, setTheme, setGridMode, sliderVals() { return { seasonal: P.seasonal, features: P.features, enso: P.enso, warming: P.warming, variability: P.variability, synoptic: P.synoptic, seed: P.seed }; }, applySeed,
+  setPlaying, restart, map, render, setTheme, setGridMode, sliderVals() { return { seasonal: P.seasonal, features: P.features, enso: P.enso, warming: P.warming, variability: P.variability, synoptic: P.synoptic, seed: P.seed }; }, applySeed, isLand,
   bm() {
     const detail = !!(detailLayer && map.hasLayer(detailLayer));
     if (themeId === 'sat') { const st = TS.sat; return { theme: 'sat', idx: st.idx, offline: st.offline, loaded: st.loaded, label: st.offline ? 'offline (Blue Marble)' : (TILESETS.sat[st.idx] && TILESETS.sat[st.idx].label), detail, csp: cspBlocked }; }
     return { theme: themeId, embedded: true, ready: bmReady, detail, csp: cspBlocked };
   },
-  lakes() { return LAKE_META.map((L, i) => ({ name: L.name, area: L.area, lat: L.lat, lon: L.lon, v: lakeV[i], n: lakeN[i] })); }, ceil: seaCeil, stats() { let mn = 99, mx = -99, nan = 0, km = 0; for (let k = 0; k < N; k++) { const v = sst[k]; if (v !== v) nan++; else { if (v < mn) mn = v; if (v > mx) { mx = v; km = k; } } } return { mn, mx, nan, at: [LAT1 - Math.floor(km / NX) * RES, LON0 + (km % NX) * RES] }; }
+  lakes() { return LAKE_META.map((L, i) => ({ name: L.name, area: L.area, lat: L.lat, lon: L.lon, v: lakeV[i], n: lakeN[i] })); }, ceil: seaCeil, stats() { let mn = 99, mx = -99, nan = 0, km = 0; for (let k = 0; k < N; k++) { const v = sst[k]; if (v !== v) { nan++; continue; } if (land[k]) continue; if (v < mn) mn = v; if (v > mx) { mx = v; km = k; } } return { mn, mx, nan, at: [LAT1 - Math.floor(km / NX) * RES, LON0 + (km % NX) * RES] }; }
 };
 window.__ready = true;
 })();
