@@ -30,8 +30,12 @@ it does get the two properties that matter most for "does this look and feel lik
 honestly right: how much a point's humidity swings day to day, and how long a wet or dry spell
 actually lasts, both calibrated from real data rather than guessed.
 
-Usage: python3 tools/make_humidity_synoptic.py <basin> <lon0> <lon1> <lat0> <lat1>
-  e.g. python3 tools/make_humidity_synoptic.py atlantic -110 40 -40 72
+Usage: python3 tools/make_humidity_synoptic.py <basin> <lon0> <lon1> <lat0> <lat1> <months>
+  <months> is a comma-separated list of calendar months (1-12) covering that basin's own real
+  cyclone season -- not a single shared window. Southern Hemisphere seasons cross the year
+  boundary (e.g. 11,12,1,2,3,4) and North Indian Ocean is bimodal (4,5,6,10,11,12, skipping the
+  monsoon-suppressed Jul-Sep); this script doesn't guess, the caller must pass the real one.
+  e.g. python3 tools/make_humidity_synoptic.py atlantic -110 40 -40 72 6,7,8,9,10,11
 """
 import json
 import os
@@ -46,16 +50,19 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # make_humidity.py's own 15-year MONTHLY pull is about interannual variability, where more years
 # is strictly better for a stable fit. This is about SYNOPTIC variability instead -- the real
-# sample size for that is daily, not yearly (Jun-Nov across 5 years is ~915 real weather
-# samples, vastly more than the 15 the interannual fit works with), so a shorter span is both
-# sufficient and keeps the pull itself modest. 2017-2021: two of the most active Atlantic
+# sample size for that is daily, not yearly (a 6-month season across 5 years is ~915 real
+# weather samples, vastly more than the 15 the interannual fit works with), so a shorter span is
+# both sufficient and keeps the pull itself modest. 2017-2021: two of the most active Atlantic
 # seasons on record (2017, 2020) alongside quieter ones, for a representative mix, still inside
-# ERA5's own confirmed-usable range. June-November only, matching NHC's own hurricane season --
-# real synoptic character (SAL activity, tropical wave trains) is a season-specific regime, not
-# a year-round constant, and this noise only needs to be realistic during the months it'll
-# actually be seen driving gameplay.
+# ERA5's own confirmed-usable range -- used as the same reference window for every basin, not
+# re-chosen per basin, so cross-basin comparisons aren't confounded by different years.
+#
+# Pulls ALL 12 months once (not just one basin's own season) and caches that single global
+# file -- every basin's own season is a cheap in-memory filter of the same already-downloaded
+# data afterward, not a separate network pull each time (the archive's own chunking means
+# per-basin spatial/month filtering doesn't reduce transfer size anyway, see ERA5_ZARR's own
+# docstring, so there's no cost to pulling the superset once and slicing it N times).
 SYNOPTIC_YEARS = (2017, 2021)
-SYNOPTIC_MONTHS = range(6, 12)
 
 
 def smooth2d(vals2d, invalid, iterations=40):
@@ -76,7 +83,7 @@ def smooth2d(vals2d, invalid, iterations=40):
     return out
 
 
-def build(basin, lon0, lon1, lat0, lat1):
+def build(basin, lon0, lon1, lat0, lat1, months):
     sst = cl.load(os.path.join(ROOT, "data", "raw", "ersstv5.nc"))
 
     # Reuse the already-built monthly climatology (same cache make_humidity.py itself wrote) --
@@ -87,14 +94,17 @@ def build(basin, lon0, lon1, lat0, lat1):
     fill = cl.land_fill_indices(box_m)
     clim12 = cl.monthly_climatology(box_m, fill, base_years=(2007, 2021))
 
+    # The shared all-12-months cache (see module docstring) -- months=None here pulls/caches the
+    # full year; the basin's own season is applied afterward, in-memory, against this same file.
     daily_cache = os.path.join(
         ROOT, "data", "raw",
-        f"era5_rh700_global_daily_{SYNOPTIC_YEARS[0]}-{SYNOPTIC_YEARS[1]}_junnov.nc",
+        f"era5_rh700_global_daily_{SYNOPTIC_YEARS[0]}-{SYNOPTIC_YEARS[1]}_allmonths.nc",
     )
-    rh_daily = cl.load_era5_rh700_daily(
+    rh_daily_all = cl.load_era5_rh700_daily(
         sst["lat"], sst["lon"], SYNOPTIC_YEARS[0], SYNOPTIC_YEARS[1],
-        months=SYNOPTIC_MONTHS, cache_path=daily_cache,
+        months=None, cache_path=daily_cache,
     )
+    rh_daily = rh_daily_all.sel(time=rh_daily_all["time"].dt.month.isin(list(months)))
     box_d, cnx_d, cny_d = cl.extract_box(rh_daily, lon0, lon1, lat0, lat1)
     assert (cnx_d, cny_d) == (cnx, cny), "daily pull's own box must match the monthly clim's grid exactly"
 
@@ -137,4 +147,5 @@ if __name__ == "__main__":
     args = sys.argv[1:]
     basin = args[0]
     lon0, lon1, lat0, lat1 = (float(x) for x in args[1:5])
-    build(basin, lon0, lon1, lat0, lat1)
+    months = [int(x) for x in args[5].split(",")]
+    build(basin, lon0, lon1, lat0, lat1, months)

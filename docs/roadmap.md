@@ -1,6 +1,48 @@
 # Roadmap
 
 ## Just landed
+- **Rolled out the full humidity system -- climatology, ENSO fit, and the day-to-day synoptic
+  noise layer -- from Atlantic-only to all 8 remaining basins** (East Pacific, West Pacific,
+  North Indian Ocean, Australian Region, South-West Indian Ocean, South Pacific, South Atlantic,
+  Mediterranean), after the user confirmed the Atlantic version "works PERFECTALLY" and asked
+  for it everywhere. Deliberately not a copy-paste of Atlantic's own numbers: each basin got its
+  own real per-basin data pull and calibration, since each has a different real cyclone season
+  (hemisphere-dependent) and a different real achievable humidity range.
+
+  Real season months used per basin (Southern Hemisphere basins cross the year boundary, so
+  these are explicit month lists, not a contiguous range; North Indian Ocean is uniquely bimodal,
+  skipping the monsoon-suppressed Jul-Sep): East Pacific May-Nov, West Pacific Jun-Dec, North
+  Indian Ocean Apr-Jun + Oct-Dec, Australian/South-West Indian Ocean/South Pacific/South Atlantic
+  Nov-Apr, Mediterranean Sep-Jan. Each basin's own "favorable for development" `key` threshold
+  was computed the same way the Atlantic recalibration (below) established -- that basin's own
+  real peak-season p75 RH, not an assumed constant -- confirming genuine cross-basin variation
+  (West Pacific p75=68%, Mediterranean p75=49%, six others in between) that validates doing this
+  per basin instead of reusing Atlantic's 58% everywhere. Each basin's `HUMID_STOPS` color-stop
+  spacing was rescaled from Atlantic's own relative fractions to its own `key`, same principle as
+  the original recalibration (concentrate color resolution below the threshold, where the basin
+  actually spends its time) applied individually.
+
+  Data-pull efficiency: the ARCO-ERA5 archive's chunking is time-only (touching any timestep pulls
+  the whole global/all-levels chunk regardless of spatial or basin box), so pulling all 12 months
+  of daily data *once* and caching it generically, then slicing to each basin's own box and season
+  from the local cache afterward, cost the same single ~152s network pull as one basin would have
+  -- not 8 separate large pulls. `tools/make_humidity_synoptic.py` gained a `months` CLI argument
+  (comma-separated calendar months) so the same script drives every basin's own season against
+  that one shared cache.
+
+  Client-side, propagated via the same literal-substring-replacement-with-exact-match-assertion
+  script pattern used for the earlier threshold generalization (18 edits per basin, each asserted
+  to match exactly once before writing) -- safer for 8 repeats than 144 manual edits. Re-verified
+  every anchor point against the other 8 basins' own current file content before writing the
+  script rather than assuming byte-identity with Atlantic, which caught a real structural
+  difference early: all 8 non-Atlantic basins already carry an extra `gapIdx` state variable (a
+  gap-wind-burst index shared across their jets) that Atlantic's own hand-tuned Gulf Stream/Loop
+  Current system doesn't have, so the script's patterns were written against the other 8's own
+  real content, not Atlantic's. `tests/run.mjs` gained a shared `checkHumidity()` helper (view
+  toggle, legend caption, each basin's own threshold wording, a real finite sample, and genuine
+  day-to-day variability) called once per non-Atlantic basin; Atlantic keeps its own existing,
+  more detailed humidity checks. Full suite: 386 checks, zero regressions.
+
 - **Fixed the synoptic humidity noise snapping once a day instead of evolving continuously.**
   The previous entry's per-cell AR(1) state only got a fresh value inside the `anomDirty` block,
   which only runs once per *simulated day* -- so the field held one static value all day, then

@@ -68,8 +68,8 @@ nothing to run by hand.
   when the seasonal swing is stretched; shelf effect only cools.
 - Seeds fix the random year and nudge seasonal swing / currents / ENSO strength
   by roughly 10–35% (checkbox turns it off).
-- Humidity (Atlantic only so far): 700 hPa relative humidity, same shape as SST
-  (real ERA5 2007–2021 monthly climatology + its own 6 EOFs/ENSO fit), a third
+- Humidity (all 9 basins): 700 hPa relative humidity, same shape as SST (real
+  ERA5 2007–2021 monthly climatology + its own 6 EOFs/ENSO fit), a third
   option in the Temperature/SST Anomaly view toggle. Only `variability`/`enso`/
   `synoptic` drive it (not `warming`/`seasonal`/`features` — see
   `tools/make_humidity.py` and the humidity combine loop in `computeField()`
@@ -81,7 +81,14 @@ nothing to run by hand.
   check found this field doesn't decompose into a few dominant modes the way
   interannual variability does — see `tools/make_humidity_synoptic.py`),
   driven by its own `synoptic` slider since real SST doesn't swing day to day
-  the way mid-level humidity does.
+  the way mid-level humidity does. The "favorable for development" `key`
+  threshold and color-stop spacing are calibrated per basin against that
+  basin's own real peak-season p75 RH (not copied from Atlantic's 58%) —
+  East Pacific 53%, West Pacific 68%, North Indian Ocean 63%, Australian
+  Region 67%, South-West Indian Ocean 58%, South Pacific 54%, South Atlantic
+  59%, Mediterranean 49% — each using that basin's own real hemisphere-
+  appropriate cyclone season (Southern Hemisphere basins and the bimodal
+  North Indian Ocean do not share the Atlantic's Jun–Nov window).
 
 ## Imagery
 The "Blue Marble" theme is a crop **embedded in the build** (`data.bm`, drawn on

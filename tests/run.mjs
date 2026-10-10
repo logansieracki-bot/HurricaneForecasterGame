@@ -44,6 +44,36 @@ async function checkCityMarkers(page, label, lat, lon, expectedName) {
   await page.check('#cities');
 }
 
+// Humidity view: real climatology + day-to-day synoptic noise, same shared architecture across
+// every basin that has it (see docs/roadmap.md's "rolled out to all 9 basins" entry) -- checks
+// what's basin-generic (view toggle, legend, a real finite sample, real day-to-day variability)
+// rather than hardcoding any one basin's own recalibrated threshold value, since each basin's
+// own key is deliberately different (checked against real per-basin climatology, not copied).
+async function checkHumidity(page, label, lat, lon) {
+  await page.evaluate(() => window.SSTSIM.setView('humid'));
+  await page.waitForTimeout(200);
+  const state = await page.evaluate(() => ({
+    pressed: document.querySelector('#seg-view button[data-v="humid"]').getAttribute('aria-pressed'),
+    caption: document.getElementById('legend-cap').textContent,
+    l265: document.getElementById('l265-label').textContent,
+    l2: document.getElementById('l2-label').textContent,
+  }));
+  check(`[${label}] Humidity button becomes pressed when selected`, state.pressed === 'true');
+  check(`[${label}] legend caption switches to the humidity scale`, state.caption === '700 hPa relative humidity, %');
+  check(`[${label}] key-line checkbox label mentions this basin's own %RH threshold`, /^\s*\d+% line \(favorable for development\)\s*$/.test(state.l265));
+  check(`[${label}] step-line checkbox label mentions its own %RH step`, /^\s*Contour lines every \d+%\s*$/.test(state.l2));
+
+  const sample0 = await page.evaluate(([lat, lon]) => window.SSTSIM.sample(lat, lon), [lat, lon]);
+  check(`[${label}] open-ocean humidity sample is real data in range`, Number.isFinite(sample0.humid) && sample0.humid >= 0 && sample0.humid <= 100);
+
+  const series = [];
+  for (let d = 0; d < 8; d++) { await page.evaluate(() => window.SSTSIM.advance(24)); series.push((await page.evaluate(([lat, lon]) => window.SSTSIM.sample(lat, lon), [lat, lon])).humid); }
+  const mean = series.reduce((a, b) => a + b, 0) / series.length, sd = Math.sqrt(series.reduce((a, b) => a + (b - mean) ** 2, 0) / series.length);
+  check(`[${label}] humidity genuinely varies day to day (real synoptic noise, not frozen)`, sd > 1);
+
+  await page.evaluate(() => window.SSTSIM.setView('sst'));   // leave the page in its default state for any checks after this one
+}
+
 for (const [label, dist] of [['Atlantic', ATLANTIC_DIST], ['East Pacific', EPAC_DIST], ['West Pacific', WPAC_DIST], ['North Indian Ocean', NIO_DIST], ['Australian Region', AUS_DIST], ['South-West Indian Ocean', SWIO_DIST], ['South Pacific', SPAC_DIST], ['South Atlantic', SATL_DIST], ['Mediterranean', MED_DIST]]) {
   if (!existsSync(dist)) {
     console.error(`${dist} not found — run \`npm run build\` first.`);
@@ -294,6 +324,7 @@ await checkBasin('East Pacific', EPAC_DIST, async (page, label) => {
   check(`[${label}] Gulf of Mexico/Florida Straits is excluded (wrong ocean)`, Number.isNaN(basinSamples.gulfOfMexico.sst));
   check(`[${label}] north of the grid's own northern edge is outside the simulated area`, Number.isNaN(basinSamples.northOfDomain.sst));
 
+  await checkHumidity(page, label, 16.86, -99.88);
   await checkCityMarkers(page, label, 16.86, -99.88, 'Acapulco');
 });
 
@@ -341,6 +372,7 @@ await checkBasin('West Pacific', WPAC_DIST, async (page, label) => {
   check(`[${label}] Molucca Sea (south curve's wiggle room) still has real SST`, Number.isFinite(basinSamples.moluccaSea.sst));
   check(`[${label}] South China Sea proper has real SST`, Number.isFinite(basinSamples.southChinaSea.sst));
 
+  await checkHumidity(page, label, 14.60, 120.98);
   await checkCityMarkers(page, label, 14.60, 120.98, 'Manila');
 });
 
@@ -385,6 +417,7 @@ await checkBasin('North Indian Ocean', NIO_DIST, async (page, label) => {
   check(`[${label}] south of Somalia's own coast is excluded (a different basin)`, Number.isNaN(basinSamples.southOfSomalia.sst));
   check(`[${label}] open water in the south curve's wiggle room still has real SST`, Number.isFinite(basinSamples.openWiggleWater.sst));
 
+  await checkHumidity(page, label, 19.08, 72.88);
   await checkCityMarkers(page, label, 19.08, 72.88, 'Mumbai');
 });
 
@@ -443,6 +476,7 @@ await checkBasin('Australian Region', AUS_DIST, async (page, label) => {
   check(`[${label}] east of the grid's own widened eastern edge is outside the simulated area`, Number.isNaN(basinSamples.eastOfDomain.sst));
   check(`[${label}] south of the grid's own southern edge is outside the simulated area`, Number.isNaN(basinSamples.southOfDomain.sst));
 
+  await checkHumidity(page, label, -33.87, 151.21);
   await checkCityMarkers(page, label, -33.87, 151.21, 'Sydney');
 });
 
@@ -501,6 +535,7 @@ await checkBasin('South-West Indian Ocean', SWIO_DIST, async (page, label) => {
   check(`[${label}] north of the grid's own northern edge is outside the simulated area`, Number.isNaN(basinSamples.northOfDomain.sst));
   check(`[${label}] south of the grid's own southern edge is outside the simulated area`, Number.isNaN(basinSamples.southOfDomain.sst));
 
+  await checkHumidity(page, label, -29.86, 31.02);
   await checkCityMarkers(page, label, -29.86, 31.02, 'Durban');
 });
 
@@ -552,6 +587,7 @@ await checkBasin('South Pacific', SPAC_DIST, async (page, label) => {
   check(`[${label}] west of the grid's own western edge is outside the simulated area`, Number.isNaN(basinSamples.westOfDomain.sst));
   check(`[${label}] east of the grid's own eastern edge is outside the simulated area`, Number.isNaN(basinSamples.eastOfDomain.sst));
 
+  await checkHumidity(page, label, -18.14, 178.42);
   await checkCityMarkers(page, label, -18.14, 178.42, 'Suva');
 });
 
@@ -619,6 +655,7 @@ await checkBasin('South Atlantic', SATL_DIST, async (page, label) => {
   check(`[${label}] west of the grid's own western edge is outside the simulated area`, Number.isNaN(basinSamples.westOfDomain.sst));
   check(`[${label}] east of the grid's own eastern edge is outside the simulated area`, Number.isNaN(basinSamples.eastOfDomain.sst));
 
+  await checkHumidity(page, label, -22.91, -43.17);
   await checkCityMarkers(page, label, -22.91, -43.17, 'Rio de Janeiro');
 });
 
@@ -701,6 +738,7 @@ await checkBasin('Mediterranean', MED_DIST, async (page, label) => {
   check(`[${label}] west of the grid's own western edge is outside the simulated area`, Number.isNaN(basinSamples.westOfDomain.sst));
   check(`[${label}] east of the grid's own eastern edge is outside the simulated area`, Number.isNaN(basinSamples.eastOfDomain.sst));
 
+  await checkHumidity(page, label, 45.44, 12.33);
   await checkCityMarkers(page, label, 45.44, 12.33, 'Venice');
 });
 
