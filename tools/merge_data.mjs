@@ -88,9 +88,24 @@ export function mergeShearSynoptic(basin, dataFileName) {
   return out;
 }
 
+// Layers a basin's own <basin>-shear-jet.json (the explicit, continuous jet-axis feature --
+// real mean path + EOF wave modes + the real re-centered cross-axis profile, see
+// make_shear_jet.py) onto an already-merged, shear-bearing data file, nested under shear.jet --
+// same shape and reasoning as mergeShearSynoptic above (no top-level key collisions: shear-
+// jet.json's own K/eof/phi live one level deeper than shear's own, under `jet`, not `synoptic`).
+export function mergeShearJet(basin, dataFileName) {
+  const dataPath = join(GEN, dataFileName);
+  const existing = JSON.parse(readFileSync(dataPath, 'utf8'));
+  const jet = JSON.parse(readFileSync(join(GEN, `${basin}-shear-jet.json`), 'utf8'));
+  const out = { ...existing, shear: { ...existing.shear, jet } };
+  writeFileSync(dataPath, JSON.stringify(out));
+  console.log(`wrote ${dataPath} (added shear.jet key)`);
+  return out;
+}
+
 if (import.meta.url === `file://${process.argv[1]}`) {
   const [basin, mode, dataFileName] = process.argv.slice(2);
-  if (!basin) { console.error('usage: node tools/merge_data.mjs <basin>\n       node tools/merge_data.mjs <basin> --humidity <data-file-name>\n       node tools/merge_data.mjs <basin> --humidity-synoptic <data-file-name>\n       node tools/merge_data.mjs <basin> --shear <data-file-name>\n       node tools/merge_data.mjs <basin> --shear-synoptic <data-file-name>'); process.exit(1); }
+  if (!basin) { console.error('usage: node tools/merge_data.mjs <basin>\n       node tools/merge_data.mjs <basin> --humidity <data-file-name>\n       node tools/merge_data.mjs <basin> --humidity-synoptic <data-file-name>\n       node tools/merge_data.mjs <basin> --shear <data-file-name>\n       node tools/merge_data.mjs <basin> --shear-synoptic <data-file-name>\n       node tools/merge_data.mjs <basin> --shear-jet <data-file-name>'); process.exit(1); }
   if (mode === '--humidity') {
     if (!dataFileName) { console.error('usage: node tools/merge_data.mjs <basin> --humidity <data-file-name>'); process.exit(1); }
     mergeHumidity(basin, dataFileName);
@@ -103,6 +118,9 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   } else if (mode === '--shear-synoptic') {
     if (!dataFileName) { console.error('usage: node tools/merge_data.mjs <basin> --shear-synoptic <data-file-name>'); process.exit(1); }
     mergeShearSynoptic(basin, dataFileName);
+  } else if (mode === '--shear-jet') {
+    if (!dataFileName) { console.error('usage: node tools/merge_data.mjs <basin> --shear-jet <data-file-name>'); process.exit(1); }
+    mergeShearJet(basin, dataFileName);
   } else {
     merge(basin);
   }

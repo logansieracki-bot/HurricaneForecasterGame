@@ -377,6 +377,35 @@ await checkBasin('Atlantic', ATLANTIC_DIST, async (page, label) => {
   await page.evaluate(() => window.SSTSIM.set('shearSynoptic', 1));   // restore default before any checks after this one
   await page.evaluate(() => window.SSTSIM.restart());   // clears the 16 simulated days of drift above, same reasoning as the ENSO check's own closing restart
 
+  // The explicit jet stream (make_shear_jet.py): a continuous ribbon of strong shear along a
+  // meandering axis, over a quieter background. Three things it has to do: actually be a band
+  // (not just more speckle), shift from day to day, and still be there -- just parked on its mean
+  // path -- with the weather slider at 0. Thresholds sit well inside what 10 random seeds measured
+  // (ribbon contrast 33-43 kt, axis std over 8 days 3.8-10.3 deg, frozen exactly at slider 0).
+  const jetLons = [-55, -45, -35, -25];
+  const jetContrast = async (days) => {
+    const on = [], off = [];
+    for (let d = 0; d < days; d++) {
+      await page.evaluate(() => window.SSTSIM.advance(24));
+      const r = await page.evaluate((lons) => lons.map((lon) => { const la = window.SSTSIM.jetLat(lon); const at = (lat) => window.SSTSIM.sample(lat, lon).shear; return { on: at(la), off: [at(la + 12), at(la - 12)] }; }), jetLons);
+      for (const c of r) { if (Number.isFinite(c.on)) on.push(c.on); for (const o of c.off) if (Number.isFinite(o)) off.push(o); }
+    }
+    const m = (xs) => xs.reduce((a, b) => a + b, 0) / xs.length;
+    return { n: on.length, contrast: m(on) - m(off) };
+  };
+  const jetLatSeries = async (days) => { const s = []; for (let d = 0; d < days; d++) { await page.evaluate(() => window.SSTSIM.advance(24)); s.push(await page.evaluate(() => window.SSTSIM.jetLat(-40))); } return s; };
+
+  const jetDefault = await jetContrast(8);
+  check(`[${label}] jet stream is a real band: shear on its axis sits far above shear 12 deg to either side`, jetDefault.n >= 16 && jetDefault.contrast > 20);
+  check(`[${label}] jet axis shifts day to day (a meandering ribbon, not frozen)`, stdOf(await jetLatSeries(8)) > 1);
+
+  await page.evaluate(() => window.SSTSIM.set('shearSynoptic', 0));
+  const parked = await jetLatSeries(8);
+  check(`[${label}] weather slider at 0 parks the jet on its mean path instead of meandering`, Math.max(...parked) - Math.min(...parked) < 0.001);
+  check(`[${label}] ...but the jet is still there at slider 0 (always flowing, just not moving)`, (await jetContrast(4)).contrast > 20);
+  await page.evaluate(() => window.SSTSIM.set('shearSynoptic', 1));   // restore default before any checks after this one
+  await page.evaluate(() => window.SSTSIM.restart());
+
   // The bottom-left readout's own Shear branch (Atlantic-only, so checked here rather than in
   // the shared checkBasin() body above, which only exercises sst/anom -- every basin has those).
   // Re-hover explicitly rather than relying on `pointer` still holding its value from the

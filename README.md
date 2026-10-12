@@ -109,32 +109,35 @@ nothing to run by hand.
   the same way Gulf Stream physics drive SST with no current layer of its
   own.
 
-  Also carries real day-to-day ("synoptic") shear noise on top of the
-  monthly climatology — upper-level trough passages and jet streaks, the
-  things a monthly mean can't show and that make the climatological-only
-  field read as too static/diffuse to look like a real jet. Unlike
-  Humidity's own synoptic layer (pure per-cell AR(1) — its real spectrum is
-  flat), shear's real daily anomalies (checked against 5 years of ERA5,
-  restricted to Jun–Nov) showed a genuine EOF elbow — a coherent,
-  jet-latitude-shift-like mode 1 alone explaining 14.3% of domain variance —
-  so this is a hybrid: a 15-mode EOF component (`shearSynEofC`/`shearSynPhiC`,
-  already-daily phi) plus a per-cell AR(1) residual on the leftover variance
-  (`shearSynResidStdC`/`shearSynResidPhiC`, fit on anomaly-minus-EOF-
-  reconstruction so the two layers' variance isn't double-counted) — see
-  `tools/make_shear_synoptic.py`. Its own `Day-to-day weather (wind shear)`
-  slider (`P.shearSynoptic`), separate from Humidity's, since the two
-  fields' day-to-day noise is mechanistically distinct, confirmed by the
-  very different real structure each one's own build script found. Drawing
-  each coarse (2°) cell's own daily random shock fully independently (the
-  same simplification Humidity's own synoptic layer uses) looked like pure
-  static once actually rendered here — real shear anomalies correlate
-  +0.69 to +0.94 at 2–5°, a real local coherence an independent-per-cell
-  model throws away entirely, and upsample()'s own bicubic smoothing can't
-  manufacture correlation between coarse samples that were never correlated
-  to begin with. Fixed with an exactly variance-preserving separable
-  smoothing pass on each day's random shock before use (see the
-  `smoothedShearInnovation()` comment in `src/template.html`), calibrated to
-  the real measured correlation length, not guessed.
+  Also carries an explicit, continuous **jet stream**: a ribbon of strong
+  shear that is always there, meanders (ridges and troughs), and shifts day
+  to day. A statistical noise field can't do this — the first version (an EOF
+  of the shear *values*, then per-cell noise) was built, rendered, and read as
+  scattered patches rather than a flowing band, because the thing that's
+  actually coherent in the real data is the jet's *position*, not the shear
+  value at each point. Checked against 5 years of daily ERA5 (Jun–Nov): trace
+  the jet axis each day (latitude of peak shear at each longitude), and that
+  path's own wave modes carry 73% of its variance in just 8 modes (vs. 31% at
+  k=6 for the raw field), with real daily persistence per mode — so the axis
+  is driven by those 8 modes around the real mean path (~35–46°N). The
+  ribbon's cross-section is the real axis-following profile (+39 kt at the
+  axis, ~0 by 10° away). Because the monthly climatology already contains a
+  blurred copy of the jet, the client subtracts that smear from the
+  climatology and draws the ribbon back in where the axis actually is, so the
+  field's long-run average still equals the real climatology while any one
+  day shows a sharp band over a quieter background (see
+  `tools/make_shear_jet.py` for the derivation and the real numbers). Local
+  weather texture (`tools/make_shear_synoptic.py`) is fit on what the jet
+  *doesn't* explain and drawn at half weight (`SHEAR_TEXTURE_GAIN`, a
+  legibility choice, not a fit) so the ribbon isn't buried in clutter.
+
+  ENSO reaches the jet through the one channel verified in the real data:
+  the ribbon rides on top of the Phase 1 climatology+ENSO background, so El
+  Niño's higher shear lifts the whole field including the jet. The axis's own
+  latitude showed essentially no ENSO signal (daily correlations 0.0–0.17), so
+  nothing is invented there. Its own `Day-to-day weather (wind shear)` slider
+  (`P.shearSynoptic`) scales how far the jet strays from its mean path (and
+  the texture); at 0 the jet is still there, just parked.
 
 ## Imagery
 The "Blue Marble" theme is a crop **embedded in the build** (`data.bm`, drawn on

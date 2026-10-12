@@ -1,6 +1,61 @@
 # Roadmap
 
 ## Just landed
+- **Replaced Wind Shear Phase 2's statistical noise with an explicit, continuous jet stream
+  (Atlantic).** Supersedes the EOF-hybrid design described in the entry below. The user drew a
+  red line over a screenshot of the previous version: a continuous ribbon of strong shear that
+  meanders, dips are troughs, ENSO-influenced. Their follow-up was the physical picture: there
+  is a real, always-flowing jet further north with constant strong shear that moves around -- not
+  just patches that happen to be windy. A later reference image showed the same thing globally:
+  coherent wavy bands over a calm background. That is structurally a different object from what
+  was built (how much each point's shear varies), so it needed a different model.
+
+  Checked against 5 years of real daily ERA5 200-850 hPa shear, Jun-Nov only, before building:
+  trace the jet axis each day (the latitude of peak shear at each longitude, refined to
+  sub-grid with a parabolic fit). The axis's own latitude is the coherent degree of freedom --
+  its wave modes carry 73% of the axis's variance in 8 modes, with real daily persistence per
+  mode (0.25-0.85), versus only 31% at k=6 (47% at k=15) for the raw shear *values*, which is
+  why the first version rendered as patches: it was modeling a blurry echo of the jet's motion.
+  Mean path is 35-46N; the axis wanders ~4.8 deg domain-mean (daily lag-1 autocorrelation
+  0.91), dominated by wavenumbers 1 and 2 (real amplitudes 5.4 and 4.2 deg) -- the ridges and
+  troughs. Real mean daily shear at the axis is ~75 kt against a climatology of ~35 kt there,
+  which is the whole reason a monthly mean can't show it: averaging over days when the jet was
+  elsewhere blurs a sharp core into a broad hump.
+
+  ENSO, checked honestly: the axis's own latitude correlates only +0.12 / +0.17 / +0.01 with
+  Nino 3.4 at lags 0 / 3 / 6 months -- too weak to build an "El Nino shifts the jet" effect on,
+  so none was invented. ENSO reaches the jet through the channel already verified in Phase 1:
+  the ribbon rides on top of the climatology + interannual + ENSO background, so El Nino's
+  higher shear lifts the jet with it.
+
+  Rendering is a ribbon drawn around the day's axis using the real axis-following cross-section
+  (+39.5 kt at the axis, tapering to zero by ~10 deg). One subtlety that mattered: the monthly
+  climatology already contains a blurred copy of the jet, so "climatology + a moving ribbon"
+  counts the jet twice -- the simulated field would run hotter than the real climatology all
+  through the jet's range, and the ribbon would have less contrast than the real data. So the
+  client subtracts the jet's own average smear (max 16.5 kt, mean 6.9 kt over the band) from
+  the climatology and the ribbon profile is re-derived against that de-smeared background (a
+  contraction; converges in 3 passes). By construction the field's long-run average equals the
+  real climatology; any single day shows a sharp ribbon over a quieter background. Trade-off,
+  stated plainly: the simulated core comes out ~67 kt against ~75 kt real (measured as the
+  column maximum), the price of preserving the long-run mean.
+
+  Two things found by actually rendering it rather than trusting the numbers. First, the local
+  weather texture, fit on the raw anomaly, double-counted the variance the jet already explains
+  and, at full strength (~14 kt), put the ribbon only ~2.7 sigma above the clutter, so it read as
+  one more blob. The texture is now fit on what the jet does *not* explain, and drawn at half
+  weight (`SHEAR_TEXTURE_GAIN = 0.5`, a legibility choice rather than a fit, so the ribbon sits
+  ~5 sigma above it; the slider at 2x gives the full fitted amplitude back). Second, an earlier
+  attempt at spatially smoothing the noise by re-applying a kernel to its own output was
+  unstable (std grew ~5x in 3 rounds) -- kept as a note in `smoothedShearInnovation()`'s comment.
+
+  Its own `Day-to-day weather (wind shear)` slider scales how far the jet strays from its mean
+  path; at 0 the jet is still there, just parked (always flowing, as the real one is).
+  `window.SSTSIM.jetLat(lon)` exposes the current axis latitude for tests. Four new checks,
+  thresholds set well inside what 10 random seeds measured (ribbon contrast 33-43 kt vs. a
+  threshold of 20; axis std over 8 days 3.8-10.3 deg vs. 1; frozen exactly at slider 0). Atlantic
+  only. Full suite: 427 checks (up from 423), zero regressions.
+
 - **Added Wind Shear Phase 2: real day-to-day ("synoptic") noise on top of Phase 1's climatology
   + ENSO base.** The user asked for Phase 2 directly, alongside separate feedback (with a real
   GFS 300 hPa jet-stream chart attached for comparison) that the Phase 1 field didn't read as a
@@ -1141,5 +1196,8 @@ again building EPAC):**
   not started; Simulation mode across basins comes first.
 - Radar/satellite storm imagery (synthetic, generated from the sim's own storm
   state — not a real tile provider).
-- Rolling Wind Shear (climatology + EOF + ENSO + its own day-to-day synoptic noise, all now
-  done for the Atlantic) out to the other 8 basins.
+- Rolling Wind Shear (climatology + EOF + ENSO + the explicit jet stream + local texture, all
+  now done for the Atlantic) out to the other 8 basins. The jet needs real per-basin work, not a
+  copy: each basin needs its own axis search band and season (the Southern Hemisphere jet is
+  mirrored and its season crosses the year boundary), and a basin whose domain only clips the
+  jet's edge may not have a coherent axis to trace at all.
