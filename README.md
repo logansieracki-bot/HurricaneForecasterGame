@@ -103,11 +103,11 @@ nothing to run by hand.
   real NHC/SHIPS "low shear" threshold, confirmed against real data as a
   genuine, roughly 44/56 split in the MDR/Caribbean/Gulf during peak season,
   not stuck on one side. Color polarity is the opposite of Humidity's own:
-  low shear is favorable here. No jet-stream visualization — ENSO drives the
-  field's values (the real teleconnection, confirmed both in the raw ERA5
-  regression and with a live end-to-end test forcing El Niño vs. La Niña),
-  the same way Gulf Stream physics drive SST with no current layer of its
-  own.
+  low shear is favorable here. Phase 1 on its own has no jet-stream layer —
+  ENSO drives the field's values (the real teleconnection, confirmed both in
+  the raw ERA5 regression and with a live end-to-end test forcing El Niño vs.
+  La Niña), the same way Gulf Stream physics drive SST with no current layer
+  of its own. The explicit jet described below was added on top of it.
 
   Also carries an explicit, continuous **jet stream**: a ribbon of strong
   shear that is always there, meanders (ridges and troughs), and shifts day
@@ -138,6 +138,21 @@ nothing to run by hand.
   nothing is invented there. Its own `Day-to-day weather (wind shear)` slider
   (`P.shearSynoptic`) scales how far the jet strays from its mean path (and
   the texture); at 0 the jet is still there, just parked.
+
+  The axis is soft-limited to 20–64°N, the band the real axis was traced in
+  (and piles up against both edges of: 11–16% of real days sit within 4° of the
+  floor at −40..0° lon). The simulated axis is a sum of Gaussian wave modes with
+  the real spread, so unlimited it wandered out to 1°N and 85°N in testing —
+  which would also have dragged the ribbon over the equator (see `limitJetAxis`).
+
+  **Jet stream line (every view).** `Customization → Jet stream line` draws a
+  line along that same axis (`jetAxisF`), off by default. It sits on the crest
+  of the ribbon in the Wind Shear view and marks where the jet is in Temperature
+  / SST Anomaly / Humidity too. It lives on the top overlay canvas
+  (`drawJetLine`), not in the field raster, so it doesn't depend on the selected
+  view or on "Show sea temperature", and it crosses land (the jet is atmospheric,
+  not oceanic). Magenta with a dark casing rather than white, so it can't be
+  mistaken for the white threshold/contour lines or borders.
 
 ## Imagery
 The "Blue Marble" theme is a crop **embedded in the build** (`data.bm`, drawn on

@@ -1,6 +1,63 @@
 # Roadmap
 
 ## Just landed
+- **Added a "Jet stream line" option that works in every view, and bounded the jet axis
+  (Atlantic).** The user asked for the jet's line to be viewable from any layer, not just Wind
+  Shear. A checkbox in the Customization section (off by default) draws a line along the jet axis
+  -- the same `jetAxisF` array the shear ribbon is centred on, so in the Wind Shear view it runs
+  along the crest of the band, and in Temperature / SST Anomaly / Humidity it marks where the jet
+  is that day. It is drawn on the top overlay canvas (`drawJetLine`, called from `drawGrid`), not
+  into the field raster, so it doesn't depend on the selected view or on "Show sea temperature",
+  and it crosses land (the jet is atmospheric). It is magenta with a dark casing rather than
+  white: white would read as one more of the white 26.5 C / 20 kt threshold lines and country
+  borders, and no colour scale in the app uses magenta at jet latitudes. Checked on rendered
+  screenshots in all four views over the Blue Marble, NHC and Chart themes. The curve is a
+  Catmull-Rom spline through the axis at every 2-degree column (the only places the axis is
+  actually known; it's linear between them), so it passes through the real position at each
+  column and rounds the corners instead of drawing the data grid as a polygon, and it fades out
+  over the last 6 degrees of longitude at each end of the domain, like the raster does.
+
+  Building it exposed a real flaw in the jet itself. The axis was never bounded: it is a sum of 8
+  Gaussian wave modes with the real spread (sd 7.5-12 deg simulated vs 9.1-13.6 real), but the
+  real axis was *traced* inside a 20-64N search band, so it can't leave that band and instead
+  piles up against both edges (11-16% of real days within 4 deg of the floor at -40..0 lon, 4-7%
+  within 2 deg of the ceiling). The Gaussian version has no such limit: over 480 simulated days
+  (4 seeds) it reached as far as 0.7N and 85.4N, with 2.5% of days past 65N at -40 -- visible
+  immediately as the line leaving the map, and worse, the ribbon (+39.5 kt at the axis) went with
+  it, so on those days it sat over the equator and the Main Development Region. Nothing in the
+  data supports that. The axis is now soft-limited into the same 20-64N band (`limitJetAxis`:
+  tanh over the last 8 degrees, so no kink and no hard stop); afterwards the range is exactly
+  20.0-64.0 and the spread is 7.4-11.4 deg. It stays a little narrower than the real one, which
+  is the 8-mode truncation (73% of variance) plus the limit, not something extra. At slider 0 the
+  jet is parked on its mean path (35-46N), which the limit never touches.
+
+  Found while measuring the checks' margins over many random seeds (the page loads with a random
+  seed, so any check that is statistical is a latent CI failure): "setting the slider to 0
+  flattens day-to-day wind shear" compared the std of one point's 8-day series with vs. without
+  the noise and came out backwards on ~8% of seeds (2 of 20, 3 of 40) -- on the previous commit
+  too, so it was already there, not introduced by this change. At slider 0 the year-to-year modes
+  still random-walk a little every day (sd 0.7-4.6 kt over 8 days vs 2.9-8.7 with the noise), so
+  series spread is the wrong statistic. It now compares the mean absolute day-to-day change,
+  pooled over 4 open-ocean points: without/with measured 0.13-0.43 over 60 distinct seeds
+  (median 0.25), asserted below 0.7. The other jet checks were re-measured over 90 seeds: ribbon
+  contrast 27-49 kt (threshold 20) and axis std 2.2-14.3 deg (threshold 1) are fine, but the
+  contrast with the slider at 0 sat at 19.1 on one seed against a threshold of 20. A control
+  (the same statistic on a copy of the build with the ribbon removed) shows why it's fragile:
+  over 60 seeds with 4 longitudes it is 24-63 kt with the ribbon and -15..+24 without, so the
+  two overlap -- at the mean path the background (climatology minus its own smear) is lower than
+  12 degrees to either side, and the seeded anomalies move that around. Averaged over 10
+  longitudes it is 25-57 vs. -14..+17, a clean gap, so that check now uses the 10 with its
+  threshold (20) in the middle of the gap.
+
+  Tests: 10 new checks (the axis never leaves 20-64N even at the slider's 3x maximum, which
+  triples every excursion; the checkbox exists and starts off; nothing is drawn while it's off;
+  the line is on the rendered pixels at the axis's own position in each of the 4 views, with
+  "Show sea temperature" off, after the axis moves five days (drawn at the new position, gone
+  from the old one), and gone again once unchecked). The pixel checks look for the line's own
+  magenta on the top overlay, so they test what is actually drawn, not that a function was
+  called. Atlantic only: the other 8 basins have no jet. Full suite: 437 checks (up from 427),
+  zero regressions.
+
 - **Replaced Wind Shear Phase 2's statistical noise with an explicit, continuous jet stream
   (Atlantic).** Supersedes the EOF-hybrid design described in the entry below. The user drew a
   red line over a screenshot of the previous version: a continuous ribbon of strong shear that

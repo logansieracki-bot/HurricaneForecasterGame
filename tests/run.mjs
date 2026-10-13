@@ -366,28 +366,50 @@ await checkBasin('Atlantic', ATLANTIC_DIST, async (page, label) => {
   // gets its own, mechanistically distinct from humidity's day-to-day noise). Sampled at the
   // same MDR point (12,-45) the ENSO-sign check above already uses, well clear of any coastline.
   check(`[${label}] "Day-to-day weather (wind shear)" slider defaults to 1x`, (await page.evaluate(() => window.SSTSIM.sliderVals())).shearSynoptic === 1);
-  const withShearNoise = [];
-  for (let d = 0; d < 8; d++) { await page.evaluate(() => window.SSTSIM.advance(24)); withShearNoise.push((await page.evaluate(() => window.SSTSIM.sample(12, -45))).shear); }
-  check(`[${label}] wind shear genuinely varies day to day at the default slider setting (real synoptic noise, not frozen)`, stdOf(withShearNoise) > 1);
+  const shearPts = [[12, -45], [15, -60], [10, -30], [17, -75]];   // open-ocean MDR / Caribbean points
+  const shearDays = async (n) => {   // one daily series per point
+    const series = shearPts.map(() => []);
+    for (let d = 0; d < n; d++) {
+      await page.evaluate(() => window.SSTSIM.advance(24));
+      const r = await page.evaluate((ps) => ps.map(([la, lo]) => window.SSTSIM.sample(la, lo).shear), shearPts);
+      r.forEach((v, i) => series[i].push(v));
+    }
+    return series;
+  };
+  // Mean |day-to-day change| pooled over the points. "Flattens" used to compare the std of one
+  // point's 8-day series with vs. without the noise, which is not a clean separation: with the
+  // slider at 0 the year-to-year modes still random-walk a little every day (sd 0.7-4.6 kt over 8
+  // days, vs. 2.9-8.7 with the noise), so that comparison came out backwards on ~8% of random
+  // seeds (2 of 20 and 3 of 40), and the page loads with a random seed -- a latent ~1-in-12 CI
+  // failure. The day-to-day change is what the slider actually removes: without/with measured
+  // 0.13-0.43 over 60 distinct seeds (median 0.25).
+  const meanDayToDay = (series) => { let t = 0, c = 0; for (const s of series) for (let i = 1; i < s.length; i++) if (Number.isFinite(s[i]) && Number.isFinite(s[i - 1])) { t += Math.abs(s[i] - s[i - 1]); c++; } return t / c; };
+  const withShearNoise = await shearDays(8);
+  check(`[${label}] wind shear genuinely varies day to day at the default slider setting (real synoptic noise, not frozen)`, stdOf(withShearNoise[0]) > 1);
 
   await page.evaluate(() => window.SSTSIM.set('shearSynoptic', 0));
-  const withoutShearNoise = [];
-  for (let d = 0; d < 8; d++) { await page.evaluate(() => window.SSTSIM.advance(24)); withoutShearNoise.push((await page.evaluate(() => window.SSTSIM.sample(12, -45))).shear); }
-  check(`[${label}] setting the slider to 0 flattens day-to-day wind shear`, stdOf(withoutShearNoise) < stdOf(withShearNoise));
+  const withoutShearNoise = await shearDays(8);
+  check(`[${label}] setting the slider to 0 flattens day-to-day wind shear`, meanDayToDay(withoutShearNoise) < 0.7 * meanDayToDay(withShearNoise));
   await page.evaluate(() => window.SSTSIM.set('shearSynoptic', 1));   // restore default before any checks after this one
   await page.evaluate(() => window.SSTSIM.restart());   // clears the 16 simulated days of drift above, same reasoning as the ENSO check's own closing restart
 
   // The explicit jet stream (make_shear_jet.py): a continuous ribbon of strong shear along a
   // meandering axis, over a quieter background. Three things it has to do: actually be a band
   // (not just more speckle), shift from day to day, and still be there -- just parked on its mean
-  // path -- with the weather slider at 0. Thresholds sit well inside what 10 random seeds measured
-  // (ribbon contrast 33-43 kt, axis std over 8 days 3.8-10.3 deg, frozen exactly at slider 0).
-  const jetLons = [-55, -45, -35, -25];
-  const jetContrast = async (days) => {
+  // path -- with the weather slider at 0. The page loads with a random seed, so these are checked
+  // against 90 random seeds, not one: ribbon contrast 27-49 kt (threshold 20), axis std over 8
+  // days 2.2-14.3 deg (threshold 1), and frozen exactly at slider 0. The contrast at slider 0 needs
+  // more care: the jet sits on its mean path there, where the climatology minus its own smear is
+  // lower than the surroundings, so the background alone moves the statistic around a lot. Over 60
+  // seeds with 4 longitudes it was 24-63 kt with the ribbon but -15..+24 with the ribbon removed
+  // (the two overlap, and one of 90 seeds sat at 19); with 10 longitudes it is 25-57 vs. -14..+17,
+  // a clean gap, so that check uses the wider set with its threshold in the middle of it.
+  const jetLons = [-55, -45, -35, -25], jetLonsWide = [-95, -85, -75, -65, -55, -45, -35, -25, -15, -5];
+  const jetContrast = async (days, lonSet = jetLons) => {
     const on = [], off = [];
     for (let d = 0; d < days; d++) {
       await page.evaluate(() => window.SSTSIM.advance(24));
-      const r = await page.evaluate((lons) => lons.map((lon) => { const la = window.SSTSIM.jetLat(lon); const at = (lat) => window.SSTSIM.sample(lat, lon).shear; return { on: at(la), off: [at(la + 12), at(la - 12)] }; }), jetLons);
+      const r = await page.evaluate((lons) => lons.map((lon) => { const la = window.SSTSIM.jetLat(lon); const at = (lat) => window.SSTSIM.sample(lat, lon).shear; return { on: at(la), off: [at(la + 12), at(la - 12)] }; }), lonSet);
       for (const c of r) { if (Number.isFinite(c.on)) on.push(c.on); for (const o of c.off) if (Number.isFinite(o)) off.push(o); }
     }
     const m = (xs) => xs.reduce((a, b) => a + b, 0) / xs.length;
@@ -402,9 +424,81 @@ await checkBasin('Atlantic', ATLANTIC_DIST, async (page, label) => {
   await page.evaluate(() => window.SSTSIM.set('shearSynoptic', 0));
   const parked = await jetLatSeries(8);
   check(`[${label}] weather slider at 0 parks the jet on its mean path instead of meandering`, Math.max(...parked) - Math.min(...parked) < 0.001);
-  check(`[${label}] ...but the jet is still there at slider 0 (always flowing, just not moving)`, (await jetContrast(4)).contrast > 20);
+  check(`[${label}] ...but the jet is still there at slider 0 (always flowing, just not moving)`, (await jetContrast(4, jetLonsWide)).contrast > 20);
   await page.evaluate(() => window.SSTSIM.set('shearSynoptic', 1));   // restore default before any checks after this one
   await page.evaluate(() => window.SSTSIM.restart());
+
+  // The axis stays inside the band it was measured in. The real axis was traced within 20-64N and
+  // piles up against both edges; the simulated one is a sum of Gaussian wave modes and, unlimited,
+  // wandered out to 1N and 85N in testing (putting the ribbon over the equator). Stressed here at
+  // the slider's 3x maximum, which triples every excursion, across the whole domain.
+  await page.evaluate(() => window.SSTSIM.set('shearSynoptic', 3));
+  let axisMin = 999, axisMax = -999;
+  for (let d = 0; d < 50; d++) {
+    await page.evaluate(() => window.SSTSIM.advance(48));
+    const r = await page.evaluate(() => { const a = []; for (let lon = -110; lon <= 40; lon += 2) a.push(window.SSTSIM.jetLat(lon)); return a; });
+    for (const v of r) { axisMin = Math.min(axisMin, v); axisMax = Math.max(axisMax, v); }
+  }
+  check(`[${label}] jet axis never leaves the 20-64N band the real axis was measured in, even at the slider's 3x maximum (saw ${axisMin.toFixed(1)}..${axisMax.toFixed(1)})`, axisMin >= 20 - 1e-6 && axisMax <= 64 + 1e-6);
+  await page.evaluate(() => window.SSTSIM.set('shearSynoptic', 1));
+  await page.evaluate(() => window.SSTSIM.restart());
+
+  // The "Jet stream line" checkbox: a line along that same axis, on the top overlay canvas, that
+  // has to appear in EVERY view (not just Wind Shear) and not depend on the field being shown.
+  // Checked on the real rendered pixels: the line's core is the only magenta on that canvas, so
+  // look for it at the axis's own on-screen position at several longitudes (even ones, which sit
+  // exactly on the 2-degree columns the curve is drawn through).
+  await page.evaluate(() => { window.SSTSIM.applySeed(4242); window.SSTSIM.map.fitBounds([[22, -100], [55, 20]], { animate: false }); });
+  await page.evaluate(() => window.SSTSIM.advance(24 * 12));
+  await page.waitForTimeout(250);
+  const probeLons = [-90, -70, -50, -30, -10, 10];
+  const axisPoints = () => page.evaluate((ls) => ls.map((lon) => { const p = window.SSTSIM.map.latLngToContainerPoint([window.SSTSIM.jetLat(lon), lon]); return [p.x, p.y]; }), probeLons);
+  const magentaNear = (pts) => page.evaluate((ps) => {
+    const c = document.querySelectorAll('canvas.overlay')[2], g = c.getContext('2d'), s = c.width / c.clientWidth, r = Math.round(4 * s);
+    return ps.map(([px, py]) => {
+      const x = Math.round(px * s), y = Math.round(py * s);
+      if (x < r || y < r || x >= c.width - r || y >= c.height - r) return null;   // off-screen: can't be judged either way
+      const d = g.getImageData(x - r, y - r, 2 * r + 1, 2 * r + 1).data;
+      for (let i = 0; i < d.length; i += 4) if (d[i + 3] >= 200 && d[i] >= 200 && d[i + 2] >= 170 && d[i + 1] <= 130) return true;
+      return false;
+    });
+  }, pts);
+  const jetLineSeen = async () => { const r = (await magentaNear(await axisPoints())).filter((v) => v !== null); return { n: r.length, hits: r.filter(Boolean).length }; };
+
+  check(`[${label}] "Jet stream line" checkbox exists and starts unchecked`, await page.evaluate(() => { const c = document.getElementById('jetline'); return !!c && !c.checked; }));
+  const lineOff = await jetLineSeen();
+  check(`[${label}] nothing is drawn along the axis while the checkbox is off`, lineOff.n >= 4 && lineOff.hits === 0);
+  await page.check('#jetline');
+  for (const v of ['sst', 'anom', 'humid', 'shear']) {
+    await page.evaluate((vv) => window.SSTSIM.setView(vv), v);
+    await page.waitForTimeout(300);
+    const seen = await jetLineSeen();
+    check(`[${label}] jet line is drawn along the axis in the ${v} view`, seen.n >= 4 && seen.hits === seen.n);
+  }
+  await page.uncheck('#show-sst');
+  await page.waitForTimeout(300);
+  const noField = await jetLineSeen();
+  check(`[${label}] jet line still draws with "Show sea temperature" off (it isn't part of the field raster)`, noField.n >= 4 && noField.hits === noField.n);
+  await page.check('#show-sst');
+
+  const ptsBefore = await axisPoints();
+  await page.evaluate(() => window.SSTSIM.advance(24 * 5));
+  await page.waitForTimeout(300);
+  const ptsAfter = await axisPoints();
+  const movedIdx = ptsBefore.map((p, i) => (Math.abs(p[1] - ptsAfter[i][1]) > 25 ? i : -1)).filter((i) => i >= 0);
+  const newHits = await magentaNear(movedIdx.map((i) => ptsAfter[i])), oldHits = await magentaNear(movedIdx.map((i) => ptsBefore[i]));
+  check(`[${label}] jet line follows the axis as it shifts from day to day (drawn at its new position, gone from the old one)`,
+    movedIdx.length >= 2 && newHits.filter((h) => h === true).length >= 2 && newHits.every((h) => h !== false) && oldHits.every((h) => h !== true));
+
+  // Same pixels as the "drawn at its new position" check above (the axis has moved on since the
+  // earlier probes, so fewer of the original longitudes may still be on screen -- re-probing the
+  // axis here could come up short for reasons that have nothing to do with the checkbox).
+  const drawnAt = movedIdx.map((i) => ptsAfter[i]).filter((_, j) => newHits[j] === true);
+  await page.uncheck('#jetline');
+  await page.waitForTimeout(300);
+  const goneAt = await magentaNear(drawnAt);
+  check(`[${label}] unchecking the box removes the line again`, drawnAt.length >= 2 && goneAt.every((h) => h === false));
+  await page.evaluate(() => { window.SSTSIM.setView('sst'); window.SSTSIM.restart(); });   // leave the page in its default state for the checks after this one
 
   // The bottom-left readout's own Shear branch (Atlantic-only, so checked here rather than in
   // the shared checkBasin() body above, which only exercises sst/anom -- every basin has those).

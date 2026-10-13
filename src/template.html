@@ -182,6 +182,7 @@ canvas.overlay{position:absolute;left:0;top:0;width:100%;height:100%;pointer-eve
         </div>
         <label class="chk"><input type="checkbox" id="l265" checked><span id="l265-label"> 26.5 °C line (hurricane threshold)</span></label>
         <label class="chk"><input type="checkbox" id="l2"><span id="l2-label"> Contour lines every 2 °C</span></label>
+        <label class="chk"><input type="checkbox" id="jetline"><span> Jet stream line (axis of strongest shear)</span></label>
       </div>
     </section>
     <section class="subsec collapsed" id="sec-exp">
@@ -427,6 +428,21 @@ function jetProfileAt(absOffset) {   // piecewise-linear lookup into the real me
 // the texture. The "Day-to-day weather (wind shear)" slider still multiplies this, so 2x on the
 // slider gives back the full fitted amplitude.
 const SHEAR_TEXTURE_GAIN = 0.5;
+// The real axis was traced inside a 20-64N search band (make_shear_jet.py's JET_LAT_LO/HI on the
+// 2-degree grid) and piles up against both edges of it: 11-16% of real days sit within 4 degrees
+// of the floor at -40..0 lon and 4-7% within 2 degrees of the ceiling. The simulated axis is a
+// sum of Gaussian wave modes with the real spread (sd 8-12 deg), so left alone it wandered out
+// to 1N and 85N in testing (2.5% of days past 65N at -40) -- putting the ribbon over the
+// equator, i.e. spiking Main Development Region shear by ~40 kt, which nothing in the data
+// supports. Soft-limited into the same band instead (tanh over the last 8 degrees, so there's
+// no kink and no hard stop).
+const JET_AXIS_LO = 20, JET_AXIS_HI = 64, JET_AXIS_SOFT = 8;
+function limitJetAxis(lat) {
+  const hi = JET_AXIS_HI - JET_AXIS_SOFT, lo = JET_AXIS_LO + JET_AXIS_SOFT;
+  if (lat > hi) return hi + JET_AXIS_SOFT * Math.tanh((lat - hi) / JET_AXIS_SOFT);
+  if (lat < lo) return lo - JET_AXIS_SOFT * Math.tanh((lo - lat) / JET_AXIS_SOFT);
+  return lat;
+}
 const JET_BACKGROUND = jetProfileKt[jetProfileKt.length - 1];   // the profile's own far-field value -- only the EXCESS over this gets added in the combine loop, so the jet is a bump on top of climatology, not a second independent value competing with it (see combine loop comment)
 // The combine loop looks the bump up once per fine cell (~270k per computeField call), so the
 // piecewise-linear profile above is pre-sampled into a fine lookup table at load time instead of
@@ -971,7 +987,7 @@ function computeField() {
     const fc = i / RATIO, c0 = Math.min(CNX - 2, Math.floor(fc)), t = fc - c0, u = 1 - t;
     const mean = jetMeanPathC[c0] * u + jetMeanPathC[c0 + 1] * t;
     const day = sp0 * (jetAxisPrev[c0] * u + jetAxisPrev[c0 + 1] * t) + sp1 * (jetAxisCur[c0] * u + jetAxisCur[c0 + 1] * t);
-    jetAxisF[i] = mean + sws * (day - mean);
+    jetAxisF[i] = limitJetAxis(mean + sws * (day - mean));
   }
   for (let j = 0; j < NY; j++) {
     const o = j * NX, lat = LAT1 - j * RES;
@@ -1589,9 +1605,39 @@ function drawEquator(g, minX, minY, ws) {
   g.lineWidth = 1.6; g.strokeStyle = '#ffffff'; g.beginPath(); g.moveTo(0, y); g.lineTo(W, y); g.stroke();
   g.restore();
 }
+const JET_LINE_FADE_DEG = 6;   // the line fades out over the last 6 degrees of longitude at each end of the simulated area, the same distance the field raster itself fades over (FADE = 24 cells)
+function drawJetLine(g, minX, minY, ws) {
+  // The jet axis -- the very same jetAxisF the Wind Shear ribbon is centred on, so in that view it
+  // runs along the crest of the band and in every other view it marks where the jet is today. Drawn
+  // on the top overlay rather than the field raster so it doesn't depend on the selected view or on
+  // "Show sea temperature", and it crosses land: the jet is an atmospheric feature, not an ocean one.
+  if (!$('jetline').checked) return;
+  const xa = (LON0 + 180) / 360 * ws - minX, xb = (LON0 + (NX - 1) * RES + 180) / 360 * ws - minX;
+  if (xb < -10 || xa > W + 10) return;
+  const fade = Math.min(0.5, JET_LINE_FADE_DEG / ((NX - 1) * RES));
+  const ink = (r, gr, b, a) => { const s = g.createLinearGradient(xa, 0, xb, 0), c = (k) => 'rgba(' + r + ',' + gr + ',' + b + ',' + k + ')'; s.addColorStop(0, c(0)); s.addColorStop(fade, c(a)); s.addColorStop(1 - fade, c(a)); s.addColorStop(1, c(0)); return s; };
+  // The axis is only known at the coarse (2 deg) longitude columns -- linear in between -- so the
+  // curve is a Catmull-Rom spline through exactly those points: it passes through the real axis
+  // position at every column and just rounds off the corners between them, instead of drawing the
+  // data's own resolution as a polygon.
+  const px = [], py = [];
+  for (let c = 0; c < CNX; c++) { px.push(xa + (xb - xa) * c / (CNX - 1)); py.push(mercN(jetAxisF[c * RATIO]) * ws - minY); }
+  const trace = () => {
+    g.beginPath(); g.moveTo(px[0], py[0]);
+    for (let c = 0; c < CNX - 1; c++) {
+      const a = Math.max(0, c - 1), d = Math.min(CNX - 1, c + 2);
+      g.bezierCurveTo(px[c] + (px[c + 1] - px[a]) / 6, py[c] + (py[c + 1] - py[a]) / 6, px[c + 1] - (px[d] - px[c]) / 6, py[c + 1] - (py[d] - py[c]) / 6, px[c + 1], py[c + 1]);
+    }
+  };
+  g.save(); g.lineJoin = 'round'; g.lineCap = 'round';
+  trace(); g.strokeStyle = ink(8, 10, 18, 0.62); g.lineWidth = 7; g.stroke();     // dark casing so the line reads over every colour scale and every map theme
+  trace(); g.strokeStyle = ink(255, 64, 224, 1); g.lineWidth = 3.2; g.stroke();
+  g.restore();
+}
 function drawGrid(minX, minY, ws) {
   const g = gridCanvas.getContext('2d'); g.setTransform(DPR, 0, 0, DPR, 0, 0); g.clearRect(0, 0, W, H);
   if ($('borders').checked) drawBorders(g, minX, minY, ws, map.getZoom());
+  drawJetLine(g, minX, minY, ws);
   drawCities(g, minX, minY, ws);
   drawEquator(g, minX, minY, ws);
   if (gridMode === 'off') return;
@@ -1823,7 +1869,7 @@ $('show-sst').onchange = scheduleRender; $('borders').onchange = scheduleRender;
 $('detail').onchange = () => { syncDetail(); $('attr').textContent = TH.attr + (themeId === 'bm' && $('detail').checked ? ' · Close-ups: Esri' : ''); };
 map.on('zoom', updateDetailOpacity);
 $('op').oninput = () => { $('op-o').textContent = $('op').value + '%'; scheduleRender(); };
-$('l265').onchange = scheduleRender; $('l2').onchange = scheduleRender;
+$('l265').onchange = scheduleRender; $('l2').onchange = scheduleRender; $('jetline').onchange = scheduleRender;
 const sliders = [['p-warm', 'warming', (v) => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(1) + ' °C'], ['p-var', 'variability', (v) => v.toFixed(1) + '×'], ['p-wx', 'synoptic', (v) => v.toFixed(1) + '×'], ['p-wxs', 'shearSynoptic', (v) => v.toFixed(1) + '×'], ['p-sea', 'seasonal', (v) => v.toFixed(2).replace(/0$/, '') + '×'], ['p-feat', 'features', (v) => v.toFixed(2).replace(/0$/, '') + '×'], ['p-enso', 'enso', (v) => v.toFixed(2).replace(/0$/, '') + '×']];
 sliders.forEach(([id, key, fmt]) => { $(id).oninput = () => { P[key] = parseFloat($(id).value); $(id + '-o').textContent = fmt(P[key]); refresh(); }; });
 /* the seed gives each run its own slightly different climate: seasonal swing, currents/upwelling and ENSO strength move by a small but noticeable amount */
