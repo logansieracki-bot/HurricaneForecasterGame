@@ -76,6 +76,7 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--focus);outline-
 input[type=range]{width:100%;margin:2px 0 0;accent-color:#d4d4d4;height:20px}
 .chk{display:flex;align-items:center;gap:8px;font-size:12.5px;margin-top:9px;cursor:pointer}
 .chk input{accent-color:#d4d4d4;width:15px;height:15px;margin:0}
+#jet-note{font-style:normal;color:var(--dim)}
 .seedrow{display:flex;gap:6px;align-items:center;margin-top:12px;font-size:12.5px}
 .seedrow input[type=number]{width:96px;background:rgba(255,255,255,.07);border:1px solid var(--line);border-radius:7px;color:var(--text);padding:5px 8px;font:inherit;font-variant-numeric:tabular-nums}
 .pill{border:1px solid var(--line);background:rgba(255,255,255,.06);border-radius:8px;padding:5px 10px;font-size:12.5px;cursor:pointer}
@@ -159,6 +160,7 @@ canvas.overlay{position:absolute;left:0;top:0;width:100%;height:100%;pointer-eve
           <button data-v="sst" aria-pressed="true">Temperature</button>
           <button data-v="anom" aria-pressed="false">SST Anomaly</button>
           <button data-v="humid" aria-pressed="false">Humidity</button>
+          <button data-v="shear" aria-pressed="false">Wind Shear</button>
         </div>
         <div class="row">
           <div class="sl"><label for="op">Overlay strength</label><output id="op-o">85%</output></div>
@@ -181,6 +183,7 @@ canvas.overlay{position:absolute;left:0;top:0;width:100%;height:100%;pointer-eve
         </div>
         <label class="chk"><input type="checkbox" id="l265" checked><span id="l265-label"> 26.5 °C line (cyclone threshold)</span></label>
         <label class="chk"><input type="checkbox" id="l2"><span id="l2-label"> Contour lines every 2 °C</span></label>
+        <label class="chk"><input type="checkbox" id="jetline"><span> Jet stream line (axis of strongest shear)<i id="jet-note"></i></span></label>
       </div>
     </section>
     <section class="subsec collapsed" id="sec-exp">
@@ -198,6 +201,14 @@ canvas.overlay{position:absolute;left:0;top:0;width:100%;height:100%;pointer-eve
         <div class="row">
           <div class="sl"><label for="p-wx">Day-to-day weather (humidity)</label><output id="p-wx-o">1.0×</output></div>
           <input id="p-wx" type="range" min="0" max="3" step="0.1" value="1">
+        </div>
+        <div class="row">
+          <div class="sl"><label for="p-wxs">Day-to-day weather (wind shear)</label><output id="p-wxs-o">1.0×</output></div>
+          <input id="p-wxs" type="range" min="0" max="3" step="0.1" value="1">
+        </div>
+        <div class="row">
+          <div class="sl"><label for="p-jets">Jet stream speed</label><output id="p-jets-o">1.0×</output></div>
+          <input id="p-jets" type="range" min="0" max="3" step="0.1" value="1">
         </div>
         <div class="row">
           <div class="sl"><label for="p-sea">Seasonal swing</label><output id="p-sea-o">1.0×</output></div>
@@ -332,6 +343,19 @@ const humidEnsoC = new Float32Array(3 * CN);     // response to Niño 3.4 at lag
 { const a = b64i16(DATA.humidity.enso); for (let q = 0; q < a.length; q++) humidEnsoC[q] = a[q] / 1000; }
 const PHI_DAY_H = DATA.humidity.phi.map((p) => Math.pow(Math.max(0.3, p), 1 / 30.44));
 
+/* 200-850 hPa deep-layer vertical wind shear (kt), decoded the same way as humidity above but
+   from DATA.shear: climatology + EOF interannual variability + ENSO regression (Phase 1). Its
+   day-to-day layers (local texture, and the jet-stream axis) are decoded further down. Own
+   independent K (shear's own EOF fit). */
+const KS = DATA.shear.K;
+const shearClimC = [];                          // 12 coarse monthly climatologies (kt)
+{ const a = b64i16(DATA.shear.clim); for (let m = 0; m < 12; m++) { const f = new Float32Array(CN); for (let c = 0; c < CN; c++) f[c] = a[m * CN + c] / 10; shearClimC.push(f); } }
+const shearEofC = new Float32Array(KS * CN);     // interannual patterns (kt per +1σ of each mode)
+{ const a = b64i16(DATA.shear.eof); for (let q = 0; q < a.length; q++) shearEofC[q] = a[q] / 1000; }
+const shearEnsoC = new Float32Array(3 * CN);     // response to Niño 3.4 at lags 0, 3, 6 months (kt per °C)
+{ const a = b64i16(DATA.shear.enso); for (let q = 0; q < a.length; q++) shearEnsoC[q] = a[q] / 1000; }
+const PHI_DAY_S = DATA.shear.phi.map((p) => Math.pow(Math.max(0.3, p), 1 / 30.44));
+
 /* Day-to-day ("synoptic") humidity weather noise -- tropical waves, SAL outbreaks, the things
    that make a real cyclone season's moisture flicker favorable/unfavorable over days, which a
    monthly climatology can never show on its own (it's averaged away by construction). Checked
@@ -351,6 +375,81 @@ const humidSynStdC = new Float32Array(CN);
 { const a = b64i16(DATA.humidity.synoptic.std); for (let q = 0; q < CN; q++) humidSynStdC[q] = a[q] / 10; }
 const humidSynPhiC = new Float32Array(CN);
 { const a = b64i16(DATA.humidity.synoptic.phi); for (let q = 0; q < CN; q++) humidSynPhiC[q] = a[q] / 1000; }
+
+/* Day-to-day ("synoptic") wind shear weather noise, two parts -- the model and its derivation are
+   the Atlantic's (src/template.html and tools/make_shear_jet.py / make_shear_synoptic.py); every number
+   below is this basin's own, measured on its own real daily ERA5 shear in its own cyclone season.
+
+   (1) Local per-cell texture (shearSynStdC/shearSynPhiC): the per-cell AR(1) left over after the jet
+   is taken out (median std 15.9 kt).
+   (2) An explicit, continuous jet-stream AXIS (jetMeanPathC/jetEofC/jetPhiC/jetProfile*): the latitude
+   of the strongest shear at every longitude, traced inside a 20-65N search band that is wider than
+   this map (the jet is only inside the displayed area 25.4% of the time here), decomposed into 8 wave
+   modes that explain 91.2% of its variance (day-to-day spread 11 deg of latitude). jetProfile* is
+   the ribbon's cross-section, re-centred on each day's own axis; jetSmearC the blur of the jet that the
+   monthly climatology already contains and the combine loop subtracts before drawing the sharp ribbon back in. */
+const shearSynStdC = new Float32Array(CN);
+{ const a = b64i16(DATA.shear.synoptic.std); for (let q = 0; q < CN; q++) shearSynStdC[q] = a[q] / 10; }
+const shearSynPhiC = new Float32Array(CN);
+{ const a = b64i16(DATA.shear.synoptic.phi); for (let q = 0; q < CN; q++) shearSynPhiC[q] = a[q] / 1000; }
+
+const KJ = DATA.shear.jet.K;
+const jetMeanPathC = new Float32Array(CNX);          // real season-mean axis latitude, one per coarse longitude column (not CN -- a path has no latitude dimension of its own)
+{ const a = DATA.shear.jet.meanPath; for (let c = 0; c < CNX; c++) jetMeanPathC[c] = a[c]; }
+const jetEofC = new Float32Array(KJ * CNX);          // wave-mode deviations from the mean path, deg latitude per +1σ of each mode
+{ const a = b64i16(DATA.shear.jet.eof); for (let q = 0; q < a.length; q++) jetEofC[q] = a[q] / 100; }
+const jetPhiC = DATA.shear.jet.phi;                  // already real daily lag-1 autocorrelation per mode, no conversion needed
+const jetProfileOffsets = DATA.shear.jet.profileOffsets;   // deg from axis, 0..20, ascending
+const jetProfileKt = DATA.shear.jet.profileKt;             // ribbon height at that offset from the axis, kt above the de-smeared background -- same length as jetProfileOffsets
+function jetProfileAt(absOffset) {   // piecewise-linear lookup into the real measured cross-axis profile; absOffset is already |cellLat - axisLat|, always >= 0
+  if (absOffset >= jetProfileOffsets[jetProfileOffsets.length - 1]) return jetProfileKt[jetProfileKt.length - 1];
+  let i = 0; while (i < jetProfileOffsets.length - 1 && jetProfileOffsets[i + 1] < absOffset) i++;
+  const t = (absOffset - jetProfileOffsets[i]) / (jetProfileOffsets[i + 1] - jetProfileOffsets[i]);
+  return jetProfileKt[i] + t * (jetProfileKt[i + 1] - jetProfileKt[i]);
+}
+// Legibility, not a fit (same choice as the Atlantic): shearSynStdC is the real leftover variance
+// after the jet is accounted for (median ~15.9 kt), and drawn 1:1 it swings about as hard as the
+// ribbon is tall, so the jet would read as one more blob in a speckled field instead of a band. Drawn
+// at half weight the ribbon stands out; the "Day-to-day weather (wind shear)" slider still
+// multiplies this, so 2x on the slider gives back the full fitted amplitude.
+const SHEAR_TEXTURE_GAIN = 0.5;
+// The real axis was traced inside a 20-65N search band (make_shear_jet.py) and piles up against its
+// edges, while the simulated axis is a sum of Gaussian wave modes that left alone would wander far
+// outside the band (over the equator, where it would spike the tropical shear by ~40 kt, which
+// nothing in the data supports). Soft-limited into the same band instead (tanh over the last 8
+// degrees, so there's no kink and no hard stop). Signed latitudes, so it works in either hemisphere.
+const JET_AXIS_LO = 20, JET_AXIS_HI = 64, JET_AXIS_SOFT = 8;
+function limitJetAxis(lat) {
+  const hi = JET_AXIS_HI - JET_AXIS_SOFT, lo = JET_AXIS_LO + JET_AXIS_SOFT;
+  if (lat > hi) return hi + JET_AXIS_SOFT * Math.tanh((lat - hi) / JET_AXIS_SOFT);
+  if (lat < lo) return lo - JET_AXIS_SOFT * Math.tanh((lo - lat) / JET_AXIS_SOFT);
+  return lat;
+}
+// How the axis EVOLVES in time. Same choices as the Atlantic (see src/template.html for the long
+// version): the spatial modes and their amplitudes are the real ones, but the timing is deliberately
+// calmer than the data's, because the axis is the per-column MAXIMUM of shear and its higher modes
+// mostly record which of several competing maxima is strongest on a given day -- played at 1x that
+// reads as thrashing, not as a jet stream. So the whole evolution is dilated JET_DILATION times and
+// every mode's persistence is floored at JET_PHI_FLOOR per jet-day. Real axis anomalies DO travel
+// east: measured here by the lagged cross-correlation of columns 10, 20 and 30 deg apart (21.9 / 21.0 / 29.2
+// deg/day), so each column reads the mode amplitudes with a delay proportional to how far east it is.
+// Delaying a stationary series leaves its distribution at every column exactly as it was, so the
+// real per-column spread (and the smear derived from it) is untouched.
+const JET_DILATION = 2.5, JET_PHI_FLOOR = 0.94, JET_DRIFT_REAL = 21;   // dilation factor, per-jet-day persistence floor, real eastward speed in deg lon / day
+const JET_DRIFT = JET_DRIFT_REAL / JET_DILATION;                       // simulated eastward speed, deg lon per jet-day (6)
+const jetPhiEff = Array.from(jetPhiC, (p) => Math.max(Math.pow(Math.max(0, p), 1 / JET_DILATION), JET_PHI_FLOOR));   // Math.max(0, p): a high mode whose real daily autocorrelation is zero or a hair negative (the 8th mode of the North Indian Ocean's axis is -0.002) would otherwise be pow(negative, 0.4) = NaN, and Math.max(NaN, floor) is NaN -- the whole jet. It gets the floor instead.
+const jetDelayC = new Float32Array(CNX);                               // jet-days by which each coarse column lags the western edge
+for (let c = 0; c < CNX; c++) jetDelayC[c] = c * DM.cres / JET_DRIFT;
+const JET_HIST = Math.ceil(jetDelayC[CNX - 1]) + 4;                    // days of mode-amplitude history a column can ask for: the longest delay plus the 4-tap cubic window
+const JET_BACKGROUND = jetProfileKt[jetProfileKt.length - 1];   // the profile's own far-field value -- only the EXCESS over this gets added in the combine loop, so the jet is a bump on top of climatology, not a second independent value competing with it (see combine loop comment)
+// The combine loop looks the bump up once per fine cell (~270k per computeField call), so the
+// piecewise-linear profile above is pre-sampled into a fine lookup table at load time instead of
+// scanning its offsets array per cell. Index = |cellLat - axisLat| / JET_LUT_STEP; the last entry
+// is exactly 0 (the profile's own far-field value minus itself), so anything past JET_LUT_MAX
+// contributes nothing and the loop can skip it outright.
+const JET_LUT_STEP = 0.05, JET_LUT_MAX = jetProfileOffsets[jetProfileOffsets.length - 1], JET_LUT_N = Math.round(JET_LUT_MAX / JET_LUT_STEP) + 1;
+const jetBumpLut = new Float32Array(JET_LUT_N + 1);
+for (let n = 0; n < JET_LUT_N; n++) jetBumpLut[n] = jetProfileAt(n * JET_LUT_STEP) - JET_BACKGROUND;   // the +1 slot stays 0, so the loop's n0+1 read at the very end is always in range
 
 /* Catmull-Rom weights */
 function cr(t) { const t2 = t * t, t3 = t2 * t; return [-0.5 * t3 + t2 - 0.5 * t, 1.5 * t3 - 2.5 * t2 + 1, -1.5 * t3 + 2 * t2 + 0.5 * t, 0.5 * t3 - 0.5 * t2]; }
@@ -394,6 +493,15 @@ const climF = [], annual = new Float32Array(N);
 for (let m = 0; m < 12; m++) { const f = new Float32Array(N); upsample(climC[m], f); climF.push(f); for (let k = 0; k < N; k++) annual[k] += f[k] / 12; }
 const humidClimF = [];
 for (let m = 0; m < 12; m++) { const f = new Float32Array(N); upsample(humidClimC[m], f); humidClimF.push(f); }
+const shearClimF = [];
+for (let m = 0; m < 12; m++) { const f = new Float32Array(N); upsample(shearClimC[m], f); shearClimF.push(f); }
+// The jet's own average smear, subtracted from the climatology in the combine loop (see
+// make_shear_jet.py): the real monthly climatology already holds a blurred copy of the jet, so
+// "climatology + a jet that moves" would count it twice. Upsampled once here, not per render.
+const jetSmearC = new Float32Array(CN);
+{ const a = b64i16(DATA.shear.jet.smear); for (let q = 0; q < CN; q++) jetSmearC[q] = a[q] / 10; }
+const jetSmearF = new Float32Array(N);
+upsample(jetSmearC, jetSmearF);
 
 /* ------------------------------------------------------------------ *
  *  Static geography: coast distances, continental mask
@@ -473,7 +581,7 @@ function interp1(xs, ys, x) { if (x <= xs[0]) return ys[0]; for (let i = 1; i < 
  * ------------------------------------------------------------------ */
 const START_YEAR = new Date().getUTCFullYear();
 const START_MS = Date.UTC(START_YEAR, 8, 1, 0, 0, 0);
-const P = { warming: 0, variability: 1, seasonal: 1, features: 1, enso: 1, synoptic: 1, seed: 1 };
+const P = { warming: 0, variability: 1, seasonal: 1, features: 1, enso: 1, synoptic: 1, shearSynoptic: 1, jetSpeed: 1, seed: 1 };
 let rs = 1;
 function rand() { rs |= 0; rs = rs + 0x6D2B79F5 | 0; let t = Math.imul(rs ^ rs >>> 15, 1 | rs); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }
 function randn() { let u = 0; while (u === 0) u = rand(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * rand()); }
@@ -499,9 +607,22 @@ function forceEnso(target) {           // jump to a chosen state; the Mediterran
   n34 = target; ensoHist[(ensoHi - 1 + E_HIST) % E_HIST] = target; anomDirty = true; updateEnsoUI(); refresh();
 }
 
-let simHour = 0, dayCount = 0, pc = new Float32Array(K), pcH = new Float32Array(KH), gapIdx = 0;
+let simHour = 0, dayCount = 0, pc = new Float32Array(K), pcH = new Float32Array(KH), pcS = new Float32Array(KS), gapIdx = 0;
 const humidSynC = new Float32Array(CN);   // per-cell AR(1) *generator* state, % RH directly -- no mode/pattern expansion, see decode comment above
 let lastSynDay = 0;
+const shearSynC = new Float32Array(CN);   // per-cell AR(1) *generator* state, kt directly -- same role as humidSynC above, local texture away from the jet axis
+let lastShearSynDay = 0;
+// Jet axis state. The wave-mode amplitudes live in jetHist, one KJ-vector per whole jet-day, on
+// their own random stream (jrs) so a given seed always produces the same jet no matter how the
+// run is chunked into advance() calls or how fast it's played. jetClockH is the jet's own clock
+// in hours: it runs at P.jetSpeed times the simulation clock, so the speed slider rescales time
+// itself instead of changing the process (no jumps when it moves, 0 freezes the jet where it is).
+const jetHist = new Map();     // jet-day -> Float32Array(KJ), the mode amplitudes at that whole jet-day
+let jetNewest = 0;             // the latest jet-day generated
+let jetClockH = 0;
+let jrs = 1;
+function jetRand() { jrs |= 0; jrs = jrs + 0x6D2B79F5 | 0; let t = Math.imul(jrs ^ jrs >>> 15, 1 | jrs); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }
+function jetRandn() { let u = 0; while (u === 0) u = jetRand(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * jetRand()); }
 // Two FINE-resolution daily snapshots -- synPrev at day boundary synDay, synCur at synDay+1 --
 // linearly blended by the fraction of the way through the current day every render, so the
 // field evolves continuously hour to hour like real weather instead of holding one value for an
@@ -514,12 +635,23 @@ let lastSynDay = 0;
 // more than one day between renders, which it routinely does at high speed.
 const humidSynPrev = new Float32Array(N), humidSynCur = new Float32Array(N);
 let synDay = -999;   // which day humidSynPrev is pinned to (humidSynCur is always synDay+1); forces a build on first use
+const shearSynPrev = new Float32Array(N), shearSynCur = new Float32Array(N);
+let shearSynDay = -999;
+// The jet axis is a COARSE-longitude path only (CNX, not N/fine-grid) -- a path has no upsample
+// step of its own. jetAxisC is the final axis (slider and band limit applied) at the coarse
+// columns; jetAxisF linearly interpolates it onto every fine column for the combine loop below.
+const jetAxisC = new Float32Array(CNX), jetAxisNow = new Float32Array(CNX), jetAnomTmp = new Float32Array(CNX);
+const jetAxisF = new Float32Array(NX);   // the axis latitude at every FINE longitude column, rebuilt each computeField() -- the combine loop and the SSTSIM.jetLat() test hook both read it
 function initSim(seed) {
   P.seed = seed; rs = (seed * 2654435761) >>> 0 || 1;
   for (let k = 0; k < K; k++) pc[k] = randn();
   for (let k = 0; k < KH; k++) pcH[k] = randn();
+  for (let k = 0; k < KS; k++) pcS[k] = randn();
+  initJet(seed);
   for (let q = 0; q < CN; q++) humidSynC[q] = randn() * humidSynStdC[q];
+  for (let q = 0; q < CN; q++) shearSynC[q] = randn() * shearSynStdC[q];
   lastSynDay = 0; synDay = -999;
+  lastShearSynDay = 0; shearSynDay = -999;
   gapIdx = randn() * 0.4; dayCount = 0; simHour = 0;
   ensoZr = randn(); ensoZi = randn(); n34 = 0; ensoHist.fill(0); ensoHi = 0;
   for (let d = -10950; d < 0; d++) ensoStep((((134 + d) % 365.25) + 365.25) % 365.25);   // 30-year spin-up ending on 15 May
@@ -530,6 +662,7 @@ function stepDay() {
   { const dd = simDate(dayCount * 24); ensoStep((dd.getTime() - Date.UTC(dd.getUTCFullYear(), 0, 1)) / 86400000); }
   for (let k = 0; k < K; k++) pc[k] = PHI_DAY[k] * pc[k] + Math.sqrt(1 - PHI_DAY[k] * PHI_DAY[k]) * randn();
   for (let k = 0; k < KH; k++) pcH[k] = PHI_DAY_H[k] * pcH[k] + Math.sqrt(1 - PHI_DAY_H[k] * PHI_DAY_H[k]) * randn();
+  for (let k = 0; k < KS; k++) pcS[k] = PHI_DAY_S[k] * pcS[k] + Math.sqrt(1 - PHI_DAY_S[k] * PHI_DAY_S[k]) * randn();
   const pg = Math.exp(-1 / 8); gapIdx = pg * gapIdx + Math.sqrt(1 - pg * pg) * randn();   // ~1-week-correlated gap-wind burst index, shared across the three jets (same synoptic cold-front passages drive all of them)
   anomDirty = true;
 }
@@ -541,6 +674,8 @@ function simDate(h) { return new Date(START_MS + h * 3600000); }
 const sst = new Float32Array(N), normal = new Float32Array(N), diff = new Float32Array(N), featN = new Float32Array(N), featD = new Float32Array(N);
 const humid = new Float32Array(N);
 const humidAnomC = new Float32Array(CN), humidAnomF = new Float32Array(N), humidEnsoCo = new Float32Array(CN), humidEnsoF = new Float32Array(N);
+const shear = new Float32Array(N);
+const shearAnomC = new Float32Array(CN), shearAnomF = new Float32Array(N), shearEnsoCo = new Float32Array(CN), shearEnsoF = new Float32Array(N);
 
 // Advances the synoptic AR(1) *generator* (coarse, humidSynC) forward to exactly `targetDay`,
 // in one closed-form step regardless of how many days that skips -- phi^nStep is the exact
@@ -572,6 +707,124 @@ const anomC = new Float32Array(CN), anomF = new Float32Array(N), ensoCo = new Fl
 let anomDirty = true;
 const WARM_PEAK_BIAS = 1.0;   // deg C added at the seasonal peak (see computeField) to correct a cool bias there
 
+// Real shear anomalies correlate meaningfully between nearby cells (2-5 deg apart: +0.69 to
+// +0.94, fading out by 15-20 deg -- see decode comment above) -- drawing each coarse (2 deg)
+// cell's own daily random shock fully independently, as a naive per-cell AR(1) would, throws
+// that real local coherence away entirely. This was tried first and confirmed (by actually
+// rendering it, not assumed) to look wrong: pure static rather than a weather-like field,
+// because upsample()'s own bicubic smoothing can't manufacture correlation between coarse
+// samples that were never correlated to begin with, and its own overshoot clamp (see its
+// declaration comment) ends up active almost everywhere instead of rarely, since nearly every
+// adjacent coarse pair looks like a "sharp jump" to it. Fixed at the source instead of fighting
+// it downstream: each day's random shock is still drawn independently per cell, then passed
+// through one separable smoothing pass (X then Y) before use, a 5-tap kernel [a2,a1,c,a1,a2]
+// reaching 2 coarse cells (4 deg) either side, close to the real measured correlation length.
+// Weights are relative [1,3,6,3,1], L2-normalized (divided by sqrt(1+9+36+9+1)=sqrt(56)) so
+// sum(w^2)=1 exactly -- for i.i.d. unit-variance inputs that gives an EXACTLY unit-variance
+// output at every interior cell with no empirical re-calibration needed (Var of a weighted sum
+// of independent unit-variance terms is just the sum of the weights' own squares), and critically
+// the X-pass's own output across different ROWS stays mutually independent (each row's X-pass
+// only ever touches that row's own input values), so the following Y-pass's variance works out
+// exactly unit too, by the same reasoning applied once more. (Iterating this same kernel on its
+// own already-smoothed output, tried first, does NOT stay unit-variance past the first round --
+// the independence argument breaks down, and this specific kernel's sum-of-weights exceeds 1, so
+// repeated rounds blow up geometrically, confirmed empirically: std grew to ~5x after 3 rounds.
+// A single wider pass avoids that instability entirely while reaching the same footprint.)
+const SW2 = 1 / Math.sqrt(56), SW1 = 3 / Math.sqrt(56), SW0 = 6 / Math.sqrt(56);
+const shearSynInnov = new Float32Array(CN), shearSynInnovX = new Float32Array(CN);
+function smoothedShearInnovation() {
+  for (let q = 0; q < CN; q++) shearSynInnov[q] = randn();
+  for (let r = 0; r < CNY; r++) {
+    const ro = r * CNX;
+    for (let c = 0; c < CNX; c++) {
+      const c2l = Math.max(0, c - 2), c1l = Math.max(0, c - 1), c1r = Math.min(CNX - 1, c + 1), c2r = Math.min(CNX - 1, c + 2);
+      shearSynInnovX[ro + c] = SW2 * shearSynInnov[ro + c2l] + SW1 * shearSynInnov[ro + c1l] + SW0 * shearSynInnov[ro + c] + SW1 * shearSynInnov[ro + c1r] + SW2 * shearSynInnov[ro + c2r];
+    }
+  }
+  for (let r = 0; r < CNY; r++) {
+    const r2u = Math.max(0, r - 2) * CNX, r1u = Math.max(0, r - 1) * CNX, ro = r * CNX, r1d = Math.min(CNY - 1, r + 1) * CNX, r2d = Math.min(CNY - 1, r + 2) * CNX;
+    for (let c = 0; c < CNX; c++) shearSynInnov[ro + c] = SW2 * shearSynInnovX[r2u + c] + SW1 * shearSynInnovX[r1u + c] + SW0 * shearSynInnovX[ro + c] + SW1 * shearSynInnovX[r1d + c] + SW2 * shearSynInnovX[r2d + c];
+  }
+  return shearSynInnov;
+}
+function advanceShearSynTo(targetDay) {
+  const nStep = targetDay - lastShearSynDay;
+  if (nStep <= 0) return;
+  const innov = smoothedShearInnovation();
+  for (let q = 0; q < CN; q++) {
+    const p = Math.pow(shearSynPhiC[q], nStep);
+    shearSynC[q] = p * shearSynC[q] + Math.sqrt(Math.max(0, 1 - p * p)) * shearSynStdC[q] * innov[q];
+  }
+  lastShearSynDay = targetDay;
+}
+function ensureShearSynDay(d) {
+  if (d === shearSynDay) return;
+  advanceShearSynTo(d); upsample(shearSynC, shearSynPrev);
+  advanceShearSynTo(d + 1); upsample(shearSynC, shearSynCur);
+  shearSynDay = d;
+}
+
+// Jet axis. The KJ wave-mode amplitudes are a unit-variance AR(1) per mode (jetPhiEff, see the
+// timing comment in the decode block), one vector per whole jet-day in jetHist. They are always
+// stepped a day at a time -- a long advance() is just a loop over days, a few thousand
+// multiply-adds -- never jumped in closed form, so a seed gives the same jet however the run is
+// chunked. initJet() generates JET_HIST days of history from BEFORE day 0 up front (a stationary
+// AR(1) is time-reversible, so stepping backward with the same coefficients gives a correctly
+// distributed past), because the downstream delay means the eastern columns are already reading
+// amplitudes from up to that many days ago on the very first frame.
+function jetStepFrom(x) {
+  const y = new Float32Array(KJ);
+  for (let k = 0; k < KJ; k++) { const p = jetPhiEff[k]; y[k] = p * x[k] + Math.sqrt(1 - p * p) * jetRandn(); }
+  return y;
+}
+function initJet(seed) {
+  jrs = (Math.imul(seed | 0, 0x85EBCA6B) ^ 0x2545F491) >>> 0 || 1;
+  jetHist.clear(); jetClockH = 0; jetNewest = 0;
+  let x = new Float32Array(KJ);
+  for (let k = 0; k < KJ; k++) x[k] = jetRandn();
+  jetHist.set(0, x);
+  for (let d = -1; d >= -JET_HIST; d--) { x = jetStepFrom(x); jetHist.set(d, x); }
+}
+function ensureJetThrough(lastDay, firstDay) {
+  let x = jetHist.get(jetNewest);
+  while (jetNewest < lastDay) { x = jetStepFrom(x); jetHist.set(++jetNewest, x); }
+  if (jetHist.size > JET_HIST + 12) for (const d of jetHist.keys()) if (d < firstDay) jetHist.delete(d);
+}
+// The unscaled axis at the current jet clock, one latitude per coarse column. Each column reads
+// every mode's amplitude at its own delayed time (so changes travel east at JET_DRIFT) through a
+// Catmull-Rom cubic between the whole-day samples -- the same 4-tap basis as cr() above -- so the
+// path is continuous in position AND velocity, instead of the straight segments between daily
+// snapshots (and a new random direction at every midnight) it used to be.
+function jetAxisRaw(dst) {
+  const t = jetClockH / 24, maxDelay = jetDelayC[CNX - 1];
+  ensureJetThrough(Math.floor(t) + 2, Math.floor(t - maxDelay) - 2);
+  for (let c = 0; c < CNX; c++) {
+    const tc = t - jetDelayC[c], dd = Math.floor(tc), f = tc - dd, f2 = f * f, f3 = f2 * f;
+    const w0 = -0.5 * f3 + f2 - 0.5 * f, w1 = 1.5 * f3 - 2.5 * f2 + 1, w2 = -1.5 * f3 + 2 * f2 + 0.5 * f, w3 = 0.5 * f3 - 0.5 * f2;
+    const h0 = jetHist.get(dd - 1), h1 = jetHist.get(dd), h2 = jetHist.get(dd + 1), h3 = jetHist.get(dd + 2);
+    let a = 0;
+    for (let k = 0; k < KJ; k++) a += (w0 * h0[k] + w1 * h1[k] + w2 * h2[k] + w3 * h3[k]) * jetEofC[k * CNX + c];
+    jetAnomTmp[c] = a;
+  }
+  // The delay is what makes neighbouring columns read amplitudes a third of a day apart, and the
+  // modes are only smooth in space when combined at the SAME time, so without this the curve came
+  // out ~35% rougher along longitude (median step between 2-degree columns 0.83 -> 1.11 deg, worst
+  // 7.5 -> 10.6). One light [1 4 6 4 1]/16 pass along longitude takes that out for 1.8% of the
+  // amplitude (mean per-column spread 8.54 -> 8.39 deg), leaving the curve's kinks smaller than
+  // before the delay existed (second difference along longitude, 95th pct: 2.04 before the delay,
+  // 2.64 with it, 1.53 after this pass).
+  for (let c = 0; c < CNX; c++) {
+    const am2 = jetAnomTmp[Math.max(0, c - 2)], am1 = jetAnomTmp[Math.max(0, c - 1)], a0 = jetAnomTmp[c], ap1 = jetAnomTmp[Math.min(CNX - 1, c + 1)], ap2 = jetAnomTmp[Math.min(CNX - 1, c + 2)];
+    dst[c] = jetMeanPathC[c] + (am2 + 4 * am1 + 6 * a0 + 4 * ap1 + ap2) / 16;
+  }
+}
+// ...and with the weather slider (how far it strays from its mean path) and the band limit applied.
+function jetAxisFinal(dst) {
+  jetAxisRaw(dst);
+  const sws = P.shearSynoptic;
+  for (let c = 0; c < CNX; c++) dst[c] = limitJetAxis(jetMeanPathC[c] + sws * (dst[c] - jetMeanPathC[c]));
+}
+
 function computeField() {
   const d = simDate(simHour), y = d.getUTCFullYear(), doy = (d.getTime() - Date.UTC(y, 0, 1)) / 86400000;
   const ylen = ((y % 4 === 0 && y % 100 !== 0) || y % 400 === 0) ? 366 : 365, f = doy / ylen;
@@ -586,6 +839,7 @@ function computeField() {
   // humidSynPrev/humidSynCur's own declaration comment for why plain linear is enough here).
   const synD = Math.floor(simHour / 24), synT = simHour / 24 - synD;
   ensureSynDay(synD);
+  ensureShearSynDay(synD);   // same day boundary/fraction as humidity's own blend just above -- one simulated clock, shared across both fields' synoptic layers
   const sp0 = 1 - synT, sp1 = synT;
 
   if (anomDirty) {
@@ -601,6 +855,12 @@ function computeField() {
     upsample(humidAnomC, humidAnomF);
     for (let q = 0; q < CN; q++) humidEnsoCo[q] = c0 * humidEnsoC[q] + c3 * humidEnsoC[CN + q] + c6 * humidEnsoC[2 * CN + q];
     upsample(humidEnsoCo, humidEnsoF);
+
+    shearAnomC.fill(0);
+    for (let k = 0; k < KS; k++) { const c = pcS[k]; if (!c) continue; const o = k * CN; for (let q = 0; q < CN; q++) shearAnomC[q] += c * shearEofC[o + q]; }
+    upsample(shearAnomC, shearAnomF);
+    for (let q = 0; q < CN; q++) shearEnsoCo[q] = c0 * shearEnsoC[q] + c3 * shearEnsoC[CN + q] + c6 * shearEnsoC[2 * CN + q];
+    upsample(shearEnsoCo, shearEnsoF);
 
     anomDirty = false;
   }
@@ -651,6 +911,56 @@ function computeField() {
     }
   }
 
+  /* --- wind shear: a third separate, additive pass, same shape as humidity's own above.
+   * Climatology + EOF interannual variability + ENSO regression (Phase 1), plus two
+   * day-to-day layers (Phase 2, both decoded above): per-cell local texture
+   * (shearSynPrev/Cur), and an explicit jet-stream band -- a continuous ribbon of strong
+   * shear following a meandering axis, added as a bump on TOP of everything else (see
+   * jetBumpLut). Because it rides on top of the climatology+interannual+ENSO value, when
+   * Phase 1's own ENSO term raises the background (El Nino -> more shear) the jet's peak
+   * rises with it, through the one ENSO channel actually verified in real data; the axis's
+   * own latitude showed no usable ENSO signal (daily correlations 0.0-0.17), so nothing is
+   * invented there. Same two-phase order humidity's own synoptic layer was added well after
+   * its climatology+ENSO base shipped and was confirmed good (see docs/roadmap.md). The
+   * interannual terms are driven only by P.variability/P.enso, for the same reasons
+   * humidity's own combine pass gives above: P.warming is meaningless for a kt field,
+   * P.seasonal/P.features are SST-current-specific mechanisms shear has no equivalent of (its
+   * own 12-month climatology already carries the real seasonal cycle -- low in hurricane
+   * season, high in winter, the jet stream's own real migration -- directly, nothing to
+   * stretch), and one real ENSO event driving both fields' own interannual variability is just
+   * as physically defensible here as it is for humidity. The day-to-day terms have their
+   * own dedicated slider (P.shearSynoptic, not P.synoptic) -- real day-to-day shear weather
+   * (jet meandering, trough passages) is mechanistically distinct from humidity's own
+   * (tropical waves, SAL outbreaks), matching this codebase's existing precedent of giving a
+   * field its own slider once it has no real equivalent in a field that already has one.
+   * The slider scales how far the axis strays from its real mean path (and the local
+   * texture): at 0 the jet is still there -- always flowing, as the real one is -- just
+   * parked on its mean path instead of meandering. */
+  const svs = P.variability, ses = P.enso, sws = P.shearSynoptic;
+  const SA0 = shearClimF[M(m1 - 1)], SA1 = shearClimF[M(m1)], SA2 = shearClimF[M(m1 + 1)], SA3 = shearClimF[M(m1 + 2)];
+  // Axis latitude at every fine longitude column: the final coarse axis (continuous-time, see
+  // jetAxisRaw -- this is evaluated at the exact current jet clock, so it drifts smoothly hour to
+  // hour with no day boundaries in it) linearly interpolated to each column's own longitude.
+  jetAxisFinal(jetAxisC);
+  for (let i = 0; i < NX; i++) {
+    const fc = i / RATIO, c0 = Math.min(CNX - 2, Math.floor(fc)), t = fc - c0;
+    jetAxisF[i] = jetAxisC[c0] * (1 - t) + jetAxisC[c0 + 1] * t;
+  }
+  for (let j = 0; j < NY; j++) {
+    const o = j * NX, lat = LAT1 - j * RES;
+    for (let i = 0; i < NX; i++) {
+      const k = o + i;
+      if (outOfBasin[k]) { shear[k] = NaN; continue; }
+      const mth = w0 * SA0[k] + w1 * SA1[k] + w2 * SA2[k] + w3 * SA3[k] - jetSmearF[k];   // climatology minus the blurred jet it contains; the ribbon below puts the jet back, sharp, where it actually is today
+      const syn = sp0 * shearSynPrev[k] + sp1 * shearSynCur[k];
+      let v = mth + svs * shearAnomF[k] + ses * shearEnsoF[k] + sws * SHEAR_TEXTURE_GAIN * syn;
+      const off = Math.abs(lat - jetAxisF[i]);
+      if (off < JET_LUT_MAX) { const n = off / JET_LUT_STEP, n0 = n | 0; v += jetBumpLut[n0] + (n - n0) * (jetBumpLut[n0 + 1] - jetBumpLut[n0]); }
+      if (v > 115) v = 115 + 10 * Math.tanh((v - 115) / 10); else if (v < 2) v = 2 - 4 * Math.tanh((2 - v) / 4);   // soft: real shear can edge past this basin's own monthly-climatology range [10.1, 99.9] (daily values reach 143.4 kt at the 99.9th percentile) without ever doing so without limit, same spirit as every other field's own soft clamp
+      shear[k] = v;
+    }
+  }
+
   updateLakes(f, doy);
 }
 const CEIL_LAT = [0, 10, 20, 25, 30, 35, 38, 40, 45, 50, 55, 60, 70, 80], CEIL_T = [33, 33, 32.6, 32, 31.2, 30, 29, 28.2, 26, 23, 19.5, 16, 9, 3];
@@ -686,10 +996,20 @@ const ANOM_STOPS = [[-3,24,44,176],[-1.5,60,118,226],[-0.5,150,192,244],[0,242,2
 // check that found a shared threshold doesn't transfer across basins (WPAC/AUS run much wetter,
 // the Mediterranean much drier, at the same relative percentile).
 const HUMID_STOPS = [[0,120,72,36],[8,150,96,50],[19,180,130,78],[29,206,170,118],[39,224,201,155],[49,200,219,176],[64,150,205,173],[82,80,175,163],[100,20,110,140]];
+// Favorable (low shear, green) -> hostile (high shear, red/maroon) -- the OPPOSITE direction from
+// HUMID_STOPS, since for shear low is favorable. The same absolute-kt stops in every basin, so a colour means
+// the same shear everywhere. This basin's monthly climatology runs [10.1, 99.9] kt.
+const SHEAR_STOPS = [[0,20,120,60],[10,70,165,70],[15,150,195,80],[20,230,210,70],[25,235,170,60],[30,225,120,50],[40,210,70,45],[55,175,35,45],[75,130,20,60],[110,80,15,75]];
 const VIEWS = {
   sst:  { vmin: -2, vmax: 34, lut: buildLUT(SST_STOPS, -2, 34, 721), caption: 'Sea surface temperature, °C', ticks: [0, 10, 20, 26.5, 30], key: 26.5, step: 2, unit: ' °C', keyLabel: 'cyclone threshold' },
   anom: { vmin: -3, vmax: 3, lut: buildLUT(ANOM_STOPS, -3, 3, 301), caption: 'Difference from the 1991–2020 normal, °C', ticks: [-3, -2, -1, 0, 1, 2, 3], key: 0, step: 1, unit: ' °C', keyLabel: 'normal' },
-  humid: { vmin: 0, vmax: 100, lut: buildLUT(HUMID_STOPS, 0, 100, 501), caption: '700 hPa relative humidity, %', ticks: [13, 25, 39, 49, 69], key: 49, step: 10, unit: '%', keyLabel: 'favorable for development' }
+  humid: { vmin: 0, vmax: 100, lut: buildLUT(HUMID_STOPS, 0, 100, 501), caption: '700 hPa relative humidity, %', ticks: [13, 25, 39, 49, 69], key: 49, step: 10, unit: '%', keyLabel: 'favorable for development' },
+  // key: 20 kt is the real NHC/SHIPS operational "low shear" threshold, and it is crossable here in
+  // both directions (checked against this basin's own real daily shear in its own cyclone season: 15.9% of
+  // the whole box is below 20 kt, 9.8% of its half nearest the equator). Low shear is favorable, the opposite
+  // polarity from Humidity's, and keyLabel is phrased so the generic ">= key ? Above : Below" wording reads
+  // correctly either way. Scale ceiling 110 kt.
+  shear: { vmin: 0, vmax: 110, lut: buildLUT(SHEAR_STOPS, 0, 110, 551), caption: '200–850 hPa wind shear, kt', ticks: [10, 20, 30, 55, 80], key: 20, step: 10, unit: ' kt', keyLabel: 'disruptive shear threshold' }
 };
 let view = 'sst';
 
@@ -901,7 +1221,7 @@ function updateCityTip(cx, cy) {
   const i = cityAt(cx, cy);
   if (i !== hoveredCity) { hoveredCity = i; scheduleRender(); }
   if (i < 0) { tip.style.display = 'none'; return; }
-  const c = CITIES[i], inland = c.sLat !== undefined, t = sampleField(sst, c.sLat ?? c.lat, c.sLon ?? c.lon), n = sampleField(normal, c.sLat ?? c.lat, c.sLon ?? c.lon), h = sampleField(humid, c.sLat ?? c.lat, c.sLon ?? c.lon);
+  const c = CITIES[i], inland = c.sLat !== undefined, t = sampleField(sst, c.sLat ?? c.lat, c.sLon ?? c.lon), n = sampleField(normal, c.sLat ?? c.lat, c.sLon ?? c.lon), h = sampleField(humid, c.sLat ?? c.lat, c.sLon ?? c.lon), s = sampleField(shear, c.sLat ?? c.lat, c.sLon ?? c.lon);
   const lines = [];
   if (inland) lines.push('Nearest coastal water');
   if (t === t) {
@@ -912,6 +1232,10 @@ function updateCityTip(cx, cy) {
     if (h === h) {
       lines.push(h.toFixed(0) + '% RH @ 700mb');
       lines.push(h >= VIEWS.humid.key ? 'Above ' + VIEWS.humid.keyLabel : 'Below ' + VIEWS.humid.keyLabel);
+    }
+    if (s === s) {
+      lines.push(s.toFixed(0) + ' kt shear');
+      lines.push(s >= VIEWS.shear.key ? 'Above ' + VIEWS.shear.keyLabel : 'Below ' + VIEWS.shear.keyLabel);
     }
   } else {
     lines.push('Outside the simulated area');
@@ -962,6 +1286,11 @@ const container = map.getContainer();
 
 function makeCanvas(z) { const c = document.createElement('canvas'); c.className = 'overlay'; c.style.zIndex = z; container.appendChild(c); return c; }
 const baseCanvas = makeCanvas(1), sstCanvas = makeCanvas(450), gridCanvas = makeCanvas(460);
+// The jet line gets a canvas of its own, between the field (450) and the borders/cities/grid
+// (460), because it is the one thing redrawn every animation frame: re-rendering the field costs
+// 50-70 ms (it only happens every few simulated hours), re-stroking one 76-point curve costs
+// nothing, so the line can glide at the display's frame rate while the heavy layers update at their own pace.
+const jetCanvas = makeCanvas(455); jetCanvas.id = 'jet-canvas';
 baseCanvas.style.display = 'none';
 const off = document.createElement('canvas');
 
@@ -1057,7 +1386,7 @@ function fitCanvases() {
   const s = map.getSize(); DPR = Math.min(2, window.devicePixelRatio || 1);
   if (s.x !== W || s.y !== H || sstCanvas.width !== Math.round(W * DPR)) {
     W = s.x; H = s.y;
-    for (const c of [sstCanvas, baseCanvas, gridCanvas]) { c.width = Math.round(W * DPR); c.height = Math.round(H * DPR); }
+    for (const c of [sstCanvas, baseCanvas, gridCanvas, jetCanvas]) { c.width = Math.round(W * DPR); c.height = Math.round(H * DPR); }
   }
 }
 function paintLand(ctx, list, minX, minY, ws, stroke) {
@@ -1087,6 +1416,10 @@ function drawLakes(ctx, minX, minY, ws) {
       // distinct SST (depth/thermal mass) -- just show the real field value at the lake's own
       // location, not a borrowed SST-anomaly-shaped quantity.
       ctx.fillStyle = lakeCss(V, sampleField(humid, L.lat, L.lon));
+    } else if (view === 'shear') {
+      // Same reasoning as the humid branch above -- no physical basis for a lake having its
+      // own distinct deep-layer wind shear, just show the real field value overhead.
+      ctx.fillStyle = lakeCss(V, sampleField(shear, L.lat, L.lon));
     } else ctx.fillStyle = lakeCss(V, lakeV[i] - lakeN[i]);
     ctx.fill('evenodd');
   }
@@ -1187,6 +1520,82 @@ function drawEquator(g, minX, minY, ws) {
   g.lineWidth = 1.6; g.strokeStyle = '#ffffff'; g.beginPath(); g.moveTo(0, y); g.lineTo(W, y); g.stroke();
   g.restore();
 }
+const jetLineOn = $('jetline'), jetNote = $('jet-note');
+const JET_LINE_FADE_DEG = 6;   // the line fades out over the last 6 degrees of longitude at each end of the simulated area, the same distance the field raster itself fades over (FADE = 24 cells)
+const JET_LINE_FADE_LAT = 2;   // ...and over the last 2 degrees of latitude at the top and bottom: the jet is not a tropical feature, so for most basins it sometimes leaves the simulated area, and the line should leave it gracefully instead of running out over the margin
+let jetNoteText = '';
+function setJetNote(t) { if (t !== jetNoteText) { jetNoteText = t; jetNote.textContent = t; } }
+function drawJetLine() {
+  // The jet axis -- the same axis the Wind Shear ribbon is centred on (jetAxisFinal), so in that
+  // view it runs along the crest of the band and in every other view it marks where the jet is
+  // today. Its own canvas, so it doesn't depend on the selected view or on "Show sea temperature",
+  // and it crosses land: the jet is an atmospheric feature, not an ocean one. The axis is re-read
+  // from the jet clock on EVERY call, and this is called every animation frame while playing, so
+  // the line glides at the display's frame rate; the shear raster underneath is only recomputed
+  // every few simulated hours (see frame()) and so trails it by at most that much.
+  const g = jetCanvas.getContext('2d'); g.setTransform(DPR, 0, 0, DPR, 0, 0); g.clearRect(0, 0, W, H);
+  if (!jetLineOn.checked) { setJetNote(''); return; }
+  jetAxisFinal(jetAxisNow);
+  // If the whole axis is outside the simulated area (it is for a good part of the time in basins
+  // that sit beside the jet rather than under it), or just not in what is on screen (zoomed in on
+  // the tropics, say), say so next to the checkbox instead of letting an empty map look like a
+  // broken option.
+  let inside = 0, mean = 0, seen = 0, vn = 0, vmean = 0;
+  const vb = map.getBounds(), vN = vb.getNorth(), vS = vb.getSouth(), vW = vb.getWest(), vE = vb.getEast();
+  for (let c = 0; c < CNX; c++) {
+    const la = jetAxisNow[c], lon = LON0 + c * DM.cres;
+    mean += la / CNX; if (la <= LAT1 && la >= DM.lat0) inside++;
+    if (lon >= vW && lon <= vE) { vn++; vmean += la; if (la <= vN && la >= vS) seen++; }
+  }
+  setJetNote(inside < 2 ? (mean > LAT1 ? ' · north of this area today' : ' · south of this area today')
+    : seen < 2 && vn > 0 ? (vmean / vn > vN ? ' · north of what is on screen' : ' · south of what is on screen') : '');
+  const ws = 256 * Math.pow(2, map.getZoom()), pb = map.getPixelBounds(), minX = pb.min.x, minY = pb.min.y;
+  const xa = (LON0 + 180) / 360 * ws - minX, xb = (LON0 + (NX - 1) * RES + 180) / 360 * ws - minX;
+  if (xb < -10 || xa > W + 10 || inside < 2) return;
+  const fade = Math.min(0.5, JET_LINE_FADE_DEG / ((NX - 1) * RES));
+  const ink = (r, gr, b, a) => { const s = g.createLinearGradient(xa, 0, xb, 0), c = (k) => 'rgba(' + r + ',' + gr + ',' + b + ',' + k + ')'; s.addColorStop(0, c(0)); s.addColorStop(fade, c(a)); s.addColorStop(1 - fade, c(a)); s.addColorStop(1, c(0)); return s; };
+  // The axis is only known at the coarse (2 deg) longitude columns -- linear in between -- so the
+  // curve is a Catmull-Rom spline through exactly those points: it passes through the real axis
+  // position at every column and just rounds off the corners between them, instead of drawing the
+  // data's own resolution as a polygon.
+  const px = [], py = [];
+  let edge = false;   // does any part of the axis come within the fade distance of the top/bottom of the simulated area, or leave it?
+  for (let c = 0; c < CNX; c++) { px.push(xa + (xb - xa) * c / (CNX - 1)); py.push(mercN(jetAxisNow[c]) * ws - minY); if (jetAxisNow[c] > LAT1 - JET_LINE_FADE_LAT || jetAxisNow[c] < DM.lat0 + JET_LINE_FADE_LAT) edge = true; }
+  const trace = () => {
+    g.beginPath(); g.moveTo(px[0], py[0]);
+    for (let c = 0; c < CNX - 1; c++) {
+      const a = Math.max(0, c - 1), d = Math.min(CNX - 1, c + 2);
+      g.bezierCurveTo(px[c] + (px[c + 1] - px[a]) / 6, py[c] + (py[c + 1] - py[a]) / 6, px[c + 1] - (px[d] - px[c]) / 6, py[c + 1] - (py[d] - py[c]) / 6, px[c + 1], py[c + 1]);
+    }
+  };
+  g.save(); g.lineJoin = 'round'; g.lineCap = 'round';
+  trace(); g.strokeStyle = ink(8, 10, 18, 0.62); g.lineWidth = 7; g.stroke();     // dark casing so the line reads over every colour scale and every map theme
+  trace(); g.strokeStyle = ink(255, 64, 224, 1); g.lineWidth = 3.2; g.stroke();
+  // Keep only what is inside the simulated area, fading over its last JET_LINE_FADE_LAT degrees. Only when the axis actually reaches the
+  // top or bottom edge, and then only over the rows the line occupies (the Bezier control points can overshoot the points by about a
+  // third of the largest step between columns): erase everything beyond the edge and a ramp inside it with two small gradient strips,
+  // not one fill of the whole canvas -- a full-canvas gradient every animation frame cost more than the line itself (measured: the
+  // frame rate went from 20 to 6 at 2000x1300 in software rendering).
+  if (edge) {
+    let y0 = Infinity, y1 = -Infinity, step = 0;
+    for (let c = 0; c < CNX; c++) { y0 = Math.min(y0, py[c]); y1 = Math.max(y1, py[c]); if (c) step = Math.max(step, Math.abs(py[c] - py[c - 1])); }
+    const pad = 8 + step / 2, ry0 = Math.max(0, y0 - pad), ry1 = Math.min(H, y1 + pad), rx0 = Math.max(0, xa - 8), rx1 = Math.min(W, xb + 8), w = rx1 - rx0;
+    const yT = mercN(LAT1) * ws - minY, yB = mercN(DM.lat0) * ws - minY, fT = mercN(LAT1 - JET_LINE_FADE_LAT) * ws - minY, fB = mercN(DM.lat0 + JET_LINE_FADE_LAT) * ws - minY;
+    const strip = (ya, yb, a0, a1) => {
+      const s0 = Math.max(ya, ry0), s1 = Math.min(yb, ry1); if (!(s1 > s0)) return;
+      const gr = g.createLinearGradient(0, ya, 0, yb); gr.addColorStop(0, 'rgba(0,0,0,' + a0 + ')'); gr.addColorStop(1, 'rgba(0,0,0,' + a1 + ')');
+      g.fillStyle = gr; g.fillRect(rx0, s0, w, s1 - s0);
+    };
+    g.globalCompositeOperation = 'destination-out'; g.fillStyle = '#000';
+    if (w > 0) {
+      if (ry0 < yT) g.fillRect(rx0, ry0, w, Math.min(yT, ry1) - ry0);                  // above the top edge: gone
+      if (ry1 > yB) g.fillRect(rx0, Math.max(yB, ry0), w, ry1 - Math.max(yB, ry0));    // below the bottom edge: gone
+      strip(yT, fT, 1, 0);                                                              // top ramp: fully erased at the edge, untouched 2 degrees in
+      strip(fB, yB, 0, 1);                                                              // bottom ramp
+    }
+  }
+  g.restore();
+}
 function drawGrid(minX, minY, ws) {
   const g = gridCanvas.getContext('2d'); g.setTransform(DPR, 0, 0, DPR, 0, 0); g.clearRect(0, 0, W, H);
   if ($('borders').checked) drawBorders(g, minX, minY, ws, map.getZoom());
@@ -1265,7 +1674,7 @@ function render() {
   }
   if (off.width !== sw || off.height !== sh) { off.width = sw; off.height = sh; }
   const octx = off.getContext('2d'), img = octx.createImageData(sw, sh), px = new Uint32Array(img.data.buffer);
-  const V = VIEWS[view], src = view === 'sst' ? sst : view === 'humid' ? humid : diff, lut = V.lut, lscale = (lut.length - 1) / (V.vmax - V.vmin), ln = lut.length - 1;
+  const V = VIEWS[view], src = view === 'sst' ? sst : view === 'humid' ? humid : view === 'shear' ? shear : diff, lut = V.lut, lscale = (lut.length - 1) / (V.vmax - V.vmin), ln = lut.length - 1;
   let idx = 0;
   for (let y = 0; y < sh; y++) {
     const j = rowJ[y];
@@ -1305,6 +1714,7 @@ function render() {
   }
   drawBaseLayer(minX, minY, ws);
   drawGrid(minX, minY, ws);
+  drawJetLine();
   updateReadout();
 }
 let renderQueued = false;
@@ -1326,19 +1736,19 @@ function updateReadout() {
   const el = $('readout');
   if (!pointer) { el.innerHTML = '<b>–</b><div>Move the pointer over the ocean</div>'; return; }
   const lat = pointer.lat, lon = ((pointer.lng + 540) % 360) - 180;
-  // °C gets SST's existing one-decimal precision; % matches the whole-number precision
-  // updateCityTip() already uses for humidity.
+  // °C gets SST's existing one-decimal precision; %/kt match the whole-number precision
+  // updateCityTip() already uses for those fields.
   const V = VIEWS[view], dp = V.unit === ' °C' ? 1 : 0;
   const li = lakeAt(lat, lon);
   if (li >= 0) {
     if (view === 'sst') { const dv = lakeV[li] - lakeN[li]; el.innerHTML = '<b>' + lakeV[li].toFixed(1) + ' °C</b><div>' + (LAKE_META[li].name || 'Lake') + ' · ' + (dv >= 0 ? '+' : '−') + Math.abs(dv).toFixed(1) + ' °C vs. normal</div>'; return; }
-    // No physical basis for a lake having its own distinct anomaly/humidity reading -- same
-    // reasoning drawLakes() already uses, just applied to the readout instead of a pixel.
-    const lv = view === 'humid' ? sampleField(humid, lat, lon) : lakeV[li] - lakeN[li];
+    // No physical basis for a lake having its own distinct anomaly/humidity/shear reading --
+    // same reasoning drawLakes() already uses, just applied to the readout instead of a pixel.
+    const lv = view === 'humid' ? sampleField(humid, lat, lon) : view === 'shear' ? sampleField(shear, lat, lon) : lakeV[li] - lakeN[li];
     el.innerHTML = '<b>' + lv.toFixed(dp) + V.unit + '</b><div>' + (LAKE_META[li].name || 'Lake') + ' · ' + (lv >= V.key ? 'Above ' : 'Below ') + V.keyLabel + '</div>';
     return;
   }
-  const src = view === 'sst' ? sst : view === 'humid' ? humid : diff;
+  const src = view === 'sst' ? sst : view === 'humid' ? humid : view === 'shear' ? shear : diff;
   const v = sampleField(src, lat, lon);
   if (v !== v) el.innerHTML = '<b>–</b><div>Outside the simulated area · ' + fmtLL(lat, lon) + '</div>';
   else if (isLand(lat, lon)) el.innerHTML = '<b>Land</b><div>' + fmtLL(lat, lon) + '</div>';
@@ -1392,16 +1802,22 @@ function setPlaying(p) { playing = p; $('ic-pause').style.display = p ? '' : 'no
 function advanceHours(n) {
   const d0 = Math.floor(simHour / 24); simHour += n; const d1 = Math.floor(simHour / 24);
   for (let d = d0; d < Math.min(d1, d0 + 800); d++) stepDay();
+  jetClockH += n * P.jetSpeed;   // the jet's own clock: the speed slider rescales time itself, so moving it never makes the jet jump
   dirty = true;
 }
-function refresh(force) { computeField(); lastComputeHour = simHour; lastComputeAt = performance.now(); dirty = false; render(); }
+let lastRefreshMs = 0;   // how long the last full redraw took -- the pacing below keeps the main thread from spending more than ~40% of its time on them, whatever the machine
+function refresh(force) { const t0 = performance.now(); computeField(); lastComputeHour = simHour; dirty = false; render(); lastComputeAt = performance.now(); lastRefreshMs = lastComputeAt - t0; }
 function frame(now) {
   const dt = Math.min(250, now - lastNow); lastNow = now;
   if (playing) {
     acc += dt * SPEEDS[speedIdx]; const n = Math.floor(acc / STEP_MS);
     if (n > 0) { acc -= n * STEP_MS; advanceHours(n); updateClock(); }
   }
-  if (dirty && now - lastComputeAt >= 120 && Math.abs(simHour - lastComputeHour) >= (SPEEDS[speedIdx] < 1 ? 3 : 6)) refresh();
+  // Heavy layers (the field raster: ~50-70 ms) redraw every 3 simulated hours up to 2x and every 6 above it, but never more
+  // often than the redraw itself can afford -- it used to be every 6 hours at 1x, about 3 redraws a second, which is what
+  // made anything drifting across the map visibly step instead of glide.
+  if (dirty && now - lastComputeAt >= Math.max(120, 2.5 * lastRefreshMs) && Math.abs(simHour - lastComputeHour) >= (SPEEDS[speedIdx] <= 2 ? 3 : 6)) refresh();
+  else if (playing && jetLineOn.checked) drawJetLine();   // the line is cheap, so it moves every frame; the heavy layers wait for the check above
   requestAnimationFrame(frame);
 }
 function restart() { initSim(P.seed); acc = 0; lastClock = ''; updateClock(); refresh(); }
@@ -1428,15 +1844,15 @@ $('show-sst').onchange = scheduleRender; $('borders').onchange = scheduleRender;
 $('detail').onchange = () => { syncDetail(); $('attr').textContent = TH.attr + (themeId === 'bm' && $('detail').checked ? ' · Close-ups: Esri' : ''); };
 map.on('zoom', updateDetailOpacity);
 $('op').oninput = () => { $('op-o').textContent = $('op').value + '%'; scheduleRender(); };
-$('l265').onchange = scheduleRender; $('l2').onchange = scheduleRender;
-const sliders = [['p-warm', 'warming', (v) => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(1) + ' °C'], ['p-var', 'variability', (v) => v.toFixed(1) + '×'], ['p-wx', 'synoptic', (v) => v.toFixed(1) + '×'], ['p-sea', 'seasonal', (v) => v.toFixed(2).replace(/0$/, '') + '×'], ['p-feat', 'features', (v) => v.toFixed(2).replace(/0$/, '') + '×'], ['p-enso', 'enso', (v) => v.toFixed(2).replace(/0$/, '') + '×']];
+$('l265').onchange = scheduleRender; $('l2').onchange = scheduleRender; $('jetline').onchange = scheduleRender;
+const sliders = [['p-warm', 'warming', (v) => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(1) + ' °C'], ['p-var', 'variability', (v) => v.toFixed(1) + '×'], ['p-wx', 'synoptic', (v) => v.toFixed(1) + '×'], ['p-wxs', 'shearSynoptic', (v) => v.toFixed(1) + '×'], ['p-jets', 'jetSpeed', (v) => v.toFixed(1) + '×'], ['p-sea', 'seasonal', (v) => v.toFixed(2).replace(/0$/, '') + '×'], ['p-feat', 'features', (v) => v.toFixed(2).replace(/0$/, '') + '×'], ['p-enso', 'enso', (v) => v.toFixed(2).replace(/0$/, '') + '×']];
 sliders.forEach(([id, key, fmt]) => { $(id).oninput = () => { P[key] = parseFloat($(id).value); $(id + '-o').textContent = fmt(P[key]); refresh(); }; });
 /* the seed gives each run its own slightly different climate: seasonal swing, currents/upwelling and ENSO strength move by a small but noticeable amount */
 function hash01(seed, k) { let t = (seed ^ Math.imul(k, 0x9E3779B1)) >>> 0; t = Math.imul(t ^ (t >>> 16), 0x85EBCA6B); t = Math.imul(t ^ (t >>> 13), 0xC2B2AE35); t ^= t >>> 16; return (t >>> 0) / 4294967296; }
 function seedJitter(seed, k, lo, hi) { const mag = lo + (hi - lo) * hash01(seed, k * 2 + 1), v = 1 + (hash01(seed, k * 2 + 2) < 0.5 ? -mag : mag); return Math.round(v / 0.05) * 0.05; }
 function seedSliderValues(seed) { return { 'p-sea': seedJitter(seed, 1, 0.08, 0.22), 'p-feat': seedJitter(seed, 2, 0.10, 0.30), 'p-enso': seedJitter(seed, 3, 0.12, 0.40) }; }
 function setSliderValues(vals) { for (const id in vals) $(id).value = vals[id]; sliders.forEach(([id, key, fmt]) => { P[key] = parseFloat($(id).value); $(id + '-o').textContent = fmt(P[key]); }); }
-$('b-reset').onclick = () => { setSliderValues(Object.assign({ 'p-warm': 0, 'p-var': 1, 'p-wx': 1 }, $('seed-vary').checked ? seedSliderValues(P.seed) : { 'p-sea': 1, 'p-feat': 1, 'p-enso': 1 })); refresh(); };
+$('b-reset').onclick = () => { setSliderValues(Object.assign({ 'p-warm': 0, 'p-var': 1, 'p-wx': 1, 'p-wxs': 1, 'p-jets': 1 }, $('seed-vary').checked ? seedSliderValues(P.seed) : { 'p-sea': 1, 'p-feat': 1, 'p-enso': 1 })); refresh(); };
 function applySeed(s) { s = Math.max(1, Math.min(999999, Math.floor(s) || 1)); $('seed').value = s; P.seed = s; if ($('seed-vary').checked) setSliderValues(seedSliderValues(s)); restart(); }
 $('seed-vary').onchange = () => { setSliderValues($('seed-vary').checked ? seedSliderValues(P.seed) : { 'p-sea': 1, 'p-feat': 1, 'p-enso': 1 }); refresh(); };
 $('seed').onchange = () => applySeed(parseFloat($('seed').value));
@@ -1456,10 +1872,12 @@ lastNow = performance.now(); requestAnimationFrame(frame);
 
 window.SSTSIM = {
   advance(h) { advanceHours(h); updateClock(); refresh(); },
-  sample(lat, lon) { return { sst: sampleField(sst, lat, lon), normal: sampleField(normal, lat, lon), humid: sampleField(humid, lat, lon) }; },
+  sample(lat, lon) { return { sst: sampleField(sst, lat, lon), normal: sampleField(normal, lat, lon), humid: sampleField(humid, lat, lon), shear: sampleField(shear, lat, lon) }; },
   state() { return { simHour, seed: P.seed, date: simDate(simHour).toISOString(), gapIdx }; },
-  set(k, v) { P[k] = v; refresh(); }, enso() { return { n34, lag0: ensoLag(0), lag3: ensoLag(91), lag6: ensoLag(183) }; }, forceEnso, setView(v) { document.querySelector('#seg-view button[data-v="' + v + '"]').click(); },
-  setPlaying, restart, map, render, setTheme, setGridMode, sliderVals() { return { seasonal: P.seasonal, features: P.features, enso: P.enso, warming: P.warming, variability: P.variability, synoptic: P.synoptic, seed: P.seed }; }, applySeed, isLand,
+  set(k, v) { P[k] = v; refresh(); }, enso() { return { n34, lag0: ensoLag(0), lag3: ensoLag(91), lag6: ensoLag(183) }; }, forceEnso, jetLat(lon) { return jetAxisF[Math.round((lon - LON0) / RES)]; },
+  // Live axis straight from the jet clock (what the line is drawn from), not the copy baked into the last computeField(); tick() moves the clocks WITHOUT the 50-70 ms field redraw advance() does, so a test can sample the jet hour by hour cheaply.
+  jetLatLive(lon) { jetAxisFinal(jetAxisNow); const fc = (lon - LON0) / DM.cres, c0 = Math.min(CNX - 2, Math.max(0, Math.floor(fc))), t = fc - c0; return jetAxisNow[c0] * (1 - t) + jetAxisNow[c0 + 1] * t; }, tick(h) { advanceHours(h); }, setView(v) { document.querySelector('#seg-view button[data-v="' + v + '"]').click(); },
+  setPlaying, restart, map, render, setTheme, setGridMode, sliderVals() { return { seasonal: P.seasonal, features: P.features, enso: P.enso, warming: P.warming, variability: P.variability, synoptic: P.synoptic, shearSynoptic: P.shearSynoptic, jetSpeed: P.jetSpeed, seed: P.seed }; }, applySeed, isLand,
   bm() {
     const detail = !!(detailLayer && map.hasLayer(detailLayer));
     if (themeId === 'sat') { const st = TS.sat; return { theme: 'sat', idx: st.idx, offline: st.offline, loaded: st.loaded, label: st.offline ? 'offline (Blue Marble)' : (TILESETS.sat[st.idx] && TILESETS.sat[st.idx].label), detail, csp: cspBlocked }; }

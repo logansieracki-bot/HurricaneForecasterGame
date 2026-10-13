@@ -1,6 +1,153 @@
 # Roadmap
 
 ## Just landed
+- **Rolled Wind Shear and the jet stream out to the other 8 basins.** East Pacific, West Pacific,
+  North Indian Ocean, Australian Region, South-West Indian Ocean, South Pacific, South Atlantic and
+  Mediterranean now have everything the Atlantic has: the Wind Shear view (real ERA5 climatology +
+  EOF interannual variability + ENSO fit), the day-to-day texture, the jet-stream ribbon, the
+  `Jet stream line` checkbox, and the `Day-to-day weather (wind shear)` and `Jet stream speed`
+  sliders. The client code is not re-written per basin: every block is lifted out of
+  `src/template.html` by a script that requires each anchor to match exactly once in the target, so
+  the nine stay identical except for the per-basin constants and the comments that quoted Atlantic
+  numbers. That was checked against a git three-way merge of the Atlantic's whole shear/jet diff
+  into each template: identical outside the lines that differ by nature (start date, the
+  basin-specific state, each basin's own humidity scale). Each basin's jet statistics come from its
+  own cyclone season (the months its humidity uses; each basin's sim clock also starts at its own
+  season start: EPAC May 15, WPAC Jun 1, NIO Apr 1, the four southern/Mediterranean basins Nov 1 /
+  Sep 1), and its climatology/EOF/ENSO fit from its own box.
+
+  *Phase 1 data, per basin (all from the global ERA5 caches already on disk, so every build is local
+  compute).* K = 6 modes carry 56.8% (EPAC), 63.9% (WPAC), 73.9% (NIO), 67.1% (AUS), 67.0% (SWIO),
+  77.6% (SPAC), 73.4% (SATL) and 87.3% (MED) of the monthly anomaly variance -- more than the
+  Atlantic's 39.9% at the same K, because its box is far larger, so K = 6 stays. Climatology ranges
+  [min, max] kt: EPAC [4.5, 97.1], WPAC [6.2, 134.7], NIO [4.0, 112.3], AUS [6.5, 99.4], SWIO
+  [4.9, 96.8], SPAC [7.4, 99.3], SATL [6.6, 77.0], MED [10.1, 99.9] (Atlantic [4.0, 106.5]); 0
+  invalid land cells everywhere (ERA5 has values over land). `key: 20 kt` is crossable in every
+  basin, checked on each basin's own real daily shear in its own season: 15-29% of the box is
+  below 20 kt (EPAC 21.6, WPAC 27.2, NIO 28.7, AUS 23.4, SWIO 23.0, SPAC 15.3, SATL 22.1, MED 15.9)
+  and 20-39% of the half nearest the equator (MED's 9.8% is the lowest, still crossable). The colour
+  scale is the same absolute-kt stops in every basin, so a colour means the same shear everywhere;
+  it is stretched where the real monthly jet core outruns the Atlantic's 110 kt (WPAC to 140 kt,
+  NIO to 120 kt, one deeper stop each), and the soft clamp sits 5 kt above each ceiling.
+
+  *ENSO, checked against the places where the teleconnection is documented* -- and one lesson
+  about checking at a single point. Fitted response per degC of Nino 3.4, East Pacific: central
+  Pacific/Hawaii (15N 160W) -3.1 to -3.4 kt at every lag (El Nino weakens shear there, the
+  documented more-central-Pacific-hurricanes pattern), Central America/Caribbean edge (14N 85W) +1.0
+  kt at lag 0 and ~0 after; the East Pacific genesis region (12N 110W) is ~0 (-0.4 / +0.2 / +0.1), so
+  ENSO reaches it through SST and humidity, not shear. West Pacific: South China Sea +2.4 kt (fewer
+  far-west storms), and east of ~165E at 5-10N -2.7 to -6.1 kt (the south-eastward genesis shift). South Pacific: -4 to -9.7 kt at 5-10S
+  east of the date line (genesis shifts toward Samoa/Tokelau) and +3 to +9 kt at 20-30S (stronger
+  subtropical jet). Two of my first single-point checks came back "wrong" (WPAC 10N 150E +1.7,
+  SPAC 15S 180E +0.9) until the maps showed both points sit on the zero line between a positive
+  and a negative lobe of the pattern, not on the wrong side of it.
+
+  *What had to be generalized, because the Atlantic's jet is the easy case.* (1) The search band is
+  a signed latitude interval: 20-65N, or 65-20S for the four southern basins (`limitJetAxis` and
+  `JET_AXIS_LO/HI` work in either sign). (2) Most boxes do not contain the jet. Tracing the axis
+  over 20-65 latitude (65-20S in the south) and asking how often it lies inside each displayed box: Atlantic 100%, WPAC
+  97%, AUS 84%, EPAC 76%, SWIO 73%, SPAC 72%, SATL 63%, NIO 55%, MED 25%. A jet just outside the box
+  still throws its flank across the edge, so `tools/make_shear_jet.py` now traces the axis, and
+  measures the ribbon cross-section and the smear, on an ANALYSIS box (the displayed longitudes, the
+  displayed rows plus the whole band plus the ribbon's 12 degrees of reach) and cuts only the smear
+  back to the displayed rows: the axis and the cross-section are properties of the jet, not of the
+  box. `make_shear_synoptic.py` subtracts the same axis. With `--no-extend` both scripts reproduce
+  the Atlantic's shipped `atlantic-shear-jet.json` / `atlantic-shear-synoptic.json` byte for byte,
+  which is how the refactor itself was checked.
+  `tools/build_shear_all.sh` holds every basin's box, season and band in one place, rebuilds all eight
+  basins' shear data and merges it, and was checked to reproduce every committed file byte for byte.
+
+  *Measured per basin* (8 axis modes, as in the Atlantic): the axis's variance carried by 8 modes is
+  80.5% (EPAC), 88.9% (WPAC), 86.9% (NIO), 84.3% (AUS), 86.3% (SWIO), 83.1% (SPAC), 86.2% (SATL),
+  91.2% (MED) (Atlantic 72.7%); its spread over time 11.1, 7.3, 7.7, 9.6, 10.6, 10.4, 9.3, 11.0 deg of
+  latitude (Atlantic 10.9); its mean path 39.0-43.6N, 37.3-42.0N, 28.9-34.4N, 35.0-32.3S, 39.8-33.6S,
+  38.5-32.3S, 38.8-35.2S, 30.0-33.4N. The ribbon peaks +44.6, +45.2, +38.7, +46.8, +46.1, +45.7, +47.5
+  and +38.5 kt above the de-smeared background (Atlantic +39.5), with smears up to 19-23 kt. The
+  eastward speed of axis anomalies, from the lagged cross-correlation of columns 10 and 20 degrees
+  apart (the Atlantic's method, which reproduces its 15): 13, 14, 11, 15, 19, 16, 16, 21 deg/day, set
+  per basin as `JET_DRIFT_REAL` (dilated by the same 2.5 as the Atlantic's). The simulated core
+  (de-smeared background + ribbon peak) lands 4-8 kt under the real mean daily shear at the axis (EPAC
+  71.4 vs 79.1, WPAC 91.7 vs 99.1, NIO 86.3 vs 90.7, AUS 81.5 vs 86.9, SWIO 77.8 vs 83.3, SPAC 74.9 vs
+  82.2, SATL 76.5 vs 82.7, MED 85.0 vs 89.9; Atlantic 67.5 vs 74.9), the same gap the Atlantic already has.
+  Texture (what is left after the jet comes out): median std 15.9, 15.6, 14.1, 14.9, 14.7, 16.1, 14.4,
+  15.9 kt (Atlantic 14.5), lag-1 autocorrelation 0.67, 0.67, 0.75, 0.63, 0.55, 0.61, 0.57, 0.51 (0.62).
+
+  *Does the simulated field reproduce the real climatology?* It should by construction (the ribbon
+  averages to the smear that was taken out), and it was measured rather than assumed: 36 seeds x 6
+  dates five days apart from each basin's start, every third coarse node, simulated minus real monthly
+  climatology (kt). Over all nodes the mean bias is +0.2 (ATL), -0.1 (EPAC), +0.3 (WPAC), -0.5 (NIO),
+  -0.9 (AUS), -0.7 (SWIO), -0.1 (SPAC), -0.2 (SATL), +3.3 (MED), rms 1.7-3.7. Within 8 degrees of the
+  mean jet path: +2.0, +4.0, -0.5, -2.7, -0.4, +1.3, +2.0, +1.7, +4.9. With the ribbon removed the same
+  nodes read -7 to -19 kt low (-10.0, -8.9, -17.3, -18.5, -18.4, -14.0, -13.6, -16.2, -7.1), which is
+  the smear the ribbon puts back. The Mediterranean's +3.3 is the largest, and the cause is in the axis, not
+  the field: the simulated mean axis sits within +/-1 degree of the real mean path in every basin
+  (-0.8 to +0.4) except the Mediterranean, where it is 1.15 degrees too far poleward (0.0-2.4 by
+  longitude). Its mean path (30.0-33.4N) is only ~10 degrees above the band's equatorward edge, the
+  soft limit squeezes the southern excursions of a sum of Gaussian modes (it raises them toward the
+  edge), and the real axis, which piles up against that edge (14% of day-columns), is not
+  symmetric; the ribbon's slope 6 degrees off the axis is ~3.5 kt per degree, which is the +4.9 near
+  the jet. The simulated spread is 79-89% of the real one in every basin (8 modes, plus the
+  soft limit). Fixing the Mediterranean properly means computing the smear from the simulated
+  axis distribution instead of the real one; it is 3 kt on a field that swings 80, so it does not
+  block the rollout.
+
+  *Changes to the Atlantic's code that every basin got.* (a) The jet line is clipped to the
+  simulated area: it fades over the last 6 degrees of longitude (as before) and now the last 2 of
+  latitude, because a basin beside the jet draws a line that leaves the box. (b) When the whole axis is off the map, the `Jet stream line` option says
+  so ("· north/south of this area today") instead of leaving a map that looks as if the option is
+  broken; it never triggers in the Atlantic. In 150 seeds at day 12 it triggers 4% of the time in
+  NIO, 1% in SPAC, 2% in SATL, 5% in MED, never in the others. The same note covers the axis being
+  inside the box but not on screen (zoomed in on the tropics, each basin's default view is a window
+  onto the main development region and the jet is usually beyond its edge): "· north/south of what
+  is on screen" -- which also makes it show in the Atlantic when the jet is past the top of the view.
+  (c) The line's latitude fade is two small erase strips, drawn only when the axis comes within the
+  fade distance of an edge, not one full-canvas gradient: the full-canvas version cost more than the
+  line itself (20 -> 6 frames a second at 2000x1300 in software rendering) and the strips cost
+  nothing measurable. (d) A real bug found by looking at the North Indian Ocean: its 8th jet mode
+  has a daily autocorrelation of -0.002, and
+  `Math.pow(-0.002, 1/2.5)` is NaN, and `Math.max(NaN, floor)` is NaN -- one mode made the whole
+  axis NaN and the line and ribbon vanished. The persistence is now clamped at 0 before the power
+  (the higher modes of the smaller basins sit at 0.02-0.15). The new tests fail on exactly this.
+
+  *Tests: 445 -> 723.* `checkShear` runs 34 checks per basin (+1 where the whole axis can leave the box) at a
+  fixed seed, with the sim paused, so none of it is luck: the view/legend/key labels, a real sample,
+  the city tooltip, a forced El Nino vs La Nina at a point where the fitted response has the same sign
+  at all three lags (EPAC 4N 150W, WPAC 16N 116E, NIO 4N 86E, AUS 20S 166E, SWIO 22S 56E, SPAC 10S 200E,
+  SATL 4S 34W, MED 42N 6E), day-to-day texture and its slider, whether the ribbon is in the field, all
+  the motion checks (no NaN anywhere, calm, meanders, no kinks, chunking-independent, the speed slider
+  rescales time/freezes it, flows east, live axis = baked axis, parked at slider 0, inside its band at 3x),
+  and the line on the real pixels of its own canvas in every view with the box off/on, following the axis,
+  plus the off-map and off-screen notes. Thresholds come from 24-60 random seeds per basin, not from the one run: mean
+  20-day axis range over ten columns min 3.3 in MED and 6.4-11.8 elsewhere (threshold 3), east-minus-west lagged-correlation
+  asymmetry (means of 3 seeds) min 0.06 (0.03), median day-to-day change 0.97-1.86 (0.4-3.2), worst
+  hourly second difference 0.065 (0.2), slider-0 / slider-1 day-to-day ratio 0.13-0.73 (0.85). The
+  Atlantic's "shear on the axis minus 12 degrees off it" contrast does not separate cleanly in
+  basins where the jet is on the edge of the box (NIO: 18.6 with the ribbon vs 34.5 without, because
+  the climatology's own north-south gradient there is as large as the ribbon), so the per-basin block
+  uses the field on one fixed row against how close the axis is, within each seed and pooled over 8
+  seeds x 6 days: 0.62-0.88 with the ribbon, -0.22..+0.31 with it removed, in every basin (threshold
+  0.5). That the tests can fail was checked on deliberately broken builds: the NaN bug gave 11
+  failures, a build without the ribbon gave a correlation of 0.12, a ribbon latitude with the wrong
+  sign in the Southern Hemisphere 0.07, a stuck jet clock 3 failures.
+
+  *Caveats worth knowing.* (1) ENSO's three lag terms are summed, not weighted to total 1, in the
+  existing SST/humidity architecture and so in shear too: each lag is fitted by its own simple
+  regression, and Nino 3.4 is persistent, so a sustained event counts the same response about three
+  times. At the equatorial central Pacific (EPAC 4N 150W) the fit is -11.4 kt/degC at one lag (the real
+  El Nino-minus-La Nina difference over the 2007-2021 record is -39.7 kt for a 4.1 degC swing, about
+  -9.7/degC, matching), but forced +/-2 degC for 190 days the sim gives a -107 kt difference. The sign is
+  right everywhere; the amplitude is up to ~3x where the real response is large. It is pre-existing
+  and shared by every field, so it was not changed here. (2) Season: the jet's statistics are each
+  basin's cyclone season but the simulated year runs 12 months, so out of season the climatology
+  carries the real seasonal cycle and the ribbon and smear do not follow it (the Atlantic's Dec-May
+  has the same compromise). (3) NIO and MED sit beside the jet rather than under it: the axis is
+  inside the NIO box 55% of the time and the MED box 25% of the time, so there the ribbon is often just
+  its flank and the line often absent (hence the note). (4) Seen while screenshotting every basin, and
+  present in the committed build before this change (checked against a build of the previous commit):
+  thin horizontal gaps in the colour overlay near 16-17S in the Australian, South-West Indian and
+  South Pacific views (the overlay canvas is transparent on those rows; SST has no NaNs there). Not
+  from this work and not chased.
+
 - **Made the jet stream move slower and flow smoothly, with a speed slider (Atlantic).** The
   feedback: "moves a bit too fast, and the movement is not smooth; I want it to flow and
   interpolate smoothly". Measured before changing anything, there were three separate causes.
@@ -1350,8 +1497,17 @@ again building EPAC):**
   not started; Simulation mode across basins comes first.
 - Radar/satellite storm imagery (synthetic, generated from the sim's own storm
   state — not a real tile provider).
-- Rolling Wind Shear (climatology + EOF + ENSO + the explicit jet stream + local texture, all
-  now done for the Atlantic) out to the other 8 basins. The jet needs real per-basin work, not a
-  copy: each basin needs its own axis search band and season (the Southern Hemisphere jet is
-  mirrored and its season crosses the year boundary), and a basin whose domain only clips the
-  jet's edge may not have a coherent axis to trace at all.
+- ENSO's three lag terms are summed rather than weighted to total 1 (SST, humidity and shear alike;
+  see the caveats in the Wind Shear rollout entry above): fitting the three lags jointly, or
+  normalizing the weights, would remove an up-to-3x overstatement of a sustained event's response
+  where the real response is large (the equatorial central Pacific). Deliberately not changed
+  while rolling shear out, because it alters SST and humidity in all 9 basins.
+- Wind Shear's jet axis in the Mediterranean sits 1.15 degrees too far poleward on average
+  (+3 kt field bias, the largest of the nine): compute the smear from the simulated axis
+  distribution instead of the real one, which would make "the time mean equals the real
+  climatology" hold exactly for the model rather than approximately.
+- Thin horizontal gaps in the colour overlay near 16-17S in the Australian, South-West Indian and
+  South Pacific views, present before the shear work (found while screenshotting every basin;
+  SST has no NaN rows there, the overlay canvas itself is transparent on those rows).
+- README's Layout and Known-gaps sections still describe the Atlantic-only menu and a missing
+  data pipeline; both are out of date.

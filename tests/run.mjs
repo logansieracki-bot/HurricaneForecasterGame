@@ -74,6 +74,259 @@ async function checkHumidity(page, label, lat, lon) {
   await page.evaluate(() => window.SSTSIM.setView('sst'));   // leave the page in its default state for any checks after this one
 }
 
+// Wind Shear + the jet stream, for every basin except the Atlantic (which has its own, longer block above, tuned to its own
+// numbers). What is basin-generic is checked here; every number that isn't lives in the basin's spec, and each threshold was set
+// from many random seeds (the per-basin figures are in docs/roadmap.md), not from the one run it happened to pass on. The sim is
+// paused and given a fixed seed, so every check below is deterministic.
+//   pt      an open-ocean point for the range check             city   [lat, lon, name] hover target for the tooltip line
+//   enso    [lat, lon, sign]: sign of (forced El Nino - forced La Nina) there, taken from the fitted regression
+//   wxPts   open-ocean points for the day-to-day checks         band   [lo, hi] the axis stays inside (signed latitude)
+//   lon     [west, east] and lat [south, north] of the grid, in the page's own (virtual) longitudes   latRef  a row the axis often sits near
+//   couple  smallest pooled within-seed correlation between the field at latRef and how close the axis is
+//   rangeMin / eastMin / dailyMin  smallest mean 20-day axis range / east-minus-west lagged-correlation asymmetry / median day-to-day axis change
+//   line    { view: fitBounds window, seed, days, minProbes, margin } for the pixel checks on the drawn line   noteSeed  [seed, 'north'|'south'] with the whole axis off the map
+//   offscreen  { center, dir, seed? } a zoomed-in view where the axis (inside the box) is not on screen, and which way it is
+async function checkShear(page, label, S) {
+  const ev = (fn, arg) => page.evaluate(fn, arg);
+  await ev(() => { window.SSTSIM.setPlaying(false); window.SSTSIM.applySeed(4242); window.SSTSIM.setPlaying(false); });
+  const stdOf = (xs) => { const m = xs.reduce((a, b) => a + b, 0) / xs.length; return Math.sqrt(xs.reduce((a, b) => a + (b - m) ** 2, 0) / xs.length); };
+
+  // ---- the view, its legend and labels, a real sample, the city tooltip
+  await ev(() => window.SSTSIM.setView('shear'));
+  await page.waitForTimeout(200);
+  const view = await ev(() => ({
+    pressed: document.querySelector('#seg-view button[data-v="shear"]').getAttribute('aria-pressed'),
+    caption: document.getElementById('legend-cap').textContent,
+    l265: document.getElementById('l265-label').textContent,
+    l2: document.getElementById('l2-label').textContent,
+  }));
+  check(`[${label}] Wind Shear button becomes pressed when selected`, view.pressed === 'true');
+  check(`[${label}] legend caption switches to the wind shear scale`, view.caption === '200–850 hPa wind shear, kt');
+  check(`[${label}] Shear view's key-line checkbox label mentions the 20 kt key, not 26.5 or a %RH key`, /^\s*20 kt line \(disruptive shear threshold\)\s*$/.test(view.l265));
+  check(`[${label}] Shear view's step-line checkbox label mentions its 10 kt step`, /^\s*Contour lines every 10 kt\s*$/.test(view.l2));
+  const s0 = await ev(([la, lo]) => window.SSTSIM.sample(la, lo), S.pt);
+  check(`[${label}] open-ocean wind shear sample is real data in a sane range`, Number.isFinite(s0.shear) && s0.shear >= 0 && s0.shear < 200);
+
+  await ev(([la, lo]) => window.SSTSIM.map.setView([la, lo], 6), S.city);
+  await page.waitForTimeout(300);
+  const cityPt = await ev(([la, lo]) => { const p = window.SSTSIM.map.latLngToContainerPoint([la, lo]); return { x: p.x, y: p.y }; }, S.city);
+  await page.mouse.move(cityPt.x, cityPt.y);
+  await page.waitForTimeout(200);
+  const tip = await ev(() => document.getElementById('city-tip').textContent);
+  check(`[${label}] city tooltip gains a parallel shear line and threshold line`, /\d+ kt shear/.test(tip) && /(Above|Below) disruptive shear threshold/.test(tip));
+
+  // ---- ENSO: forced El Nino vs. forced La Nina, same seed, ~190 days for the lag-6-month term to phase in (see the Atlantic block)
+  const ensoRun = async (target) => {
+    await ev((t) => { window.SSTSIM.restart(); window.SSTSIM.setPlaying(false); window.SSTSIM.forceEnso(t); }, target);
+    await ev(() => window.SSTSIM.advance(24 * 190));
+    return ev(([la, lo]) => window.SSTSIM.sample(la, lo).shear, S.enso);
+  };
+  const elNino = await ensoRun(2.0), laNina = await ensoRun(-2.0);
+  check(`[${label}] forced El Nino ${S.enso[2] > 0 ? 'raises' : 'lowers'} wind shear at ${S.enso[0]}, ${S.enso[1]} vs. forced La Nina, the sign the fitted regression has there (${(elNino - laNina).toFixed(1)} kt)`, S.enso[2] * (elNino - laNina) > 0);
+  await ev(() => { window.SSTSIM.applySeed(4242); window.SSTSIM.setPlaying(false); });
+
+  // ---- day-to-day weather: its own slider, genuinely moves the field, and 0 flattens it
+  check(`[${label}] "Day-to-day weather (wind shear)" slider defaults to 1x`, (await ev(() => window.SSTSIM.sliderVals())).shearSynoptic === 1);
+  const shearDays = async (n) => {
+    const series = S.wxPts.map(() => []);
+    for (let d = 0; d < n; d++) {
+      await ev(() => window.SSTSIM.advance(24));
+      const r = await ev((ps) => ps.map(([la, lo]) => window.SSTSIM.sample(la, lo).shear), S.wxPts);
+      r.forEach((v, i) => series[i].push(v));
+    }
+    return series;
+  };
+  const meanDayToDay = (series) => { let t = 0, c = 0; for (const s of series) for (let i = 1; i < s.length; i++) if (Number.isFinite(s[i]) && Number.isFinite(s[i - 1])) { t += Math.abs(s[i] - s[i - 1]); c++; } return t / c; };
+  const withNoise = await shearDays(8);
+  check(`[${label}] wind shear genuinely varies day to day at the default slider setting`, withNoise.some((s) => stdOf(s) > 1));
+  await ev(() => window.SSTSIM.set('shearSynoptic', 0));
+  const withoutNoise = await shearDays(8);
+  check(`[${label}] setting the slider to 0 flattens day-to-day wind shear (${meanDayToDay(withoutNoise).toFixed(2)} vs. ${meanDayToDay(withNoise).toFixed(2)} kt/day)`, meanDayToDay(withoutNoise) < 0.85 * meanDayToDay(withNoise));
+  await ev(() => { window.SSTSIM.set('shearSynoptic', 1); window.SSTSIM.applySeed(4242); window.SSTSIM.setPlaying(false); });
+
+  // ---- the jet ribbon is in the field. The statistic: the shear on one fixed row (latRef, where the axis often is) against how
+  // close the axis is to that row, as the ribbon's own shape, within each seed and then pooled over 8 seeds x 6 days x 10 columns.
+  // (A plain "on the axis minus 12 deg off it" contrast, which the Atlantic block uses, does not separate cleanly here: where the
+  // jet sits on the edge of the box the climatology's own north-south gradient is as large as the ribbon.)
+  const lonsJet = Array.from({ length: 10 }, (_, i) => S.lon[0] + 6 + 2 * Math.round(i * (S.lon[1] - S.lon[0] - 12) / 9 / 2));
+  const couple = await ev(async ({ lons, latRef, seeds, days }) => {
+    const Sm = window.SSTSIM, kern = (d) => Math.max(0, 1 - d / 12) ** 2, mean = (a) => a.reduce((x, y) => x + y, 0) / a.length;
+    let sxy = 0, sxx = 0, syy = 0;
+    for (const seed of seeds) {
+      Sm.applySeed(seed); Sm.setPlaying(false);
+      const X = [], Y = [];
+      for (let d = 0; d < days; d++) {
+        Sm.advance(24);
+        for (const lon of lons) { const r = Sm.sample(latRef, lon).shear; if (Number.isFinite(r)) { X.push(r); Y.push(kern(Math.abs(latRef - Sm.jetLat(lon)))); } }
+      }
+      const mx = mean(X), my = mean(Y);
+      for (let i = 0; i < X.length; i++) { sxy += (X[i] - mx) * (Y[i] - my); sxx += (X[i] - mx) ** 2; syy += (Y[i] - my) ** 2; }
+    }
+    return sxy / Math.sqrt(sxx * syy);
+  }, { lons: lonsJet, latRef: S.latRef, seeds: [1000, 1007, 1014, 1021, 1028, 1035, 1042, 1049], days: 6 });
+  check(`[${label}] the jet ribbon is in the field: shear at ${S.latRef} deg tracks how close the axis is (pooled correlation ${couple.toFixed(2)})`, couple > S.couple);
+  await ev(() => { window.SSTSIM.applySeed(4242); window.SSTSIM.setPlaying(false); });
+
+  // ---- how the axis moves (all inside the page with tick()/jetLatLive(), as in the Atlantic block)
+  const lonsAll = []; for (let l = S.lon[0] + 2; l <= S.lon[1] - 2; l += 2) lonsAll.push(l);
+  const motion = await ev(({ lons, lonsAll, lo, hi, lon0, lon1 }) => {
+    const Sm = window.SSTSIM, mean = (a) => a.reduce((x, y) => x + y, 0) / a.length, out = {};
+    const six = [0, 1, 2, 3, 4, 5].map((i) => lons[Math.round(i * (lons.length - 1) / 5)]);
+    out.daily = []; out.sec = 0; out.finite = true;
+    for (const seed of [11, 4242, 90210]) {
+      Sm.applySeed(seed); Sm.setPlaying(false);
+      const hourly = six.map(() => []);
+      for (let h = 0; h <= 20 * 24; h++) { if (h) Sm.tick(1); six.forEach((l, i) => hourly[i].push(Sm.jetLatLive(l))); }
+      for (const a of hourly) {
+        if (!a.every(Number.isFinite)) out.finite = false;
+        for (let d = 24; d < a.length; d += 24) out.daily.push(Math.abs(a[d] - a[d - 24]));
+        for (let i = 2; i < a.length; i++) out.sec = Math.max(out.sec, Math.abs(a[i] - 2 * a[i - 1] + a[i - 2]));
+      }
+    }
+    out.daily.sort((x, y) => x - y); out.medDaily = out.daily[Math.floor(out.daily.length / 2)];
+    // mean 20-day range over the ten columns
+    Sm.applySeed(4242); Sm.setPlaying(false);
+    const ser = lons.map(() => []);
+    for (let d = 0; d < 20; d++) { Sm.tick(24); lons.forEach((l, i) => ser[i].push(Sm.jetLatLive(l))); }
+    out.range20 = mean(ser.map((a) => Math.max(...a) - Math.min(...a)));
+    // chunking, speed slider (set AFTER applySeed: applySeed re-syncs every slider from the page), frozen at 0
+    const at = () => lons.map((l) => Sm.jetLatLive(l));
+    Sm.applySeed(77); Sm.setPlaying(false); Sm.tick(240); const oneTick = at();
+    Sm.applySeed(77); Sm.setPlaying(false); for (let i = 0; i < 10; i++) Sm.tick(24); const tenTicks = at();
+    out.chunking = Math.max(...oneTick.map((v, i) => Math.abs(v - tenTicks[i])));
+    Sm.applySeed(77); Sm.setPlaying(false); Sm.set('jetSpeed', 2); Sm.tick(120); const fast = at();
+    Sm.applySeed(77); Sm.setPlaying(false); Sm.set('jetSpeed', 1); Sm.tick(240); const slow = at();
+    out.speedTwice = Math.max(...fast.map((v, i) => Math.abs(v - slow[i])));
+    Sm.applySeed(77); Sm.setPlaying(false); Sm.set('jetSpeed', 0); const f0 = at(); Sm.tick(24 * 30); const f1 = at();
+    out.frozen = Math.max(...f0.map((v, i) => Math.abs(v - f1[i])));
+    Sm.set('jetSpeed', 1);
+    // changes flow EAST: columns 10 deg apart correlate better when the eastern one is read 2 days later than 2 days earlier
+    const asym = [];
+    for (const seed of [3, 4, 5]) {
+      Sm.applySeed(seed); Sm.setPlaying(false);
+      const rows = []; for (let d = 0; d < 240; d++) { Sm.tick(24); rows.push(lonsAll.map((l) => Sm.jetLatLive(l))); }
+      const cols = lonsAll.map((_, i) => rows.map((r) => r[i])), mu = cols.map(mean);
+      const corr = (lag) => { let sxy = 0, sxx = 0, syy = 0; for (let c = 0; c + 5 < lonsAll.length; c++) for (let t = Math.max(0, -lag); t < rows.length - Math.max(0, lag); t++) { const x = cols[c][t] - mu[c], y = cols[c + 5][t + lag] - mu[c + 5]; sxy += x * y; sxx += x * x; syy += y * y; } return sxy / Math.sqrt(sxx * syy); };
+      asym.push(corr(2) - corr(-2));
+    }
+    out.eastward = mean(asym);
+    // the live axis and the one baked into the field by the last redraw are the same curve
+    Sm.applySeed(3); Sm.setPlaying(false); Sm.advance(24 * 7);
+    const probe = [0.1, 0.3, 0.5, 0.7, 0.9].map((f) => lon0 + 0.25 * Math.round(f * (lon1 - lon0) / 0.25));
+    out.liveVsBaked = Math.max(...probe.map((l) => Math.abs(Sm.jetLatLive(l) - Sm.jetLat(l))));
+    // parked at slider 0, and inside its band at the slider's 3x maximum
+    Sm.applySeed(5); Sm.setPlaying(false); Sm.set('shearSynoptic', 0);
+    const parkedA = lons.map((l) => Sm.jetLatLive(l)); Sm.tick(24 * 8); const parkedB = lons.map((l) => Sm.jetLatLive(l));
+    out.parked = Math.max(...parkedA.map((v, i) => Math.abs(v - parkedB[i])));
+    Sm.set('shearSynoptic', 3);
+    let mn = 999, mx = -999, bad = 0;
+    for (let d = 0; d < 50; d++) { Sm.advance(48); for (let l = lon0; l <= lon1; l += 2) { const v = Sm.jetLat(l); if (!Number.isFinite(v)) bad++; else { mn = Math.min(mn, v); mx = Math.max(mx, v); } } }
+    out.bandMin = mn; out.bandMax = mx; out.bandBad = bad;
+    Sm.set('shearSynoptic', 1);
+    return out;
+  }, { lons: lonsJet, lonsAll, lo: S.band[0], hi: S.band[1], lon0: S.lon[0], lon1: S.lon[1] });
+  check(`[${label}] the jet axis is a real number at every longitude and hour (a NaN here once took out a whole basin)`, motion.finite && motion.bandBad === 0);
+  check(`[${label}] jet moves calmly: median change ${motion.medDaily.toFixed(2)} deg/day`, motion.medDaily < 3.2 && motion.medDaily > S.dailyMin);
+  check(`[${label}] jet axis meanders (a ribbon, not frozen): mean range ${motion.range20.toFixed(1)} deg over 20 days`, motion.range20 > S.rangeMin);
+  check(`[${label}] jet motion has no kinks: max hourly second difference ${motion.sec.toFixed(3)} deg/h^2`, motion.sec < 0.2);
+  check(`[${label}] a seed gives the same jet however the run is chunked into advance() calls (max difference ${motion.chunking.toExponential(1)} deg)`, motion.chunking < 1e-6);
+  check(`[${label}] "Jet stream speed" rescales time itself: 2x for 5 days is exactly 1x for 10 days (max difference ${motion.speedTwice.toExponential(1)} deg)`, motion.speedTwice < 1e-6);
+  check(`[${label}] "Jet stream speed" at 0 freezes the jet where it is (moved ${motion.frozen.toExponential(1)} deg in 30 days)`, motion.frozen < 1e-6);
+  check(`[${label}] changes flow downstream: east-leading correlation exceeds west-leading by ${motion.eastward.toFixed(2)}`, motion.eastward > S.eastMin);
+  check(`[${label}] the live axis the line is drawn from and the one baked into the shear field are the same curve (max difference ${motion.liveVsBaked.toExponential(1)} deg)`, motion.liveVsBaked < 1e-3);
+  check(`[${label}] weather slider at 0 parks the jet on its mean path (moved ${motion.parked.toExponential(1)} deg in 8 days)`, motion.parked < 0.001);
+  check(`[${label}] jet axis never leaves the ${S.band[0]}..${S.band[1]} band the real axis was measured in, even at the slider's 3x maximum (saw ${motion.bandMin.toFixed(1)}..${motion.bandMax.toFixed(1)})`, motion.bandMin >= S.band[0] - 1e-6 && motion.bandMax <= S.band[1] + 1e-6);
+  check(`[${label}] "Jet stream speed" slider exists and starts at 1x`, await ev(() => { const s = document.getElementById('p-jets'); return !!s && s.value === '1' && window.SSTSIM.sliderVals().jetSpeed === 1; }));
+
+  // ---- the "Jet stream line" checkbox, on the real pixels of its own canvas (see the Atlantic block for the method)
+  await ev(([view, seed, days]) => { window.SSTSIM.applySeed(seed); window.SSTSIM.setPlaying(false); window.SSTSIM.map.fitBounds(view, { animate: false }); window.SSTSIM.advance(24 * days); }, [S.line.view, S.line.seed, S.line.days]);
+  await page.waitForTimeout(250);
+  // Probes every 4 deg of longitude, 8 deg in from each end (the line fades over the last 6) and only where the axis is at least `margin` deg inside the box (it fades over the last 2).
+  const probeLons = []; for (let l = S.lon[0] + 8; l <= S.lon[1] - 8; l += 4) probeLons.push(l);
+  const axisPoints = () => ev(([ls, lat, margin]) => ls.map((lon) => { const la = window.SSTSIM.jetLatLive(lon), p = window.SSTSIM.map.latLngToContainerPoint([la, lon]); return [p.x, p.y, la >= lat[0] + margin && la <= lat[1] - margin]; }), [probeLons, S.lat, S.line.margin]);
+  const magentaNear = (pts) => ev((ps) => {
+    const c = document.getElementById('jet-canvas'), g = c.getContext('2d'), s = c.width / c.clientWidth, r = Math.round(4 * s);
+    return ps.map(([px, py]) => {
+      const x = Math.round(px * s), y = Math.round(py * s);
+      if (x < r || y < r || x >= c.width - r || y >= c.height - r) return null;   // off-screen: can't be judged either way
+      const d = g.getImageData(x - r, y - r, 2 * r + 1, 2 * r + 1).data;
+      for (let i = 0; i < d.length; i += 4) if (d[i + 3] >= 200 && d[i] >= 200 && d[i + 2] >= 170 && d[i + 1] <= 130) return true;
+      return false;
+    });
+  }, pts);
+  const jetLineSeen = async () => { const pts = await axisPoints(), r = await magentaNear(pts.map((p) => [p[0], p[1]])); const ok = r.map((v, i) => (v === null || !pts[i][2] ? null : v)).filter((v) => v !== null); return { n: ok.length, hits: ok.filter(Boolean).length }; };
+  check(`[${label}] "Jet stream line" checkbox exists and starts unchecked`, await ev(() => { const c = document.getElementById('jetline'); return !!c && !c.checked; }));
+  const lineOff = await jetLineSeen();
+  check(`[${label}] nothing is drawn along the axis while the checkbox is off (${lineOff.hits} of ${lineOff.n} on-screen probes)`, lineOff.n >= S.line.minProbes && lineOff.hits === 0);
+  await page.check('#jetline');
+  for (const v of ['sst', 'anom', 'humid', 'shear']) {
+    await ev((vv) => window.SSTSIM.setView(vv), v);
+    await page.waitForTimeout(300);
+    const seen = await jetLineSeen();
+    check(`[${label}] jet line is drawn along the axis in the ${v} view (${seen.hits} of ${seen.n} on-screen probes)`, seen.n >= S.line.minProbes && seen.hits === seen.n);
+  }
+  await page.uncheck('#show-sst');
+  await page.waitForTimeout(300);
+  const noField = await jetLineSeen();
+  check(`[${label}] jet line still draws with "Show sea temperature" off (${noField.hits} of ${noField.n} probes)`, noField.n >= S.line.minProbes && noField.hits === noField.n);
+  await page.check('#show-sst');
+  await page.uncheck('#jetline');
+  await page.waitForTimeout(300);
+  const lineGone = await jetLineSeen();
+  check(`[${label}] unchecking the box removes the line again (${lineGone.hits} of ${lineGone.n} probes)`, lineGone.hits === 0);
+  await ev(() => window.SSTSIM.setView('sst'));
+
+  // ---- the "outside this area" note: a basin that sits beside the jet says so instead of showing an empty map
+  const noteFor = async (seed) => {
+    await ev((sd) => { window.SSTSIM.applySeed(sd); window.SSTSIM.setPlaying(false); window.SSTSIM.advance(24 * 12); }, seed);
+    await page.check('#jetline');
+    await page.waitForTimeout(300);
+    const r = await ev(() => document.getElementById('jet-note').textContent);
+    await page.uncheck('#jetline');
+    return r;
+  };
+  check(`[${label}] with the axis across the map, the jet line option carries no "outside this area" note`, (await noteFor(S.line.seed)) === '');
+  if (S.noteSeed) check(`[${label}] with the whole axis ${S.noteSeed[1]} of the map, the option says so ("${S.noteSeed[1]} of this area today")`, (await noteFor(S.noteSeed[0])).includes(S.noteSeed[1] + ' of this area'));
+  // ...and the same when the axis is inside the box but not on screen: zoomed in away from it, it is north (south) of what is shown
+  await ev(([sd, c]) => { window.SSTSIM.applySeed(sd); window.SSTSIM.setPlaying(false); window.SSTSIM.advance(24 * 12); window.SSTSIM.map.setView(c, 6, { animate: false }); }, [S.offscreen.seed ?? S.line.seed, S.offscreen.center]);
+  await page.check('#jetline');
+  await page.waitForTimeout(300);
+  const offNote = await ev(() => document.getElementById('jet-note').textContent);
+  await page.uncheck('#jetline');
+  check(`[${label}] zoomed in away from the axis, the option says it is ${S.offscreen.dir} of what is on screen`, offNote.includes(S.offscreen.dir + ' of what is on screen'));
+
+  // ---- the bottom-left readout's own Shear branch
+  await ev(() => { window.SSTSIM.map.fitBounds(window.SSTSIM.map.options.maxBounds, { animate: false }); window.SSTSIM.setView('shear'); });
+  await page.waitForTimeout(200);
+  const shearPt = await ev(() => {
+    const b = window.SSTSIM.map.getBounds();
+    for (let i = 1; i < 8; i++) for (let j = 1; j < 8; j++) {
+      const lat = b.getSouth() + (b.getNorth() - b.getSouth()) * i / 8, lon = b.getWest() + (b.getEast() - b.getWest()) * j / 8;
+      if (window.SSTSIM.isLand(lat, lon) || !Number.isFinite(window.SSTSIM.sample(lat, lon).sst)) continue;
+      const p = window.SSTSIM.map.latLngToContainerPoint([lat, lon]);
+      return { x: p.x, y: p.y };
+    }
+    return null;
+  });
+  await page.mouse.move(shearPt.x, shearPt.y);
+  await page.waitForTimeout(150);
+  const readout = await ev(() => document.getElementById('readout').textContent);
+  check(`[${label}] readout shows a real kt shear value with its own threshold context`, /kt/.test(readout) && /(Above|Below) disruptive shear threshold/.test(readout));
+
+  await ev(() => { window.SSTSIM.setView('sst'); window.SSTSIM.setPlaying(true); window.SSTSIM.restart(); });   // leave the page in its default state for the checks after this one
+}
+
+const SHEAR_SPECS = {
+  eastpacific: { pt: [15, -120], city: [16.86, -99.88, 'Acapulco'], enso: [4, -150, -1], wxPts: [[15, -120], [10, -100], [12, -140], [8, -160]], band: [20, 64], lon: [-180, -68], lat: [-32, 50], latRef: 40, couple: 0.5, rangeMin: 3, eastMin: 0.03, dailyMin: 0.4, line: { view: [[24, -176], [48, -72]], seed: 2, days: 12, minProbes: 8, margin: 3 }, offscreen: { center: [0, -130], dir: 'north' } },
+  westpacific: { pt: [15, 140], city: [14.60, 120.98, 'Manila'], enso: [16, 116, 1], wxPts: [[15, 140], [10, 130], [18, 150], [12, 160]], band: [20, 64], lon: [100, 180], lat: [-6, 56], latRef: 40, couple: 0.5, rangeMin: 3, eastMin: 0.03, dailyMin: 0.4, line: { view: [[26, 104], [54, 178]], seed: 1, days: 12, minProbes: 8, margin: 3 }, offscreen: { center: [5, 140], dir: 'north' } },
+  nio: { pt: [15, 65], city: [19.08, 72.88, 'Mumbai'], enso: [4, 86, -1], wxPts: [[15, 65], [10, 75], [18, 60], [12, 85]], band: [20, 64], lon: [30, 100], lat: [-8, 32], latRef: 30, couple: 0.5, rangeMin: 3, eastMin: 0.03, dailyMin: 0.4, line: { view: [[16, 34], [32, 98]], seed: 2, days: 12, minProbes: 8, margin: 3 }, noteSeed: [22, 'north'], offscreen: { center: [0, 65], dir: 'north' } },
+  aus: { pt: [-15, 115], city: [-33.87, 151.21, 'Sydney'], enso: [-20, 166, 1], wxPts: [[-15, 115], [-12, 130], [-18, 105], [-10, 150]], band: [-64, -20], lon: [90, 176], lat: [-44, 4], latRef: -34, couple: 0.5, rangeMin: 3, eastMin: 0.03, dailyMin: 0.4, line: { view: [[-44, 92], [-24, 174]], seed: 1, days: 12, minProbes: 8, margin: 3 }, offscreen: { center: [-5, 130], dir: 'south' } },
+  swio: { pt: [-15, 60], city: [-29.86, 31.02, 'Durban'], enso: [-22, 56, 1], wxPts: [[-15, 60], [-12, 75], [-18, 85], [-10, 90]], band: [-64, -20], lon: [30, 108], lat: [-44, 0], latRef: -37, couple: 0.5, rangeMin: 3, eastMin: 0.03, dailyMin: 0.4, line: { view: [[-44, 32], [-24, 106]], seed: 1, days: 12, minProbes: 8, margin: 3 }, offscreen: { center: [-6, 70], dir: 'south' } },
+  spac: { pt: [-15, 170], city: [-18.14, 178.42, 'Suva'], enso: [-10, 200, -1], wxPts: [[-15, 170], [-12, 185], [-18, 200], [-10, 215]], band: [-64, -20], lon: [160, 240], lat: [-40, 0], latRef: -36, couple: 0.5, rangeMin: 3, eastMin: 0.03, dailyMin: 0.4, line: { view: [[-40, 162], [-22, 238]], seed: 1, days: 12, minProbes: 8, margin: 3 }, noteSeed: [52, 'south'], offscreen: { center: [-6, 200], dir: 'south' } },
+  satl: { pt: [-12, -30], city: [-22.91, -43.17, 'Rio de Janeiro'], enso: [-4, -34, 1], wxPts: [[-12, -30], [-8, -10], [-20, -20], [-5, -35]], band: [-64, -20], lon: [-50, 20], lat: [-40, 0], latRef: -37, couple: 0.5, rangeMin: 3, eastMin: 0.03, dailyMin: 0.4, line: { view: [[-40, -48], [-22, 18]], seed: 8, days: 12, minProbes: 8, margin: 3 }, noteSeed: [9, 'south'], offscreen: { center: [-6, -20], dir: 'south' } },
+  med: { pt: [36, 15], city: [45.44, 12.33, 'Venice'], enso: [42, 6, 1], wxPts: [[36, 15], [34, 25], [38, 5], [40, 18]], band: [20, 64], lon: [-10, 42], lat: [30, 48], latRef: 32, couple: 0.5, rangeMin: 3, eastMin: 0.03, dailyMin: 0.4, line: { view: [[30, -8], [44, 40]], seed: 10, days: 12, minProbes: 6, margin: 2.5 }, noteSeed: [16, 'south'], offscreen: { center: [45.5, 15], dir: 'south', seed: 1 } },
+};
+
 for (const [label, dist] of [['Atlantic', ATLANTIC_DIST], ['East Pacific', EPAC_DIST], ['West Pacific', WPAC_DIST], ['North Indian Ocean', NIO_DIST], ['Australian Region', AUS_DIST], ['South-West Indian Ocean', SWIO_DIST], ['South Pacific', SPAC_DIST], ['South Atlantic', SATL_DIST], ['Mediterranean', MED_DIST]]) {
   if (!existsSync(dist)) {
     console.error(`${dist} not found — run \`npm run build\` first.`);
@@ -548,6 +801,7 @@ await checkBasin('Atlantic', ATLANTIC_DIST, async (page, label) => {
     const seen = await jetLineSeen();
     check(`[${label}] jet line is drawn along the axis in the ${v} view (${seen.hits} of ${seen.n} on-screen probes)`, seen.n >= 8 && seen.hits === seen.n);
   }
+  check(`[${label}] the jet line option carries no "outside this area" note (the Atlantic's axis is always inside its box)`, (await page.evaluate(() => document.getElementById('jet-note').textContent)) === '');
   await page.uncheck('#show-sst');
   await page.waitForTimeout(300);
   const noField = await jetLineSeen();
@@ -571,6 +825,12 @@ await checkBasin('Atlantic', ATLANTIC_DIST, async (page, label) => {
   await page.waitForTimeout(300);
   const goneAt = await magentaNear(drawnAt);
   check(`[${label}] unchecking the box removes the line again`, drawnAt.length >= 2 && goneAt.every((h) => h === false));
+  // Not on screen is not the same as not there: zoomed in on the tropics, the jet is north of what is shown, and the option says so.
+  await page.evaluate(() => window.SSTSIM.map.setView([-10, -45], 6, { animate: false }));
+  await page.check('#jetline');
+  await page.waitForTimeout(300);
+  check(`[${label}] zoomed in away from the axis, the jet line option says it is north of what is on screen`, (await page.evaluate(() => document.getElementById('jet-note').textContent)).includes('north of what is on screen'));
+  await page.uncheck('#jetline');
   await page.evaluate(() => { window.SSTSIM.setPlaying(true); window.SSTSIM.setView('sst'); window.SSTSIM.restart(); });   // leave the page in its default state for the checks after this one
 
   // The bottom-left readout's own Shear branch (Atlantic-only, so checked here rather than in
@@ -650,6 +910,7 @@ await checkBasin('East Pacific', EPAC_DIST, async (page, label) => {
   check(`[${label}] north of the grid's own northern edge is outside the simulated area`, Number.isNaN(basinSamples.northOfDomain.sst));
 
   await checkHumidity(page, label, 16.86, -99.88);
+  await checkShear(page, label, SHEAR_SPECS.eastpacific);
   await checkCityMarkers(page, label, 16.86, -99.88, 'Acapulco');
 });
 
@@ -698,6 +959,7 @@ await checkBasin('West Pacific', WPAC_DIST, async (page, label) => {
   check(`[${label}] South China Sea proper has real SST`, Number.isFinite(basinSamples.southChinaSea.sst));
 
   await checkHumidity(page, label, 14.60, 120.98);
+  await checkShear(page, label, SHEAR_SPECS.westpacific);
   await checkCityMarkers(page, label, 14.60, 120.98, 'Manila');
 });
 
@@ -743,6 +1005,7 @@ await checkBasin('North Indian Ocean', NIO_DIST, async (page, label) => {
   check(`[${label}] open water in the south curve's wiggle room still has real SST`, Number.isFinite(basinSamples.openWiggleWater.sst));
 
   await checkHumidity(page, label, 19.08, 72.88);
+  await checkShear(page, label, SHEAR_SPECS.nio);
   await checkCityMarkers(page, label, 19.08, 72.88, 'Mumbai');
 });
 
@@ -802,6 +1065,7 @@ await checkBasin('Australian Region', AUS_DIST, async (page, label) => {
   check(`[${label}] south of the grid's own southern edge is outside the simulated area`, Number.isNaN(basinSamples.southOfDomain.sst));
 
   await checkHumidity(page, label, -33.87, 151.21);
+  await checkShear(page, label, SHEAR_SPECS.aus);
   await checkCityMarkers(page, label, -33.87, 151.21, 'Sydney');
 });
 
@@ -861,6 +1125,7 @@ await checkBasin('South-West Indian Ocean', SWIO_DIST, async (page, label) => {
   check(`[${label}] south of the grid's own southern edge is outside the simulated area`, Number.isNaN(basinSamples.southOfDomain.sst));
 
   await checkHumidity(page, label, -29.86, 31.02);
+  await checkShear(page, label, SHEAR_SPECS.swio);
   await checkCityMarkers(page, label, -29.86, 31.02, 'Durban');
 });
 
@@ -913,6 +1178,7 @@ await checkBasin('South Pacific', SPAC_DIST, async (page, label) => {
   check(`[${label}] east of the grid's own eastern edge is outside the simulated area`, Number.isNaN(basinSamples.eastOfDomain.sst));
 
   await checkHumidity(page, label, -18.14, 178.42);
+  await checkShear(page, label, SHEAR_SPECS.spac);
   await checkCityMarkers(page, label, -18.14, 178.42, 'Suva');
 });
 
@@ -981,6 +1247,7 @@ await checkBasin('South Atlantic', SATL_DIST, async (page, label) => {
   check(`[${label}] east of the grid's own eastern edge is outside the simulated area`, Number.isNaN(basinSamples.eastOfDomain.sst));
 
   await checkHumidity(page, label, -22.91, -43.17);
+  await checkShear(page, label, SHEAR_SPECS.satl);
   await checkCityMarkers(page, label, -22.91, -43.17, 'Rio de Janeiro');
 });
 
@@ -1064,6 +1331,7 @@ await checkBasin('Mediterranean', MED_DIST, async (page, label) => {
   check(`[${label}] east of the grid's own eastern edge is outside the simulated area`, Number.isNaN(basinSamples.eastOfDomain.sst));
 
   await checkHumidity(page, label, 45.44, 12.33);
+  await checkShear(page, label, SHEAR_SPECS.med);
   await checkCityMarkers(page, label, 45.44, 12.33, 'Venice');
 });
 

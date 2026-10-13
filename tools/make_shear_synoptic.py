@@ -18,8 +18,14 @@ jet axis itself (the deep tropics/MDR/Caribbean/Gulf, where the axis mechanism c
 little, confirmed directly: even the axis's own top-8 modes only explain 9-31% of LOCAL variance
 at any single point despite explaining 65-73% of the axis's own basin-wide shape variance).
 
-Usage: python3 tools/make_shear_synoptic.py <basin> <lon0> <lon1> <lat0> <lat1> <months>
-  e.g. python3 tools/make_shear_synoptic.py atlantic -110 40 -40 72 6,7,8,9,10,11
+For the other basins the jet axis it subtracts is the one make_shear_jet.py traced on its wider
+ANALYSIS box (a jet just outside the displayed box still throws its flank across the box edge, so
+the daily ribbon it removes from each cell has to come from the same axis the client will draw),
+and the search band is read back from that script's own output, so the two can't disagree.
+`--no-extend` reproduces the Atlantic's original (displayed-box-only) run exactly.
+
+Usage: python3 tools/make_shear_synoptic.py <basin> <lon0> <lon1> <lat0> <lat1> <months> [--no-extend]
+  e.g. python3 tools/make_shear_synoptic.py atlantic -110 40 -40 72 6,7,8,9,10,11 --no-extend
 """
 import json
 import os
@@ -49,7 +55,7 @@ def smooth2d(vals2d, invalid, iterations=40):
     return out
 
 
-def build(basin, lon0, lon1, lat0, lat1, months):
+def build(basin, lon0, lon1, lat0, lat1, months, extend=True, out_dir=None):
     sst = cl.load(os.path.join(ROOT, "data", "raw", "ersstv5.nc"))
 
     monthly_cache = os.path.join(ROOT, "data", "raw", "era5_shear_global_monthly_2007-2021.nc")
@@ -90,9 +96,10 @@ def build(basin, lon0, lon1, lat0, lat1, months):
     bump_kt = bump_kt - bump_kt[-1]   # excess over the profile's own far-field value, same as the client's jetBumpLut
     import base64
     smear = (np.frombuffer(base64.b64decode(jet["smear"]), dtype=np.int16).astype(float) / 10).reshape(cny, cnx)   # what the client subtracts from the climatology (the jet's own average smear, see make_shear_jet.py)
-    lats, jet_rows, jet_lats = msj.jet_band(lat1, cny)
-    vals = box_d.transpose("time", "lat", "lon").values   # (T, cny, cnx)
-    axis_lat = msj.trace_axis(vals[:, jet_rows, :], jet_lats)   # (T, cnx)
+    band = tuple(jet.get("band", (msj.JET_LAT_LO, msj.JET_LAT_HI)))   # the band the jet script traced in (hemisphere-specific)
+    lats = lat1 - np.arange(cny) * cl.CRES                      # the DISPLAYED box's rows
+    axis_lat = msj.load_analysis(lon0, lon1, lat0, lat1, months, band, extend)["axis_lat"]   # (T, cnx), traced on the analysis box -- may sit outside the displayed rows
+    assert axis_lat.shape[0] == anom.shape[0], "daily axis and daily anomaly must cover the same days"
     off = np.abs(lats[None, :, None] - axis_lat[:, None, :])    # (T, cny, cnx) distance of every cell from that day's axis at its own longitude
     bump = np.interp(np.nan_to_num(off, nan=1e9), offs, bump_kt, right=0.0)   # NaN axis (no valid column) or beyond the last offset -> 0
     # The client draws  climatology - smear + ribbon  (+ interannual/ENSO, which are monthly-scale
@@ -118,7 +125,7 @@ def build(basin, lon0, lon1, lat0, lat1, months):
         "phi": cl.encode_i16(phi2d.flatten(), 1000),  # daily lag-1 autocorrelation * 1000
     }
 
-    out_dir = os.path.join(ROOT, "data", "generated")
+    out_dir = out_dir or os.path.join(ROOT, "data", "generated")
     os.makedirs(out_dir, exist_ok=True)
     dest = os.path.join(out_dir, f"{basin}-shear-synoptic.json")
     with open(dest, "w") as f:
@@ -132,8 +139,9 @@ def build(basin, lon0, lon1, lat0, lat1, months):
 
 
 if __name__ == "__main__":
-    args = sys.argv[1:]
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    flags = {a for a in sys.argv[1:] if a.startswith("--")}
     basin = args[0]
     lon0, lon1, lat0, lat1 = (float(x) for x in args[1:5])
     months = [int(x) for x in args[5].split(",")]
-    build(basin, lon0, lon1, lat0, lat1, months)
+    build(basin, lon0, lon1, lat0, lat1, months, extend="--no-extend" not in flags)

@@ -89,7 +89,7 @@ nothing to run by hand.
   59%, Mediterranean 49% — each using that basin's own real hemisphere-
   appropriate cyclone season (Southern Hemisphere basins and the bimodal
   North Indian Ocean do not share the Atlantic's Jun–Nov window).
-- Wind Shear (Atlantic only): 200–850 hPa deep-layer vertical wind shear in
+- Wind Shear (all 9 basins; the next paragraphs describe the Atlantic's, the other eight are at the end of the section): 200–850 hPa deep-layer vertical wind shear in
   knots, the standard NHC/SHIPS definition, a fourth option in the view
   toggle. Climatology + EOF interannual variability + ENSO regression (real
   ERA5 2007–2021 monthly data, its own 6 EOFs/ENSO fit), driven by
@@ -199,6 +199,40 @@ nothing to run by hand.
   hours up to 2× (6 above), paced so redraws never take more than ~40% of the
   main thread, and trails the line by at most that much.
 
+  **The other eight basins** carry the same system. The client code is the
+  Atlantic's, ported by script (every block lifted from `src/template.html`,
+  every anchor matched exactly once), so the per-basin differences are data and
+  a few constants. Each basin's jet statistics come from its own cyclone season
+  (the months its humidity uses) and its climatology/EOF/ENSO fit from its own
+  box. What had to be generalized: (1) the jet search band is a signed latitude
+  interval — 20–65°N, or 65–20°S for the four southern basins (`limitJetAxis` and
+  `JET_AXIS_LO/HI` work in either sign). (2) Most boxes do not contain the jet,
+  so `tools/make_shear_jet.py` traces the axis, and measures the ribbon
+  cross-section and the smear, on an *analysis* box (the displayed longitudes,
+  latitudes extended to cover the band plus the ribbon's 12° reach) and cuts only
+  the smear back to the displayed rows. How often the axis is inside the displayed
+  area: Atlantic 100%, West Pacific 97%, Australian 84%, East Pacific 76%,
+  South-West Indian 73%, South Pacific 72%, South Atlantic 63%, North Indian 55%,
+  Mediterranean 25%. A jet outside the box still throws its flank across the edge;
+  and when the whole axis is off the map — or just not in what is on screen,
+  zoomed in away from it — the `Jet stream line` option says so ("· north/south
+  of this area today", "· north/south of what is on screen") instead of looking
+  broken. The line also fades over the last 2° at the top and bottom of the
+  simulated area. With
+  `--no-extend` the generalized scripts reproduce the Atlantic's shipped data
+  byte for byte, and `tools/build_shear_all.sh` rebuilds the other eight basins'. Measured per basin: the eastward speed of axis anomalies (EPAC
+  13, WPAC 14, NIO 11, AUS 15, SWIO 19, SPAC 16, SATL 16, MED 21°/day;
+  `JET_DRIFT_REAL`), the share of the axis's variance that 8 modes carry
+  (80–91%, Atlantic 73%), and the ribbon (peak +38.5 to +47.5 kt, Atlantic +39.5).
+  The colour scale is the same absolute-kt stops everywhere (a colour means the
+  same shear in every basin), stretched to 140 kt in the West Pacific and 120 kt
+  in the North Indian Ocean where the real monthly jet core exceeds the
+  Atlantic's 110. Averaged over many seeds the simulated field reproduces the
+  real climatology to within 1 kt over each basin (3.3 in the Mediterranean) and
+  within 4 kt near the jet (5 in the Mediterranean), where without the ribbon it
+  would read 7–19 kt low; see `docs/roadmap.md` for the numbers, the ENSO checks
+  against the documented teleconnections, and the caveats.
+
 ## Imagery
 The "Blue Marble" theme is a crop **embedded in the build** (`data.bm`, drawn on
 a canvas, Mercator-correct per scanline) — always available, zero network
@@ -220,8 +254,9 @@ check that Satellite still resolves to something usable.
   checked-in asset, not a regenerable build artifact.
 - Domain is the North Atlantic basin only; SST south of the equator and in the
   Mediterranean/Black Sea is intentionally masked out (they're future basins).
-  ENSO changes SST and humidity in all 9 basins, but wind shear (climatology +
-  EOF + ENSO + its own day-to-day synoptic noise) is still Atlantic-only.
+  ENSO changes SST, humidity and wind shear in all 9 basins (its three lag terms
+  are summed, which for a sustained event counts the same response about three
+  times where the real response is large — see `docs/roadmap.md`).
 - ERSST at 2° is warm-biased in coastal cells; several corrections are hand-tuned
   (see the shelf, Northeast shelf, Gulf Stream blocks in `src/template.html`).
 - Only Atlantic + Simulation mode are wired up in the main menu. The other 8

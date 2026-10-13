@@ -35,10 +35,25 @@ script's own jet bump is added ON TOP of that existing climatology+interannual-E
 (see the combine loop in template.html), so when Phase 1's own ENSO term raises the background,
 the jet's peak rises with it too, through the real mechanism, not a fabricated axis-specific one.
 
-Usage: python3 tools/make_shear_jet.py <basin> <lon0> <lon1> <lat0> <lat1> <months> [k]
-  e.g. python3 tools/make_shear_jet.py atlantic -110 40 -40 72 6,7,8,9,10,11 8
+OTHER BASINS. The same method runs for every basin, with two generalizations (the Atlantic's own
+numbers are reproduced exactly when neither is switched on -- `--no-extend` below):
+  * Hemisphere. The search band is a signed latitude interval: NH 20..65 (the default), SH -65..-20
+    (pass `-65,-20`). Nothing else in the method is hemisphere-specific.
+  * An ANALYSIS box wider than the displayed one. Most basins' boxes don't contain the whole band
+    (a tropical basin's box stops at 32N; the jet is at 33N on average there), and a jet axis that
+    sits just outside the displayed box still throws its flank across the box edge. So the axis is
+    traced, and the ribbon profile and the smear are measured, on the displayed box's longitudes
+    and an extended latitude range (the displayed rows plus the band, padded by the ribbon's 12 deg
+    support so every cell a ribbon can touch is counted). Only the per-cell outputs (smear) are cut
+    back to the displayed rows; the axis (meanPath/eof) and the profile are properties of the jet,
+    not of the box.
+
+Usage: python3 tools/make_shear_jet.py <basin> <lon0> <lon1> <lat0> <lat1> <months> [k] [band_lo,band_hi] [--no-extend]
+  e.g. python3 tools/make_shear_jet.py atlantic -110 40 -40 72 6,7,8,9,10,11 8 20,65 --no-extend
+       python3 tools/make_shear_jet.py aus 90 176 -44 4 11,12,1,2,3,4 8 -65,-20
 """
 import json
+import math
 import os
 import sys
 
@@ -49,17 +64,29 @@ import climate_lib as cl
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SYNOPTIC_YEARS = (2017, 2021)   # same window make_shear_synoptic.py uses, same reasoning
-JET_LAT_LO, JET_LAT_HI = 20, 65   # search band for the axis -- wide enough to let it wander (real measured std ~9-14 deg), narrow enough to exclude the deep tropics and the polar cap
+JET_LAT_LO, JET_LAT_HI = 20, 65   # default (northern-hemisphere) search band for the axis -- wide enough to let it wander (real measured std ~9-14 deg), narrow enough to exclude the deep tropics and the polar cap
+SUPPORT = 12.0   # deg: past this the ribbon is 0 by construction, whatever is left belongs to the background
 
 
-def jet_band(lat1, cny):
+def jet_band(lat1, cny, band=(JET_LAT_LO, JET_LAT_HI)):
     """Row indices (and latitudes) of the coarse grid that fall inside the jet search band, plus
     the full latitude column -- shared with make_shear_synoptic.py, which needs the exact same
     band to subtract the jet's own explained part before fitting its local texture."""
     lats = lat1 - np.arange(cny) * cl.CRES
-    jet_rows = np.where((lats >= JET_LAT_LO) & (lats <= JET_LAT_HI))[0]
+    jet_rows = np.where((lats >= band[0]) & (lats <= band[1]))[0]
     assert len(jet_rows) >= 5, "jet search band too narrow for this basin/domain -- widen JET_LAT_LO/HI"
     return lats, jet_rows, lats[jet_rows]
+
+
+def analysis_lat_range(lat0, lat1, band, extend=True):
+    """Latitude extent of the ANALYSIS box: the displayed rows plus the whole search band, padded
+    by the ribbon's support, snapped outward to the 2 deg grid and kept inside the ERSST grid
+    (-88..88) the global caches sit on."""
+    if not extend:
+        return lat0, lat1
+    lo = min(lat0, band[0] - SUPPORT)
+    hi = max(lat1, band[1] + SUPPORT)
+    return max(-88, int(2 * math.floor(lo / 2))), min(88, int(2 * math.ceil(hi / 2)))
 
 
 def trace_axis(sub, jet_lats):
@@ -86,37 +113,50 @@ def trace_axis(sub, jet_lats):
     return np.interp(axis_row_f, np.arange(len(jet_lats)), jet_lats)
 
 
-def build(basin, lon0, lon1, lat0, lat1, months, k=8):
+def load_analysis(lon0, lon1, lat0, lat1, months, band=(JET_LAT_LO, JET_LAT_HI), extend=True):
+    """Everything the jet analysis needs, on the analysis box: the monthly climatology (the baseline
+    the client ADDS the jet bump onto, so the bump has to be measured as excess over exactly
+    this), the real daily shear in the basin's own season, and the traced daily axis. Shared with
+    make_shear_synoptic.py so both scripts trace the identical axis."""
     sst = cl.load(os.path.join(ROOT, "data", "raw", "ersstv5.nc"))
+    elat0, elat1 = analysis_lat_range(lat0, lat1, band, extend)
 
     monthly_cache = os.path.join(ROOT, "data", "raw", "era5_shear_global_monthly_2007-2021.nc")
     shear_monthly = cl.load_era5_shear(sst["lat"], sst["lon"], 2007, 2021, cache_path=monthly_cache)
-    box_m, cnx, cny = cl.extract_box(shear_monthly, lon0, lon1, lat0, lat1)
+    box_m, cnx, ecny = cl.extract_box(shear_monthly, lon0, lon1, elat0, elat1)
     fill = cl.land_fill_indices(box_m)
-    clim12 = cl.monthly_climatology(box_m, fill, base_years=(2007, 2021))   # (12, cny*cnx) -- the baseline the client ADDS the jet bump onto, so the bump has to be measured as excess over exactly this
-    clim3 = clim12.reshape(12, cny, cnx)
+    clim12 = cl.monthly_climatology(box_m, fill, base_years=(2007, 2021))   # (12, ecny*cnx)
+    clim3 = clim12.reshape(12, ecny, cnx)
 
     daily_cache = os.path.join(
         ROOT, "data", "raw",
         f"era5_shear_global_daily_{SYNOPTIC_YEARS[0]}-{SYNOPTIC_YEARS[1]}_allmonths.nc",
     )
-    import xarray as xr
     shear_daily_all = cl.load_era5_shear_daily(
         sst["lat"], sst["lon"], SYNOPTIC_YEARS[0], SYNOPTIC_YEARS[1],
         months=None, cache_path=daily_cache,
     )
     shear_daily = shear_daily_all.sel(time=shear_daily_all["time"].dt.month.isin(list(months)))
-    box_d, cnx_d, cny_d = cl.extract_box(shear_daily, lon0, lon1, lat0, lat1)
-    assert (cnx_d, cny_d) == (cnx, cny)
+    box_d, cnx_d, ecny_d = cl.extract_box(shear_daily, lon0, lon1, elat0, elat1)
+    assert (cnx_d, ecny_d) == (cnx, ecny)
 
-    lats, jet_rows, jet_lats = jet_band(lat1, cny)
-
-    vals = box_d.transpose("time", "lat", "lon").values   # (T, cny, cnx)
+    lats, jet_rows, jet_lats = jet_band(elat1, ecny, band)
+    vals = box_d.transpose("time", "lat", "lon").values   # (T, ecny, cnx)
     sub = vals[:, jet_rows, :]
-    T = sub.shape[0]
-    months_d = box_d["time"].dt.month.values   # (T,) calendar month of each day, to pick that day's own climatology below
-
     axis_lat = trace_axis(sub, jet_lats)
+    cny = int(round((lat1 - lat0) / cl.CRES)) + 1
+    r0 = int(round((elat1 - lat1) / cl.CRES))   # first row of the DISPLAYED box inside the analysis box
+    return dict(
+        cnx=cnx, cny=cny, ecny=ecny, r0=r0, elat1=elat1, lats=lats, jet_rows=jet_rows, vals=vals, sub=sub,
+        clim3=clim3, months_d=box_d["time"].dt.month.values, axis_lat=axis_lat, band=band,
+    )
+
+
+def build(basin, lon0, lon1, lat0, lat1, months, k=8, band=(JET_LAT_LO, JET_LAT_HI), extend=True, out_dir=None):
+    A = load_analysis(lon0, lon1, lat0, lat1, months, band, extend)
+    cnx, cny, ecny, r0, elat1, lats, jet_rows = A["cnx"], A["cny"], A["ecny"], A["r0"], A["elat1"], A["lats"], A["jet_rows"]
+    vals, sub, clim3, months_d, axis_lat = A["vals"], A["sub"], A["clim3"], A["months_d"], A["axis_lat"]
+    T = sub.shape[0]
 
     mean_path = np.nanmean(axis_lat, axis=0)   # (cnx,) -- the real season-climatological axis shape
     anom = axis_lat - mean_path[None, :]
@@ -161,9 +201,9 @@ def build(basin, lon0, lon1, lat0, lat1, months, k=8):
         (profile_mean[offsets_deg == -o][0] + profile_mean[offsets_deg == o][0]) / 2 if o > 0 else profile_mean[offsets_deg == 0][0]
         for o in sym_offsets
     ])
-    A = sym_profile.copy()   # E[daily - climatology | offset from that day's axis] -- measured above
+    A_prof = sym_profile.copy()   # E[daily - climatology | offset from that day's axis] -- measured above
     print("  excess over climatology, by offset from the axis:")
-    print("   ", ", ".join(f"{o:.0f}:{v:+.1f}" for o, v in zip(sym_offsets, A)))
+    print("   ", ", ".join(f"{o:.0f}:{v:+.1f}" for o, v in zip(sym_offsets, A_prof)))
 
     # --- Remove the double counting between the climatology and the jet. ---
     # The monthly climatology already holds a smeared copy of the jet (it is the average over days
@@ -179,14 +219,13 @@ def build(basin, lon0, lon1, lat0, lat1, months, k=8):
     # The ribbon depends on the smear and the smear on the ribbon, so it's solved by iterating
     # (it is a contraction -- the smear is a heavily averaged copy of the ribbon -- and settles in
     # a handful of passes).
-    SUPPORT = 12.0   # deg: past this the ribbon is 0 by construction, whatever is left belongs to the background
     inside = sym_offsets < SUPPORT
     ok_axis = ~np.isnan(axis_lat)
     cols = np.broadcast_to(np.arange(cnx)[None, :], axis_lat.shape)
 
     def smear_from(P):
-        # (cny, cnx): this ribbon's average over every day's own axis position, cell by cell
-        off = np.abs(lats[None, :, None] - axis_lat[:, None, :])                  # (T, cny, cnx)
+        # (ecny, cnx): this ribbon's average over every day's own axis position, cell by cell
+        off = np.abs(lats[None, :, None] - axis_lat[:, None, :])                  # (T, ecny, cnx)
         p = np.interp(np.nan_to_num(off, nan=1e9), sym_offsets, P, right=0.0)
         p = np.where(ok_axis[:, None, :], p, 0.0)
         return p.mean(axis=0)
@@ -195,11 +234,11 @@ def build(basin, lon0, lon1, lat0, lat1, months, k=8):
         # E[smear at the cell sitting off_deg north/south of the axis], over all days and columns
         tot, n = 0.0, 0
         for sign in (-1.0, 1.0):
-            row_f = np.nan_to_num((lat1 - (axis_lat + sign * off_deg)) / cl.CRES, nan=-1.0)
-            good = ok_axis & (row_f >= 0) & (row_f <= cny - 1)
-            r0 = np.clip(np.floor(row_f).astype(int), 0, cny - 2)
-            w = row_f - r0
-            v = smear[r0, cols] * (1 - w) + smear[r0 + 1, cols] * w
+            row_f = np.nan_to_num((elat1 - (axis_lat + sign * off_deg)) / cl.CRES, nan=-1.0)
+            good = ok_axis & (row_f >= 0) & (row_f <= ecny - 1)
+            r0_ = np.clip(np.floor(row_f).astype(int), 0, ecny - 2)
+            w = row_f - r0_
+            v = smear[r0_, cols] * (1 - w) + smear[r0_ + 1, cols] * w
             tot += v[good].sum()
             n += int(good.sum())
         return tot / max(n, 1)
@@ -217,11 +256,11 @@ def build(basin, lon0, lon1, lat0, lat1, months, k=8):
                 P[i] = P[i - 1]
         return P
 
-    P = shape(A)
+    P = shape(A_prof)
     for it in range(12):
         smear = smear_from(P)
         B = np.array([smear_at_offset(smear, o) for o in sym_offsets])
-        P_new = shape(A + B)
+        P_new = shape(A_prof + B)
         change = float(np.abs(P_new - P).max())
         P = P_new
         if change < 0.05:
@@ -230,12 +269,13 @@ def build(basin, lon0, lon1, lat0, lat1, months, k=8):
     sym_profile = P
     print(f"  ribbon re-derived against the de-smeared background after {it + 1} passes (last change {change:.3f} kt):")
     print("   ", ", ".join(f"{o:.0f}:{v:+.1f}" for o, v in zip(sym_offsets, P)))
-    print(f"  smear removed from the background: max={smear.max():.1f} kt, mean over the jet band={smear[jet_rows].mean():.1f} kt")
+    smear_disp = smear[r0:r0 + cny]   # the part of the smear inside the DISPLAYED box -- what the client subtracts from its climatology
+    print(f"  smear removed from the background: max={smear.max():.1f} kt (displayed box: {smear_disp.max():.1f}), mean over the jet band={smear[jet_rows].mean():.1f} kt")
 
     # Sanity check against the real data: the simulated core (background + ribbon peak) should
     # land on the real mean daily value at the axis.
     real_core = float(np.nanmean(np.nanmax(sub, axis=1)))
-    rows_at_axis = np.clip(np.round((lat1 - np.nan_to_num(axis_lat, nan=lat1)) / cl.CRES).astype(int), 0, cny - 1)
+    rows_at_axis = np.clip(np.round((elat1 - np.nan_to_num(axis_lat, nan=elat1)) / cl.CRES).astype(int), 0, ecny - 1)
     sim_core = float(np.mean([
         clim3[months_d[t] - 1, rows_at_axis[t, c], c] - smear[rows_at_axis[t, c], c] + P[0]
         for t in range(T) for c in range(cnx) if ok_axis[t, c]
@@ -244,26 +284,29 @@ def build(basin, lon0, lon1, lat0, lat1, months, k=8):
 
     out = {
         "K": k,
+        "band": [band[0], band[1]],                                   # the latitude band the axis was traced in (deg, signed)
         "meanPath": [round(float(x), 2) for x in mean_path],         # deg latitude, one per coarse longitude column
         "eof": cl.encode_i16(patterns, 100),                          # deg latitude per +1 sigma of each mode * 100
         "phi": [round(float(x), 4) for x in phi],                     # already-daily lag-1 autocorrelation per mode
         "profileOffsets": [round(float(x), 1) for x in sym_offsets],  # deg from axis, 0..20
         "profileKt": [round(float(x), 1) for x in sym_profile],       # ribbon: kt ABOVE the de-smeared background at that offset from the axis
-        "smear": cl.encode_i16(smear.flatten(), 10),                  # kt * 10, (cny*cnx) row-major -- the client subtracts this from the climatology
+        "smear": cl.encode_i16(smear_disp.flatten(), 10),             # kt * 10, (cny*cnx) row-major, DISPLAYED box -- the client subtracts this from the climatology
     }
 
-    out_dir = os.path.join(ROOT, "data", "generated")
+    out_dir = out_dir or os.path.join(ROOT, "data", "generated")
     os.makedirs(out_dir, exist_ok=True)
     dest = os.path.join(out_dir, f"{basin}-shear-jet.json")
     with open(dest, "w") as f:
         json.dump(out, f)
     print(f"wrote {dest}")
-    print(f"  cnx={cnx} K={k} samples(days)={T}")
+    print(f"  cnx={cnx} cny={cny} (analysis rows {ecny}, displayed box starts at row {r0}) K={k} samples(days)={T}")
     var_explained = (np.linalg.svd(a, compute_uv=False) ** 2)
     var_explained = var_explained / var_explained.sum()
     print(f"  cumulative variance explained by top {k} axis modes: {var_explained[:k].sum()*100:.1f}%")
     print(f"  phi (daily persistence per mode): {out['phi']}")
-    print(f"  mean path range: {min(out['meanPath']):.1f}N to {max(out['meanPath']):.1f}N")
+    print(f"  mean path range: {min(out['meanPath']):.1f} to {max(out['meanPath']):.1f} deg latitude")
+    inbox = (axis_lat >= lat0) & (axis_lat <= lat1) & ok_axis
+    print(f"  axis inside the displayed box: {inbox.sum() / max(ok_axis.sum(), 1) * 100:.1f}% of day-columns")
     print(f"  cross-axis profile: peak={sym_profile[0]:.1f} kt, background={sym_profile[-1]:.1f} kt")
     for o, v in zip(sym_offsets, sym_profile):
         print(f"    +/-{o:4.1f} deg: {v:5.1f} kt")
@@ -271,9 +314,11 @@ def build(basin, lon0, lon1, lat0, lat1, months, k=8):
 
 
 if __name__ == "__main__":
-    args = sys.argv[1:]
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    flags = {a for a in sys.argv[1:] if a.startswith("--")}
     basin = args[0]
     lon0, lon1, lat0, lat1 = (float(x) for x in args[1:5])
     months = [int(x) for x in args[5].split(",")]
     k = int(args[6]) if len(args) > 6 else 8
-    build(basin, lon0, lon1, lat0, lat1, months, k)
+    band = tuple(float(x) for x in args[7].split(",")) if len(args) > 7 else (JET_LAT_LO, JET_LAT_HI)
+    build(basin, lon0, lon1, lat0, lat1, months, k, band, extend="--no-extend" not in flags)
