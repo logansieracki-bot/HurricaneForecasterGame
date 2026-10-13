@@ -395,15 +395,17 @@ await checkBasin('Atlantic', ATLANTIC_DIST, async (page, label) => {
 
   // The explicit jet stream (make_shear_jet.py): a continuous ribbon of strong shear along a
   // meandering axis, over a quieter background. Three things it has to do: actually be a band
-  // (not just more speckle), shift from day to day, and still be there -- just parked on its mean
-  // path -- with the weather slider at 0. The page loads with a random seed, so these are checked
-  // against 90 random seeds, not one: ribbon contrast 27-49 kt (threshold 20), axis std over 8
-  // days 2.2-14.3 deg (threshold 1), and frozen exactly at slider 0. The contrast at slider 0 needs
-  // more care: the jet sits on its mean path there, where the climatology minus its own smear is
-  // lower than the surroundings, so the background alone moves the statistic around a lot. Over 60
-  // seeds with 4 longitudes it was 24-63 kt with the ribbon but -15..+24 with the ribbon removed
-  // (the two overlap, and one of 90 seeds sat at 19); with 10 longitudes it is 25-57 vs. -14..+17,
-  // a clean gap, so that check uses the wider set with its threshold in the middle of it.
+  // (not just more speckle), keep moving, and still be there -- just parked on its mean path --
+  // with the weather slider at 0. The page loads with a random seed, so these are checked against
+  // dozens of random seeds, not one. The two contrast checks need care: the statistic is the shear
+  // on the axis minus the shear 12 deg either side, and the background alone moves it around a lot
+  // (at slider 0 the jet sits on its mean path, where the climatology minus its own smear is lower
+  // than the surroundings; with the jet evolving over weeks, 8 days can sit far north, where the
+  // surroundings are climatologically high). Averaged over 4 longitudes the with-ribbon and
+  // ribbon-removed distributions overlapped (slider 0: 24-63 vs -15..+24 kt; slider 1: one seed in
+  // 60 at 18 kt); averaged over 10 they separate cleanly (slider 0: 25-57 vs -14..+17; slider 1:
+  // 26.6-49.5 vs -9.6..+10.6), with the threshold of 20 in the gap. At slider 0 the axis itself is
+  // frozen on its mean path exactly (checked to 0.001 deg).
   const jetLons = [-55, -45, -35, -25], jetLonsWide = [-95, -85, -75, -65, -55, -45, -35, -25, -15, -5];
   const jetContrast = async (days, lonSet = jetLons) => {
     const on = [], off = [];
@@ -417,9 +419,15 @@ await checkBasin('Atlantic', ATLANTIC_DIST, async (page, label) => {
   };
   const jetLatSeries = async (days) => { const s = []; for (let d = 0; d < days; d++) { await page.evaluate(() => window.SSTSIM.advance(24)); s.push(await page.evaluate(() => window.SSTSIM.jetLat(-40))); } return s; };
 
-  const jetDefault = await jetContrast(8);
-  check(`[${label}] jet stream is a real band: shear on its axis sits far above shear 12 deg to either side`, jetDefault.n >= 16 && jetDefault.contrast > 20);
-  check(`[${label}] jet axis shifts day to day (a meandering ribbon, not frozen)`, stdOf(await jetLatSeries(8)) > 1);
+  // With the jet evolving over weeks, 8 days at 4 longitudes can sit in an unflattering spot (far north,
+  // where the shear 12 deg either side is climatologically high: 18 kt on one seed in 60), so this uses the
+  // 10-longitude set too: 26.6-49.5 kt on 60 seeds with the ribbon vs -9.6..+10.6 with it removed.
+  const jetDefault = await jetContrast(8, jetLonsWide);
+  check(`[${label}] jet stream is a real band: shear on its axis sits far above shear 12 deg to either side`, jetDefault.n >= 40 && jetDefault.contrast > 20);
+  // (The jet now evolves over weeks, not days, so "moves" is judged over 20 days: the axis at -30 ranged
+  // 9-29 deg over 20 days on 40 random seeds. The old 8-day std > 1 fell below 1 on a few percent of them.)
+  const range20 = await page.evaluate(() => { const S = window.SSTSIM, a = []; for (let d = 0; d < 20; d++) { S.tick(24); a.push(S.jetLatLive(-30)); } return Math.max(...a) - Math.min(...a); });
+  check(`[${label}] jet axis moves (a meandering ribbon, not frozen): it ranged ${range20.toFixed(1)} deg over 20 days`, range20 > 4);
 
   await page.evaluate(() => window.SSTSIM.set('shearSynoptic', 0));
   const parked = await jetLatSeries(8);
@@ -443,18 +451,83 @@ await checkBasin('Atlantic', ATLANTIC_DIST, async (page, label) => {
   await page.evaluate(() => window.SSTSIM.set('shearSynoptic', 1));
   await page.evaluate(() => window.SSTSIM.restart());
 
-  // The "Jet stream line" checkbox: a line along that same axis, on the top overlay canvas, that
+  // How the jet MOVES. It used to reshuffle every day or two (modes 2-8 had daily autocorrelations of
+  // 0.25-0.63, median 3.9 deg/day, 90th percentile 12), changed direction at every midnight (straight
+  // segments between daily snapshots), and was only redrawn every ~360 ms; the complaint was "too fast,
+  // not smooth, I want it to flow and interpolate smoothly". Now: slower modes, a cubic through the daily
+  // samples, and eastward flow. All of it runs inside the page with tick()/jetLatLive(): tick() moves the
+  // clocks without the 50-70 ms field redraw advance() does and jetLatLive() reads the very axis the line is
+  // drawn from, so the jet can be sampled hour by hour. The jet has its own random stream and clock, so for
+  // a given seed all of this is an exact function of (seed, time) -- fixed seeds here, nothing left to luck.
+  // Thresholds are set from 40 random seeds (in brackets) -- and from the old build where it matters.
+  const jetMotion = await page.evaluate(() => {
+    const S = window.SSTSIM, lons = [-90, -70, -50, -30, -10, 10], mean = (a) => a.reduce((x, y) => x + y, 0) / a.length;
+    const out = { daily: [], sec: 0 };
+    for (const seed of [11, 4242, 90210]) {
+      S.applySeed(seed);
+      const hourly = lons.map(() => []);
+      for (let h = 0; h <= 20 * 24; h++) { if (h) S.tick(1); lons.forEach((l, i) => hourly[i].push(S.jetLatLive(l))); }
+      for (const a of hourly) {
+        for (let d = 24; d < a.length; d += 24) out.daily.push(Math.abs(a[d] - a[d - 24]));
+        for (let i = 2; i < a.length; i++) out.sec = Math.max(out.sec, Math.abs(a[i] - 2 * a[i - 1] + a[i - 2]));
+      }
+    }
+    out.daily.sort((x, y) => x - y); out.medDaily = out.daily[Math.floor(out.daily.length / 2)];
+    // the same seed gives the same jet however the run is cut into pieces
+    S.applySeed(77); S.tick(240); const oneTick = lons.map((l) => S.jetLatLive(l));
+    S.applySeed(77); for (let i = 0; i < 10; i++) S.tick(24); const tenTicks = lons.map((l) => S.jetLatLive(l));
+    out.chunking = Math.max(...oneTick.map((v, i) => Math.abs(v - tenTicks[i])));
+    // the speed slider rescales time itself: 2x for 5 days is exactly 1x for 10 days, and 0 freezes it.
+    // (The speed is set AFTER applySeed: applySeed re-syncs every slider value from the page, which would undo it.)
+    S.applySeed(77); S.set('jetSpeed', 2); S.tick(120); const fast = lons.map((l) => S.jetLatLive(l));
+    S.applySeed(77); S.set('jetSpeed', 1); S.tick(240); const slow = lons.map((l) => S.jetLatLive(l));
+    out.speedTwice = Math.max(...fast.map((v, i) => Math.abs(v - slow[i])));
+    S.applySeed(77); S.set('jetSpeed', 0); const f0 = lons.map((l) => S.jetLatLive(l)); S.tick(24 * 30); const f1 = lons.map((l) => S.jetLatLive(l));
+    out.frozen = Math.max(...f0.map((v, i) => Math.abs(v - f1[i])));
+    S.set('jetSpeed', 1);
+    // changes flow EAST: columns 10 deg apart correlate better when the eastern one is read 2 days later than 2 days earlier
+    // (real axis anomalies do this at ~15 deg/day; the simulated flow is 6 deg/day, so 10 deg ~ 1.7 days)
+    const lonsAll = []; for (let l = -90; l <= 20; l += 2) lonsAll.push(l);
+    const asym = [];
+    for (const seed of [3, 4, 5]) {
+      S.applySeed(seed);
+      const rows = []; for (let d = 0; d < 240; d++) { S.tick(24); rows.push(lonsAll.map((l) => S.jetLatLive(l))); }
+      const cols = lonsAll.map((_, i) => rows.map((r) => r[i])), mu = cols.map(mean);
+      const corr = (lag) => { let sxy = 0, sxx = 0, syy = 0; for (let c = 0; c + 5 < lonsAll.length; c++) for (let t = Math.max(0, -lag); t < rows.length - Math.max(0, lag); t++) { const x = cols[c][t] - mu[c], y = cols[c + 5][t + lag] - mu[c + 5]; sxy += x * y; sxx += x * x; syy += y * y; } return sxy / Math.sqrt(sxx * syy); };
+      asym.push(corr(2) - corr(-2));
+    }
+    out.eastward = mean(asym);
+    // the live axis (what the line is drawn from) and the one baked into the field by the last redraw are the same curve
+    S.applySeed(3); S.advance(24 * 7);
+    out.liveVsBaked = Math.max(...[-95, -80.5, -60, -33.25, 0, 17.5, 39.75].map((l) => Math.abs(S.jetLatLive(l) - S.jetLat(l))));
+    return out;
+  });
+  check(`[${label}] jet moves calmly: median change ${jetMotion.medDaily.toFixed(2)} deg/day (was 3.9; 1.0-2.2 on 40 seeds)`, jetMotion.medDaily < 3.2 && jetMotion.medDaily > 0.5);
+  check(`[${label}] jet motion has no kinks: max hourly second difference ${jetMotion.sec.toFixed(3)} deg/h^2 (the old straight-segments-per-day version peaked at 1.0-1.1; 0.02-0.05 on 40 seeds)`, jetMotion.sec < 0.2);
+  check(`[${label}] a seed gives the same jet however the run is chunked into advance() calls (max difference ${jetMotion.chunking.toExponential(1)} deg)`, jetMotion.chunking < 1e-6);
+  check(`[${label}] "Jet stream speed" rescales time itself: 2x for 5 days is exactly 1x for 10 days (max difference ${jetMotion.speedTwice.toExponential(1)} deg)`, jetMotion.speedTwice < 1e-6);
+  check(`[${label}] "Jet stream speed" at 0 freezes the jet where it is (moved ${jetMotion.frozen.toExponential(1)} deg in 30 days)`, jetMotion.frozen < 1e-6);
+  check(`[${label}] changes flow downstream: east-leading correlation exceeds west-leading by ${jetMotion.eastward.toFixed(2)} (0.10-0.21 on 24 seeds, 0 for a standing pattern)`, jetMotion.eastward > 0.05);
+  check(`[${label}] the live axis the line is drawn from and the one baked into the shear field are the same curve (max difference ${jetMotion.liveVsBaked.toExponential(1)} deg)`, jetMotion.liveVsBaked < 1e-3);
+  check(`[${label}] "Jet stream speed" slider exists and starts at 1x`, await page.evaluate(() => { const s = document.getElementById('p-jets'); return !!s && s.value === '1' && window.SSTSIM.sliderVals().jetSpeed === 1; }));
+  await page.evaluate(() => window.SSTSIM.restart());
+
+  // The "Jet stream line" checkbox: a line along that same axis, on its own overlay canvas, that
   // has to appear in EVERY view (not just Wind Shear) and not depend on the field being shown.
   // Checked on the real rendered pixels: the line's core is the only magenta on that canvas, so
   // look for it at the axis's own on-screen position at several longitudes (even ones, which sit
-  // exactly on the 2-degree columns the curve is drawn through).
-  await page.evaluate(() => { window.SSTSIM.applySeed(4242); window.SSTSIM.map.fitBounds([[22, -100], [55, 20]], { animate: false }); });
+  // exactly on the 2-degree columns the curve is drawn through). The sim is paused for this: the
+  // line is redrawn every animation frame from the live clock, so a running sim would move it a
+  // few pixels between reading where it should be and reading the pixels.
+  await page.evaluate(() => { window.SSTSIM.setPlaying(false); window.SSTSIM.applySeed(4242); window.SSTSIM.map.fitBounds([[22, -100], [55, 20]], { animate: false }); });
   await page.evaluate(() => window.SSTSIM.advance(24 * 12));
   await page.waitForTimeout(250);
-  const probeLons = [-90, -70, -50, -30, -10, 10];
-  const axisPoints = () => page.evaluate((ls) => ls.map((lon) => { const p = window.SSTSIM.map.latLngToContainerPoint([window.SSTSIM.jetLat(lon), lon]); return [p.x, p.y]; }), probeLons);
+  // Every 4 deg across the width the map can show (all on the 2-degree columns); whichever of them the axis has put on screen get judged.
+  // (A fixed handful isn't enough: at this window size the view spans only about -87..7, and a jet far north leaves the top of it.)
+  const probeLons = []; for (let l = -84; l <= 4; l += 4) probeLons.push(l);
+  const axisPoints = () => page.evaluate((ls) => ls.map((lon) => { const p = window.SSTSIM.map.latLngToContainerPoint([window.SSTSIM.jetLatLive(lon), lon]); return [p.x, p.y]; }), probeLons);
   const magentaNear = (pts) => page.evaluate((ps) => {
-    const c = document.querySelectorAll('canvas.overlay')[2], g = c.getContext('2d'), s = c.width / c.clientWidth, r = Math.round(4 * s);
+    const c = document.getElementById('jet-canvas'), g = c.getContext('2d'), s = c.width / c.clientWidth, r = Math.round(4 * s);
     return ps.map(([px, py]) => {
       const x = Math.round(px * s), y = Math.round(py * s);
       if (x < r || y < r || x >= c.width - r || y >= c.height - r) return null;   // off-screen: can't be judged either way
@@ -467,18 +540,18 @@ await checkBasin('Atlantic', ATLANTIC_DIST, async (page, label) => {
 
   check(`[${label}] "Jet stream line" checkbox exists and starts unchecked`, await page.evaluate(() => { const c = document.getElementById('jetline'); return !!c && !c.checked; }));
   const lineOff = await jetLineSeen();
-  check(`[${label}] nothing is drawn along the axis while the checkbox is off`, lineOff.n >= 4 && lineOff.hits === 0);
+  check(`[${label}] nothing is drawn along the axis while the checkbox is off (${lineOff.hits} of ${lineOff.n} on-screen probes)`, lineOff.n >= 8 && lineOff.hits === 0);
   await page.check('#jetline');
   for (const v of ['sst', 'anom', 'humid', 'shear']) {
     await page.evaluate((vv) => window.SSTSIM.setView(vv), v);
     await page.waitForTimeout(300);
     const seen = await jetLineSeen();
-    check(`[${label}] jet line is drawn along the axis in the ${v} view`, seen.n >= 4 && seen.hits === seen.n);
+    check(`[${label}] jet line is drawn along the axis in the ${v} view (${seen.hits} of ${seen.n} on-screen probes)`, seen.n >= 8 && seen.hits === seen.n);
   }
   await page.uncheck('#show-sst');
   await page.waitForTimeout(300);
   const noField = await jetLineSeen();
-  check(`[${label}] jet line still draws with "Show sea temperature" off (it isn't part of the field raster)`, noField.n >= 4 && noField.hits === noField.n);
+  check(`[${label}] jet line still draws with "Show sea temperature" off (it isn't part of the field raster; ${noField.hits} of ${noField.n} probes)`, noField.n >= 8 && noField.hits === noField.n);
   await page.check('#show-sst');
 
   const ptsBefore = await axisPoints();
@@ -498,7 +571,7 @@ await checkBasin('Atlantic', ATLANTIC_DIST, async (page, label) => {
   await page.waitForTimeout(300);
   const goneAt = await magentaNear(drawnAt);
   check(`[${label}] unchecking the box removes the line again`, drawnAt.length >= 2 && goneAt.every((h) => h === false));
-  await page.evaluate(() => { window.SSTSIM.setView('sst'); window.SSTSIM.restart(); });   // leave the page in its default state for the checks after this one
+  await page.evaluate(() => { window.SSTSIM.setPlaying(true); window.SSTSIM.setView('sst'); window.SSTSIM.restart(); });   // leave the page in its default state for the checks after this one
 
   // The bottom-left readout's own Shear branch (Atlantic-only, so checked here rather than in
   // the shared checkBasin() body above, which only exercises sst/anom -- every basin has those).

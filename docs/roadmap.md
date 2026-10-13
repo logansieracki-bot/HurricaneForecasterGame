@@ -1,6 +1,103 @@
 # Roadmap
 
 ## Just landed
+- **Made the jet stream move slower and flow smoothly, with a speed slider (Atlantic).** The
+  feedback: "moves a bit too fast, and the movement is not smooth; I want it to flow and
+  interpolate smoothly". Measured before changing anything, there were three separate causes.
+  (1) *Pace.* The 8 wave modes had daily lag-1 autocorrelations of 0.85 / 0.58 / 0.48 / 0.63 /
+  0.49 / 0.52 / 0.34 / 0.25, so apart from the leading one the whole shape re-randomised every day
+  or two: median 3.9 deg/day, 90th percentile 12, i.e. the line moves ~2.7 deg a second at 1x.
+  (2) *Direction changes.* The axis was linear between daily snapshots, so every midnight it set
+  off in a new random direction: the hourly second difference of the path peaked at 1.0-1.1
+  deg/h^2. (3) *Redraw rate.* The field was only recomputed every 6 simulated hours (about 3 a
+  second at 1x), and the line was drawn from that, so it moved in steps of a median 1.3 deg, up to
+  4 (30-90 px).
+
+  Whether (1) was a tracing artefact was checked against the data, not assumed: a continuous-ridge
+  tracer (a Viterbi path along longitude with a smoothness penalty, three penalty strengths) was
+  run on the same 5 years. It does smooth the *shape* (neighbouring-column jumps at the 95th
+  percentile fall from 14.7 to 4.4-6 deg; the top 8 modes carry 85-93% of the variance instead of
+  73%), but the *timing* is the same: median 2.6 deg/day, 90th percentile 16-19, PC lag-1
+  autocorrelations 0.74 / 0.59 / 0.58 / ... A full vector AR(1) predicts tomorrow's modes only
+  slightly better than independent ones (R^2 0.49 vs 0.43). So the real max-shear axis genuinely
+  is that restless -- several shear maxima take turns being the strongest -- and a faithful
+  simulation of it thrashes. The calmer timing is therefore a *design choice* for a jet-stream
+  display, stated as one: the spatial modes and amplitudes stay the real ones (per-column spread
+  unchanged: sd 6-12 deg, always inside the 20-64N band), and only the evolution is slowed.
+
+  What changed. The whole evolution is dilated 2.5x (`JET_DILATION`): the leading mode's real
+  6-day e-folding becomes ~15 days (0.85 -> 0.94/day), every other mode is floored at that same
+  0.94, and the samples between whole days are a Catmull-Rom cubic (the same 4-tap basis the
+  monthly climatology uses), so position and velocity are both continuous. Measured on 6 seeds x 60
+  days: median 1.60 deg/day (was 3.9), 95th percentile 4.9 (was 12), 0.45 deg per 6-hour redraw
+  (was 1.3); the hourly second difference peaks at 0.020-0.049 on 40 seeds (was 1.0-1.1, 20-55x
+  smoother). The line is now stroked on a canvas of its own from the live jet clock on every
+  animation frame (76 points, effectively free), instead of being baked into the 50-70 ms field
+  redraw; in a 5-second real-time run it went from 3 distinct positions a second to 11 (this
+  headless software renderer is the slow part: sim hours arrive 16.7 times a second at 1x) and the
+  largest one-frame jump from 4.8 to 2.1 deg. The shear raster beneath it now redraws every 3
+  simulated hours up to 2x (6 above) instead of every 6, paced by how long the last redraw took
+  (never more than ~40% of the main thread), so its ribbon steps half as far and trails the line by
+  at most that.
+
+  It also flows. The old model was standing patterns whose amplitudes changed in place. Real axis
+  anomalies travel east: for two longitudes 10-40 deg apart the cross-correlation peaks 0.60, 0.92,
+  1.23, 1.59, 2.04 and 2.90 days later at the eastern one (10, 14, 20, 26, 32, 40 deg) -- a steady
+  14-17 deg/day, 15.0 by least squares. Each column now reads the mode amplitudes with a delay
+  proportional to how far east it is (15 deg/day dilated to 6), so a change shows up downstream a
+  few days later, as real troughs and ridges develop downstream. Delaying a stationary series
+  leaves its distribution at every column exactly as it was, so the real per-column spread and the
+  smear derived from it are untouched. In the simulation the lagged correlations peak at +2, +3,
+  +5 days for 10, 20, 30 deg apart (design 1.7, 3.3, 5.0). A time-longitude diagram before and
+  after shows it plainly: horizontal streaks that change every day or two, versus slanting
+  features that drift east and evolve over weeks.
+
+  The delay has a cost, found by measuring the curve rather than looking at it: neighbouring columns
+  now read the mode amplitudes a third of a day apart, and the modes are only smooth in space when
+  combined at the same time, so the curve came out ~35% rougher along longitude (median step between
+  2-degree columns 0.83 -> 1.11 deg, worst case 7.5 -> 10.6; second difference along longitude, 95th
+  percentile, 2.04 -> 2.64). One light [1 4 6 4 1]/16 pass along longitude, applied to the axis
+  anomaly before the slider and the band limit, takes it out for 1.8% of the amplitude (mean
+  per-column spread 8.54 -> 8.39 deg): final median step 0.96, 95th 3.3, worst 9.4, and curvature
+  1.53 at the 95th percentile -- ~25% below the jet had before the delay existed, though slopes
+  between columns are still 5-15% above it. (For scale, the real continuous-ridge axis has a 95th
+  percentile step of 4.4 deg and the real max-shear axis 14.7.) Also checked: the jet spends 4-15%
+  of the time north of 56N, where it leaves the top of the map (the real axis: 10-18%), in episodes
+  that now last a mean 3-4.5 days (real: ~1.7), 90th percentile at most 10 -- longer than real
+  because everything is slower, but short in absolute terms.
+
+  The jet got its own clock and random stream. It used to draw from the shared stream and jump the
+  AR(1) in closed form, so the same seed gave a different jet depending on how the run was chunked;
+  now it steps a day at a time on its own stream, and a seed gives the same jet however `advance()`
+  is called or how fast it's played. A new `Jet stream speed` slider (`P.jetSpeed`, Experimentation,
+  0-3x, default 1x) multiplies the jet clock, so it rescales time itself instead of changing the
+  process: 2x for 5 days is *exactly* 1x for 10, 0 freezes the jet where it is, and moving the
+  slider never makes it jump. The old pace is roughly 2x on it.
+
+  Not changed, deliberately: the local weather *texture* in the Wind Shear view still re-randomises
+  at its real day-to-day rate (it is fit data, half-weight), so the field around the ribbon still
+  "boils" more than the ribbon moves. If that now reads as the jerky part, slowing or smoothing it
+  the same way is the next step.
+
+  Two more of the existing statistical checks were re-measured on the new dynamics, since a slower
+  jet gives fewer independent samples per window. "The jet axis shifts day to day" (std of 8 daily
+  samples > 1) fell below 1 on a few percent of seeds (0.26 at worst), so it is now the range over
+  20 days (9-29 deg on 40 seeds; threshold 4). "The jet is a real band" dipped to 18.4 kt on one
+  seed in 60 against a threshold of 20 when averaged over 4 longitudes (a jet far north has
+  climatologically high shear 12 deg either side), so it now averages 10 longitudes: 26.6-49.5 kt
+  with the ribbon vs. -9.6..+10.6 with it removed, threshold 20 in the gap.
+
+  Tests: 8 new checks, all exact functions of a fixed seed and the jet clock (the jet no longer
+  depends on the shared random stream, so there is nothing left to luck): median daily change under
+  3.2 and over 0.5 (1.0-2.2 on 40 seeds); no kinks (hourly second difference under 0.2; 0.02-0.05); the same jet however the run is
+  chunked; speed 2x == 1x for twice as long; speed 0 frozen; downstream flow (east-leading
+  correlation exceeds west-leading by 0.10-0.21 on 24 seeds; threshold 0.05; 0 for a standing
+  pattern); the live axis the line is drawn from equals the one baked into the field (to 1e-3 deg);
+  and the slider exists at 1x. The pixel checks for the line now read its own canvas and pause the
+  sim while they run (the line is redrawn every frame, so a running sim moves it a few pixels
+  between reading where it should be and reading the pixels). Atlantic only. Full suite: 445 checks
+  (up from 437), zero regressions.
+
 - **Added a "Jet stream line" option that works in every view, and bounded the jet axis
   (Atlantic).** The user asked for the jet's line to be viewable from any layer, not just Wind
   Shear. A checkbox in the Customization section (off by default) draws a line along the jet axis

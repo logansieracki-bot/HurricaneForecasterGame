@@ -118,8 +118,10 @@ nothing to run by hand.
   value at each point. Checked against 5 years of daily ERA5 (Jun–Nov): trace
   the jet axis each day (latitude of peak shear at each longitude), and that
   path's own wave modes carry 73% of its variance in just 8 modes (vs. 31% at
-  k=6 for the raw field), with real daily persistence per mode — so the axis
-  is driven by those 8 modes around the real mean path (~35–46°N). The
+  k=6 for the raw field) — so the axis is driven by those 8 modes around the
+  real mean path (~35–46°N): their shapes and amplitudes are the real ones,
+  while how fast they evolve is deliberately calmer than the data (see "How
+  the jet moves" below). The
   ribbon's cross-section is the real axis-following profile (+39 kt at the
   axis, ~0 by 10° away). Because the monthly climatology already contains a
   blurred copy of the jet, the client subtracts that smear from the
@@ -145,14 +147,57 @@ nothing to run by hand.
   the real spread, so unlimited it wandered out to 1°N and 85°N in testing —
   which would also have dragged the ribbon over the equator (see `limitJetAxis`).
 
+  **How the jet moves.** The real axis is the per-column *maximum of shear*, so
+  its higher modes mostly record which of several competing shear maxima is
+  strongest on a given day: modes 2–8 have daily lag-1 autocorrelations of only
+  0.25–0.63, and the axis moves a median 2.8°/day (90th percentile 21°). A
+  continuous-ridge tracer gives the same (2.6 / 17), so that's the shear
+  maximum's real behaviour, not a tracing artefact — but played at 1× (a day
+  every 1.4 s) a simulation faithful to it thrashes: 3.9°/day median, a new
+  random direction every midnight (straight segments between daily snapshots),
+  and a redraw only every ~360 ms. So the timing is deliberately not the
+  data's. The whole evolution is dilated 2.5× (`JET_DILATION`): the leading
+  mode's real 6-day e-folding becomes ~15 days (0.85 → 0.94/day), every other
+  mode is floored at that same 0.94 instead of flickering every day or two,
+  and the samples between days are a Catmull-Rom cubic, so position *and*
+  velocity are continuous. Measured on the simulation: 1.6°/day median (was
+  3.9), 0.45° per 6-hour redraw (was 1.3), and the hourly second difference —
+  the size of a direction change — peaks at 0.02–0.05°/h² on 40 seeds (the old
+  version: 1.0–1.1).
+
+  It also **flows east**, which the real data supports and a standing pattern
+  can't do: for two longitudes 10–40° apart the cross-correlation of axis
+  anomalies peaks 0.6–2.9 days later at the eastern one — a steady 14–17°/day
+  at every separation. Each column therefore reads the mode amplitudes with a
+  delay proportional to how far east it is (`jetDelayC`; 15°/day dilated to
+  6°/day), so a change shows up downstream a few days later, like real
+  downstream development of troughs and ridges. Delaying a stationary series
+  leaves its distribution at every column untouched, so the real per-column
+  spread (and the smear derived from it) is unchanged; the simulation's lagged
+  correlations peak at +2, +3 and +5 days for 10, 20 and 30° apart (design:
+  1.7, 3.3, 5.0). The delay does roughen the curve along longitude (the modes
+  are only smooth in space when combined at the same time), by ~35%, so one
+  light [1 4 6 4 1]/16 pass along longitude follows it, costing 1.8% of the
+  amplitude (per-column spread 8.54 → 8.39°) and leaving the curve's kinks
+  ~25% smaller than before the delay existed. The jet has its own clock and random stream: a seed gives the
+  same jet however a run is chunked or how fast it's played, and the
+  `Jet stream speed` slider (`P.jetSpeed`, default 1×, 0 = frozen) rescales the
+  jet's time itself — 2× for 5 days is exactly 1× for 10 — so moving it never
+  makes the jet jump.
+
   **Jet stream line (every view).** `Customization → Jet stream line` draws a
-  line along that same axis (`jetAxisF`), off by default. It sits on the crest
-  of the ribbon in the Wind Shear view and marks where the jet is in Temperature
-  / SST Anomaly / Humidity too. It lives on the top overlay canvas
+  line along that same axis (`jetAxisFinal`), off by default. It sits on the
+  crest of the ribbon in the Wind Shear view and marks where the jet is in
+  Temperature / SST Anomaly / Humidity too. It lives on a canvas of its own
   (`drawJetLine`), not in the field raster, so it doesn't depend on the selected
   view or on "Show sea temperature", and it crosses land (the jet is atmospheric,
   not oceanic). Magenta with a dark casing rather than white, so it can't be
-  mistaken for the white threshold/contour lines or borders.
+  mistaken for the white threshold/contour lines or borders. That canvas is
+  re-stroked from the live jet clock on every animation frame while playing
+  (76 points: free), so the line glides at the display's frame rate; the shear
+  raster beneath it costs 50–70 ms to redraw, so it updates every 3 simulated
+  hours up to 2× (6 above), paced so redraws never take more than ~40% of the
+  main thread, and trails the line by at most that much.
 
 ## Imagery
 The "Blue Marble" theme is a crop **embedded in the build** (`data.bm`, drawn on
