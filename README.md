@@ -38,15 +38,18 @@ https://logansieracki-bot.github.io/HurricaneForecasterGame/ automatically —
 nothing to run by hand.
 
 ## Layout
-- `index.html` main menu: basin select + mode select. Only Atlantic / Simulation
-  are wired up; every other card is present but disabled ("Coming soon").
+- `index.html` main menu: basin select + mode select. All nine basins run in
+  Simulation mode; the Forecaster card is present but disabled ("Coming soon").
 - `src/template.html` the Atlantic simulator app: vanilla JS in one IIFE, three
   build placeholders (`/*__LEAFLET_CSS__*/`, `/*__LEAFLET_JS__*/`, `/*__DATA__*/`).
-  `window.SSTSIM` is the test/debug hook.
+  `window.SSTSIM` is the test/debug hook. `src/template-<basin>.html` are the other
+  eight basins' versions of the same app (per-basin constants and data; blocks are
+  ported between them by script, see `docs/roadmap.md`).
 - `vendor/leaflet/` Leaflet 1.9.4 CSS/JS, vendored verbatim (not fetched at build
   time, so the build has no network dependency either).
-- `data/generated/data.json` the embedded climate + geography + imagery data the
-  build stitches into the template. Committed for now (see Known gaps).
+- `data/generated/data.json` (Atlantic) and `<basin>-data.json` (the others): the
+  embedded climate + geography + imagery data the build stitches into each template.
+  Committed (see Known gaps); `tools/` has the pipelines that make them.
 - `tools/build.mjs` the build script.
 - `tests/run.mjs` the test suite.
 - `docs/roadmap.md` what's next, basin by basin.
@@ -233,6 +236,35 @@ nothing to run by hand.
   would read 7–19 kt low; see `docs/roadmap.md` for the numbers, the ENSO checks
   against the documented teleconnections, and the caveats.
 
+- ENSO hold: a checkbox next to `Set ENSO now` ("Keep ENSO at this value") pins Niño 3.4 at the value on the
+  slider instead of letting the oscillator move it away (the gauge says "· held"). The 3- and 6-month lagged
+  terms are held too, so the fields get the event's full response once six months have passed, and it survives
+  restart and a new seed. Same code in all nine basins.
+- Steering flow and highs (Atlantic; the other eight basins are next): `Customization → Steering arrows` draws
+  arrows whose direction is where the flow pushes a storm and whose colour is its speed (0–70+ kt, own legend),
+  for one of three layers picked with `Storm strength` (weak 850–700 hPa, medium 850–500, strong 850–200 hPa —
+  the standard BAM family); `Highs (H) with sea-level pressure` marks every high with an H and its central
+  pressure. Both work over every view, like the jet line, and the hover readout gains the heading, speed and
+  pressure. One field on a 4° grid (`DATA.steer`, bicubic), three parts. (1) The slow part is the usual recipe:
+  real ERA5 2007–2021 monthly climatology of the layer winds *and* sea-level pressure, one joint EOF set (so the
+  patterns keep the real coupling between a high and the flow round it; `variability`), an ENSO response whose
+  three lags are fitted *together*, and a seasonal amplitude for the EOF part — the real year-to-year spread of
+  the deep-layer wind at 25–35°N is 3.4 kt in August and 11.4 in February, where pooled EOFs would give both
+  5.6–6.1. (2) The jet ribbon: a westerly stripe along the same simulated axis that draws the jet line and the
+  shear ribbon, pointing along the axis' local direction, minus the mean ribbon that jet produces (measured on
+  the built page, `tools/calibrate_steer_means.mjs`) so the climate mean stays the real one. (3) Pressure
+  weather: travelling highs and lows whose size, speed and strength by latitude band and month are the measured
+  ones, whose geostrophic wind (times the fitted coupling, 0.7–0.8 poleward of 35°) drives the winds, so the
+  arrows circulate round each high (12–14 kt eight degrees out; real 11.7), plus a rotational residual flow for
+  what no surface pattern explains, sized so the whole budget — year-to-year plus day-to-day variance, per
+  calendar month and node — is the real one (simulated/real standard deviation 0.96–1.08 over four seasons ×
+  four latitude bands). The highs are the maxima of the total pressure (at least 1017 hPa, 2.5 hPa above their
+  surroundings, outside 15°), found on the node grid and refined with a parabola; both semi-permanent highs
+  (the climatology and EOFs) and migratory ones (the travelling pressure field) come out of the same field. The
+  weather runs on the jet's own dilated, slider-scaled clock, and `Day-to-day weather (shear, steering, highs)`
+  is the one slider for all three; steering has its own random stream, so adding it changed nothing else a seed
+  does. `tools/build_steer_all.sh` lists the pipeline; `docs/roadmap.md` has the numbers and the caveats.
+
 ## Imagery
 The "Blue Marble" theme is a crop **embedded in the build** (`data.bm`, drawn on
 a canvas, Mercator-correct per scanline) — always available, zero network
@@ -247,18 +279,21 @@ often enough to be the main visible complaint. `npm test` includes a network-off
 check that Satellite still resolves to something usable.
 
 ## Known gaps
-- **No data pipeline yet.** `data/generated/data.json` was extracted from a
-  previously-built file, not generated from raw sources — there's no
-  `tools/make_climate.py` / `tools/make_geo.py` / `npm run fetch` in this repo
-  yet. Until that pipeline exists, treat `data/generated/data.json` as a
-  checked-in asset, not a regenerable build artifact.
+- **The generated data is committed, not rebuilt by `npm run build`.** The pipelines that
+  make it live in `tools/` (`make_climate.py`, `make_geo.mjs`, `make_imagery.py`,
+  `make_humidity*.py`, `make_shear*.py`, `make_steer*.py`, `merge_data.mjs`; the
+  `tools/build_*_all.sh` scripts list the per-basin commands) and need network access to
+  the NOAA ERSST and ERA5 archives plus the raw caches in `data/raw` (git-ignored), so
+  they are run by hand when a calibration changes.
 - Domain is the North Atlantic basin only; SST south of the equator and in the
   Mediterranean/Black Sea is intentionally masked out (they're future basins).
-  ENSO changes SST, humidity and wind shear in all 9 basins (its three lag terms
+  ENSO changes SST, humidity and wind shear in all 9 basins (their three lag terms
   are summed, which for a sustained event counts the same response about three
-  times where the real response is large — see `docs/roadmap.md`).
+  times where the real response is large — and the "Keep ENSO at this value" box
+  makes exactly that visible; the steering field already fits its lags jointly —
+  see `docs/roadmap.md`).
 - ERSST at 2° is warm-biased in coastal cells; several corrections are hand-tuned
   (see the shelf, Northeast shelf, Gulf Stream blocks in `src/template.html`).
-- Only Atlantic + Simulation mode are wired up in the main menu. The other 8
-  basins are listed but disabled ("Coming soon") — see `docs/roadmap.md` for
-  order; Forecaster mode hasn't been started.
+- All nine basins run in Simulation mode; Forecaster mode hasn't been started (its
+  menu card is disabled). Steering arrows and highs exist in the Atlantic so far; the
+  other eight basins are next (`docs/roadmap.md`).

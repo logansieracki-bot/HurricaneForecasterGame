@@ -226,6 +226,7 @@ canvas.overlay{position:absolute;left:0;top:0;width:100%;height:100%;pointer-eve
           <div class="sl"><label for="p-ensonow">Set ENSO now</label><output id="p-ensonow-o">Neutral</output></div>
           <input id="p-ensonow" type="range" min="-3" max="3.4" step="0.1" value="0">
         </div>
+        <label class="chk"><input type="checkbox" id="enso-hold"><span> Keep ENSO at this value (don't let it drift)</span></label>
         <div class="seedrow">
           <label for="seed">Seed</label><input id="seed" type="number" min="1" max="999999" step="1">
           <button class="pill" id="b-newseed" title="Pick a new random year and restart">New seed</button>
@@ -577,16 +578,26 @@ const E_HIST = 200, ensoHist = new Float32Array(E_HIST);
 let ensoZr = 0, ensoZi = 0, n34 = 0, ensoHi = 0;
 function ensoEnv(doy) { const p = doy / 365.25 * 12 - 0.5, i = Math.floor(p), t = p - i, M = (x) => ((x % 12) + 12) % 12; return ENSO_ENV[M(i)] * (1 - t) + ENSO_ENV[M(i + 1)] * t; }
 function ensoRaw(doy) { const x = ensoZr, y = (x + ENSO_B * (x * x - 1)) * ENSO_NORM; return ENSO_LIM * Math.tanh(ensoEnv(doy) * y / ENSO_LIM); }
+// "Keep ENSO at this value": while on, Niño 3.4 sits exactly at ensoHeld day after day instead of evolving (the oscillator is
+// frozen where it was). The fields still answer with their usual 3-6 month lag, so a held event builds up to its full effect
+// and stays there; switching it off hands the index back to the oscillator from the held value.
+let ensoHold = false, ensoHeld = 0;
 function ensoStep(doy) {
-  const a = randn(), b = randn(), zr = E_RHO * (ensoZr * E_C - ensoZi * E_S) + E_SIG * a, zi = E_RHO * (ensoZr * E_S + ensoZi * E_C) + E_SIG * b;
+  const a = randn(), b = randn();   // always drawn, so holding ENSO never shifts the random stream every other feature reads
+  if (ensoHold) { n34 = ensoHeld; ensoHist[ensoHi] = n34; ensoHi = (ensoHi + 1) % E_HIST; return; }
+  const zr = E_RHO * (ensoZr * E_C - ensoZi * E_S) + E_SIG * a, zi = E_RHO * (ensoZr * E_S + ensoZi * E_C) + E_SIG * b;
   ensoZr = zr; ensoZi = zi; n34 += (ensoRaw(doy) - n34) * 0.095;
   ensoHist[ensoHi] = n34; ensoHi = (ensoHi + 1) % E_HIST;
 }
 const ensoLag = (days) => ensoHist[((ensoHi - 1 - days) % E_HIST + E_HIST) % E_HIST];
-function forceEnso(target) {           // jump to a chosen state; the South Pacific then responds with its natural 3–6 month delay
+function ensoSet(target) {             // put the index and the oscillator on a chosen state, aligned to today's season (no redraw)
   const d = simDate(simHour), doy = (d.getTime() - Date.UTC(d.getUTCFullYear(), 0, 1)) / 86400000, yn = target / ensoEnv(doy) / ENSO_NORM;
   ensoZr = Math.abs(target) < 0.05 ? 0 : (-1 + Math.sqrt(Math.max(0, 1 + 4 * ENSO_B * (ENSO_B + yn)))) / (2 * ENSO_B); ensoZi = 0;
-  n34 = target; ensoHist[(ensoHi - 1 + E_HIST) % E_HIST] = target; anomDirty = true; updateEnsoUI(); refresh();
+  n34 = target; ensoHist[(ensoHi - 1 + E_HIST) % E_HIST] = target;
+}
+function forceEnso(target) {           // jump to a chosen state; the South Pacific then responds with its natural 3–6 month delay
+  if (ensoHold) ensoHeld = target;     // ...and while ENSO is held, the chosen state is the one that stays
+  ensoSet(target); anomDirty = true; updateEnsoUI(); refresh();
 }
 
 let simHour = 0, dayCount = 0, pc = new Float32Array(K), pcH = new Float32Array(KH), pcS = new Float32Array(KS), gapIdx = 0;
@@ -637,6 +648,7 @@ function initSim(seed) {
   gapIdx = randn() * 0.4; dayCount = 0; simHour = 0;
   ensoZr = randn(); ensoZi = randn(); n34 = 0; ensoHist.fill(0); ensoHi = 0;
   for (let d = -10950; d < 0; d++) ensoStep((((134 + d) % 365.25) + 365.25) % 365.25);   // 30-year spin-up ending on 15 May
+  if (ensoHold) { ensoSet(ensoHeld); ensoHist.fill(ensoHeld); }   // a held ENSO survives a restart: the new run starts already in that regime, lagged responses included
   anomDirty = true;
 }
 function stepDay() {
@@ -1705,7 +1717,7 @@ function updateEnsoUI() {
   const w = 50 * Math.tanh(a / 3);   // soft: the gauge keeps filling (slowly) past a strong reading instead of pinning flat once it hits a hard "3"
   f.style.width = w + '%'; f.style.left = (v >= 0 ? 50 : 50 - w) + '%'; f.style.background = v >= 0 ? '#ff9a5c' : '#6aa8ff';
   $('enso-v').textContent = (v >= 0 ? '+' : '−') + a.toFixed(1);
-  $('enso-l').textContent = ensoLabel(v);
+  $('enso-l').textContent = ensoLabel(v) + (ensoHold ? ' · held' : '');
 }
 let lastClock = '';
 function updateClock() {
@@ -1757,6 +1769,13 @@ $('b-slower').onclick = () => { if (speedIdx > 0) { speedIdx--; updateSpeedUI();
 $('b-faster').onclick = () => { if (speedIdx < SPEEDS.length - 1) { speedIdx++; updateSpeedUI(); } };
 $('b-restart').onclick = restart;
 $('p-ensonow').oninput = () => { const t = parseFloat($('p-ensonow').value); $('p-ensonow-o').textContent = ensoLabel(t) + ' (' + (t >= 0 ? '+' : '−') + Math.abs(t).toFixed(1) + ')'; forceEnso(t); };
+$('enso-hold').onchange = () => {
+  if ($('enso-hold').checked) {        // freeze Niño 3.4 where the gauge reads now (or at the slider's value as soon as it is moved)
+    ensoHold = true; ensoHeld = n34;
+    const t = Math.round(n34 * 10) / 10; $('p-ensonow').value = t; $('p-ensonow-o').textContent = ensoLabel(t) + ' (' + (t >= 0 ? '+' : '−') + Math.abs(t).toFixed(1) + ')';
+  } else { ensoHold = false; ensoSet(ensoHeld); }   // the oscillator takes over again from the held value
+  anomDirty = true; updateEnsoUI(); refresh();
+};
 window.addEventListener('keydown', (e) => {
   if (e.target && /INPUT|TEXTAREA/.test(e.target.tagName) && e.target.type !== 'range' && e.target.type !== 'checkbox') return;
   if (e.code === 'Space') { e.preventDefault(); setPlaying(!playing); }
@@ -1804,7 +1823,7 @@ window.SSTSIM = {
   advance(h) { advanceHours(h); updateClock(); refresh(); },
   sample(lat, lon) { return { sst: sampleField(sst, lat, lon), normal: sampleField(normal, lat, lon), humid: sampleField(humid, lat, lon), shear: sampleField(shear, lat, lon) }; },
   state() { return { simHour, seed: P.seed, date: simDate(simHour).toISOString(), gapIdx }; },
-  set(k, v) { P[k] = v; refresh(); }, enso() { return { n34, lag0: ensoLag(0), lag3: ensoLag(91), lag6: ensoLag(183) }; }, forceEnso, jetLat(lon) { return jetAxisF[Math.round((lon - LON0) / RES)]; },
+  set(k, v) { P[k] = v; refresh(); }, enso() { return { n34, lag0: ensoLag(0), lag3: ensoLag(91), lag6: ensoLag(183), hold: ensoHold, held: ensoHeld }; }, forceEnso, jetLat(lon) { return jetAxisF[Math.round((lon - LON0) / RES)]; },
   // Live axis straight from the jet clock (what the line is drawn from), not the copy baked into the last computeField(); tick() moves the clocks WITHOUT the 50-70 ms field redraw advance() does, so a test can sample the jet hour by hour cheaply.
   jetLatLive(lon) { jetAxisFinal(jetAxisNow); const fc = (lon - LON0) / DM.cres, c0 = Math.min(CNX - 2, Math.max(0, Math.floor(fc))), t = fc - c0; return jetAxisNow[c0] * (1 - t) + jetAxisNow[c0 + 1] * t; }, tick(h) { advanceHours(h); }, setView(v) { document.querySelector('#seg-view button[data-v="' + v + '"]').click(); },
   setPlaying, restart, map, render, setTheme, setGridMode, sliderVals() { return { seasonal: P.seasonal, features: P.features, enso: P.enso, warming: P.warming, variability: P.variability, synoptic: P.synoptic, shearSynoptic: P.shearSynoptic, jetSpeed: P.jetSpeed, seed: P.seed }; }, applySeed, isLand,

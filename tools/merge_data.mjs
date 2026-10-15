@@ -2,7 +2,7 @@
 // Combines a basin's <basin>-geo.json + <basin>-climate.json + <basin>-imagery.json
 // (each built independently by make_geo.mjs / make_climate.py / make_imagery.py)
 // into the single <basin>-data.json build.mjs actually embeds into the template.
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -103,9 +103,38 @@ export function mergeShearJet(basin, dataFileName) {
   return out;
 }
 
+
+// Layers a basin's steering/pressure data onto an already-merged data file, nested under one `steer` key:
+// <basin>-steer.json (make_steer.py: monthly climatology + joint EOF + ENSO of the layer winds and sea level
+// pressure, on its own 4 degree grid, so its `domain` is kept -- it is NOT the coarse 2 degree one) with
+// <basin>-steer-weather.json (make_steer_weather.py: the day-to-day calibration) as steer.weather and, if it
+// exists, <basin>-steer-means.json (tools/calibrate_steer_means.mjs, measured on the built page: the mean ribbon
+// the client subtracts, and the residual amplitude maps that close the variance budget) as steer.weather.means;
+// the maps replace the weather file's first estimate of the residual size (sigR) and add the shallow layer's own (sigRs).
+// <basin>-steer-calib.json holds calibration targets only and is never shipped.
+export function mergeSteer(basin, dataFileName) {
+  const dataPath = join(GEN, dataFileName);
+  const existing = JSON.parse(readFileSync(dataPath, 'utf8'));
+  const steer = JSON.parse(readFileSync(join(GEN, `${basin}-steer.json`), 'utf8'));
+  const weather = JSON.parse(readFileSync(join(GEN, `${basin}-steer-weather.json`), 'utf8'));
+  const meansPath = join(GEN, `${basin}-steer-means.json`);
+  let note = '';
+  if (existsSync(meansPath)) {
+    const { smear, samples, sigR, sigRs } = JSON.parse(readFileSync(meansPath, 'utf8'));
+    weather.means = { smear, samples };
+    if (sigR && sigRs) { weather.sigR = sigR; weather.sigRs = sigRs; }
+    note = `, with measured means${sigR ? ' and closed residual maps' : ''}`;
+  }
+  steer.weather = weather;
+  const out = { ...existing, steer };
+  writeFileSync(dataPath, JSON.stringify(out));
+  console.log(`wrote ${dataPath} (added steer key${note})`);
+  return out;
+}
+
 if (import.meta.url === `file://${process.argv[1]}`) {
   const [basin, mode, dataFileName] = process.argv.slice(2);
-  if (!basin) { console.error('usage: node tools/merge_data.mjs <basin>\n       node tools/merge_data.mjs <basin> --humidity <data-file-name>\n       node tools/merge_data.mjs <basin> --humidity-synoptic <data-file-name>\n       node tools/merge_data.mjs <basin> --shear <data-file-name>\n       node tools/merge_data.mjs <basin> --shear-synoptic <data-file-name>\n       node tools/merge_data.mjs <basin> --shear-jet <data-file-name>'); process.exit(1); }
+  if (!basin) { console.error('usage: node tools/merge_data.mjs <basin>\n       node tools/merge_data.mjs <basin> --humidity <data-file-name>\n       node tools/merge_data.mjs <basin> --humidity-synoptic <data-file-name>\n       node tools/merge_data.mjs <basin> --shear <data-file-name>\n       node tools/merge_data.mjs <basin> --shear-synoptic <data-file-name>\n       node tools/merge_data.mjs <basin> --shear-jet <data-file-name>\n       node tools/merge_data.mjs <basin> --steer <data-file-name>'); process.exit(1); }
   if (mode === '--humidity') {
     if (!dataFileName) { console.error('usage: node tools/merge_data.mjs <basin> --humidity <data-file-name>'); process.exit(1); }
     mergeHumidity(basin, dataFileName);
@@ -121,6 +150,9 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   } else if (mode === '--shear-jet') {
     if (!dataFileName) { console.error('usage: node tools/merge_data.mjs <basin> --shear-jet <data-file-name>'); process.exit(1); }
     mergeShearJet(basin, dataFileName);
+  } else if (mode === '--steer') {
+    if (!dataFileName) { console.error('usage: node tools/merge_data.mjs <basin> --steer <data-file-name>'); process.exit(1); }
+    mergeSteer(basin, dataFileName);
   } else {
     merge(basin);
   }

@@ -1,6 +1,137 @@
 # Roadmap
 
 ## Just landed
+- **Steering arrows and highs (Atlantic first), plus "Keep ENSO at this value" (all 9 basins).**
+  `Customization → Steering arrows (colour = speed)` draws arrows on a lattice that follows the zoom
+  (about 290 on a 1280x800 window, never closer than ~46 px): direction is where the flow pushes a storm,
+  colour is its speed (indigo → blue → cyan → green → yellow → orange → red → white-hot, 0 to 70+ kt, with
+  its own legend card). A `Storm strength` selector picks the layer: Weak (850-700 hPa), Medium (850-500) or
+  Strong (850-200, the default), the standard BAM family. `Highs (H) with sea-level pressure` puts an H on
+  every high with its central pressure. Both work over every view (Temperature, Anomaly, Humidity, Shear),
+  with "Show sea temperature" off, and over land; the hover readout gains "Steering toward 106° (ESE) at 31 kt"
+  and "Sea-level pressure 1009 hPa". The decisions you made: semi-permanent and migratory highs both, in one
+  field; no separate high-strength slider (it was too much control); one shared `Day-to-day weather (shear,
+  steering, highs)` slider and one `Weather speed (jet, steering, highs)` slider for all three. My defaults for
+  the two questions you left open: the storm-strength selector exists (Weak/Medium/Strong, Strong selected),
+  and lows / dry-air-from-highs are left for later.
+
+  *The "Keep ENSO at this value" checkbox* sits next to `Set ENSO now`: ticked, Niño 3.4 stays exactly at the
+  slider's value instead of drifting away (the gauge says "· held"); moving the slider while ticked moves the
+  held value; unticking hands it back to the oscillator. The 3- and 6-month lagged terms are held too, so a held
+  event reaches its full response once six months have passed (the history is not back-filled: the same delay
+  a forced event has always had), and it survives restart and a new seed. Same code and same 9 checks in all
+  nine basins. **Read this before relying on it for SST, humidity or shear:** those three fields still use the
+  older one-lag-at-a-time ENSO fits whose three terms sum to 1.7-2.8x what a sustained event really does (the
+  caveat already listed under "Later"); holding ENSO makes that visible, where a drifting oscillator never sat at
+  one value long enough to. The steering field already uses the joint fit (sum-of-lags peak 3.19 kt per degC
+  for the deep u against 6.71 for the old way).
+
+  *How it is built: one field, field-first (chosen over "highs as objects that push the wind").* On a 4 degree
+  grid (38x29 nodes over the Atlantic's box, interpolated bicubically). Real data comes from the same
+  public ARCO-ERA5 archive (`tools/pull_era5_steer.py`: layer-mean winds, monthly 2007-2021 and daily
+  2017-2021, plus 6-hourly sea-level pressure; vectors averaged first, pressure-weighted in p).
+  (1) *Slow part* (`tools/make_steer.py`): real monthly climatology of the shallow and deep layer winds and
+  the sea-level pressure, one JOINT EOF set (K = 8, 59% of the weighted variance; winds and pressure in one state
+  vector so the patterns keep the real coupling between a high and the flow around it) and an ENSO response with
+  the three lags fitted together. The medium layer is not stored: 0.68 x shallow + 0.32 x deep, R² 0.98-0.99.
+  (2) *Jet ribbon*: a westerly stripe along the same simulated axis that draws the jet line and the shear
+  ribbon, pointing along the axis' local direction (so arrows hug the jet and swing north-east ahead of
+  troughs), with the real along-axis profile (excess over the far field: +25.6 kt deep at the axis, fading to 0
+  at 14 degrees), minus the mean ribbon that simulated jet produces (measured by `tools/calibrate_steer_means.mjs`
+  from the built page, largest mean 15.7 kt, standard error ≤ 0.63), so the climate mean stays the real one.
+  (3) *Pressure weather*: a field of travelling highs and lows, a sum of 14 plane waves per latitude band
+  (5 bands) with the measured size (wavelength 4.8-6.2 thousand km poleward of 20 degrees), eastward speed
+  (19-20 m/s at 35-60N, slowed 2.5x with the jet) and rms by calendar month and node (1.1 hPa near the equator
+  to 10 hPa at 60N); its geostrophic wind times the fitted coupling alpha(latitude) (0.73-0.77 poleward of 35
+  degrees for the shallow layer, 0.68-0.75 deep, weak in the tropics; r² up to 0.76 shallow, 0.39 deep) drives
+  the winds. (4) *Residual flow*: rotational (streamfunction) waves for what no surface pattern explains (upper
+  troughs, tropical waves; in the real residual vorticity is 6-13x the divergence), with its own shallow-layer size.
+  The highs are the maxima of the total pressure (climatology + EOF/ENSO + the weather), found on the node grid
+  and refined with a parabola: at least 1017 hPa, 2.5 hPa above the surrounding ring, outside 15 degrees (no highs
+  in the equatorial trough; over the Andes the reduced pressure is an extrapolation artefact). All the weather
+  runs on the jet's own clock (dilated 2.5x, scaled by the speed slider), steering has its own random stream, and
+  the day-to-day slider scales it. Hurricanes' own circulation is masked out of every statistic (8-degree discs
+  round pressure minima under 1003 hPa; 0.8% of the Atlantic's grid-days) so what is calibrated is the environment the storm
+  model will steer in.
+
+  *Three things the real-data checks found and fixed* (each was invisible until it was compared with real data,
+  month by month and band by band, not just on average).
+  (a) **The simulation was far too variable in boreal summer.** August deep-layer winds were 35-62% more
+  variable than real at 15-45N (std ratio 1.42 / 1.62 / 1.35 at 15-25 / 25-35 / 35-45N), May up to 17% high, February
+  and November within ±14%. Two causes. The EOFs are fitted on all months together, so every month got the same
+  year-to-year spread, but the real spread has a strong seasonal cycle (deep u at 25-35N: 3.4 kt in August,
+  11.4 in February, 7.3 pooled): each month's EOF part is now rescaled node by node (`eofAmp`, 0.73 in August
+  to 2.2 in February at 15-30N) so EOF + ENSO reproduce that month's real year-to-year variance. And the
+  residual was sized from a removal that did not match what the simulation adds back, so the pieces added up to
+  more than the real total; `calibrate_steer_means.mjs` now closes the budget on the built page: for every month
+  and node, residual variance = (real year-to-year + real day-to-day variance) minus the variance of everything
+  else the page adds, measured, floored at 0 (it is the floor in 6-7% of deep-layer nodes in July and
+  August, 3% in September and none the rest of the year; the residual is 59-68% of the deep layer's total variance in every month). Result, checked over
+  4 seasons x 4 latitude bands: simulated/real standard deviation 0.96-1.08 (deep), 0.95-1.08 (shallow); the
+  pressure weather is 102% / 109% of its real size in February / August.
+  (b) **Highs were up to 39% too few.** A ring spectrum (wavenumbers within ±25%) gave 2.8-4.3 northern
+  highs a day against a real 4.2-5.0 by the same rule applied to the real fields (-25 to -39% from April to
+  October, -8 to -19% in the other months). Prominence and central pressure
+  were right, only the count was low; a broader, log-normal wavenumber spread (`ST_P_SPREAD` 0.45, mean wavelength
+  kept) fixes it without shrinking the highs. Northern highs a day, simulated vs real, June to May: 3.9 / 3.9 /
+  4.1 / 4.3 / 4.5 / 4.8 / 5.4 / 5.1 / 5.1 / 4.6 / 4.4 / 4.2 against 4.2 / 4.5 / 5.0 / 5.0 / 4.9 / 4.8 / 4.7 / 4.7 /
+  4.5 / 4.5 / 4.8 / 4.9 (within -18% to +15%); southern: 3.9 / 3.7 / 3.2 / 2.7 / 2.6 / 1.7 / 1.7 / 2.1 / 1.9 / 2.1 /
+  2.8 / 3.3 against 3.6 / 3.1 / 2.4 / 2.3 / 1.9 / 1.6 / 1.9 / 1.9 / 2.0 / 2.1 / 2.6 / 3.5 (-7% to +39%, worst October).
+  Central pressure 10th/50th/90th percentile 1018.8 / 1023.9 / 1031.6 hPa against a real 1018.2-1019.0 /
+  1022.3-1024.8 / 1029.6-1035.4. The count also moves with wavelength more steeply than expected (x0.8 wavelength
+  gave about +30%, x0.65 about +80%), which is why it needed a fit rather than a guess.
+  (c) **A diagnostic mistake worth remembering.** I first read the jet ribbon as 16% too strong (39.9 vs a real
+  34.4 kt along the axis) and spent a while building a more principled calibration (the anomaly composite on
+  the real axis, solved against the simulated jet). The comparison was wrong: a simulated run starts on June 1,
+  so "days 152-334" is November to April, and the real composite was June to November. Like for like (June-November,
+  25-58N, 80-20W) the shipped far-field-excess ribbon gives 33.6 kt vs the real 34.4, median 18 degrees off the axis
+  vs 16, 89% within 45 degrees vs 80%, and the profile across the axis within 3 kt at every offset. The
+  principled variant lowered the residual only a little (rms 11.1 to 9.6 kt in August at 25-35N) and fell short on this
+  composite (29.4 kt), so it was dropped; the variance is fixed in (a) instead. Check the season of any simulated sample against the real one.
+
+  *What it reproduces, Atlantic, simulated vs real ERA5 (2017-2021 daily, 2007-2021 monthly; thresholds in the
+  tests were set from many seeds, not from one run).* Mean winds and pressure are the real climatology: bias
+  over the grid ≤ 0.25 kt (u), 0.13 kt (v), 0.13 kt shallow, 0.28 hPa, node rms 2.1 / 1.2 / 1.3 kt and 0.8 hPa
+  over four seasons of 30 seeds. Arrows circulate round the highs the way real ones do, 8 degrees out: northern
+  highs 14.3 kt weak / 13.3 kt strong storms, anticyclonic round 98% / 84% of 201 highs (real 11.7 kt, 98% / 88%);
+  southern 12.4 / 9.6 kt, 97% / 76% (the other way round). ENSO held at +2 vs -2 (variability and weather off,
+  190 days): deep westerlies over the Gulf +5.0 kt, tropical Atlantic -1.8 kt, 45N 40W +5.8 kt, sea-level pressure at
+  60N 20W -2.35 hPa. Along the jet axis, June-November: above. The trades are faster in the shallow layer (14.1 vs
+  9.3 kt at 15N 50W), the jet in the deep layer (37.7 vs 24.1 kt at 45N 40W). Smoothness: from one hour to the next
+  the heading changes by at most 4.6 degrees and the speed by 1.1 kt (1850 hourly steps at 6 points), highs drift a
+  median 0.10 degrees an hour (95th percentile 0.4), and a seed gives bit-identical steering however the run is
+  chunked.
+
+  *Cost.* The arrows are drawn from pre-rendered sprites (one per colour, painted once with their dark halo) and
+  blitted rotated: about a millisecond per redraw, redrawn at most every 90 ms; the node field takes ~2 ms. A
+  full-coverage canvas costs a software-rendered headless browser 11% of its frame rate at 1440x860 and 21% at
+  2000x1300 with arrows on; stroking every arrow's halo each frame (the first version) cost ~50 ms a frame.
+  The Atlantic page grew from 2.9 to 3.1 MB (the seasonal EOF amplitude map and the shallow residual map).
+
+  *Tests.* One block (`checkSteering`, driven by `STEER_SPECS`, so another basin is one spec entry) with 60 checks, ~45 s (the suite goes 723 -> 864): the controls and the legend
+  (colour ends, captions, hidden until ticked); the arrows on their canvas's real pixels (colour at each arrow's
+  centre is the legend's colour for its speed; the head's wings lie ahead of the centre on the wind's heading,
+  median 3 degrees off; drawn in every view and with "Show sea temperature" off; lattice spacing; the arrows
+  redraw as the clock runs and stand still when paused); the readout in every combination of the two boxes and
+  three layers; mean preservation; the variance budget by season and band; the weather's size; ENSO signs; the
+  highs (rule, counts, pressures, drift, circulation); the ribbon; both sliders; smoothness, chunking and restart
+  reproducibility; isolation (SST, humidity, shear and ENSO after 6 days are bit-for-bit what they are with the
+  features off); the layers; the icons. Plus `checkEnsoHold` (9 checks) in every basin. The new block was checked to fail on each of: a build without the smear (mean bias 3.2 kt, node rms 5.7 kt, 39.6 kt along the axis), a flipped geostrophic sign (highs circulate the wrong way: 25% anticyclonic), a flipped arrow heading, a flipped ENSO sign, the weather slider ignored, the jet clock replaced by the simulation clock, no seasonal EOF amplitude (August's spread 99% of February's, real 32%), a residual 1.5x too big (std ratio 1.16-1.43), no ribbon, no prominence rule in the highs, and a narrow pressure spectrum (2.8 northern highs a day in June). One thing it found about itself: the first version of the seasonal-spread check measured the budget with the residual already closed, so removing the seasonal EOF amplitude passed it; the slow part now has its own check (weather off).
+
+  *Caveats.* (1) Only the Atlantic's client has the steering code; the other eight basins have the ENSO box and
+  nothing else yet. They are a scripted port plus each basin's own calibration (`tools/build_steer_all.sh` lists
+  the commands; the rows are commented out). (2) Highs: northern counts run +9 to +15% in December-February,
+  southern +15 to +39% in August-October. (3) The ribbon amplitude is the June-November one in every month: the real
+  winter jet is stronger (along-axis deep wind at the axis 47 kt in DJF vs 31 in JJA, same sector), so winter jet-following is
+  understated; and the real wind along the axis spreads wider than the simulated (10th-90th percentile 5-62 kt vs
+  15-54). (4) The seasonal-amplitude fix is for steering only: the SST, humidity and shear EOFs are still pooled
+  over the year and have the same seasonal-spread mismatch. (5) Not validated against best-track storm motion: the
+  sandbox cannot reach NHC/NCEI, so that comes with the storm model (a few real storms' steering would be the first
+  thing to check). (6) The 6-degree fade at the edge of the simulated area never shows in the Atlantic (the map's
+  pan limits keep that edge 8 degrees away); it will in basins that can show their edge. (7) The 15-year grid reads 30.5 kt
+  for the deep westerlies at 46N 60W in June-November where the 5-year daily file has 33.7: part is the 4 degree
+  sampling smoothing the jet core, part the different years; not separated.
+
 - **Rolled Wind Shear and the jet stream out to the other 8 basins.** East Pacific, West Pacific,
   North Indian Ocean, Australian Region, South-West Indian Ocean, South Pacific, South Atlantic and
   Mediterranean now have everything the Atlantic has: the Wind Shear view (real ERA5 climatology +
@@ -1501,7 +1632,21 @@ again building EPAC):**
   see the caveats in the Wind Shear rollout entry above): fitting the three lags jointly, or
   normalizing the weights, would remove an up-to-3x overstatement of a sustained event's response
   where the real response is large (the equatorial central Pacific). Deliberately not changed
-  while rolling shear out, because it alters SST and humidity in all 9 basins.
+  while rolling shear out, because it alters SST and humidity in all 9 basins. It is more visible now
+  that "Keep ENSO at this value" can hold an event: the steering field already uses the joint fit
+  (`climate_lib.enso_regression_lagsum`, which halves the sustained response), so the same call in
+  `make_climate.py` / `make_humidity.py` / `make_shear.py` is the fix.
+- Steering arrows and highs for the other 8 basins: the Atlantic's client code ported by script like the
+  shear/jet was, plus each basin's own calibration (`tools/build_steer_all.sh`, rows commented out), the
+  per-basin checks (`STEER_SPECS` in `tests/run.mjs` takes a spec entry per basin) and a look at each. Waiting
+  for a look at the Atlantic first.
+- The seasonal-amplitude fix `make_steer.py` applies to its EOF part (`eofAmp`) belongs on the SST, humidity
+  and shear EOFs too: they are fitted over all months together and have the same mismatch (the real
+  year-to-year spread of a month's mean varies a lot with the season).
+- Steering: a winter jet (the ribbon is the June-November amplitude all year; the real DJF along-axis wind is
+  47 kt against 31 in JJA), the real spread of the wind along the axis (wider than simulated), lows as objects
+  next to the highs, and dry air under a high feeding the humidity field. And the real test of all of it:
+  steering of real best-track storms, once the storm model exists (the sandbox cannot reach NHC/NCEI).
 - Wind Shear's jet axis in the Mediterranean sits 1.15 degrees too far poleward on average
   (+3 kt field bias, the largest of the nine): compute the smear from the simulated axis
   distribution instead of the real one, which would make "the time mean equals the real
@@ -1509,5 +1654,3 @@ again building EPAC):**
 - Thin horizontal gaps in the colour overlay near 16-17S in the Australian, South-West Indian and
   South Pacific views, present before the shear work (found while screenshotting every basin;
   SST has no NaN rows there, the overlay canvas itself is transparent on those rows).
-- README's Layout and Known-gaps sections still describe the Atlantic-only menu and a missing
-  data pipeline; both are out of date.

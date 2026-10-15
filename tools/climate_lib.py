@@ -484,3 +484,101 @@ def load_era5_shear_daily(target_lat, target_lon, year0, year1, months=None,
         os.makedirs(os.path.dirname(cache_path), exist_ok=True)
         shear_daily.to_netcdf(cache_path)
     return shear_daily
+
+
+# ---------------------------------------------------------------------------------------------
+# Steering-flow layer winds and sea-level pressure (steering arrows + highs). The heavy lifting
+# (one pass over the archive, one file per year) is tools/pull_era5_steer.py; these just read those
+# files back, rewrap the longitudes the way every other loader here does, and regrid onto the ERSST
+# 2 degree grid so extract_box()/anomalies()/compute_eofs() can be used unchanged.
+# ---------------------------------------------------------------------------------------------
+STEER_FIELDS = ["u_shallow", "v_shallow", "u_medium", "v_medium", "u_deep", "v_deep"]
+
+
+def _regrid_native(ds, target_lat, target_lon):
+    lon180 = ((ds["longitude"] + 180) % 360) - 180
+    ds = ds.assign_coords(longitude=lon180).sortby("longitude").sortby("latitude")
+    ds = ds.rename({"latitude": "lat", "longitude": "lon"})
+    return ds.interp(lat=target_lat, lon=target_lon, method="linear")
+
+
+def _steer_files(kind, year0, year1, raw_dir):
+    import os
+    raw_dir = raw_dir or os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "raw")
+    paths = [os.path.join(raw_dir, f"era5_{kind}_{y}.nc") for y in range(year0, year1 + 1)]
+    missing = [p for p in paths if not os.path.exists(p)]
+    if missing:
+        raise FileNotFoundError(f"{len(missing)} per-year file(s) missing, run tools/pull_era5_steer.py first: {missing[:2]}")
+    return paths
+
+
+def load_era5_steer_monthly(target_lat, target_lon, year0, year1, raw_dir=None):
+    """Monthly means of the layer-mean wind (kt) for the shallow (850-700 hPa), medium (850-500) and
+    deep (850-200) steering layers, as an xarray Dataset of (time, lat, lon) variables u_<layer>, v_<layer>
+    on the target (ERSST 2 deg) grid. Averaged as vectors over every 6-hourly reading, then layer-averaged
+    (pressure-weighted) -- see pull_era5_steer.py."""
+    parts = [xr.open_dataset(p).load() for p in _steer_files("steer_monthly", year0, year1, raw_dir)]
+    ds = xr.concat(parts, dim="time").sortby("time")
+    return _regrid_native(ds, target_lat, target_lon).transpose("time", "lat", "lon")
+
+
+def load_era5_steer_daily(target_lat, target_lon, year0, year1, months=None, raw_dir=None):
+    """Daily means of the same layer winds (kt), for the synoptic (day-to-day) statistics. Optionally
+    restricted to the given calendar months (a basin's own season) before regridding."""
+    parts = []
+    for p in _steer_files("steer_daily", year0, year1, raw_dir):
+        d = xr.open_dataset(p).load()
+        if months is not None:
+            d = d.sel(time=d["time"].dt.month.isin(list(months)))
+        parts.append(d)
+    ds = xr.concat(parts, dim="time").sortby("time")
+    return _regrid_native(ds, target_lat, target_lon).transpose("time", "lat", "lon")
+
+
+def load_era5_mslp(target_lat, target_lon, year0, year1, months=None, freq="6h", raw_dir=None):
+    """Mean sea level pressure (hPa) as a DataArray (time, lat, lon) on the target grid. freq: '6h' keeps the
+    archive's own sampling, 'D' averages to daily means, 'M' to monthly means (stamped mid-month, like the
+    other monthly loaders)."""
+    out = []
+    for p in _steer_files("mslp", year0, year1, raw_dir):
+        d = xr.open_dataset(p)["mslp"].load()
+        if months is not None:
+            d = d.sel(time=d["time"].dt.month.isin(list(months)))
+        if freq == "D":
+            d = d.resample(time="1D").mean()
+        elif freq == "M":
+            d = d.groupby(d["time"].dt.month).mean("time")
+            year = int(p.split("_")[-1][:4])
+            stamps = np.array([f"{year}-{m:02d}-15" for m in d["month"].values], dtype="datetime64[ns]")
+            d = d.rename({"month": "time"}).assign_coords(time=stamps)
+        out.append(d)
+    da = xr.concat(out, dim="time").sortby("time")
+    ds = _regrid_native(da.to_dataset(name="mslp"), target_lat, target_lon)["mslp"]
+    return ds.transpose("time", "lat", "lon")
+
+
+def enso_regression_lagsum(anom_box, box_times, n34_times, n34_anom, lags_months=(0, 3, 6)):
+    """ENSO response coefficients for the client's `c0*e0 + c3*e3 + c6*e6` sum that, unlike
+    enso_regression(), do NOT double-count a sustained event. enso_regression() fits each lag on its own,
+    so for a slowly varying index each of the three coefficients already carries the whole response and
+    the client's sum comes out about 1.7-2.8x too strong when the index stays put (documented in
+    docs/roadmap.md). Here the three weights are fitted together per node, constrained to the node's
+    own sign and non-negative, so they sum to the equilibrium response to a sustained index of 1 degC
+    and say how that response is spread over the lags (non-negative least squares on the sign-flipped
+    series, which also keeps the weights from taking opposite signs on collinear lags)."""
+    from scipy.optimize import nnls
+    box_m = _month_index(box_times)
+    n34_lookup = dict(zip(_month_index(n34_times).tolist(), n34_anom.tolist()))
+    X = np.stack([np.array([n34_lookup.get(int(m - lag), 0.0) for m in box_m]) for lag in lags_months], axis=1)
+    X = X - X.mean(axis=0, keepdims=True)
+    Y = np.nan_to_num(anom_box, nan=0.0)
+    Y = Y - Y.mean(axis=0, keepdims=True)
+    xm = X.mean(axis=1)                                  # the lag-averaged index decides each node's sign
+    denom = (xm @ xm) + 1e-3
+    sign = np.sign(xm @ Y / denom)
+    sign[sign == 0] = 1.0
+    out = np.zeros((len(lags_months), Y.shape[1]))
+    for j in range(Y.shape[1]):
+        w, _ = nnls(X, sign[j] * Y[:, j])
+        out[:, j] = sign[j] * w
+    return out    # (3, space): response per degC of Nino3.4 at each lag; the sum is the sustained-event response
