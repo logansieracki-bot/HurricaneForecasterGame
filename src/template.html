@@ -70,7 +70,7 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--focus);outline-
 .row{margin:12px 0 0}
 .seg{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;background:rgba(255,255,255,.07);border-radius:9px;padding:3px;gap:2px}
 .seg button{border:0;background:transparent;border-radius:7px;padding:6px 4px;font-size:12.5px;cursor:pointer;color:var(--dim)}
-.seg button[aria-pressed=true]{background:var(--ice);color:#141414;font-weight:600}
+.seg button[aria-pressed=true],.seg button[aria-selected=true]{background:var(--ice);color:#141414;font-weight:600}
 .sl{display:flex;justify-content:space-between;align-items:baseline;font-size:12.5px;margin-bottom:2px}
 .sl output{font-variant-numeric:tabular-nums;color:var(--dim);font-size:12px}
 input[type=range]{width:100%;margin:2px 0 0;accent-color:#d4d4d4;height:20px}
@@ -197,12 +197,6 @@ canvas.overlay{position:absolute;left:0;top:0;width:100%;height:100%;pointer-eve
         <label class="chk"><input type="checkbox" id="l2"><span id="l2-label"> Contour lines every 2 °C</span></label>
         <label class="chk"><input type="checkbox" id="jetline"><span> Jet stream line (axis of strongest shear)<i id="jet-note"></i></span></label>
         <label class="chk"><input type="checkbox" id="steerarrows"><span> Steering arrows (colour = speed)</span></label>
-        <div class="row" id="steer-depth-row" style="display:none">
-          <div class="sl"><span>Storm strength</span></div>
-          <div class="seg" id="seg-depth" role="group" aria-label="Storm strength">
-            <button data-d="shallow" aria-pressed="false">Weak</button><button data-d="medium" aria-pressed="false">Medium</button><button data-d="deep" aria-pressed="true">Strong</button>
-          </div>
-        </div>
         <label class="chk"><input type="checkbox" id="highs"><span> Highs (H) with sea-level pressure</span></label>
       </div>
     </section>
@@ -210,49 +204,71 @@ canvas.overlay{position:absolute;left:0;top:0;width:100%;height:100%;pointer-eve
       <button class="subhead" aria-expanded="false" aria-controls="sec-exp-b"><span>Experimentation</span><i class="chev">&#9662;</i></button>
       <div class="subbody" id="sec-exp-b">
         <p class="hint">Normal = 1991–2020 average.</p>
-        <div class="row">
-          <div class="sl"><label for="p-warm">Warming</label><output id="p-warm-o">+0.0 °C</output></div>
-          <input id="p-warm" type="range" min="-3" max="4" step="0.1" value="0">
+        <div class="row seg" id="seg-xp" role="tablist" aria-label="Experiment settings">
+          <button role="tab" id="xp-tab-basic" data-x="basic" aria-selected="true" aria-controls="xp-basic">Basic</button>
+          <button role="tab" id="xp-tab-adv" data-x="adv" aria-selected="false" aria-controls="xp-adv" tabindex="-1">Advanced</button>
         </div>
-        <div class="row">
-          <div class="sl"><label for="p-var">Year-to-year variability</label><output id="p-var-o">1.0×</output></div>
-          <input id="p-var" type="range" min="0" max="3" step="0.1" value="1">
+        <div id="xp-basic" role="tabpanel" aria-labelledby="xp-tab-basic">
+          <div class="row">
+            <div class="sl"><label for="p-ensonow">Set ENSO now</label><output id="p-ensonow-o">Neutral</output></div>
+            <input id="p-ensonow" type="range" min="-3" max="3.4" step="0.1" value="0">
+          </div>
+          <label class="chk"><input type="checkbox" id="enso-hold"><span> Keep ENSO at this value (don't let it drift)</span></label>
+          <div class="row">
+            <div class="sl"><label for="p-warm">Warming</label><output id="p-warm-o">+0.0 °C</output></div>
+            <input id="p-warm" type="range" min="-3" max="4" step="0.1" value="0">
+          </div>
+          <div class="row">
+            <div class="sl"><label for="p-moist" title="Moves the average 700 hPa relative humidity everywhere, in percentage points">Moisture (average humidity)</label><output id="p-moist-o">+0 %</output></div>
+            <input id="p-moist" type="range" min="-20" max="20" step="1" value="0">
+          </div>
+          <div class="row">
+            <div class="sl"><label for="p-shear" title="Moves the average 200–850 hPa wind shear everywhere; it never goes below zero">Wind shear (average)</label><output id="p-shear-o">+0 kt</output></div>
+            <input id="p-shear" type="range" min="-20" max="20" step="1" value="0">
+          </div>
         </div>
-        <div class="row">
-          <div class="sl"><label for="p-wx">Day-to-day weather (humidity)</label><output id="p-wx-o">1.0×</output></div>
-          <input id="p-wx" type="range" min="0" max="3" step="0.1" value="1">
+        <div id="xp-adv" role="tabpanel" aria-labelledby="xp-tab-adv" hidden>
+          <div class="row" id="steer-depth-row">
+            <div class="sl"><span>Storm strength (steering arrows)</span></div>
+            <div class="seg" id="seg-depth" role="group" aria-label="Storm strength">
+              <button data-d="shallow" aria-pressed="false">Weak</button><button data-d="medium" aria-pressed="false">Medium</button><button data-d="deep" aria-pressed="true">Strong</button>
+            </div>
+          </div>
+          <div class="row">
+            <div class="sl"><label for="p-var">Year-to-year variability</label><output id="p-var-o">1.0×</output></div>
+            <input id="p-var" type="range" min="0" max="3" step="0.1" value="1">
+          </div>
+          <div class="row">
+            <div class="sl"><label for="p-wx">Day-to-day weather (humidity)</label><output id="p-wx-o">1.0×</output></div>
+            <input id="p-wx" type="range" min="0" max="3" step="0.1" value="1">
+          </div>
+          <div class="row">
+            <div class="sl"><label for="p-wxs">Day-to-day weather (shear, steering, highs)</label><output id="p-wxs-o">1.0×</output></div>
+            <input id="p-wxs" type="range" min="0" max="3" step="0.1" value="1">
+          </div>
+          <div class="row">
+            <div class="sl"><label for="p-jets">Weather speed (jet, steering, highs)</label><output id="p-jets-o">1.0×</output></div>
+            <input id="p-jets" type="range" min="0" max="3" step="0.1" value="1">
+          </div>
+          <div class="row">
+            <div class="sl"><label for="p-sea">Seasonal swing</label><output id="p-sea-o">1.0×</output></div>
+            <input id="p-sea" type="range" min="0" max="2" step="0.05" value="1">
+          </div>
+          <div class="row">
+            <div class="sl"><label for="p-feat">Currents and upwelling</label><output id="p-feat-o">1.0×</output></div>
+            <input id="p-feat" type="range" min="0" max="2" step="0.05" value="1">
+          </div>
+          <div class="row">
+            <div class="sl"><label for="p-enso">El Niño / La Niña influence</label><output id="p-enso-o">1.0×</output></div>
+            <input id="p-enso" type="range" min="0" max="4" step="0.05" value="1">
+          </div>
+          <label class="chk"><input type="checkbox" id="seed-vary" checked> Seed nudges swing, currents and El Niño</label>
         </div>
-        <div class="row">
-          <div class="sl"><label for="p-wxs">Day-to-day weather (shear, steering, highs)</label><output id="p-wxs-o">1.0×</output></div>
-          <input id="p-wxs" type="range" min="0" max="3" step="0.1" value="1">
-        </div>
-        <div class="row">
-          <div class="sl"><label for="p-jets">Weather speed (jet, steering, highs)</label><output id="p-jets-o">1.0×</output></div>
-          <input id="p-jets" type="range" min="0" max="3" step="0.1" value="1">
-        </div>
-        <div class="row">
-          <div class="sl"><label for="p-sea">Seasonal swing</label><output id="p-sea-o">1.0×</output></div>
-          <input id="p-sea" type="range" min="0" max="2" step="0.05" value="1">
-        </div>
-        <div class="row">
-          <div class="sl"><label for="p-feat">Currents and upwelling</label><output id="p-feat-o">1.0×</output></div>
-          <input id="p-feat" type="range" min="0" max="2" step="0.05" value="1">
-        </div>
-        <div class="row">
-          <div class="sl"><label for="p-enso">El Niño / La Niña influence</label><output id="p-enso-o">1.0×</output></div>
-          <input id="p-enso" type="range" min="0" max="4" step="0.05" value="1">
-        </div>
-        <div class="row">
-          <div class="sl"><label for="p-ensonow">Set ENSO now</label><output id="p-ensonow-o">Neutral</output></div>
-          <input id="p-ensonow" type="range" min="-3" max="3.4" step="0.1" value="0">
-        </div>
-        <label class="chk"><input type="checkbox" id="enso-hold"><span> Keep ENSO at this value (don't let it drift)</span></label>
         <div class="seedrow">
           <label for="seed">Seed</label><input id="seed" type="number" min="1" max="999999" step="1">
           <button class="pill" id="b-newseed" title="Pick a new random year and restart">New seed</button>
           <button class="pill" id="b-reset" title="Reset the sliders (seed-nudged ones go back to this seed's values)">Reset</button>
         </div>
-        <label class="chk"><input type="checkbox" id="seed-vary" checked> Seed nudges swing, currents and El Niño</label>
       </div>
     </section>
   </div>
@@ -652,7 +668,7 @@ const R_CAN = rect(-26, -6.5, 10, 45), R_BEN = rect(4, 22, -37, -10), R_VEN = re
  * ------------------------------------------------------------------ */
 const START_YEAR = new Date().getUTCFullYear();
 const START_MS = Date.UTC(START_YEAR, 5, 1, 0, 0, 0);
-const P = { warming: 0, variability: 1, seasonal: 1, features: 1, enso: 1, synoptic: 1, shearSynoptic: 1, jetSpeed: 1, seed: 1 };
+const P = { warming: 0, moisture: 0, shearShift: 0, variability: 1, seasonal: 1, features: 1, enso: 1, synoptic: 1, shearSynoptic: 1, jetSpeed: 1, seed: 1 };
 let rs = 1;
 function rand() { rs |= 0; rs = rs + 0x6D2B79F5 | 0; let t = Math.imul(rs ^ rs >>> 15, 1 | rs); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }
 function randn() { let u = 0; while (u === 0) u = rand(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * rand()); }
@@ -944,6 +960,11 @@ const ST = DATA.steer, STD = ST.domain, STW = ST.weather;
 const SNX = STD.nx, SNY = STD.ny, SN = SNX * SNY, STRES = STD.res, STF = ST.fields.length, KST = ST.K;
 const F_US = ST.fields.indexOf('u_shallow'), F_VS = ST.fields.indexOf('v_shallow'), F_UD = ST.fields.indexOf('u_deep'), F_VD = ST.fields.indexOf('v_deep'), F_P = ST.fields.indexOf('mslp');
 const ST_MED_W = ST.mediumWeight;   // medium layer (850-500 hPa) = ST_MED_W * shallow + (1 - ST_MED_W) * deep
+// the simulated box's own edges, in the map's longitude frame (a box across the date line -- the South Pacific -- runs 160..240, not 160..-120), which is also where the field raster and
+// the jet line fade out. The 4 degree nodes stop up to 3 degrees short of the box's far edges; the field is simply held at its last node out there (stSample clamps), which is what the real
+// field does over so short a distance.
+const ST_LON0 = LON0, ST_LON1 = LON0 + (NX - 1) * RES, ST_LAT1 = LAT1, ST_LAT0 = LAT1 - (NY - 1) * RES;
+const stNormLon = (lon) => (lon < ST_LON0 - 180 ? lon + 360 : lon);   // a longitude in -180..180 -> the grid's frame (the same rule as the South Pacific's own normLon)
 const stClim = new Float32Array(12 * STF * SN), stEof = new Float32Array(KST * STF * SN), stEnso = new Float32Array(3 * STF * SN);
 { const a = b64i16(ST.clim); for (let q = 0; q < a.length; q++) stClim[q] = a[q] / 10;
   for (let m = 0; m < 12; m++) { const o = (m * STF + F_P) * SN; for (let q = 0; q < SN; q++) stClim[o + q] += 1000; } }   // pressure was packed as hPa - 1000
@@ -1265,7 +1286,8 @@ function computeField() {
   }
 
   /* --- humidity: a separate, additive pass, not interleaved into the SST loop above --- *
-   * Deliberately only driven by P.variability/P.enso/P.synoptic, not P.warming/P.seasonal/
+   * Deliberately driven only by P.variability/P.enso/P.synoptic (plus P.moisture, the Moisture slider's plain shift of the
+   * average, like P.warming for SST), not by P.warming/P.seasonal/
    * P.features: P.warming ("+N °C") is meaningless for a %RH field; P.features is explicitly
    * SST's own ocean-current/upwelling correction, and this build's own point is that any real
    * humidity feature (e.g. the Saharan Air Layer) comes through from raw data with no synthetic
@@ -1277,7 +1299,7 @@ function computeField() {
    * since one real ENSO event drives both fields' own interannual variability. P.synoptic has no
    * SST equivalent at all -- real SST doesn't swing day to day the way real mid-level humidity
    * does, so this is humidity's own slider (see humidSynC's own decode-block comment above). */
-  const hvs = P.variability, hes = P.enso, hws = P.synoptic;
+  const hvs = P.variability, hes = P.enso, hws = P.synoptic, hmo = P.moisture;
   const HA0 = humidClimF[M(m1 - 1)], HA1 = humidClimF[M(m1)], HA2 = humidClimF[M(m1 + 1)], HA3 = humidClimF[M(m1 + 2)];
   for (let j = 0; j < NY; j++) {
     const o = j * NX;
@@ -1286,8 +1308,8 @@ function computeField() {
       if (outOfBasin[k]) { humid[k] = NaN; continue; }
       const mth = w0 * HA0[k] + w1 * HA1[k] + w2 * HA2[k] + w3 * HA3[k];
       const syn = sp0 * humidSynPrev[k] + sp1 * humidSynCur[k];
-      let v = mth + hvs * humidAnomF[k] + hes * humidEnsoF[k] + hws * syn;
-      if (v > 100) v = 100 + 4 * Math.tanh((v - 100) / 4); else if (v < 2) v = 2 - 4 * Math.tanh((2 - v) / 4);   // soft: real RH can edge past [2,100] without ever doing so without limit
+      let v = mth + hvs * humidAnomF[k] + hes * humidEnsoF[k] + hws * syn + hmo;   // hmo: the Moisture slider moves the average everywhere
+      if (v > 95) v = 95 + 5 * Math.tanh((v - 95) / 5); else if (v < 3) v = 3 * Math.exp((v - 3) / 3);   // soft: relative humidity stays inside (0,100) however far the field or the slider pushes it -- identity between 3 and 95, slope 1 where each squeeze starts (this used to be [-2,104]: 0.1-6% of cells read below 0 or above 100 even with every slider at rest)
       humid[k] = v;
     }
   }
@@ -1303,7 +1325,7 @@ function computeField() {
    * own latitude showed no usable ENSO signal (daily correlations 0.0-0.17), so nothing is
    * invented there. Same two-phase order humidity's own synoptic layer was added well after
    * its climatology+ENSO base shipped and was confirmed good (see docs/roadmap.md). The
-   * interannual terms are driven only by P.variability/P.enso, for the same reasons
+   * interannual terms are driven only by P.variability/P.enso (plus P.shearShift, the Wind shear slider's plain shift of the average), for the same reasons
    * humidity's own combine pass gives above: P.warming is meaningless for a kt field,
    * P.seasonal/P.features are SST-current-specific mechanisms shear has no equivalent of (its
    * own 12-month climatology already carries the real seasonal cycle -- low in hurricane
@@ -1317,7 +1339,7 @@ function computeField() {
    * The slider scales how far the axis strays from its real mean path (and the local
    * texture): at 0 the jet is still there -- always flowing, as the real one is -- just
    * parked on its mean path instead of meandering. */
-  const svs = P.variability, ses = P.enso, sws = P.shearSynoptic;
+  const svs = P.variability, ses = P.enso, sws = P.shearSynoptic, ssh = P.shearShift;
   const SA0 = shearClimF[M(m1 - 1)], SA1 = shearClimF[M(m1)], SA2 = shearClimF[M(m1 + 1)], SA3 = shearClimF[M(m1 + 2)];
   // Axis latitude at every fine longitude column: the final coarse axis (continuous-time, see
   // jetAxisRaw -- this is evaluated at the exact current jet clock, so it drifts smoothly hour to
@@ -1334,10 +1356,10 @@ function computeField() {
       if (outOfBasin[k]) { shear[k] = NaN; continue; }
       const mth = w0 * SA0[k] + w1 * SA1[k] + w2 * SA2[k] + w3 * SA3[k] - jetSmearF[k];   // climatology minus the blurred jet it contains; the ribbon below puts the jet back, sharp, where it actually is today
       const syn = sp0 * shearSynPrev[k] + sp1 * shearSynCur[k];
-      let v = mth + svs * shearAnomF[k] + ses * shearEnsoF[k] + sws * SHEAR_TEXTURE_GAIN * syn;
+      let v = mth + svs * shearAnomF[k] + ses * shearEnsoF[k] + sws * SHEAR_TEXTURE_GAIN * syn + ssh;   // ssh: the Shear slider moves the average everywhere (the jet rides on top of it)
       const off = Math.abs(lat - jetAxisF[i]);
       if (off < JET_LUT_MAX) { const n = off / JET_LUT_STEP, n0 = n | 0; v += jetBumpLut[n0] + (n - n0) * (jetBumpLut[n0 + 1] - jetBumpLut[n0]); }
-      if (v > 115) v = 115 + 10 * Math.tanh((v - 115) / 10); else if (v < 2) v = 2 - 4 * Math.tanh((2 - v) / 4);   // soft: real shear can edge past this basin's own observed [4,106.5] climatological range without ever doing so without limit, same spirit as every other field's own soft clamp
+      if (v > 115) v = 115 + 10 * Math.tanh((v - 115) / 10); else if (v < 2) v = 2 * Math.exp((v - 2) / 2);   // soft: real shear can edge past this basin's own observed [4,106.5] climatological range without ever doing so without limit, same spirit as every other field's own soft clamp; a magnitude is never below zero, so under 2 kt it bends towards 0 (slope 1 where it starts; this used to dip to -2 kt: 0.1-20% of cells read negative with every slider at rest)
       shear[k] = v;
     }
   }
@@ -2080,7 +2102,7 @@ const STEER_VMAX = 70;
 const STEER_LUT = Array.from({ length: 161 }, (_, k) => { const v = k / 2; let i = 0; while (i < STEER_STOPS.length - 2 && v > STEER_STOPS[i + 1][0]) i++; const a = STEER_STOPS[i], b = STEER_STOPS[i + 1], t = Math.max(0, Math.min(1, (v - a[0]) / (b[0] - a[0]))); return 'rgb(' + [1, 2, 3].map((q) => Math.round(a[q] + (b[q] - a[q]) * t)).join(',') + ')'; });
 const steerColor = (sp) => STEER_LUT[Math.min(160, Math.round(sp * 2))];
 const STEER_LAYERS = { shallow: { label: 'weak storms', hpa: '850–700 hPa' }, medium: { label: 'medium storms', hpa: '850–500 hPa' }, deep: { label: 'strong storms', hpa: '850–200 hPa' } };
-const STEER_NICE = [1, 1.5, 2, 3, 4, 5, 6, 8, 10, 15, 20], STEER_FADE_DEG = 6, STEER_CALM_KT = 2.5;
+const STEER_NICE = [1, 1.5, 2, 3, 4, 5, 6, 8, 10, 15, 20], STEER_FADE_DEG = 6, STEER_CALM_KT = 2.5;   // the arrows fade over the outer 6 degrees of the simulated box, like the field raster and the jet line
 let steerLayer = 'deep', steerShown = [], lastSteerAt = 0, steerRec = null;   // steerRec: tests ask drawSteer() to list the arrows it draws
 const COMPASS = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
 const compass = (deg) => COMPASS[Math.round(deg / 22.5) % 16];
@@ -2119,13 +2141,13 @@ function drawSteer() {
   const arrowsOn = $('steerarrows').checked, highsOn = $('highs').checked;
   if (!arrowsOn && !highsOn) { steerShown = []; return; }
   steerEnsure();
-  const b = map.getBounds(), n0 = Math.min(b.getNorth(), LAT1), s0 = Math.max(b.getSouth(), DM.lat0), w0 = Math.max(b.getWest(), DM.lon0), e0 = Math.min(b.getEast(), DM.lon1);
+  const b = map.getBounds(), n0 = Math.min(b.getNorth(), ST_LAT1), s0 = Math.max(b.getSouth(), ST_LAT0), w0 = Math.max(b.getWest(), ST_LON0), e0 = Math.min(b.getEast(), ST_LON1);
   if (arrowsOn && n0 > s0 && e0 > w0) {
     const cl = (n0 + s0) / 2, ppd = Math.abs(map.latLngToContainerPoint([cl, 0]).x - map.latLngToContainerPoint([cl, 1]).x);   // pixels per degree of longitude here
     const small = W < 700, minPx = small ? 40 : Math.round(46 * Math.max(1, 0.85 * Math.sqrt(W * H / 1238400))), deg = STEER_NICE.find((d) => d * ppd >= minPx) || 20;   // a bigger screen gets proportionally fewer arrows per pixel: they only have to read, not tile the map
     const U = stU[steerLayer], V = stV[steerLayer], key = small ? 1 : 0;
     for (let la = Math.ceil(s0 / deg) * deg; la <= n0; la += deg) for (let lo = Math.ceil(w0 / deg) * deg; lo <= e0; lo += deg) {
-      const edge = Math.min(lo - DM.lon0, DM.lon1 - lo, la - DM.lat0, LAT1 - la) / STEER_FADE_DEG;
+      const edge = Math.min(lo - ST_LON0, ST_LON1 - lo, la - ST_LAT0, ST_LAT1 - la) / STEER_FADE_DEG;
       if (edge <= 0) continue;
       const u = stSample(U, la, lo), v = stSample(V, la, lo), sp = Math.hypot(u, v), p = map.latLngToContainerPoint([la, lo]);
       const spr = steerSprite(Math.min(STEER_NCOL - 1, Math.floor(sp / STEER_VMAX * STEER_NCOL)), key, sp < STEER_CALM_KT);
@@ -2147,7 +2169,7 @@ function drawSteer() {
       if (s.gone && s.a <= 0) { steerShown.splice(k, 1); continue; }
       const p = map.latLngToContainerPoint([s.lat, s.lon]);
       if (p.x < -r || p.y < -r || p.x > W + r || p.y > H + r) continue;
-      const edge = Math.min(s.lon - DM.lon0, DM.lon1 - s.lon, s.lat - DM.lat0, LAT1 - s.lat) / STEER_FADE_DEG;
+      const edge = Math.min(s.lon - ST_LON0, ST_LON1 - s.lon, s.lat - ST_LAT0, ST_LAT1 - s.lat) / STEER_FADE_DEG;
       g.globalAlpha = s.a * Math.max(0, Math.min(1, edge));
       g.save(); g.translate(p.x, p.y);
       g.beginPath(); g.arc(1, 2, r + 2.5, 0, 7); g.fillStyle = 'rgba(0,0,0,.35)'; g.fill();
@@ -2170,15 +2192,15 @@ function drawSteerLegend() {
 }
 function steerChanged() {
   const a = $('steerarrows').checked;
-  $('steer-depth-row').style.display = a ? '' : 'none'; $('steer-legend').style.display = a ? '' : 'none'; document.body.classList.toggle('steer-on', a);
+  $('steer-legend').style.display = a ? '' : 'none'; document.body.classList.toggle('steer-on', a);
   if (steerOn()) { steerUpdate(); steerUpdateIcons(); }
   drawSteer(); updateReadout();
 }
 function steerReadout() {
   const wantS = $('steerarrows').checked, wantH = $('highs').checked;
   if (!pointer || (!wantS && !wantH)) return;
-  const lat = pointer.lat, lon = ((pointer.lng + 540) % 360) - 180;
-  if (lat > LAT1 || lat < DM.lat0 || lon < DM.lon0 || lon > DM.lon1) return;
+  const lat = pointer.lat, lon = stNormLon(((pointer.lng + 540) % 360) - 180);
+  if (lat > ST_LAT1 || lat < ST_LAT0 || lon < ST_LON0 || lon > ST_LON1) return;
   steerEnsure();
   let h = '';
   if (wantS) { const u = stSample(stU[steerLayer], lat, lon), v = stSample(stV[steerLayer], lat, lon), sp = Math.hypot(u, v), hd = (Math.atan2(u, v) / DEG + 360) % 360; h += '<div>' + (sp < STEER_CALM_KT ? 'Steering: calm (under ' + STEER_CALM_KT + ' kt)' : 'Steering toward ' + Math.round(hd) + '° (' + compass(hd) + ') at ' + Math.round(sp) + ' kt') + '</div>'; }
@@ -2389,6 +2411,17 @@ window.addEventListener('keydown', (e) => {
 /* panel */
 $('collapse').onclick = () => { const p = $('panel'); p.classList.toggle('collapsed'); $('collapse').innerHTML = p.classList.contains('collapsed') ? '&#9656;' : '&#9662;'; };
 document.querySelectorAll('.subhead').forEach((h) => h.onclick = () => { const sec = h.closest('.subsec'), collapsed = sec.classList.toggle('collapsed'); h.setAttribute('aria-expanded', !collapsed); });
+/* Experimentation has two tabs: Basic (ENSO, warming, moisture, shear -- what you reach for first) and Advanced (the rest). Basic is shown first. */
+const xpTabs = [...document.querySelectorAll('#seg-xp button')];
+function setXpTab(name) { xpTabs.forEach((b) => { const on = b.dataset.x === name; b.setAttribute('aria-selected', on); b.tabIndex = on ? 0 : -1; $('xp-' + b.dataset.x).hidden = !on; }); }
+xpTabs.forEach((b, i) => {
+  b.onclick = () => setXpTab(b.dataset.x);
+  b.onkeydown = (e) => {   // arrow keys / Home / End move between the tabs, as in any tab list
+    const j = e.key === 'ArrowRight' ? (i + 1) % xpTabs.length : e.key === 'ArrowLeft' ? (i + xpTabs.length - 1) % xpTabs.length : e.key === 'Home' ? 0 : e.key === 'End' ? xpTabs.length - 1 : -1;
+    if (j < 0) return;
+    e.preventDefault(); e.stopPropagation(); setXpTab(xpTabs[j].dataset.x); xpTabs[j].focus();
+  };
+});
 document.querySelectorAll('#seg-view button').forEach((b) => b.onclick = () => { view = b.dataset.v; document.querySelectorAll('#seg-view button').forEach((x) => x.setAttribute('aria-pressed', x === b)); drawLegend(); updateThresholdLabels(); updateReadout(); scheduleRender(); });
 THEME_ORDER.forEach((id) => { const t = THEMES[id], b = document.createElement('button'); b.dataset.th = id; b.setAttribute('aria-pressed', id === 'sat'); b.innerHTML = '<i style="background:' + t.swatch + '"></i><span>' + t.name + '</span>'; b.onclick = () => setTheme(id); $('themes').appendChild(b); });
 document.querySelectorAll('#seg-grid button').forEach((b) => b.onclick = () => setGridMode(b.dataset.g));
@@ -2399,14 +2432,14 @@ $('op').oninput = () => { $('op-o').textContent = $('op').value + '%'; scheduleR
 $('l265').onchange = scheduleRender; $('l2').onchange = scheduleRender; $('jetline').onchange = scheduleRender;
 $('steerarrows').onchange = steerChanged; $('highs').onchange = steerChanged;
 document.querySelectorAll('#seg-depth button').forEach((b) => b.onclick = () => { steerLayer = b.dataset.d; document.querySelectorAll('#seg-depth button').forEach((x) => x.setAttribute('aria-pressed', x === b)); drawSteerLegend(); drawSteer(); updateReadout(); });
-const sliders = [['p-warm', 'warming', (v) => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(1) + ' °C'], ['p-var', 'variability', (v) => v.toFixed(1) + '×'], ['p-wx', 'synoptic', (v) => v.toFixed(1) + '×'], ['p-wxs', 'shearSynoptic', (v) => v.toFixed(1) + '×'], ['p-jets', 'jetSpeed', (v) => v.toFixed(1) + '×'], ['p-sea', 'seasonal', (v) => v.toFixed(2).replace(/0$/, '') + '×'], ['p-feat', 'features', (v) => v.toFixed(2).replace(/0$/, '') + '×'], ['p-enso', 'enso', (v) => v.toFixed(2).replace(/0$/, '') + '×']];
+const sliders = [['p-warm', 'warming', (v) => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(1) + ' °C'], ['p-moist', 'moisture', (v) => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(0) + ' %'], ['p-shear', 'shearShift', (v) => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(0) + ' kt'], ['p-var', 'variability', (v) => v.toFixed(1) + '×'], ['p-wx', 'synoptic', (v) => v.toFixed(1) + '×'], ['p-wxs', 'shearSynoptic', (v) => v.toFixed(1) + '×'], ['p-jets', 'jetSpeed', (v) => v.toFixed(1) + '×'], ['p-sea', 'seasonal', (v) => v.toFixed(2).replace(/0$/, '') + '×'], ['p-feat', 'features', (v) => v.toFixed(2).replace(/0$/, '') + '×'], ['p-enso', 'enso', (v) => v.toFixed(2).replace(/0$/, '') + '×']];
 sliders.forEach(([id, key, fmt]) => { $(id).oninput = () => { P[key] = parseFloat($(id).value); $(id + '-o').textContent = fmt(P[key]); refresh(); }; });
 /* the seed gives each run its own slightly different climate: seasonal swing, currents/upwelling and ENSO strength move by a small but noticeable amount */
 function hash01(seed, k) { let t = (seed ^ Math.imul(k, 0x9E3779B1)) >>> 0; t = Math.imul(t ^ (t >>> 16), 0x85EBCA6B); t = Math.imul(t ^ (t >>> 13), 0xC2B2AE35); t ^= t >>> 16; return (t >>> 0) / 4294967296; }
 function seedJitter(seed, k, lo, hi) { const mag = lo + (hi - lo) * hash01(seed, k * 2 + 1), v = 1 + (hash01(seed, k * 2 + 2) < 0.5 ? -mag : mag); return Math.round(v / 0.05) * 0.05; }
 function seedSliderValues(seed) { return { 'p-sea': seedJitter(seed, 1, 0.08, 0.22), 'p-feat': seedJitter(seed, 2, 0.10, 0.30), 'p-enso': seedJitter(seed, 3, 0.12, 0.40) }; }
 function setSliderValues(vals) { for (const id in vals) $(id).value = vals[id]; sliders.forEach(([id, key, fmt]) => { P[key] = parseFloat($(id).value); $(id + '-o').textContent = fmt(P[key]); }); }
-$('b-reset').onclick = () => { setSliderValues(Object.assign({ 'p-warm': 0, 'p-var': 1, 'p-wx': 1, 'p-wxs': 1, 'p-jets': 1 }, $('seed-vary').checked ? seedSliderValues(P.seed) : { 'p-sea': 1, 'p-feat': 1, 'p-enso': 1 })); refresh(); };
+$('b-reset').onclick = () => { setSliderValues(Object.assign({ 'p-warm': 0, 'p-moist': 0, 'p-shear': 0, 'p-var': 1, 'p-wx': 1, 'p-wxs': 1, 'p-jets': 1 }, $('seed-vary').checked ? seedSliderValues(P.seed) : { 'p-sea': 1, 'p-feat': 1, 'p-enso': 1 })); refresh(); };
 function applySeed(s) { s = Math.max(1, Math.min(999999, Math.floor(s) || 1)); $('seed').value = s; P.seed = s; if ($('seed-vary').checked) setSliderValues(seedSliderValues(s)); restart(); }
 $('seed-vary').onchange = () => { setSliderValues($('seed-vary').checked ? seedSliderValues(P.seed) : { 'p-sea': 1, 'p-feat': 1, 'p-enso': 1 }); refresh(); };
 $('seed').onchange = () => applySeed(parseFloat($('seed').value));
@@ -2442,7 +2475,7 @@ window.SSTSIM = {
   setSteerLayer(l) { document.querySelector('#seg-depth button[data-d="' + l + '"]').click(); },
   steerArrows() { steerRec = []; drawSteer(); const r = steerRec; steerRec = null; return r; },                 // the arrows drawn right now: where (lat/lon and screen px), the wind there, how faded
   steerColorOf(sp) { return steerColor((Math.min(STEER_NCOL - 1, Math.floor(sp / STEER_VMAX * STEER_NCOL)) + 0.5) / STEER_NCOL * STEER_VMAX); },   // the colour an arrow of that speed is painted
-  setPlaying, restart, map, render, setTheme, setGridMode, sliderVals() { return { seasonal: P.seasonal, features: P.features, enso: P.enso, warming: P.warming, variability: P.variability, synoptic: P.synoptic, shearSynoptic: P.shearSynoptic, jetSpeed: P.jetSpeed, seed: P.seed }; }, applySeed, isLand,
+  setXpTab, setPlaying, restart, map, render, setTheme, setGridMode, sliderVals() { return { seasonal: P.seasonal, features: P.features, enso: P.enso, warming: P.warming, moisture: P.moisture, shearShift: P.shearShift, variability: P.variability, synoptic: P.synoptic, shearSynoptic: P.shearSynoptic, jetSpeed: P.jetSpeed, seed: P.seed }; }, applySeed, isLand,
   bm() {
     const detail = !!(detailLayer && map.hasLayer(detailLayer));
     if (themeId === 'sat') { const st = TS.sat; return { theme: 'sat', idx: st.idx, offline: st.offline, loaded: st.loaded, label: st.offline ? 'offline (Blue Marble)' : (TILESETS.sat[st.idx] && TILESETS.sat[st.idx].label), detail, csp: cspBlocked }; }

@@ -71,6 +71,17 @@ nothing to run by hand.
   when the seasonal swing is stretched; shelf effect only cools.
 - Seeds fix the random year and nudge seasonal swing / currents / ENSO strength
   by roughly 10–35% (checkbox turns it off).
+- Experimentation panel (all 9 basins): two tabs. **Basic** = `Set ENSO now`, `Keep ENSO at this value`,
+  `Warming`, `Moisture (average humidity)` and `Wind shear (average)`; **Advanced** = year-to-year variability,
+  both day-to-day weather sliders, weather speed, seasonal swing, currents and upwelling, El Niño / La Niña
+  influence, the seed-nudge checkbox and the steering arrows' `Storm strength` selector. The seed row (Seed,
+  New seed, Reset) sits under both tabs; `Customization` is separate and unchanged. The two new sliders shift
+  the *average* everywhere the way `Warming` does for sea temperature (`P.moisture`: −20..+20 points of 700 hPa
+  relative humidity; `P.shearShift`: −20..+20 kt of 200–850 hPa shear), added inside the combine loop before the
+  soft limits, so they move the weather and the jet's ribbon along with the average. The limits are now smooth
+  squeezes that keep humidity inside (0, 100) % and shear above 0 kt at any slider value — the old ones let the
+  unshifted field reach −2 kt shear in up to 20.5 % of a basin's cells and RH below 0 or above 100 in up to
+  6.7 % and 3.1 % (numbers in `docs/roadmap.md`).
 - Humidity (all 9 basins): 700 hPa relative humidity, same shape as SST (real
   ERA5 2007–2021 monthly climatology + its own 6 EOFs/ENSO fit), a third
   option in the Temperature/SST Anomaly view toggle. Only `variability`/`enso`/

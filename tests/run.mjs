@@ -317,6 +317,112 @@ async function checkShear(page, label, S) {
 }
 
 // ENSO hold: a checkbox next to "Set ENSO now" pins Niño 3.4 at the chosen value instead of letting it evolve. Same checks in every basin.
+// ---------------------------------------------------------------------------------------------------------------------------------------
+// Experimentation panel. Two tabs: Basic (Set ENSO now, Keep ENSO at this value, Warming, and two "average" sliders -- Moisture and Wind
+// shear -- that move a whole field up or down the way Warming moves the temperature) and Advanced (everything else, the storm-strength
+// selector included); the seed row is shared by both. Customization is its own section and is left alone. Runs in every basin from the
+// common part of checkBasin, where Experimentation has just been opened. The shift sizes below come from measuring all nine basins (mean
+// change over every ocean and land point at 2 degrees, seed 4242, day 103): +/-10 moves humidity by 9.2-9.9 and shear by 8.0-10.0, +/-20 by
+// 17.4-19.8 (humidity) and 14.8-20.0 (shear), less than the slider reads only where the field meets its floor (shear) or 100% (humidity).
+async function checkExperiment(page, label) {
+  const ev = (fn, arg) => page.evaluate(fn, arg);
+  const BASIC = ['p-ensonow', 'enso-hold', 'p-warm', 'p-moist', 'p-shear'];
+  const ADV = ['p-var', 'p-wx', 'p-wxs', 'p-jets', 'p-sea', 'p-feat', 'p-enso', 'seed-vary', 'steer-depth-row'].filter((id) => id !== 'steer-depth-row' || label === 'Atlantic');
+  const SEED = ['seed', 'b-newseed', 'b-reset'];
+  const look = () => ev(([basic, adv, seed]) => {
+    const $ = (id) => document.getElementById(id), shown = (id) => { const el = $(id); return !!el && el.offsetParent !== null; };
+    const tabs = [...document.querySelectorAll('#seg-xp button')];
+    return { tabs: tabs.map((b) => b.textContent.trim() + ':' + b.getAttribute('aria-selected') + ':' + b.tabIndex).join(' '), active: document.activeElement && document.activeElement.id,
+      panels: [shown('xp-basic'), shown('xp-adv')], basic: basic.map(shown), adv: adv.map(shown), seed: seed.map(shown) };
+  }, [BASIC, ADV, SEED]);
+  const all = (a, v) => a.every((x) => x === v);
+  const BASIC_STATE = 'Basic:true:0 Advanced:false:-1', ADV_STATE = 'Basic:false:-1 Advanced:true:0';
+
+  // ---- 1. the layout, and what each tab shows
+  const lay = await ev(([basic, adv, seed]) => {
+    const $ = (id) => document.getElementById(id);
+    const home = (id) => { const el = $(id); return !el ? 'missing' : el.closest('#xp-basic') ? 'basic' : el.closest('#xp-adv') ? 'adv' : el.closest('#sec-custom') ? 'custom' : el.closest('#sec-exp') ? 'shared' : 'other'; };
+    return { role: $('seg-xp').getAttribute('role'), tabRoles: [...document.querySelectorAll('#seg-xp button')].map((b) => b.getAttribute('role') + '>' + b.getAttribute('aria-controls')).join(' '),
+      panelRoles: ['xp-basic', 'xp-adv'].map((id) => $(id).getAttribute('role') + '<' + $(id).getAttribute('aria-labelledby')).join(' '),
+      basicHome: basic.map(home), advHome: adv.map(home), seedHome: seed.map(home), basicOrder: [...$('xp-basic').querySelectorAll('input')].map((e) => e.id).join(','),
+      customTabs: document.querySelectorAll('#sec-custom [role=tab], #sec-custom [role=tablist]').length, customSliders: document.querySelectorAll('#sec-custom input[id^="p-"]').length, customLayers: !!document.querySelector('#sec-custom #seg-view'),
+      customDepth: !!document.querySelector('#sec-custom #seg-depth') };
+  }, [BASIC, ADV, SEED]);
+  const t0 = await look();
+  check(`[${label}] Experimentation opens on its Basic tab: only the basic controls show, the Advanced ones are hidden, the seed row is there (${t0.tabs})`, t0.tabs === BASIC_STATE && t0.panels[0] === true && t0.panels[1] === false && all(t0.basic, true) && all(t0.adv, false) && all(t0.seed, true));
+  check(`[${label}] Basic holds exactly Set ENSO now, Keep ENSO at this value, Warming, Moisture and Wind shear, in that order (${lay.basicOrder})`, all(lay.basicHome, 'basic') && lay.basicOrder === BASIC.join(','));
+  check(`[${label}] Advanced holds the rest: year-to-year variability, both day-to-day weather sliders, weather speed, seasonal swing, currents, ENSO influence, the seed nudge${label === 'Atlantic' ? ' and the storm-strength selector' : ''}`, all(lay.advHome, 'adv'));
+  check(`[${label}] the seed row (seed, New seed, Reset) belongs to neither tab and shows on both`, all(lay.seedHome, 'shared'));
+  check(`[${label}] the tabs are a proper tab list: roles, aria-controls and aria-labelledby line up (${lay.tabRoles}; ${lay.panelRoles})`, lay.role === 'tablist' && lay.tabRoles === 'tab>xp-basic tab>xp-adv' && lay.panelRoles === 'tabpanel<xp-tab-basic tabpanel<xp-tab-adv');
+  check(`[${label}] Customization is unchanged by all this: no tabs, no experiment sliders, still the layer buttons${label === 'Atlantic' ? ', and the storm-strength selector is no longer in it' : ''}`, lay.customTabs === 0 && lay.customSliders === 0 && lay.customLayers && !lay.customDepth);
+  await page.click('#xp-tab-adv');
+  const t1 = await look();
+  check(`[${label}] clicking Advanced swaps the tabs over: the advanced controls show, the basic ones hide, the seed row stays (${t1.tabs})`, t1.tabs === ADV_STATE && t1.panels[0] === false && t1.panels[1] === true && all(t1.basic, false) && all(t1.adv, true) && all(t1.seed, true));
+  await page.click('#xp-tab-basic');
+  const t2 = await look();
+  check(`[${label}] clicking Basic brings the basic controls back (${t2.tabs})`, t2.tabs === BASIC_STATE && all(t2.basic, true) && all(t2.adv, false));
+  await page.focus('#xp-tab-basic'); await page.keyboard.press('ArrowRight'); const k1 = await look();
+  await page.keyboard.press('ArrowRight'); const k2 = await look();
+  await page.keyboard.press('ArrowLeft'); const k3 = await look();
+  await page.keyboard.press('Home'); const k4 = await look();
+  await page.keyboard.press('End'); const k5 = await look();
+  await page.keyboard.press('Home'); const k6 = await look();
+  check(`[${label}] arrow keys, Home and End move between the tabs and focus follows (right ${k1.tabs.startsWith('Basic:false') && k1.active}, right again ${k2.tabs.startsWith('Basic:true') && k2.active}, left ${k3.active}, Home ${k4.active}, End ${k5.active})`,
+    k1.tabs === ADV_STATE && k1.active === 'xp-tab-adv' && k2.tabs === BASIC_STATE && k2.active === 'xp-tab-basic' && k3.tabs === ADV_STATE && k3.active === 'xp-tab-adv' && k4.tabs === BASIC_STATE && k4.active === 'xp-tab-basic' && k5.tabs === ADV_STATE && k5.active === 'xp-tab-adv' && k6.tabs === BASIC_STATE);
+
+  // ---- 2. the Moisture and Wind shear sliders
+  const r = await ev(() => {
+    const S = window.SSTSIM, $ = (id) => document.getElementById(id), out = {};
+    S.setPlaying(false); S.applySeed(4242); S.setPlaying(false); S.advance(24 * 103);
+    const slide = (id, v) => { const el = $(id); el.value = String(v); el.dispatchEvent(new Event('input')); };
+    const pts = [];
+    for (let lat = -68; lat <= 78; lat += 2) for (let lon = -200; lon <= 260; lon += 2) { const s = S.sample(lat, lon); if (Number.isFinite(s.humid) && Number.isFinite(s.shear) && Number.isFinite(s.sst)) pts.push([lat, lon]); }
+    const grab = () => { const n = pts.length, h = new Float64Array(n), sh = new Float64Array(n), t = new Float64Array(n); for (let i = 0; i < n; i++) { const s = S.sample(pts[i][0], pts[i][1]); h[i] = s.humid; sh[i] = s.shear; t[i] = s.sst; } return { h, sh, t }; };
+    const same = (a, b) => { for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false; return true; };
+    const stat = (a, base) => { let mn = Infinity, mx = -Infinity, d = 0; for (let i = 0; i < a.length; i++) { if (a[i] < mn) mn = a[i]; if (a[i] > mx) mx = a[i]; if (base) d += a[i] - base[i]; } return { min: mn, max: mx, dmean: base ? d / a.length : 0 }; };
+    out.n = pts.length;
+    // the fields with every slider at rest stay physical at several dates: humidity inside [0,100], shear never negative
+    out.rest = [];
+    for (let q = 0; q < 3; q++) { if (q) S.advance(24 * 100); const g = grab(); out.rest.push({ h: stat(g.h), s: stat(g.sh) }); }
+    const base = grab();
+    out.moist = {}; out.shear = {}; out.indep = { moist: true, shear: true };
+    for (const v of [10, 20, -10, -20]) {
+      slide('p-moist', v); let g = grab(); out.moist[v] = stat(g.h, base.h); out.indep.moist = out.indep.moist && same(g.sh, base.sh) && same(g.t, base.t); slide('p-moist', 0);
+      slide('p-shear', v); g = grab(); out.shear[v] = stat(g.sh, base.sh); out.indep.shear = out.indep.shear && same(g.h, base.h) && same(g.t, base.t); slide('p-shear', 0);
+    }
+    const back = grab(); out.exact = same(back.h, base.h) && same(back.sh, base.sh) && same(back.t, base.t);
+    const seq = [-20, -10, -5, 0, 5, 10, 20]; out.mono = {};
+    for (const [id, key] of [['p-moist', 'h'], ['p-shear', 'sh']]) {
+      const gs = seq.map((v) => { slide(id, v); return grab()[key]; }); slide(id, 0);
+      let ok = true; for (let i = 0; i < pts.length && ok; i++) for (let q = 1; q < gs.length; q++) if (gs[q][i] < gs[q - 1][i] - 1e-9) { ok = false; break; }
+      out.mono[id] = ok;
+    }
+    // the sliders' own read-outs and the model's parameters
+    slide('p-moist', 10); slide('p-shear', -5); out.read1 = [$('p-moist-o').textContent, $('p-shear-o').textContent, S.sliderVals().moisture, S.sliderVals().shearShift];
+    slide('p-moist', -5); slide('p-shear', 10); out.read2 = [$('p-moist-o').textContent, $('p-shear-o').textContent, S.sliderVals().moisture, S.sliderVals().shearShift];
+    slide('p-moist', 15); slide('p-shear', 15); slide('p-warm', 1.5); out.warmMoved = S.sliderVals().warming; $('b-reset').click();
+    out.reset = [$('p-moist').value, $('p-shear').value, $('p-moist-o').textContent, $('p-shear-o').textContent, S.sliderVals().moisture, S.sliderVals().shearShift, S.sliderVals().warming];
+    const afterReset = grab(); out.resetExact = same(afterReset.h, base.h) && same(afterReset.sh, base.sh);
+    out.attrs = [$('p-moist').min, $('p-moist').max, $('p-moist').step, $('p-moist').value, $('p-shear').min, $('p-shear').max, $('p-shear').step, $('p-shear').value].join(' ');
+    return out;
+  });
+  const within = (x, lo, hi) => x >= lo && x <= hi;
+  const restOk = r.rest.every((x) => x.h.min >= 0 && x.h.max <= 100 && x.s.min >= 0);
+  check(`[${label}] with every slider at rest, humidity stays inside 0-100% and shear is never negative, at three dates in ${r.n} points (humidity ${r.rest.map((x) => x.h.min.toFixed(2) + '..' + x.h.max.toFixed(1)).join(', ')}; shear min ${r.rest.map((x) => x.s.min.toFixed(3)).join(', ')} kt)`, restOk);
+  check(`[${label}] sliders are there with the right ranges: Moisture and Wind shear both run -20..+20 in steps of 1 from 0 (${r.attrs})`, r.attrs === '-20 20 1 0 -20 20 1 0');
+  check(`[${label}] Moisture +10 / +20 raises the average humidity by about that much (${r.moist[10].dmean.toFixed(2)} / ${r.moist[20].dmean.toFixed(2)} points)`, within(r.moist[10].dmean, 8.5, 10.001) && within(r.moist[20].dmean, 16, 20.001));
+  check(`[${label}] Moisture -10 / -20 lowers it by about that much (${r.moist[-10].dmean.toFixed(2)} / ${r.moist[-20].dmean.toFixed(2)} points)`, within(r.moist[-10].dmean, -10.001, -8.5) && within(r.moist[-20].dmean, -20.001, -16));
+  check(`[${label}] Wind shear +10 / +20 raises the average shear by about that much (${r.shear[10].dmean.toFixed(2)} / ${r.shear[20].dmean.toFixed(2)} kt)`, within(r.shear[10].dmean, 8.0, 10.001) && within(r.shear[20].dmean, 17, 20.001));
+  check(`[${label}] Wind shear -10 / -20 lowers it, by a little less where it already sits near zero (${r.shear[-10].dmean.toFixed(2)} / ${r.shear[-20].dmean.toFixed(2)} kt)`, within(r.shear[-10].dmean, -10.001, -7) && within(r.shear[-20].dmean, -20.001, -13));
+  const extremes = [r.moist[20], r.moist[-20]].every((x) => x.min >= 0 && x.max <= 100) && [r.shear[20], r.shear[-20]].every((x) => x.min >= 0);
+  check(`[${label}] at the ends of the sliders humidity stays inside 0-100% and shear never goes negative (Moisture +20: ${r.moist[20].max.toFixed(2)} max; -20: ${r.moist[-20].min.toFixed(3)} min; Shear -20: ${r.shear[-20].min.toFixed(3)} min)`, extremes);
+  check(`[${label}] each slider moves only its own field: Moisture leaves shear and sea temperature exactly as they were, Wind shear leaves humidity and temperature`, r.indep.moist && r.indep.shear);
+  check(`[${label}] both sliders are monotone point by point (more slider, never less humidity / shear anywhere) and back at 0 every field is exactly what it was`, r.mono['p-moist'] && r.mono['p-shear'] && r.exact);
+  check(`[${label}] the read-outs say what they do: ${r.read1[0]} / ${r.read1[1]} and ${r.read2[0]} / ${r.read2[1]}, and the model's parameters follow (${r.read1[2]}, ${r.read1[3]}, ${r.read2[2]}, ${r.read2[3]})`, r.read1[0] === '+10 %' && r.read1[1] === '−5 kt' && r.read1[2] === 10 && r.read1[3] === -5 && r.read2[0] === '−5 %' && r.read2[1] === '+10 kt' && r.read2[2] === -5 && r.read2[3] === 10);
+  check(`[${label}] Reset puts Moisture and Wind shear back to zero (${r.reset[2]}, ${r.reset[3]}) along with Warming (${r.warmMoved} -> ${r.reset[6]}), and the fields come back exactly`, r.reset[0] === '0' && r.reset[1] === '0' && r.reset[2] === '+0 %' && r.reset[3] === '+0 kt' && r.reset[4] === 0 && r.reset[5] === 0 && r.warmMoved === 1.5 && r.reset[6] === 0 && r.resetExact);
+  await ev(() => { window.SSTSIM.restart(); });
+}
+
 async function checkEnsoHold(page, label) {
   const ev = (fn, arg) => page.evaluate(fn, arg);
   const r = await ev(() => {
@@ -349,23 +455,31 @@ async function checkEnsoHold(page, label) {
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------------------
-// Steering arrows and highs. Every basin that has them gets the same checks from its own spec (so far: the Atlantic). The real-data figures
-// behind the thresholds are in docs/roadmap.md ("Steering arrows and highs"); each threshold was set from many seeds and dates (the sim is
-// deterministic per seed, and these checks use fixed seeds), not from the one run it happened to pass on.
-//   domain      the steering grid's box                              view     fitBounds window for the pixel checks (viewport 1280x800)
-//   hover       open-ocean point for the readout                     pts      named points: mdr (trades), gulf, jet (north of the subtropical ridge), far (high latitude)
-//   latBands    [lo, hi] |latitude| bands (within lonRange) the variance budget is checked in      lonRange    [west, east] of the sector the statistics use
-//   ensoPts     [name, lat, lon, sign] deep-layer westerly response (El Nino minus La Nina) and its sign; pressure sign at pFar
+// Steering arrows and highs. Every basin gets the same checks from its own spec. The real-data figures behind the thresholds are in docs/roadmap.md ("Steering arrows and highs");
+// each threshold was set from many seeds and dates (the sim is deterministic per seed, and these checks use fixed seeds), not from the one run it happened to pass on.
+//   dataFile, calibFile   the merged data file (it carries DATA.steer) and the real variance targets
+//   view                  fitBounds window for the pixel checks (viewport 1280x800), in the map's longitude frame (the South Pacific runs 160..240)
+//   hover                 an open-ocean point for the readout, and the centre of the zoomed-in check
+//   pts                   named points: trop (the trades / tropical easterlies), sub (the subtropics, where El Nino's jet response is measured), jet (under the mid-latitude westerlies),
+//                         far (high latitude, for the pressure response); names are what the check messages call them; extra are more points for the smoothness check
+//   hem, latBands, lonRange   the hemisphere, the |latitude| bands and the longitude sector the variance budget is checked in
+//   ensoU                 the least deep-layer westerly response (El Nino minus La Nina, kt) at sub / trop / jet: above it if positive, below it if negative; pFarSign: sign of the pressure response at far
+//   jet                   the jet-ribbon check: season, longitudes, |latitude| window of the axis, hemisphere sign, and the REAL composite on the real axis (along-axis kt, degrees off, share within 45 degrees);
+//                         null where the jet is too far outside the box to measure
+//   highsReal             real highs a day [north, south] per calendar month on the page's node grid (the page's own rule on the real daily pressure of 2017-2021); highsP: pressure percentiles
 // The numbers in the specs are the simulated climate of that basin, not tuning knobs.
 const STEER_SPECS = {
   atlantic: {
     dataFile: 'data.json', calibFile: 'atlantic-steer-calib.json',
-    domain: { lon0: -110, lon1: 40, lat0: -40, lat1: 72 },
     view: [[6, -102], [62, 4]], hover: [18, -50],
-    pts: { mdr: [15, -50], gulf: [25, -90], jet: [45, -40], far: [60, -20] },
-    latBands: [[15, 25], [25, 35], [35, 45], [45, 60]], lonRange: [-100, 0],
-    ensoU: { gulf: 2.5, mdr: -0.8, jet: 2.0 }, pFarSign: -1,
-    jetBox: { lon: [-80, -20], lat: [25, 58] },
+    pts: { trop: [15, -50], sub: [25, -90], jet: [45, -40], far: [60, -20] },
+    names: { trop: 'the tropical Atlantic', sub: 'the Gulf of Mexico', jet: '45N 40W', far: '60N 20W' },
+    extra: [[35, -60], [30, -40], [55, -30]],
+    hem: 1, latBands: [[15, 25], [25, 35], [35, 45], [45, 60]], lonRange: [-100, 0],
+    ensoU: { sub: 2.5, trop: -0.8, jet: 2.0 }, pFarSign: -1,
+    jet: { months: [6, 7, 8, 9, 10, 11], lon: [-80, -20], lat: [25, 58], hem: 1, label: 'June-November', along: 34.4, ang: 16, within: 0.8, stripe: 10 },
+    highsReal: { 1: [4.73, 1.85], 4: [4.78, 2.59], 7: [4.45, 3.12], 10: [4.85, 1.88] },
+    highsP: { p10: [1017, 1020.5], p50: [1021.5, 1026], p90: [1028, 1039], real: '1018.6/1023.4/1032.2' },
   },
 };
 
@@ -385,33 +499,40 @@ async function checkSteering(page, label, S) {
   const ev = (fn, arg) => page.evaluate(fn, arg);
   const mean = (a) => a.reduce((x, y) => x + y, 0) / Math.max(1, a.length);
   const quant = (a, p) => { const s = [...a].sort((x, y) => x - y); return s[Math.min(s.length - 1, Math.floor(p / 100 * s.length))]; };
-  const steer = JSON.parse(readFileSync(join(ROOT, 'data/generated', S.dataFile), 'utf8')).steer;
+  const dataJson = JSON.parse(readFileSync(join(ROOT, 'data/generated', S.dataFile), 'utf8')), steer = dataJson.steer;
+  // the simulated box's own edges in the map's longitude frame (where the field raster, the jet line and the arrows fade out), and the node grid's (where the highs are looked for)
+  const box = { lon0: dataJson.domain.lon0, lon1: dataJson.domain.lon0 + (dataJson.domain.nx - 1) * dataJson.domain.res, lat1: dataJson.domain.lat1, lat0: dataJson.domain.lat1 - (dataJson.domain.ny - 1) * dataJson.domain.res };
   const calib = JSON.parse(readFileSync(join(ROOT, 'data/generated', S.calibFile), 'utf8'));
   const NX = steer.domain.nx, NY = steer.domain.ny, SN = NX * NY;
   const interior = []; for (let j = 2; j < NY - 2; j++) for (let i = 2; i < NX - 2; i++) interior.push(j * NX + i);
   const nodeLat = (q) => steer.domain.lat1 - Math.floor(q / NX) * steer.domain.res, nodeLon = (q) => steer.domain.lon0 + (q % NX) * steer.domain.res;
+  // (the node grid stops up to 3 degrees short of the box's far edges, and a box across the date line runs 160..240 in the map's frame)
+  const dom = { lon0: steer.domain.lon0, lon1: steer.domain.lon0 + (NX - 1) * steer.domain.res, lat1: steer.domain.lat1, lat0: steer.domain.lat1 - (NY - 1) * steer.domain.res };
   await ev(() => { const X = window.SSTSIM; X.setPlaying(false); X.applySeed(4242); X.setPlaying(false); });
 
   // ---- 1. the controls
   const ui = () => ev(() => {
     const vis = (id) => getComputedStyle(document.getElementById(id)).display !== 'none';
-    return { arrows: document.getElementById('steerarrows').checked, highs: document.getElementById('highs').checked, depthRow: vis('steer-depth-row'), legend: vis('steer-legend'),
+    return { arrows: document.getElementById('steerarrows').checked, highs: document.getElementById('highs').checked, legend: vis('steer-legend'),
       pressed: [...document.querySelectorAll('#seg-depth button')].map((b) => b.dataset.d + ':' + b.getAttribute('aria-pressed')).join(','), cap: document.getElementById('steer-cap').textContent,
       ticks: [...document.querySelectorAll('#steer-ticks span')].map((s) => s.textContent).join(' ') };
   });
   const u0 = await ui();
-  check(`[${label}] "Steering arrows" and "Highs" checkboxes exist and start unchecked; the storm-strength row and the speed legend start hidden`, u0.arrows === false && u0.highs === false && !u0.depthRow && !u0.legend);
+  check(`[${label}] "Steering arrows" and "Highs" checkboxes exist and start unchecked; the speed legend starts hidden`, u0.arrows === false && u0.highs === false && !u0.legend);
+  check(`[${label}] the storm-strength selector lives in Experimentation > Advanced (not in Customization), always shown there whether or not the arrows are on`, await ev(() => { const r = document.getElementById('steer-depth-row'); return !!r && !!r.closest('#xp-adv') && !r.closest('#sec-custom') && getComputedStyle(r).display !== 'none'; }));
+  // the selector sits in the Advanced tab: show it (a real click on a hidden button would wait forever) before using it
+  const pickDepth = async (d) => { await ev(() => { document.getElementById('sec-exp').classList.remove('collapsed'); window.SSTSIM.setXpTab('adv'); }); await page.click(`#seg-depth button[data-d="${d}"]`); };
   await page.check('#highs');
   const uH = await ui();
-  check(`[${label}] ticking only "Highs" brings up neither the storm-strength row nor the steering legend`, uH.highs && !uH.depthRow && !uH.legend);
+  check(`[${label}] ticking only "Highs" does not bring up the steering legend`, uH.highs && !uH.legend);
   await page.uncheck('#highs');
   await page.check('#steerarrows');
   const uA = await ui();
-  check(`[${label}] ticking "Steering arrows" shows the storm-strength row (Strong selected) and the speed legend`, uA.depthRow && uA.legend && uA.pressed === 'shallow:false,medium:false,deep:true');
+  check(`[${label}] ticking "Steering arrows" shows the speed legend, and Strong is the storm strength selected`, uA.legend && uA.pressed === 'shallow:false,medium:false,deep:true');
   check(`[${label}] the legend names the layer and unit, and runs 0 to 70+ kt ("${uA.cap}"; ticks ${uA.ticks})`, uA.cap === 'Steering speed, strong storms (850–200 hPa), kt' && uA.ticks === '0 10 20 30 40 50 60 70+');
   const caps = {};
   for (const [d, cap] of [['shallow', 'Steering speed, weak storms (850–700 hPa), kt'], ['medium', 'Steering speed, medium storms (850–500 hPa), kt'], ['deep', 'Steering speed, strong storms (850–200 hPa), kt']]) {
-    await page.click(`#seg-depth button[data-d="${d}"]`);
+    await pickDepth(d);
     const u = await ui(); caps[d] = u.cap === cap && u.pressed.split(',').filter((x) => x.endsWith(':true')).join() === d + ':true';
   }
   check(`[${label}] each storm-strength button selects its layer and renames the legend (weak 850-700, medium 850-500, strong 850-200 hPa)`, caps.shallow && caps.medium && caps.deep);
@@ -432,10 +553,10 @@ async function checkSteering(page, label, S) {
   check(`[${label}] arrows fill the map once ticked (${arrows.length} arrows, ${ink1} painted pixels)`, arrows.length >= 60 && arrows.length <= 600 && ink1 > 20000);
   let nearest = 1e9; for (let i = 0; i < arrows.length; i++) for (let j = i + 1; j < arrows.length; j++) nearest = Math.min(nearest, Math.hypot(arrows[i].x - arrows[j].x, arrows[i].y - arrows[j].y));
   check(`[${label}] the arrows sit on a lattice that keeps them apart (closest pair ${nearest.toFixed(0)} px)`, nearest >= 38);
-  const dom = S.domain, edgeDeg = (a) => Math.min(a.lon - dom.lon0, dom.lon1 - a.lon, a.lat - dom.lat0, dom.lat1 - a.lat);
+  const edgeDeg = (a) => Math.min(a.lon - box.lon0, box.lon1 - a.lon, a.lat - box.lat0, box.lat1 - a.lat);
   const pan = await ev(() => { const b = window.SSTSIM.map.options.maxBounds; return { s: b.getSouth(), w: b.getWest(), n: b.getNorth(), e: b.getEast() }; });
-  const panGap = Math.min(pan.w - dom.lon0, dom.lon1 - pan.e, pan.s - dom.lat0, dom.lat1 - pan.n);
-  check(`[${label}] arrows fade out over the outer 6 degrees of the simulated area, and the map's pan limits keep that edge ${panGap} degrees beyond anything that can be shown, so every arrow on screen is solid (${arrows.filter((a) => a.alpha < 1).length} faded)`, panGap >= 6 && arrows.every((a) => a.alpha === 1 && edgeDeg(a) >= 6));
+  const panGap = Math.min(pan.w - box.lon0, box.lon1 - pan.e, pan.s - box.lat0, box.lat1 - pan.n);
+  check(`[${label}] arrows fade out over the outer 6 degrees of the simulated box, like the field raster does: each arrow's opacity is its distance to the box's edge over 6 degrees, at most 1 (${arrows.filter((a) => a.alpha < 1).length} of ${arrows.length} faded; the map's pan limits are ${panGap.toFixed(0)} degrees from the edge)`, arrows.every((a) => Math.abs(a.alpha - Math.min(1, Math.max(0, edgeDeg(a)) / 6)) < 1e-9) && arrows.every((a) => edgeDeg(a) > 0));
   const sampled = await ev((as) => as.slice(0, 40).map((a) => { const s = window.SSTSIM.steerAt(a.lat, a.lon); return Math.hypot(s.u - a.u, s.v - a.v); }), arrows);
   check(`[${label}] each arrow carries exactly the wind steerAt() reports at its latitude and longitude (largest difference ${Math.max(...sampled).toExponential(1)} kt)`, Math.max(...sampled) < 1e-3);
 
@@ -479,7 +600,7 @@ async function checkSteering(page, label, S) {
   const inkNoSst = await inkOf(), lowLegend = await ev(() => document.getElementById('steer-legend').classList.contains('low'));
   check(`[${label}] arrows and their legend stay with "Show sea temperature" off (${inkNoSst} painted pixels; the legend moves down into the freed corner)`, inkNoSst > 0.85 * ink1 && lowLegend);
   await page.check('#show-sst'); await page.waitForTimeout(150);
-  await ev(() => window.SSTSIM.map.setView([30, -60], 7, { animate: false })); await page.waitForTimeout(250);
+  await ev((c) => window.SSTSIM.map.setView(c, 7, { animate: false }), S.hover); await page.waitForTimeout(250);
   const zoomed = await ev(() => window.SSTSIM.steerArrows());
   check(`[${label}] zoomed in, the lattice keeps its spacing in pixels, so there are fewer, finer-spaced arrows (${zoomed.length} vs ${arrows.length})`, zoomed.length > 15 && zoomed.length < arrows.length);
   await ev((view) => window.SSTSIM.map.fitBounds(view, { animate: false }), S.view); await page.waitForTimeout(200);
@@ -506,7 +627,7 @@ async function checkSteering(page, label, S) {
   const readSteer = (t) => { const m = t.match(/Steering toward (\d+)° \(([A-Z]+)\) at (\d+) kt/); return m ? { dir: +m[1], card: m[2], kt: +m[3] } : null; };
   let hv = await hoverAt(S.pts.jet);
   let want2 = await ev((ll) => ({ deep: window.SSTSIM.steerAt(ll[0], ll[1], 'deep'), shallow: window.SSTSIM.steerAt(ll[0], ll[1], 'shallow'), p: window.SSTSIM.pressureAt(ll[0], ll[1]) }), hv.ll);
-  await page.click('#seg-depth button[data-d="deep"]'); await page.mouse.move(hv.p.x + 2, hv.p.y); await page.mouse.move(hv.p.x, hv.p.y); await page.waitForTimeout(100);
+  await pickDepth('deep'); await page.mouse.move(hv.p.x + 2, hv.p.y); await page.mouse.move(hv.p.x, hv.p.y); await page.waitForTimeout(100);
   hv = { ...hv, text: await ev(() => document.getElementById('readout').textContent) };
   let rs = readSteer(hv.text);
   check(`[${label}] the readout gives the steering heading (as a compass bearing) and speed at the pointer ("${hv.text.replace(/\s+/g, ' ').slice(-60)}")`, rs && Math.abs(rs.kt - want2.deep.speed) <= 1 && Math.min(Math.abs(rs.dir - want2.deep.toward), 360 - Math.abs(rs.dir - want2.deep.toward)) <= 2);
@@ -516,10 +637,10 @@ async function checkSteering(page, label, S) {
   await page.mouse.move(hv.p.x + 2, hv.p.y); await page.mouse.move(hv.p.x, hv.p.y); await page.waitForTimeout(100);
   const pm = (await ev(() => document.getElementById('readout').textContent)).match(/Sea-level pressure (\d+) hPa/);
   check(`[${label}] with Highs on, the readout also gives the sea-level pressure there (${pm && pm[1]} hPa; the model has ${want2.p.toFixed(1)})`, pm && Math.abs(+pm[1] - want2.p) <= 0.6);
-  await page.click('#seg-depth button[data-d="shallow"]'); await page.mouse.move(hv.p.x + 2, hv.p.y); await page.mouse.move(hv.p.x, hv.p.y); await page.waitForTimeout(100);
+  await pickDepth('shallow'); await page.mouse.move(hv.p.x + 2, hv.p.y); await page.mouse.move(hv.p.x, hv.p.y); await page.waitForTimeout(100);
   const rsw = readSteer(await ev(() => document.getElementById('readout').textContent));
   check(`[${label}] choosing weak storms makes the readout (and arrows) follow the shallow layer (${rsw && rsw.kt} kt vs ${want2.deep.speed.toFixed(0)} kt strong there)`, rsw && Math.abs(rsw.kt - want2.shallow.speed) <= 1 && Math.abs(want2.shallow.speed - want2.deep.speed) > 2);
-  await page.click('#seg-depth button[data-d="deep"]');
+  await pickDepth('deep');
   await page.uncheck('#steerarrows'); await page.mouse.move(hv.p.x + 2, hv.p.y); await page.mouse.move(hv.p.x, hv.p.y); await page.waitForTimeout(100);
   const onlyHighs = await ev(() => document.getElementById('readout').textContent);
   check(`[${label}] with only Highs on, the readout has the pressure but no steering line`, /Sea-level pressure/.test(onlyHighs) && !/Steering/.test(onlyHighs));
@@ -580,7 +701,7 @@ async function checkSteering(page, label, S) {
   }, [MONTHS, 24, SN, weather]);
   const bud = await sampleMonths(1), slow = await sampleMonths(0);
   const sigP = b64i16(steer.weather.sigP);
-  const bandNodes = (b) => interior.filter((q) => Math.abs(nodeLat(q)) >= b[0] && Math.abs(nodeLat(q)) < b[1] && nodeLon(q) >= S.lonRange[0] && nodeLon(q) <= S.lonRange[1] && nodeLat(q) > 0);
+  const bandNodes = (b) => interior.filter((q) => Math.abs(nodeLat(q)) >= b[0] && Math.abs(nodeLat(q)) < b[1] && nodeLon(q) >= S.lonRange[0] && nodeLon(q) <= S.lonRange[1] && S.hem * nodeLat(q) > 0);
   const ratios = { shallow: [], deep: [] }, cellTxt = [];
   for (const m of MONTHS) {
     const a = bud[m];
@@ -621,35 +742,40 @@ async function checkSteering(page, label, S) {
     return out;
   }, [v, S.pts, S.pts.far]);
   const nino = await ensoRun(2), nina = await ensoRun(-2);
-  check(`[${label}] a held El Nino strengthens the westerlies over the Gulf (${(nino.gulf - nina.gulf).toFixed(1)} kt, El Nino minus La Nina, deep layer), as the real subtropical jet does`, nino.gulf - nina.gulf > S.ensoU.gulf);
-  check(`[${label}] ...weakens the westerlies / strengthens the easterlies across the tropical Atlantic (${(nino.mdr - nina.mdr).toFixed(1)} kt)`, nino.mdr - nina.mdr < S.ensoU.mdr);
-  check(`[${label}] ...and strengthens them at ${S.pts.jet[0]}N ${-S.pts.jet[1]}W (${(nino.jet - nina.jet).toFixed(1)} kt)`, nino.jet - nina.jet > S.ensoU.jet);
-  check(`[${label}] ...and lowers sea-level pressure at ${S.pts.far[0]}N ${-S.pts.far[1]}W (${(nino.p - nina.p).toFixed(2)} hPa)`, S.pFarSign * (nino.p - nina.p) > 1.0);
+  const dEnso = (k) => nino[k] - nina[k], passEnso = (d, x) => (x >= 0 ? d > x : d < x);   // a spec value is the least change expected: above it if positive, below it if negative
+  check(`[${label}] a held El Nino moves the deep-layer westerlies over ${S.names.sub} by ${dEnso('sub').toFixed(1)} kt (El Nino minus La Nina; ${S.ensoU.sub >= 0 ? 'stronger' : 'weaker'}, as the real response is)`, passEnso(dEnso('sub'), S.ensoU.sub));
+  check(`[${label}] ...over ${S.names.trop} by ${dEnso('trop').toFixed(1)} kt (${S.ensoU.trop >= 0 ? 'stronger' : 'weaker'})`, passEnso(dEnso('trop'), S.ensoU.trop));
+  check(`[${label}] ...at ${S.names.jet} by ${dEnso('jet').toFixed(1)} kt (${S.ensoU.jet >= 0 ? 'stronger' : 'weaker'})`, passEnso(dEnso('jet'), S.ensoU.jet));
+  check(`[${label}] ...and sea-level pressure at ${S.names.far} by ${(nino.p - nina.p).toFixed(2)} hPa (${S.pFarSign < 0 ? 'lower' : 'higher'})`, S.pFarSign * (nino.p - nina.p) > 1.0);
   await ev(() => { window.SSTSIM.applySeed(4242); window.SSTSIM.setPlaying(false); });
 
-  // ---- 7. the highs: what they are, where, how strong, and how they move
-  const hi = await ev(([seeds]) => {
-    const X = window.SSTSIM, DEG = Math.PI / 180; X.setPlaying(false); const res = {};
-    for (const [name, d0] of [['jun', 10], ['aug', 70], ['dec', 190]]) {
-      const nh = [], sh = [], ps = [], proms = []; let bad = 0, unsorted = 0, n = 0;
+  // ---- 7. the highs: what they are, where, how strong, and how they move. The counts are per calendar month and hemisphere against the real ones: the page's own rule applied to the real
+  // daily-mean pressure of 2017-2021 on the same node grid (S.highsReal = [north, south] highs a day; docs/roadmap.md has the table), and the pressure percentiles likewise (S.highsP).
+  const HM = Object.keys(S.highsReal).map(Number), MN = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const hi = await ev(([seeds, months, dom]) => {
+    const X = window.SSTSIM; X.setPlaying(false); const res = {}, p0 = new Date(X.state().date);
+    for (const m of months) {
+      let t = Date.UTC(p0.getUTCFullYear(), m - 1, 15); if (t < p0.getTime() + 6 * 864e5) t = Date.UTC(p0.getUTCFullYear() + 1, m - 1, 15);
+      const d0 = Math.round((t - p0.getTime()) / 864e5) - 5, nh = [], sh = [], ps = [], proms = []; let bad = 0, unsorted = 0;
       for (let s = 1; s <= seeds; s++) {
         X.applySeed(8100 + s); X.setPlaying(false); X.tick(24 * d0);
         for (let k = 0; k < 3; k++) {
-          X.tick(24 * 4 + 5); const hs = X.highs(); n++;
+          X.tick(24 * 4 + 5); const hs = X.highs();
           nh.push(hs.filter((h) => h.lat > 0).length); sh.push(hs.filter((h) => h.lat < 0).length);
-          for (let i = 0; i < hs.length; i++) { const h = hs[i]; ps.push(h.p); proms.push(h.prom); if (h.p < 1017 || Math.abs(h.lat) < 15 || h.prom < 2.5 || h.lon < -110 || h.lon > 40 || h.lat > 72 || h.lat < -40) bad++; if (i && hs[i - 1].p < h.p) unsorted++; }
+          for (let i = 0; i < hs.length; i++) { const h = hs[i]; ps.push(h.p); proms.push(h.prom); if (h.p < 1017 || Math.abs(h.lat) < 15 || h.prom < 2.5 || h.lon < dom.lon0 || h.lon > dom.lon1 || h.lat > dom.lat1 || h.lat < dom.lat0) bad++; if (i && hs[i - 1].p < h.p) unsorted++; }
         }
       }
-      res[name] = { nh, sh, ps, proms, bad, unsorted, n };
+      res[m] = { nh, sh, ps, proms, bad, unsorted };
     }
     return res;
-  }, [12]);
-  const hiTxt = Object.entries(hi).map(([k, v]) => `${k} ${mean(v.nh).toFixed(1)} N / ${mean(v.sh).toFixed(1)} S`).join(', ');
-  check(`[${label}] highs are found by one rule everywhere: at least 1017 hPa, standing 2.5 hPa above their surroundings, outside 15 degrees, inside the grid, strongest first (${Object.values(hi).reduce((a, v) => a + v.bad + v.unsorted, 0)} violations in ${Object.values(hi).reduce((a, v) => a + v.ps.length, 0)} highs)`, Object.values(hi).every((v) => v.bad === 0 && v.unsorted === 0 && v.ps.length > 100));
-  check(`[${label}] the number of highs in the northern half is the real one (4-5 a day over the Atlantic): ${hiTxt}`, mean(hi.jun.nh) > 3 && mean(hi.jun.nh) < 5.8 && mean(hi.aug.nh) > 3 && mean(hi.aug.nh) < 5.8 && mean(hi.dec.nh) > 3.8 && mean(hi.dec.nh) < 6.4);
-  check(`[${label}] ...and in the southern half (real 1.9 to 3.6 a day): ${hiTxt}`, mean(hi.jun.sh) > 2 && mean(hi.jun.sh) < 5 && mean(hi.aug.sh) > 1.5 && mean(hi.aug.sh) < 4.5 && mean(hi.dec.sh) > 0.8 && mean(hi.dec.sh) < 3);
-  const allP = Object.values(hi).flatMap((v) => v.ps);
-  check(`[${label}] central pressures are the real ones (10th/50th/90th percentile ${quant(allP, 10).toFixed(1)}/${quant(allP, 50).toFixed(1)}/${quant(allP, 90).toFixed(1)} hPa; real 1018.5/1023.5/1031 to 1035)`, quant(allP, 10) > 1017 && quant(allP, 10) < 1020.5 && quant(allP, 50) > 1021.5 && quant(allP, 50) < 1026 && quant(allP, 90) > 1028 && quant(allP, 90) < 1039);
+  }, [12, HM, dom]);
+  const hiTxt = (hem) => HM.map((m) => `${MN[m]} ${mean(hi[m][hem]).toFixed(1)} (real ${S.highsReal[m][hem === 'nh' ? 0 : 1].toFixed(1)})`).join(', ');
+  const countOk = (hem) => HM.every((m) => { const sim = mean(hi[m][hem]), real = S.highsReal[m][hem === 'nh' ? 0 : 1]; return real < 0.3 ? Math.abs(sim - real) < 0.5 : sim > 0.7 * real - 0.2 && sim < 1.5 * real + 0.2; });
+  const allHi = HM.flatMap((m) => hi[m].ps);
+  check(`[${label}] highs are found by one rule everywhere: at least 1017 hPa, standing 2.5 hPa above their surroundings, outside 15 degrees, inside the grid, strongest first (${HM.reduce((a, m) => a + hi[m].bad + hi[m].unsorted, 0)} violations in ${allHi.length} highs)`, HM.every((m) => hi[m].bad === 0 && hi[m].unsorted === 0) && allHi.length > 50);
+  check(`[${label}] the number of highs a day in the northern part of the grid is the real one, month by month: ${hiTxt('nh')}`, countOk('nh'));
+  check(`[${label}] ...and in the southern part: ${hiTxt('sh')}`, countOk('sh'));
+  check(`[${label}] central pressures are the real ones (10th/50th/90th percentile ${quant(allHi, 10).toFixed(1)}/${quant(allHi, 50).toFixed(1)}/${quant(allHi, 90).toFixed(1)} hPa; real ${S.highsP.real})`, quant(allHi, 10) > S.highsP.p10[0] && quant(allHi, 10) < S.highsP.p10[1] && quant(allHi, 50) > S.highsP.p50[0] && quant(allHi, 50) < S.highsP.p50[1] && quant(allHi, 90) > S.highsP.p90[0] && quant(allHi, 90) < S.highsP.p90[1]);
   // highs drift, they do not jump: the same high an hour later is within a degree or two, so each keeps one icon
   const drift = await ev(() => {
     const X = window.SSTSIM, d = []; X.setPlaying(false);
@@ -664,21 +790,21 @@ async function checkSteering(page, label, S) {
     return d;
   });
   check(`[${label}] highs drift, they do not jump: an hour later the nearest high is ${quant(drift, 50).toFixed(2)} degrees away (median; 95th percentile ${quant(drift, 95).toFixed(1)}; the rest are highs being born), well inside the 14 degrees an icon follows its high`, quant(drift, 50) < 0.5 && quant(drift, 95) < 2);
-  // the highs' circulation: air goes clockwise round northern highs and counter-clockwise round southern ones, in both layers
-  const circ = await ev(([seeds]) => {
+  // the highs' circulation: air goes clockwise round northern highs and counter-clockwise round southern ones, in both layers (highs well inside the grid, so the ring of samples 8 degrees out stays inside it)
+  const circ = await ev(([seeds, dom]) => {
     const X = window.SSTSIM, DEG = Math.PI / 180; X.setPlaying(false); const out = { nh: { shallow: [], deep: [] }, sh: { shallow: [], deep: [] } };
     for (let s = 1; s <= seeds; s++) {
       X.applySeed(3000 + s); X.setPlaying(false); X.tick(24 * (60 + 11 * s));
       for (let k = 0; k < 4; k++) {
         X.tick(24 * 3 + 4);
         for (const h of X.highs()) {
-          if (Math.abs(h.lat) < 25 || Math.abs(h.lat) > 55 || h.prom < 4 || h.lon < -95 || h.lon > 25) continue;
+          if (Math.abs(h.lat) < 25 || Math.abs(h.lat) > 55 || h.prom < 4 || h.lon < dom.lon0 + 15 || h.lon > dom.lon1 - 13 || h.lat > dom.lat1 - 2 || h.lat < dom.lat0 + 2) continue;
           const sg = h.lat > 0 ? 1 : -1;
           for (const layer of ['shallow', 'deep']) {
             let sum = 0, n = 0;
             for (let a = 0; a < 16; a++) {
               const th = a * Math.PI / 8, dy = 8 * Math.cos(th), dx = 8 * Math.sin(th), la = h.lat + dy, lo = h.lon + dx / Math.cos(h.lat * DEG);
-              if (la > 70 || la < -40 || lo < -110 || lo > 38) continue;
+              if (la > dom.lat1 || la < dom.lat0 || lo < dom.lon0 || lo > dom.lon1) continue;
               const v = X.steerAt(la, lo, layer), rr = Math.hypot(dx, dy); sum += (v.u * dy - v.v * dx) / rr; n++;   // clockwise tangential component
             }
             if (n >= 12) out[sg > 0 ? 'nh' : 'sh'][layer].push(sg * sum / n);
@@ -687,35 +813,42 @@ async function checkSteering(page, label, S) {
       }
     }
     return out;
-  }, [20]);
+  }, [20, dom]);
   const cs = (h, l) => ({ n: circ[h][l].length, m: mean(circ[h][l]), pos: circ[h][l].filter((x) => x > 0).length / Math.max(1, circ[h][l].length) });
   const nhS = cs('nh', 'shallow'), nhD = cs('nh', 'deep'), shS = cs('sh', 'shallow'), shD = cs('sh', 'deep');
-  check(`[${label}] the arrows circulate round the northern highs the way real ones do (8 degrees out: ${nhS.m.toFixed(1)} kt weak / ${nhD.m.toFixed(1)} kt strong storms, anticyclonic round ${(nhS.pos * 100).toFixed(0)}% / ${(nhD.pos * 100).toFixed(0)}% of ${nhS.n} highs; real 11.7 kt, 98% / 88%)`, nhS.n > 60 && nhS.m > 9 && nhD.m > 8 && nhS.pos > 0.85 && nhD.pos > 0.7);
-  check(`[${label}] ...and the other way round the southern ones (${shS.m.toFixed(1)} / ${shD.m.toFixed(1)} kt, ${(shS.pos * 100).toFixed(0)}% / ${(shD.pos * 100).toFixed(0)}% of ${shS.n} highs)`, shS.n > 25 && shS.m > 7 && shD.m > 6 && shS.pos > 0.8 && shD.pos > 0.65);
+  const circOk = (a, b) => a.n < 25 || (a.m > 7 && b.m > 6 && a.pos > 0.8 && b.pos > 0.65);   // a hemisphere with fewer than 25 well-placed highs in 20 runs is not tested
+  check(`[${label}] the arrows circulate round the northern highs the way real ones do (8 degrees out: ${nhS.m.toFixed(1)} kt weak / ${nhD.m.toFixed(1)} kt strong storms, anticyclonic round ${(nhS.pos * 100).toFixed(0)}% / ${(nhD.pos * 100).toFixed(0)}% of ${nhS.n} highs; real Atlantic 11.7 kt, 98% / 88%)`, circOk(nhS, nhD));
+  check(`[${label}] ...and the other way round the southern ones (${shS.m.toFixed(1)} / ${shD.m.toFixed(1)} kt, ${(shS.pos * 100).toFixed(0)}% / ${(shD.pos * 100).toFixed(0)}% of ${shS.n} highs)`, circOk(shS, shD) && nhS.n + shS.n >= 25);
 
-  // ---- 8. the jet ribbon: the arrows hug the jet. Along the simulated jet axis (the line the "Jet stream line" option draws), June to November, between 80W and 20W, the
-  // deep-layer steering points along the axis and is strongest on it; the real composite on the real axis (same months and sector) is 34.4 kt, 16 degrees off, 80% within 45.
-  const rib = await ev(([seeds]) => {
-    const X = window.SSTSIM, DEG = Math.PI / 180; X.setPlaying(false); const along = [], ang = [], n10 = [], s10 = [];
-    for (let s = 1; s <= seeds; s++) {
-      X.applySeed(2000 + s); X.setPlaying(false); X.tick(24 * (5 + 4.8 * (s - 1)));
-      for (let k = 0; k < 3; k++) {
-        X.tick(24 * 8 + 3);
-        for (let lon = -80; lon <= -20; lon += 4) {
-          const a = X.jetLatLive(lon), am = X.jetLatLive(lon - 4), ap = X.jetLatLive(lon + 4);
-          if (a < 25 || a > 58) continue;
-          const slope = (ap - am) / 8, c = Math.cos(a * DEG), nn = Math.hypot(c, slope), tx = c / nn, ty = slope / nn, v = X.steerAt(a, lon, 'deep');
-          along.push(v.u * tx + v.v * ty);
-          let d = Math.abs(Math.atan2(v.v, v.u) - Math.atan2(ty, tx)) / DEG; if (d > 180) d = 360 - d; ang.push(d);
-          const vn = X.steerAt(a + 10, lon, 'deep'), vs = X.steerAt(a - 10, lon, 'deep'); n10.push(vn.u * tx + vn.v * ty); s10.push(vs.u * tx + vs.v * ty);
+  // ---- 8. the jet ribbon: the arrows hug the jet. Along the simulated jet axis (the line the "Jet stream line" option draws), in the season and sector of S.jet, the deep-layer steering
+  // points along the axis and is strongest on it; S.jet.along / ang / within are the real composite on the real axis (same months, sector and sampling), measured from the ERA5 daily fields.
+  if (S.jet) {
+    const J = S.jet;
+    const rib = await ev(([seeds, J, dom]) => {
+      const X = window.SSTSIM, DEG = Math.PI / 180; X.setPlaying(false); const along = [], ang = [], n10 = [], s10 = [], p0 = new Date(X.state().date), hem = J.hem;
+      const ok = (d) => J.months.includes(new Date(p0.getTime() + d * 864e5).getUTCMonth() + 1);
+      let d0 = 0; while (!ok(d0) && d0 < 365) d0++; let len = 0; while (ok(d0 + len) && len < 366) len++;     // the first stretch of the season: runs may start inside it
+      const inside = (la, lo) => la <= dom.lat1 && la >= dom.lat0 && lo >= dom.lon0 && lo <= dom.lon1;
+      for (let s = 1; s <= seeds; s++) {
+        X.applySeed(2000 + s); X.setPlaying(false); X.tick(24 * (d0 + Math.floor((s - 1) * Math.max(0, len - 26) / Math.max(1, seeds - 1))));
+        for (let k = 0; k < 3; k++) {
+          X.tick(24 * 8 + 3);
+          for (let lon = J.lon[0]; lon <= J.lon[1]; lon += 4) {
+            const a = X.jetLatLive(lon), am = X.jetLatLive(lon - 4), ap = X.jetLatLive(lon + 4);
+            if (a * hem < J.lat[0] || a * hem > J.lat[1]) continue;
+            const slope = (ap - am) / 8, c = Math.cos(a * DEG), nn = Math.hypot(c, slope), tx = c / nn, ty = slope / nn, v = X.steerAt(a, lon, 'deep');
+            along.push(v.u * tx + v.v * ty);
+            let d = Math.abs(Math.atan2(v.v, v.u) - Math.atan2(ty, tx)) / DEG; if (d > 180) d = 360 - d; ang.push(d);
+            if (inside(a + 10 * hem, lon) && inside(a - 10 * hem, lon)) { const vn = X.steerAt(a + 10 * hem, lon, 'deep'), vs = X.steerAt(a - 10 * hem, lon, 'deep'); n10.push(vn.u * tx + vn.v * ty); s10.push(vs.u * tx + vs.v * ty); }
+          }
         }
       }
-    }
-    return { along, ang, n10, s10 };
-  }, [30]);
-  const ribMean = mean(rib.along), ribWithin = rib.ang.filter((x) => x < 45).length / rib.ang.length;
-  check(`[${label}] the deep-layer steering on the simulated jet axis (June-November, ${rib.along.length} samples) is ${ribMean.toFixed(1)} kt along it (real composite 34.4), median ${quant(rib.ang, 50).toFixed(0)} deg off its direction (real 16), ${(ribWithin * 100).toFixed(0)}% within 45 deg (real 80%)`, ribMean > 29 && ribMean < 39 && quant(rib.ang, 50) < 26 && ribWithin > 0.78);
-  check(`[${label}] ...and it is a stripe: ${(ribMean - mean(rib.n10)).toFixed(0)} kt weaker 10 degrees poleward of the axis and ${(ribMean - mean(rib.s10)).toFixed(0)} kt weaker 10 degrees equatorward`, ribMean - mean(rib.n10) > 10 && ribMean - mean(rib.s10) > 10);
+      return { along, ang, n10, s10 };
+    }, [30, J, dom]);
+    const ribMean = mean(rib.along), ribWithin = rib.ang.filter((x) => x < 45).length / rib.ang.length;
+    check(`[${label}] the deep-layer steering on the simulated jet axis (${J.label}, ${rib.along.length} samples) is ${ribMean.toFixed(1)} kt along it (real composite ${J.along}), median ${quant(rib.ang, 50).toFixed(0)} deg off its direction (real ${J.ang}), ${(ribWithin * 100).toFixed(0)}% within 45 deg (real ${(J.within * 100).toFixed(0)}%)`, rib.along.length > 100 && ribMean > 0.85 * J.along && ribMean < 1.15 * J.along && quant(rib.ang, 50) < J.ang + 10 && ribWithin > J.within - 0.02);
+    check(`[${label}] ...and it is a stripe: ${(ribMean - mean(rib.n10)).toFixed(0)} kt weaker 10 degrees poleward of the axis and ${(ribMean - mean(rib.s10)).toFixed(0)} kt weaker 10 degrees equatorward`, rib.n10.length > 50 && ribMean - mean(rib.n10) > J.stripe && ribMean - mean(rib.s10) > J.stripe);
+  }
 
   // ---- 9. the two weather sliders
   const sl = await ev(([jet, seeds]) => {
@@ -729,13 +862,13 @@ async function checkSteering(page, label, S) {
       }
       for (const mode of ['on', 'off']) {                                       // the speed slider: weather on, jet clock running (on) or stopped (off)
         X.applySeed(500 + s); X.setPlaying(false); X.set('variability', 0); X.set('jetSpeed', mode === 'on' ? 1 : 0); X.tick(24 * 40);
-        const a = at(), pa = X.pressureAt(40, -40); X.tick(24 * 5); const b = at(), pb = X.pressureAt(40, -40); out.frozen[mode].push(Math.hypot(a.u - b.u, a.v - b.v) + Math.abs(pa - pb));
+        const a = at(), pa = X.pressureAt(jet[0], jet[1]); X.tick(24 * 5); const b = at(), pb = X.pressureAt(jet[0], jet[1]); out.frozen[mode].push(Math.hypot(a.u - b.u, a.v - b.v) + Math.abs(pa - pb));
       }
     }
     X.set('variability', 1); X.set('shearSynoptic', 1); X.set('jetSpeed', 1);
     return out;
   }, [S.pts.jet, 10]);
-  check(`[${label}] the day-to-day slider at 0 removes the pressure weather entirely (largest P' anywhere: ${sl.ppMax.toExponential(1)} hPa) and flattens the steering (${mean(sl.change.off).toFixed(2)} vs ${mean(sl.change.on).toFixed(2)} kt change in 3 days at ${S.pts.jet[0]}N ${-S.pts.jet[1]}W)`, sl.ppMax === 0 && mean(sl.change.off) < 0.25 * mean(sl.change.on) && mean(sl.change.on) > 2);
+  check(`[${label}] the day-to-day slider at 0 removes the pressure weather entirely (largest P' anywhere: ${sl.ppMax.toExponential(1)} hPa) and flattens the steering (${mean(sl.change.off).toFixed(2)} vs ${mean(sl.change.on).toFixed(2)} kt change in 3 days at ${S.names.jet})`, sl.ppMax === 0 && mean(sl.change.off) < 0.25 * mean(sl.change.on) && mean(sl.change.on) > 2);
   check(`[${label}] the weather-speed slider at 0 freezes the weather in place (${mean(sl.frozen.off).toFixed(2)} vs ${mean(sl.frozen.on).toFixed(2)} kt+hPa of change in 5 days)`, mean(sl.frozen.off) < 0.25 * mean(sl.frozen.on) && mean(sl.frozen.on) > 2);
   await ev(() => { window.SSTSIM.applySeed(4242); window.SSTSIM.setPlaying(false); });
 
@@ -752,7 +885,7 @@ async function checkSteering(page, label, S) {
       }
     }
     return { d, big };
-  }, [S.pts.jet, S.pts.gulf, S.pts.mdr, [35, -60], [30, -40], [55, -30]].filter((p) => Array.isArray(p)));
+  }, [S.pts.jet, S.pts.sub, S.pts.trop, ...S.extra]);
   check(`[${label}] steering evolves smoothly: from one hour to the next the heading changes by at most ${Math.max(...sm.d).toFixed(1)} deg and the speed by at most ${Math.max(...sm.big).toFixed(2)} kt (${sm.d.length} hourly steps at 6 points)`, Math.max(...sm.d) < 12 && Math.max(...sm.big) < 2);
   const rep = await ev(() => {
     const X = window.SSTSIM, take = () => { const d = X.steerNodes('deep'), s = X.steerNodes('shallow'); return [d.u, d.v, d.p, s.u, s.v].flat(); }, diff = (a, b) => Math.max(...a.map((v, i) => Math.abs(v - b[i])));
@@ -766,8 +899,8 @@ async function checkSteering(page, label, S) {
   });
   check(`[${label}] a seed gives the same steering however the run is chunked (240 h in one tick, ten, 240 hourly, or odd pieces: differences ${rep.tens.toExponential(1)}, ${rep.hourly.toExponential(1)}, ${rep.odd.toExponential(1)} kt/hPa), reproduces on restart (${rep.again.toExponential(1)}), and differs between seeds (${rep.other.toFixed(1)})`, rep.tens < 1e-3 && rep.hourly < 1e-3 && rep.odd < 1e-3 && rep.again === 0 && rep.other > 5);
   // adding steering must not change anything else a seed does: it has its own random stream, and drawing/updating it does not touch the fields
-  const iso = await ev(([pt]) => {
-    const X = window.SSTSIM, read = () => JSON.stringify([X.sample(pt[0], pt[1]), X.sample(20, -50), X.sample(35, -70), X.enso(), X.state().eddies, X.state().gsShift]);
+  const iso = await ev(([pt, sub, jet]) => {
+    const X = window.SSTSIM, read = () => JSON.stringify([X.sample(pt[0], pt[1]), X.sample(sub[0], sub[1]), X.sample(jet[0], jet[1]), X.enso(), X.state().eddies, X.state().gsShift]);
     X.applySeed(555); X.setPlaying(false); for (let i = 0; i < 6; i++) X.advance(24); const plain = read();
     X.applySeed(555); X.setPlaying(false);
     document.getElementById('steerarrows').checked = true; document.getElementById('highs').checked = true; document.getElementById('steerarrows').dispatchEvent(new Event('change'));
@@ -775,7 +908,7 @@ async function checkSteering(page, label, S) {
     const busy = read();
     document.getElementById('steerarrows').checked = false; document.getElementById('highs').checked = false; document.getElementById('steerarrows').dispatchEvent(new Event('change'));
     return { plain, busy };
-  }, [S.pts.mdr]);
+  }, [S.pts.trop, S.pts.sub, S.pts.jet]);
   check(`[${label}] steering draws on its own random stream: SST, humidity, shear and ENSO after 6 days are bit-for-bit what they are with the arrows and highs off`, iso.plain === iso.busy);
   await ev(() => { window.SSTSIM.applySeed(4242); window.SSTSIM.setPlaying(false); });
 
@@ -789,10 +922,10 @@ async function checkSteering(page, label, S) {
       for (const [k, ll] of [['mdr', mdr], ['jet', jet]]) { sh[k].push(X.steerAt(ll[0], ll[1], 'shallow').speed); dp[k].push(X.steerAt(ll[0], ll[1], 'deep').speed); }
     }
     return { worst, sh, dp };
-  }, [steer.mediumWeight, S.pts.mdr, S.pts.jet]);
+  }, [steer.mediumWeight, S.pts.trop, S.pts.jet]);
   check(`[${label}] the medium layer is ${steer.mediumWeight} x weak + ${(1 - steer.mediumWeight).toFixed(2)} x strong, node by node wherever the soft 100 kt limit is not in play (largest difference ${lay.worst.toExponential(1)} kt)`, lay.worst < 0.05);
   const ms = (a) => mean(a);
-  check(`[${label}] the layers differ the way the real ones do: in the trades the low-level flow is the faster (${ms(lay.sh.mdr).toFixed(1)} kt weak vs ${ms(lay.dp.mdr).toFixed(1)} strong at ${S.pts.mdr[0]}N ${-S.pts.mdr[1]}W), under the jet the deep layer is (${ms(lay.dp.jet).toFixed(1)} vs ${ms(lay.sh.jet).toFixed(1)} kt at ${S.pts.jet[0]}N ${-S.pts.jet[1]}W)`, ms(lay.sh.mdr) > ms(lay.dp.mdr) && ms(lay.dp.jet) > ms(lay.sh.jet) + 4);
+  check(`[${label}] the layers differ the way the real ones do: in the trades the low-level flow is the faster (${ms(lay.sh.mdr).toFixed(1)} kt weak vs ${ms(lay.dp.mdr).toFixed(1)} strong at ${S.names.trop}), under the jet the deep layer is (${ms(lay.dp.jet).toFixed(1)} vs ${ms(lay.sh.jet).toFixed(1)} kt at ${S.names.jet})`, ms(lay.sh.mdr) > ms(lay.dp.mdr) && ms(lay.dp.jet) > ms(lay.sh.jet) + 4);
 
   // ---- 12. the H icons
   // a state with several highs on screen, searched for (so a recalibration that moves the highs about cannot break the check for a reason that is not the icons)
@@ -899,6 +1032,7 @@ async function checkBasin(label, dist, extra) {
   await page.click('#sec-exp button.subhead');
   const expCollapsedAfter = await page.evaluate(() => document.getElementById('sec-exp').classList.contains('collapsed'));
   check(`[${label}] Experimentation section opens on click`, !expCollapsedAfter);
+  await checkExperiment(page, label);
 
   // ENSO: "Set ENSO now" is a slider that forces the Nino 3.4 index directly (soft ceiling, not
   // a hard cap at 3 -- the gauge and this slider can both still show a reading past it).

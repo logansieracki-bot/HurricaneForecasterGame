@@ -70,7 +70,7 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--focus);outline-
 .row{margin:12px 0 0}
 .seg{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;background:rgba(255,255,255,.07);border-radius:9px;padding:3px;gap:2px}
 .seg button{border:0;background:transparent;border-radius:7px;padding:6px 4px;font-size:12.5px;cursor:pointer;color:var(--dim)}
-.seg button[aria-pressed=true]{background:var(--ice);color:#141414;font-weight:600}
+.seg button[aria-pressed=true],.seg button[aria-selected=true]{background:var(--ice);color:#141414;font-weight:600}
 .sl{display:flex;justify-content:space-between;align-items:baseline;font-size:12.5px;margin-bottom:2px}
 .sl output{font-variant-numeric:tabular-nums;color:var(--dim);font-size:12px}
 input[type=range]{width:100%;margin:2px 0 0;accent-color:#d4d4d4;height:20px}
@@ -190,49 +190,65 @@ canvas.overlay{position:absolute;left:0;top:0;width:100%;height:100%;pointer-eve
       <button class="subhead" aria-expanded="false" aria-controls="sec-exp-b"><span>Experimentation</span><i class="chev">&#9662;</i></button>
       <div class="subbody" id="sec-exp-b">
         <p class="hint">Normal = 1991–2020 average.</p>
-        <div class="row">
-          <div class="sl"><label for="p-warm">Warming</label><output id="p-warm-o">+0.0 °C</output></div>
-          <input id="p-warm" type="range" min="-3" max="4" step="0.1" value="0">
+        <div class="row seg" id="seg-xp" role="tablist" aria-label="Experiment settings">
+          <button role="tab" id="xp-tab-basic" data-x="basic" aria-selected="true" aria-controls="xp-basic">Basic</button>
+          <button role="tab" id="xp-tab-adv" data-x="adv" aria-selected="false" aria-controls="xp-adv" tabindex="-1">Advanced</button>
         </div>
-        <div class="row">
-          <div class="sl"><label for="p-var">Year-to-year variability</label><output id="p-var-o">1.0×</output></div>
-          <input id="p-var" type="range" min="0" max="3" step="0.1" value="1">
+        <div id="xp-basic" role="tabpanel" aria-labelledby="xp-tab-basic">
+          <div class="row">
+            <div class="sl"><label for="p-ensonow">Set ENSO now</label><output id="p-ensonow-o">Neutral</output></div>
+            <input id="p-ensonow" type="range" min="-3" max="3.4" step="0.1" value="0">
+          </div>
+          <label class="chk"><input type="checkbox" id="enso-hold"><span> Keep ENSO at this value (don't let it drift)</span></label>
+          <div class="row">
+            <div class="sl"><label for="p-warm">Warming</label><output id="p-warm-o">+0.0 °C</output></div>
+            <input id="p-warm" type="range" min="-3" max="4" step="0.1" value="0">
+          </div>
+          <div class="row">
+            <div class="sl"><label for="p-moist" title="Moves the average 700 hPa relative humidity everywhere, in percentage points">Moisture (average humidity)</label><output id="p-moist-o">+0 %</output></div>
+            <input id="p-moist" type="range" min="-20" max="20" step="1" value="0">
+          </div>
+          <div class="row">
+            <div class="sl"><label for="p-shear" title="Moves the average 200–850 hPa wind shear everywhere; it never goes below zero">Wind shear (average)</label><output id="p-shear-o">+0 kt</output></div>
+            <input id="p-shear" type="range" min="-20" max="20" step="1" value="0">
+          </div>
         </div>
-        <div class="row">
-          <div class="sl"><label for="p-wx">Day-to-day weather (humidity)</label><output id="p-wx-o">1.0×</output></div>
-          <input id="p-wx" type="range" min="0" max="3" step="0.1" value="1">
+        <div id="xp-adv" role="tabpanel" aria-labelledby="xp-tab-adv" hidden>
+          <div class="row">
+            <div class="sl"><label for="p-var">Year-to-year variability</label><output id="p-var-o">1.0×</output></div>
+            <input id="p-var" type="range" min="0" max="3" step="0.1" value="1">
+          </div>
+          <div class="row">
+            <div class="sl"><label for="p-wx">Day-to-day weather (humidity)</label><output id="p-wx-o">1.0×</output></div>
+            <input id="p-wx" type="range" min="0" max="3" step="0.1" value="1">
+          </div>
+          <div class="row">
+            <div class="sl"><label for="p-wxs">Day-to-day weather (wind shear)</label><output id="p-wxs-o">1.0×</output></div>
+            <input id="p-wxs" type="range" min="0" max="3" step="0.1" value="1">
+          </div>
+          <div class="row">
+            <div class="sl"><label for="p-jets">Jet stream speed</label><output id="p-jets-o">1.0×</output></div>
+            <input id="p-jets" type="range" min="0" max="3" step="0.1" value="1">
+          </div>
+          <div class="row">
+            <div class="sl"><label for="p-sea">Seasonal swing</label><output id="p-sea-o">1.0×</output></div>
+            <input id="p-sea" type="range" min="0" max="2" step="0.05" value="1">
+          </div>
+          <div class="row">
+            <div class="sl"><label for="p-feat">Currents and upwelling</label><output id="p-feat-o">1.0×</output></div>
+            <input id="p-feat" type="range" min="0" max="2" step="0.05" value="1">
+          </div>
+          <div class="row">
+            <div class="sl"><label for="p-enso">El Niño / La Niña influence</label><output id="p-enso-o">1.0×</output></div>
+            <input id="p-enso" type="range" min="0" max="4" step="0.05" value="1">
+          </div>
+          <label class="chk"><input type="checkbox" id="seed-vary" checked> Seed nudges swing, currents and El Niño</label>
         </div>
-        <div class="row">
-          <div class="sl"><label for="p-wxs">Day-to-day weather (wind shear)</label><output id="p-wxs-o">1.0×</output></div>
-          <input id="p-wxs" type="range" min="0" max="3" step="0.1" value="1">
-        </div>
-        <div class="row">
-          <div class="sl"><label for="p-jets">Jet stream speed</label><output id="p-jets-o">1.0×</output></div>
-          <input id="p-jets" type="range" min="0" max="3" step="0.1" value="1">
-        </div>
-        <div class="row">
-          <div class="sl"><label for="p-sea">Seasonal swing</label><output id="p-sea-o">1.0×</output></div>
-          <input id="p-sea" type="range" min="0" max="2" step="0.05" value="1">
-        </div>
-        <div class="row">
-          <div class="sl"><label for="p-feat">Currents and upwelling</label><output id="p-feat-o">1.0×</output></div>
-          <input id="p-feat" type="range" min="0" max="2" step="0.05" value="1">
-        </div>
-        <div class="row">
-          <div class="sl"><label for="p-enso">El Niño / La Niña influence</label><output id="p-enso-o">1.0×</output></div>
-          <input id="p-enso" type="range" min="0" max="4" step="0.05" value="1">
-        </div>
-        <div class="row">
-          <div class="sl"><label for="p-ensonow">Set ENSO now</label><output id="p-ensonow-o">Neutral</output></div>
-          <input id="p-ensonow" type="range" min="-3" max="3.4" step="0.1" value="0">
-        </div>
-        <label class="chk"><input type="checkbox" id="enso-hold"><span> Keep ENSO at this value (don't let it drift)</span></label>
         <div class="seedrow">
           <label for="seed">Seed</label><input id="seed" type="number" min="1" max="999999" step="1">
           <button class="pill" id="b-newseed" title="Pick a new random year and restart">New seed</button>
           <button class="pill" id="b-reset" title="Reset the sliders (seed-nudged ones go back to this seed's values)">Reset</button>
         </div>
-        <label class="chk"><input type="checkbox" id="seed-vary" checked> Seed nudges swing, currents and El Niño</label>
       </div>
     </section>
   </div>
@@ -554,7 +570,7 @@ function interp1(xs, ys, x) { if (x <= xs[0]) return ys[0]; for (let i = 1; i < 
  * ------------------------------------------------------------------ */
 const START_YEAR = new Date().getUTCFullYear();
 const START_MS = Date.UTC(START_YEAR, 10, 1, 0, 0, 0);
-const P = { warming: 0, variability: 1, seasonal: 1, features: 1, enso: 1, synoptic: 1, shearSynoptic: 1, jetSpeed: 1, seed: 1 };
+const P = { warming: 0, moisture: 0, shearShift: 0, variability: 1, seasonal: 1, features: 1, enso: 1, synoptic: 1, shearSynoptic: 1, jetSpeed: 1, seed: 1 };
 let rs = 1;
 function rand() { rs |= 0; rs = rs + 0x6D2B79F5 | 0; let t = Math.imul(rs ^ rs >>> 15, 1 | rs); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }
 function randn() { let u = 0; while (u === 0) u = rand(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * rand()); }
@@ -870,7 +886,8 @@ function computeField() {
   }
 
   /* --- humidity: a separate, additive pass, not interleaved into the SST loop above --- *
-   * Deliberately only driven by P.variability/P.enso/P.synoptic, not P.warming/P.seasonal/
+   * Deliberately driven only by P.variability/P.enso/P.synoptic (plus P.moisture, the Moisture slider's plain shift of the
+   * average, like P.warming for SST), not by P.warming/P.seasonal/
    * P.features: P.warming ("+N °C") is meaningless for a %RH field; P.features is explicitly
    * SST's own ocean-current/upwelling correction, and this build's own point is that any real
    * humidity feature comes through from raw data with no synthetic help; P.seasonal stretches
@@ -880,7 +897,7 @@ function computeField() {
    * EOF/ENSO-regression-derived field, physically defensible since one real ENSO event drives
    * both fields' own interannual variability. P.synoptic has no SST equivalent at all -- real
    * SST doesn't swing day to day the way real mid-level humidity does. */
-  const hvs = P.variability, hes = P.enso, hws = P.synoptic;
+  const hvs = P.variability, hes = P.enso, hws = P.synoptic, hmo = P.moisture;
   const HA0 = humidClimF[M(m1 - 1)], HA1 = humidClimF[M(m1)], HA2 = humidClimF[M(m1 + 1)], HA3 = humidClimF[M(m1 + 2)];
   for (let j = 0; j < NY; j++) {
     const o = j * NX;
@@ -889,8 +906,8 @@ function computeField() {
       if (outOfBasin[k]) { humid[k] = NaN; continue; }
       const mth = w0 * HA0[k] + w1 * HA1[k] + w2 * HA2[k] + w3 * HA3[k];
       const syn = sp0 * humidSynPrev[k] + sp1 * humidSynCur[k];
-      let v = mth + hvs * humidAnomF[k] + hes * humidEnsoF[k] + hws * syn;
-      if (v > 100) v = 100 + 4 * Math.tanh((v - 100) / 4); else if (v < 2) v = 2 - 4 * Math.tanh((2 - v) / 4);   // soft: real RH can edge past [2,100] without ever doing so without limit
+      let v = mth + hvs * humidAnomF[k] + hes * humidEnsoF[k] + hws * syn + hmo;   // hmo: the Moisture slider moves the average everywhere
+      if (v > 95) v = 95 + 5 * Math.tanh((v - 95) / 5); else if (v < 3) v = 3 * Math.exp((v - 3) / 3);   // soft: relative humidity stays inside (0,100) however far the field or the slider pushes it -- identity between 3 and 95, slope 1 where each squeeze starts (this used to be [-2,104]: 0.1-6% of cells read below 0 or above 100 even with every slider at rest)
       humid[k] = v;
     }
   }
@@ -906,7 +923,7 @@ function computeField() {
    * own latitude showed no usable ENSO signal (daily correlations 0.0-0.17), so nothing is
    * invented there. Same two-phase order humidity's own synoptic layer was added well after
    * its climatology+ENSO base shipped and was confirmed good (see docs/roadmap.md). The
-   * interannual terms are driven only by P.variability/P.enso, for the same reasons
+   * interannual terms are driven only by P.variability/P.enso (plus P.shearShift, the Wind shear slider's plain shift of the average), for the same reasons
    * humidity's own combine pass gives above: P.warming is meaningless for a kt field,
    * P.seasonal/P.features are SST-current-specific mechanisms shear has no equivalent of (its
    * own 12-month climatology already carries the real seasonal cycle -- low in hurricane
@@ -920,7 +937,7 @@ function computeField() {
    * The slider scales how far the axis strays from its real mean path (and the local
    * texture): at 0 the jet is still there -- always flowing, as the real one is -- just
    * parked on its mean path instead of meandering. */
-  const svs = P.variability, ses = P.enso, sws = P.shearSynoptic;
+  const svs = P.variability, ses = P.enso, sws = P.shearSynoptic, ssh = P.shearShift;
   const SA0 = shearClimF[M(m1 - 1)], SA1 = shearClimF[M(m1)], SA2 = shearClimF[M(m1 + 1)], SA3 = shearClimF[M(m1 + 2)];
   // Axis latitude at every fine longitude column: the final coarse axis (continuous-time, see
   // jetAxisRaw -- this is evaluated at the exact current jet clock, so it drifts smoothly hour to
@@ -937,10 +954,10 @@ function computeField() {
       if (outOfBasin[k]) { shear[k] = NaN; continue; }
       const mth = w0 * SA0[k] + w1 * SA1[k] + w2 * SA2[k] + w3 * SA3[k] - jetSmearF[k];   // climatology minus the blurred jet it contains; the ribbon below puts the jet back, sharp, where it actually is today
       const syn = sp0 * shearSynPrev[k] + sp1 * shearSynCur[k];
-      let v = mth + svs * shearAnomF[k] + ses * shearEnsoF[k] + sws * SHEAR_TEXTURE_GAIN * syn;
+      let v = mth + svs * shearAnomF[k] + ses * shearEnsoF[k] + sws * SHEAR_TEXTURE_GAIN * syn + ssh;   // ssh: the Shear slider moves the average everywhere (the jet rides on top of it)
       const off = Math.abs(lat - jetAxisF[i]);
       if (off < JET_LUT_MAX) { const n = off / JET_LUT_STEP, n0 = n | 0; v += jetBumpLut[n0] + (n - n0) * (jetBumpLut[n0 + 1] - jetBumpLut[n0]); }
-      if (v > 115) v = 115 + 10 * Math.tanh((v - 115) / 10); else if (v < 2) v = 2 - 4 * Math.tanh((2 - v) / 4);   // soft: real shear can edge past this basin's own monthly-climatology range [6.6, 77.0] (daily values reach 137.7 kt at the 99.9th percentile) without ever doing so without limit, same spirit as every other field's own soft clamp
+      if (v > 115) v = 115 + 10 * Math.tanh((v - 115) / 10); else if (v < 2) v = 2 * Math.exp((v - 2) / 2);   // soft: real shear can edge past this basin's own monthly-climatology range [6.6, 77.0] (daily values reach 137.7 kt at the 99.9th percentile) without ever doing so without limit, same spirit as every other field's own soft clamp; a magnitude is never below zero, so under 2 kt it bends towards 0 (slope 1 where it starts; this used to dip to -2 kt: 0.1-20% of cells read negative with every slider at rest)
       shear[k] = v;
     }
   }
@@ -1773,6 +1790,17 @@ window.addEventListener('keydown', (e) => {
 /* panel */
 $('collapse').onclick = () => { const p = $('panel'); p.classList.toggle('collapsed'); $('collapse').innerHTML = p.classList.contains('collapsed') ? '&#9656;' : '&#9662;'; };
 document.querySelectorAll('.subhead').forEach((h) => h.onclick = () => { const sec = h.closest('.subsec'), collapsed = sec.classList.toggle('collapsed'); h.setAttribute('aria-expanded', !collapsed); });
+/* Experimentation has two tabs: Basic (ENSO, warming, moisture, shear -- what you reach for first) and Advanced (the rest). Basic is shown first. */
+const xpTabs = [...document.querySelectorAll('#seg-xp button')];
+function setXpTab(name) { xpTabs.forEach((b) => { const on = b.dataset.x === name; b.setAttribute('aria-selected', on); b.tabIndex = on ? 0 : -1; $('xp-' + b.dataset.x).hidden = !on; }); }
+xpTabs.forEach((b, i) => {
+  b.onclick = () => setXpTab(b.dataset.x);
+  b.onkeydown = (e) => {   // arrow keys / Home / End move between the tabs, as in any tab list
+    const j = e.key === 'ArrowRight' ? (i + 1) % xpTabs.length : e.key === 'ArrowLeft' ? (i + xpTabs.length - 1) % xpTabs.length : e.key === 'Home' ? 0 : e.key === 'End' ? xpTabs.length - 1 : -1;
+    if (j < 0) return;
+    e.preventDefault(); e.stopPropagation(); setXpTab(xpTabs[j].dataset.x); xpTabs[j].focus();
+  };
+});
 document.querySelectorAll('#seg-view button').forEach((b) => b.onclick = () => { view = b.dataset.v; document.querySelectorAll('#seg-view button').forEach((x) => x.setAttribute('aria-pressed', x === b)); drawLegend(); updateThresholdLabels(); updateReadout(); scheduleRender(); });
 THEME_ORDER.forEach((id) => { const t = THEMES[id], b = document.createElement('button'); b.dataset.th = id; b.setAttribute('aria-pressed', id === 'sat'); b.innerHTML = '<i style="background:' + t.swatch + '"></i><span>' + t.name + '</span>'; b.onclick = () => setTheme(id); $('themes').appendChild(b); });
 document.querySelectorAll('#seg-grid button').forEach((b) => b.onclick = () => setGridMode(b.dataset.g));
@@ -1781,14 +1809,14 @@ $('detail').onchange = () => { syncDetail(); $('attr').textContent = TH.attr + (
 map.on('zoom', updateDetailOpacity);
 $('op').oninput = () => { $('op-o').textContent = $('op').value + '%'; scheduleRender(); };
 $('l265').onchange = scheduleRender; $('l2').onchange = scheduleRender; $('jetline').onchange = scheduleRender;
-const sliders = [['p-warm', 'warming', (v) => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(1) + ' °C'], ['p-var', 'variability', (v) => v.toFixed(1) + '×'], ['p-wx', 'synoptic', (v) => v.toFixed(1) + '×'], ['p-wxs', 'shearSynoptic', (v) => v.toFixed(1) + '×'], ['p-jets', 'jetSpeed', (v) => v.toFixed(1) + '×'], ['p-sea', 'seasonal', (v) => v.toFixed(2).replace(/0$/, '') + '×'], ['p-feat', 'features', (v) => v.toFixed(2).replace(/0$/, '') + '×'], ['p-enso', 'enso', (v) => v.toFixed(2).replace(/0$/, '') + '×']];
+const sliders = [['p-warm', 'warming', (v) => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(1) + ' °C'], ['p-moist', 'moisture', (v) => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(0) + ' %'], ['p-shear', 'shearShift', (v) => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(0) + ' kt'], ['p-var', 'variability', (v) => v.toFixed(1) + '×'], ['p-wx', 'synoptic', (v) => v.toFixed(1) + '×'], ['p-wxs', 'shearSynoptic', (v) => v.toFixed(1) + '×'], ['p-jets', 'jetSpeed', (v) => v.toFixed(1) + '×'], ['p-sea', 'seasonal', (v) => v.toFixed(2).replace(/0$/, '') + '×'], ['p-feat', 'features', (v) => v.toFixed(2).replace(/0$/, '') + '×'], ['p-enso', 'enso', (v) => v.toFixed(2).replace(/0$/, '') + '×']];
 sliders.forEach(([id, key, fmt]) => { $(id).oninput = () => { P[key] = parseFloat($(id).value); $(id + '-o').textContent = fmt(P[key]); refresh(); }; });
 /* the seed gives each run its own slightly different climate: seasonal swing, currents/upwelling and ENSO strength move by a small but noticeable amount */
 function hash01(seed, k) { let t = (seed ^ Math.imul(k, 0x9E3779B1)) >>> 0; t = Math.imul(t ^ (t >>> 16), 0x85EBCA6B); t = Math.imul(t ^ (t >>> 13), 0xC2B2AE35); t ^= t >>> 16; return (t >>> 0) / 4294967296; }
 function seedJitter(seed, k, lo, hi) { const mag = lo + (hi - lo) * hash01(seed, k * 2 + 1), v = 1 + (hash01(seed, k * 2 + 2) < 0.5 ? -mag : mag); return Math.round(v / 0.05) * 0.05; }
 function seedSliderValues(seed) { return { 'p-sea': seedJitter(seed, 1, 0.08, 0.22), 'p-feat': seedJitter(seed, 2, 0.10, 0.30), 'p-enso': seedJitter(seed, 3, 0.12, 0.40) }; }
 function setSliderValues(vals) { for (const id in vals) $(id).value = vals[id]; sliders.forEach(([id, key, fmt]) => { P[key] = parseFloat($(id).value); $(id + '-o').textContent = fmt(P[key]); }); }
-$('b-reset').onclick = () => { setSliderValues(Object.assign({ 'p-warm': 0, 'p-var': 1, 'p-wx': 1, 'p-wxs': 1, 'p-jets': 1 }, $('seed-vary').checked ? seedSliderValues(P.seed) : { 'p-sea': 1, 'p-feat': 1, 'p-enso': 1 })); refresh(); };
+$('b-reset').onclick = () => { setSliderValues(Object.assign({ 'p-warm': 0, 'p-moist': 0, 'p-shear': 0, 'p-var': 1, 'p-wx': 1, 'p-wxs': 1, 'p-jets': 1 }, $('seed-vary').checked ? seedSliderValues(P.seed) : { 'p-sea': 1, 'p-feat': 1, 'p-enso': 1 })); refresh(); };
 function applySeed(s) { s = Math.max(1, Math.min(999999, Math.floor(s) || 1)); $('seed').value = s; P.seed = s; if ($('seed-vary').checked) setSliderValues(seedSliderValues(s)); restart(); }
 $('seed-vary').onchange = () => { setSliderValues($('seed-vary').checked ? seedSliderValues(P.seed) : { 'p-sea': 1, 'p-feat': 1, 'p-enso': 1 }); refresh(); };
 $('seed').onchange = () => applySeed(parseFloat($('seed').value));
@@ -1813,7 +1841,7 @@ window.SSTSIM = {
   set(k, v) { P[k] = v; refresh(); }, enso() { return { n34, lag0: ensoLag(0), lag3: ensoLag(91), lag6: ensoLag(183), hold: ensoHold, held: ensoHeld }; }, forceEnso, jetLat(lon) { return jetAxisF[Math.round((lon - LON0) / RES)]; },
   // Live axis straight from the jet clock (what the line is drawn from), not the copy baked into the last computeField(); tick() moves the clocks WITHOUT the 50-70 ms field redraw advance() does, so a test can sample the jet hour by hour cheaply.
   jetLatLive(lon) { jetAxisFinal(jetAxisNow); const fc = (lon - LON0) / DM.cres, c0 = Math.min(CNX - 2, Math.max(0, Math.floor(fc))), t = fc - c0; return jetAxisNow[c0] * (1 - t) + jetAxisNow[c0 + 1] * t; }, tick(h) { advanceHours(h); }, setView(v) { document.querySelector('#seg-view button[data-v="' + v + '"]').click(); },
-  setPlaying, restart, map, render, setTheme, setGridMode, sliderVals() { return { seasonal: P.seasonal, features: P.features, enso: P.enso, warming: P.warming, variability: P.variability, synoptic: P.synoptic, shearSynoptic: P.shearSynoptic, jetSpeed: P.jetSpeed, seed: P.seed }; }, applySeed, isLand,
+  setXpTab, setPlaying, restart, map, render, setTheme, setGridMode, sliderVals() { return { seasonal: P.seasonal, features: P.features, enso: P.enso, warming: P.warming, moisture: P.moisture, shearShift: P.shearShift, variability: P.variability, synoptic: P.synoptic, shearSynoptic: P.shearSynoptic, jetSpeed: P.jetSpeed, seed: P.seed }; }, applySeed, isLand,
   bm() {
     const detail = !!(detailLayer && map.hasLayer(detailLayer));
     if (themeId === 'sat') { const st = TS.sat; return { theme: 'sat', idx: st.idx, offline: st.offline, loaded: st.loaded, label: st.offline ? 'offline (Blue Marble)' : (TILESETS.sat[st.idx] && TILESETS.sat[st.idx].label), detail, csp: cspBlocked }; }

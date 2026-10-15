@@ -1,6 +1,51 @@
 # Roadmap
 
 ## Just landed
+- **Experimentation is now Basic / Advanced, with two new "average" sliders: Moisture and Wind shear (all 9 basins).**
+  `Ocean layers → Experimentation` opens on a **Basic** tab that holds only `Set ENSO now`, `Keep ENSO at this value`,
+  `Warming`, `Moisture (average humidity)` and `Wind shear (average)`. Everything else is under **Advanced**: year-to-year
+  variability, `Day-to-day weather (humidity)`, `Day-to-day weather (shear, steering, highs)`, `Weather speed (jet,
+  steering, highs)`, seasonal swing, currents and upwelling, El Niño / La Niña influence, the "Seed nudges swing,
+  currents and El Niño" checkbox, and the steering arrows' `Storm strength` selector. The seed row (Seed, New seed,
+  Reset) belongs to neither tab and shows under both; Reset puts Warming, Moisture, Wind shear and the Advanced
+  sliders back (`Set ENSO now` stays where it is, as before). The tabs are a real tab list (roles, `aria-controls`,
+  arrow keys / Home / End), and the panel opens on Basic.
+  `Customization` is exactly as it was, apart from one thing you named: `Storm strength` is "advanced stuff", so the
+  selector left Customization (the steering-arrows and highs tick-boxes stay) and is now always visible in Advanced,
+  where before it appeared when the arrows were ticked. My reading of "the main menu" is this in-simulator panel; the
+  start screen (`index.html`) has no settings.
+
+  *The two sliders* are uniform shifts of the average, the way `Warming` is for sea temperature: `Moisture` moves
+  the 700 hPa relative humidity by −20..+20 percentage points and `Wind shear` moves the 200–850 hPa shear by −20..+20
+  kt (steps of 1, default 0, the read-outs say `+10 %` / `−5 kt`). The shift is added inside the combine loop,
+  before the soft limits, to every cell, so weather, ENSO and the jet's ribbon ride on the new average (the ribbon
+  is not "left behind" at the old one). Measured in the built pages, as the change of the basin-wide mean at three
+  dates: Moisture +10 / +20 = +9.3…+9.8 / +18.9…+19.5 points over the nine basins (−8.7…−9.6 / −16.3…−18.7 for
+  −10 / −20), Wind shear +10 / +20 = +9.7…+10.0 / +19.3…+20.0 kt (−8.8…−9.9 / −16.2…−19.4 for −10 / −20). They fall
+  short of the label only where the field hits a limit (dry or already-saturated air, shear near zero). Each slider
+  moves only its own field (checked: the other two fields are bit-for-bit what they were), both are monotone point by
+  point, and back at 0 the field is exactly what it was.
+
+  *What the sliders exposed: the fields were already leaving their physical range, at default settings.* With every
+  slider at rest the committed build had shear below zero (the old soft floor settled at −2 kt) and relative humidity
+  outside 0-100 %, in cells of the built pages, sampled every degree on six dates 60 days apart (seed 4242): shear
+  < 0 in up to 20.5 % of a basin's cells (South Pacific, day 120; 11.4 % East Pacific, 9.3 % West Pacific, 7.5 %
+  Atlantic), humidity < 0 in up to 6.7 % (South Pacific, day 240; 6.3 % North Indian Ocean) and > 100 in up to 3.1 %
+  (South Pacific, day 120). The old limits were `2 − 4·tanh((2 − v)/4)` (floor −2) for both and `100 + 4·tanh` on the
+  top for humidity. They are now bounded squeezes that are the identity over the whole realistic range: humidity
+  `95 + 5·tanh((v − 95)/5)` above 95 and `3·exp((v − 3)/3)` below 3 (stays in (0, 100)), shear `2·exp((v − 2)/2)`
+  below 2 kt (stays above 0), each with slope 1 where it starts, applied to every cell. Same sampling on the new
+  build: 0 cells out of range on every date in every basin (the tests assert it at three dates, and at both ends of
+  both sliders, for all nine basins). Side effect: where the old floor was active the lowest shear values move up by up to
+  about 2 kt (at 0 kt the old limit gave 0.15, the new one 0.74), and negative shear and humidity beyond 100 % can no
+  longer show in the read-outs.
+
+  *Not done / worth knowing.* The two sliders are uniform, not latitude-aware (a +10 kt shear shift is +10 kt in the
+  trades and at the jet alike), and they change the humidity and shear fields only: steering winds are a separate
+  field and stay as they are (a physically linked "more shear = stronger upper flow" coupling is a bigger design
+  question, not attempted). The ENSO sliders on the Basic tab are the older ones whose three lag terms sum to 1.7–2.8x a
+  sustained event's real response (the caveat under "Later"); fixing that is a separate, bigger change.
+
 - **Steering arrows and highs (Atlantic first), plus "Keep ENSO at this value" (all 9 basins).**
   `Customization → Steering arrows (colour = speed)` draws arrows on a lattice that follows the zoom
   (about 290 on a 1280x800 window, never closer than ~46 px): direction is where the flow pushes a storm,
