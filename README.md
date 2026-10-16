@@ -17,7 +17,8 @@ Deployment below).
   for tests needs installing)
 - `npm run build` assembles `dist/atlantic-sst-simulator.html` from `src/template.html`
   + `vendor/leaflet` + `data/generated/data.json`
-- `npm test` end-to-end checks in headless Chromium (network stubbed to `file://`
+- `npm test` first the node-only storm-engine tests (`tests/storms.mjs`, about a second, no build or
+  browser needed), then the end-to-end checks in headless Chromium (network stubbed to `file://`
   only, so it also proves the app never depends on reaching a live tile provider).
   Needs a Chromium build matching the installed `playwright` version — if you're
   in a sandbox with a pre-provisioned but differently-versioned browser, point
@@ -40,8 +41,9 @@ nothing to run by hand.
 ## Layout
 - `index.html` main menu: basin select + mode select. All nine basins run in
   Simulation mode; the Forecaster card is present but disabled ("Coming soon").
-- `src/template.html` the Atlantic simulator app: vanilla JS in one IIFE, three
-  build placeholders (`/*__LEAFLET_CSS__*/`, `/*__LEAFLET_JS__*/`, `/*__DATA__*/`).
+- `src/template.html` the Atlantic simulator app: vanilla JS in one IIFE, four
+  build placeholders (`/*__LEAFLET_CSS__*/`, `/*__LEAFLET_JS__*/`, `/*__DATA__*/`,
+  `/*__STORMS__*/`).
   `window.SSTSIM` is the test/debug hook. `src/template-<basin>.html` are the other
   eight basins' versions of the same app (per-basin constants and data; blocks are
   ported between them by script, see `docs/roadmap.md`).
@@ -50,8 +52,12 @@ nothing to run by hand.
 - `data/generated/data.json` (Atlantic) and `<basin>-data.json` (the others): the
   embedded climate + geography + imagery data the build stitches into each template.
   Committed (see Known gaps); `tools/` has the pipelines that make them.
+- `src/storms.js` the storm engine (waves, tropical / subtropical / extratropical cyclones, lows,
+  names, ACE): pure JS with no DOM, inlined into the pages through `/*__STORMS__*/` and loaded as-is by
+  its node tests.
 - `tools/build.mjs` the build script.
-- `tests/run.mjs` the test suite.
+- `tests/run.mjs` the browser test suite; `tests/storms.mjs` the node-only storm-engine tests (run first by
+  `npm test`; they need no build and no browser) with synthetic environments in `tests/storms_env.mjs`.
 - `docs/roadmap.md` what's next, basin by basin. `docs/storms-plan.md` is the approved design of the storm system (tropical
   waves, lows, cyclones, names, ACE, season stats, save/resume).
 - `tools/make_tc_ref.py` + `data/generated/atlantic-tc-ref.json`: the real Atlantic best-track statistics the storm engine is

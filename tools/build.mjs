@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // Assembles dist/<basin>-sst-simulator.html from src/template.html +
-// vendor/leaflet + data/generated/data.json. No bundler: the template is
-// plain HTML/CSS/JS with three placeholders substituted verbatim.
+// vendor/leaflet + data/generated/data.json + src/storms.js. No bundler: the template
+// is plain HTML/CSS/JS with four placeholders substituted verbatim (a template that has
+// no `/*__STORMS__*/` placeholder simply does not get the storm engine yet).
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -13,11 +14,14 @@ function build({ basin = 'atlantic', templatePath = join(ROOT, 'src/template.htm
   const css = readFileSync(join(ROOT, 'vendor/leaflet/leaflet.css'), 'utf8');
   const js = readFileSync(join(ROOT, 'vendor/leaflet/leaflet.js'), 'utf8');
   const data = readFileSync(dataPath, 'utf8');
+  const storms = readFileSync(join(ROOT, 'src/storms.js'), 'utf8');
+  if (storms.includes('</script>')) throw new Error('src/storms.js must not contain a closing script tag: it is inlined into a <script>');
 
   const out = template
     .replace('/*__LEAFLET_CSS__*/', () => css)
     .replace('/*__DATA__*/', () => data)
-    .replace('/*__LEAFLET_JS__*/', () => js);
+    .replace('/*__LEAFLET_JS__*/', () => js)
+    .replace('/*__STORMS__*/', () => storms);
 
   const dest = outPath || join(ROOT, `dist/${basin}-sst-simulator.html`);
   mkdirSync(dirname(dest), { recursive: true });

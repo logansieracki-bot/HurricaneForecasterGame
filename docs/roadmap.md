@@ -1,6 +1,50 @@
 # Roadmap
 
 ## Just landed
+- **Storm engine, version 1 (`src/storms.js`) with 60 node-only checks — not in the pages yet.** One pure-JS module (no DOM, a classic
+  script that sets `globalThis.HFStorms`, inlined by `tools/build.mjs` through a new fourth placeholder `/*__STORMS__*/` that a template
+  without it simply ignores; `package.json` is `"type": "module"`, so an `export` would have broken the inlined `<script>`) holds the
+  whole storm model, and `npm test` now starts with `tests/storms.mjs` (about a second, no build, no browser).
+  *What it is.* Systems are `wv` (tropical wave / disturbance), `tc` (TD, TS, HU), `sc` (subtropical SD / SS), `ex` (extratropical /
+  post-tropical) and `nl` (non-tropical or remnant low), reported with HURDAT2's own codes, and every best-track fix is rounded the way
+  HURDAT2 holds it (wind to 5 kt, pressure to 1 hPa, position to 0.1°), so the season statistics use the same definitions as
+  `data/generated/atlantic-tc-ref.json`. Motion is a BAM-style blend of the simulator's shallow / medium / deep steering layers (weak
+  storms follow the shallow flow, majors the deep one) plus beta drift, a first-order lag and a smooth wobble; intensity is a logistic
+  growth law bounded by the empirical DeMaria-Kaplan potential intensity of the *effective* SST (the formula is in m/s: 84 m/s = 163 kt at
+  30 °C), reduced by shear (strong storms resist it), 700 hPa humidity and latitude, with stochastic rapid-intensification episodes, a
+  cold wake under slow storms, exact Kaplan-DeMaria decay over land, and smooth internal variability. Waves (about 56-60 a year, only
+  May to November) and the regional sources (Gulf, western Caribbean, off the Southeast coast, central subtropical Atlantic; about 34 a
+  year) are *seeds* that obey the same growth law, so a seed develops only where the simulated SST / humidity / shear allow it: there is
+  no separate genesis switch, and a hand-placed seed behaves the same way. Every random draw is a pure function of (seed, system id, hour,
+  stream), so the same seed gives byte-identical storms however time is chunked and a checkpoint is plain JSON. Names are the WMO
+  lists by year (2026 starts Arthur, Bertha like your reference image) with the supplemental list after 21; ACE, depression numbers,
+  hurricane / major / cat-5 counters and the daily ACE series come from the six-hourly fixes; calendar-year rollover archives the season
+  and a storm alive on Jan 1 stays under its formation year; a tracker links the pressure minima the host detects into lows; and
+  `forecast()` runs the same physics on a copy through any environment, with exactly the noise a hand-placed system will get.
+  *What the 60 checks pin* (synthetic environments, one control at a time): the Saffir-Simpson boundaries on 5-kt winds, mph rounding
+  (105 kt = 120 mph) and gusts (120 mph gusts to 145 mph, your card), ACE, the best-track wind-pressure fit (96 kt = 962 hPa, 137 kt = 917),
+  the name lists (21 unique each, A-W without Q U X Y Z); beta drift toward the north-west, 72 h of motion under a 10-kt easterly,
+  recurvature where the trades turn to westerlies and none with easterlies at every latitude; mean 6-day peaks of **118 / 112 / 54 / 31 kt
+  at 3 / 8 / 15 / 22 kt of shear**, **31 / 47 / 106 / 124 kt at 24 / 26.5 / 28 / 29.5 °C**, **31 / 43 / 112 kt at 25 / 50 / 65 % humidity**;
+  rapid intensification in 7.8 % of 24-h windows against 2.6 % with the episodes switched off; a stalled hurricane's 2.1 °C cold wake
+  against 1.0 °C for one that keeps moving; land decay to the formula (47 / 33 / 29 kt at 12 / 24 / 36 h from 100 kt) and an island
+  crossing; extratropical transition over cold water in shear, subtropical to tropical conversion, remnant lows; names in the order storms
+  reach storm strength; counters that equal what the fixes say; no ACE from extratropical fixes; nothing within 6° of the equator; identical
+  storms for 1-hour, mixed 1-800-hour and single-call advances; a checkpoint that survives JSON and continues exactly; the preview equal
+  to the placed storm to 1e-9°; placing a storm leaving every automatic one untouched; calendar rollover.
+  *Mutation checks.* The suite was run against 24 deliberately broken copies of the engine (shear ignored, humidity ignored, flat
+  potential intensity, no land decay, no beta drift, no depth-dependent steering, no cold wake, no rapid intensification, ACE threshold,
+  gust factor, 1-kt instead of 5-kt fixes, two swapped names, non-deterministic noise, the placed storm getting other noise than its
+  preview, placement shifting the automatic waves, no hold before genesis, no extratropical transition, no remnant low, no rollover,
+  ACE from extratropical fixes, waves in winter, hurricanes counted at 55 kt, no recurvature): 23 are caught; the one that is not
+  (the Category-1 threshold at 63 instead of 64 kt) is equivalent, because winds are rounded to 5 kt first. Three tests were
+  too lax the first time round (rapid intensification, the genesis hold, ACE after transition) and were tightened until their mutant
+  was caught.
+  *Caveats.* Every parameter is an uncalibrated placeholder: the engine has only met synthetic environments and has not been compared with
+  the best-track statistics yet (that is milestone 3, in the real simulator, with the targets from the entry below). In a uniformly
+  favourable synthetic environment almost every wave develops (there is no weather variability to stop them), which is expected and
+  not a finding. The 2027+ name lists (retired-name replacements) and the supplemental list are from memory, flagged in the source.
+
 - **Storm system, step 1 of 7 — the approved plan and the real best-track reference it is calibrated against (no app change yet).**
   `docs/storms-plan.md` is the approved design for tropical waves, lows, tropical / subtropical / extratropical cyclones,
   manual + automatic spawning with a forecast preview, names, ACE, season stats and mid-season save/resume (Atlantic first;
