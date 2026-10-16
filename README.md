@@ -293,6 +293,32 @@ nothing to run by hand.
   Ocean, see the caveat in `docs/roadmap.md`), highs a day within a few tenths of the real count month by month,
   the El Niño response in the sign the real data have. The ribbon and the per-latitude statistics are measured on an
   analysis box wider than the displayed one (most boxes do not contain the jet), like the shear jet.
+- Storms (Atlantic only, the test basin; step 1 of the 7-step storm roadmap in `docs/storms-plan.md`). `src/storms.js` is
+  the engine (pure JS, no DOM) and the block between `/* ==== STORM HOOKS BEGIN/END ==== */` in `src/template.html` is
+  everything that connects it to the page. **Systems:** tropical waves (dashed lines), lows, tropical depressions /
+  storms / hurricanes (circles coloured by Saffir-Simpson category), subtropical depressions / storms (squares) and
+  extratropical / post-tropical cyclones (grey triangles), each with a six-hourly track of advisory dots, a white dot where it
+  became a depression, and a name label; the waves, lows and name labels are toggles under `Customization`, and the
+  Advanced tab has `Storms form on their own` and `Storm activity (seeds)`. Hover a dot for name, category, wind in mph
+  (kt) and gusts; click a live storm or a finished track for the stat card (category, wind, pressure, Peak, ACE, shear,
+  gusts, movement, SST, formed). The top bar is the season: `Atlantic 2026 | DEP | NAMED | HURR | MAJOR | CAT 5 | ACE`
+  from the six-hourly fixes with HURDAT2's own definitions. Storms are born from *seeds* (African easterly waves and the
+  regional sources) that obey the same growth law as a cyclone, so a seed develops only where the simulated SST /
+  humidity / shear allow it. **Time and weather:** `advanceHours()` walks in sub-chunks that end on every absolute 3-hour
+  boundary; the engine runs hour by hour on the last *keyframe* (a copy of the three steering layers and sea-level pressure
+  every 3 h; of SST, humidity and shear once a day at 00Z and whenever a slider, ENSO or the seed changed). Storms are
+  therefore a pure function of the seed, the settings and the actions, however fast the clock runs or often the page
+  redraws. That needed one change to the weather itself: SST / humidity / shear / ENSO used to draw their random numbers lazily
+  whenever `computeField()` happened to run, so the same seed gave different weather at different render rates (measured
+  over 120 days, two seeds, 243 cells: a redraw every 160 h instead of daily changes humidity by 15-17 points and shear by
+  9-10 kt on average per cell, SST by 0.4-0.5 °C, Niño 3.4 by 0.3-0.7 °C), so with storms on those draws are pinned to
+  the midnight keyframe. With storms off (`SSTSIM.storms(false)`, which the existing environment checks use, and the other
+  eight basins which have no engine yet) nothing changes. Every random
+  draw in the engine is a pure function of (seed, system id, hour, stream), so a checkpoint is plain JSON and a hand-placed
+  system never changes an automatic one. **Not yet:** the activity is uncalibrated (milestone 3: real season counts are
+  not reproduced, see `docs/roadmap.md`), and Place mode with its forecast preview, the season summary and ACE graph,
+  save / resume with the menu's Continue card, impacts (watches, warnings, cities), invests, the cone and the wind fields
+  are later milestones/steps.
 
 ## Imagery
 The "Blue Marble" theme is a crop **embedded in the build** (`data.bm`, drawn on
@@ -323,6 +349,11 @@ check that Satellite still resolves to something usable.
   see `docs/roadmap.md`).
 - ERSST at 2° is warm-biased in coastal cells; several corrections are hand-tuned
   (see the shelf, Northeast shelf, Gulf Stream blocks in `src/template.html`).
+- Storms exist in the Atlantic only (the test basin) and are **not calibrated**: twelve seasons
+  of the first version gave 18.0 depressions, 9.5 named storms, 2.5 hurricanes, 1.0 majors and ACE 68 against the real 16.3 / 14.4 /
+  7.2 / 3.2 / 122, with far too wide a spread between seasons (ACE 0.1-283, real SD 65). Milestone 3 fixes that against
+  `data/generated/atlantic-tc-ref.json`; the lows thresholds, the 2027+ name lists and the performance at 64× are also open
+  (`docs/roadmap.md`). No Place mode, season summary, save / resume, impacts or invests yet.
 - All nine basins run in Simulation mode; Forecaster mode hasn't been started (its
   menu card is disabled). Steering arrows and highs are in all nine basins; the
   Mediterranean and the North Indian Ocean have hardly any highs to show (about one day in ten in winter).

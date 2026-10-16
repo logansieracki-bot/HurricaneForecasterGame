@@ -423,6 +423,119 @@ async function checkExperiment(page, label) {
   await ev(() => { window.SSTSIM.restart(); });
 }
 
+// The storm layer on the Atlantic page: the season bar, the hand-placed systems, the three marker shapes, hover and click, the
+// slider coupling, and above all that a seed gives the same storms and the same weather however the clock is chunked or redrawn.
+async function checkStorms(page, label) {
+  const ev = (fn, arg) => page.evaluate(fn, arg);
+  const a = await ev(() => {
+    const S = window.SSTSIM; S.setPlaying(false); S.applySeed(4242); S.setPlaying(false); S.storms(true); S.stormAuto(false);
+    const bar = document.getElementById('season');
+    return { on: S.storms(), shown: getComputedStyle(bar).display !== 'none', text: bar.innerText.replace(/\s+/g, ' ').trim(), canvas: !!document.getElementById('storm-canvas'),
+      controls: ['stwaves', 'stlows', 'stlabels', 'st-auto', 'p-stact', 'storm-tip', 'storm-card'].every((id) => !!document.getElementById(id)), cardHidden: document.getElementById('storm-card').hidden,
+      state: S.stormState() };
+  });
+  check(`[${label}] the season bar shows "${a.text}" before anything has formed, the storm canvas and controls exist`, a.on === true && a.shown && /^Atlantic \d{4} 0 ?DEP 0 ?NAMED 0 ?HURR 0 ?MAJOR 0 ?CAT 5 0\.0 ?ACE$/.test(a.text) && a.canvas && a.controls && a.cardHidden && a.state.systems.length === 0);
+
+  // hand-placed systems: a strong tropical depression, a subtropical one, a non-tropical low, on a warm August day
+  const b = await ev(() => {
+    const S = window.SSTSIM; S.tick(24 * 75);
+    const ids = [S.stormPlace({ kind: 'td', lat: 17, lon: -52, v: 60 }), S.stormPlace({ kind: 'sd', lat: 31, lon: -66, v: 40 }), S.stormPlace({ kind: 'low', lat: 41, lon: -50, v: 35 })];
+    S.tick(12); S.advance(0);
+    const st = S.stormState(), by = Object.fromEntries(st.systems.map((x) => [x.id, x]));
+    return { ids, st, by, bar: ['se-dep', 'se-named', 'se-hurr', 'se-major', 'se-c5', 'se-ace'].map((id) => document.getElementById(id).textContent), year: document.getElementById('se-year').textContent };
+  });
+  const [i1, i2, i3] = b.ids, s1 = b.by[i1], s2 = b.by[i2], s3 = b.by[i3];
+  check(`[${label}] a placed tropical depression gets a depression number and the first name at its first six-hourly fix (${s1.name || '-'}, dep ${s1.depNum}), a placed low stays a low (${s3.st})`, s1.depNum >= 1 && s1.name === 'Arthur' && s3.th === 'nl' && s3.depNum === 0);
+  check(`[${label}] the season bar follows the counters: DEP ${b.bar[0]}, NAMED ${b.bar[1]}, ACE ${b.bar[5]} (stats ${JSON.stringify(b.st.stats)})`, +b.bar[0] === b.st.stats.dep && +b.bar[1] === b.st.stats.named && +b.bar[5] === b.st.stats.ace && b.st.stats.dep >= 2 && b.st.stats.named >= 1 && /Atlantic \d{4}/.test(b.year));
+
+  // the three marker shapes: circle (tropical), square (subtropical), triangle (extratropical), read off the canvas pixels around each head
+  const shapes = await ev((ids) => {
+    const S = window.SSTSIM, cv = document.getElementById('storm-canvas'), g = cv.getContext('2d'), d = cv.width / cv.clientWidth, out = {};
+    document.getElementById('stlabels').checked = false;
+    const forced = { circle: { th: 'tc', v: 80, vr: 80 }, square: { th: 'sc', v: 45, vr: 45 }, triangle: { th: 'ex', v: 50, vr: 50 } };
+    const at = (id, dx, dy) => { const p = S.stormPx(id); return g.getImageData(Math.round((p.x + dx) * d), Math.round((p.y + dy) * d), 1, 1).data[3] > 100; };
+    ['circle', 'square', 'triangle'].forEach((k, i) => {
+      S.stormForce(ids[i], forced[k]); S.stormDraw();
+      out[k] = { center: at(ids[i], 0, 0), c: [[-8, -8], [8, -8], [-8, 8], [8, 8]].map(([x, y]) => at(ids[i], x, y)), top: [[-6, -6], [6, -6]].map(([x, y]) => at(ids[i], x, y)), bottom: [[-6, 6], [6, 6]].map(([x, y]) => at(ids[i], x, y)) };
+    });
+    document.getElementById('stlabels').checked = true;
+    return out;
+  }, b.ids);
+  const nFilled = (arr) => arr.filter(Boolean).length;
+  check(`[${label}] a tropical cyclone is drawn as a circle (no corners: ${nFilled(shapes.circle.c)}/4), a subtropical one as a square (corners ${nFilled(shapes.square.c)}/4), an extratropical one as a triangle (top ${nFilled(shapes.triangle.top)}/2, base ${nFilled(shapes.triangle.bottom)}/2)`,
+    shapes.circle.center && nFilled(shapes.circle.c) <= 1 && shapes.square.center && nFilled(shapes.square.c) >= 3 && shapes.triangle.center && nFilled(shapes.triangle.top) === 0 && nFilled(shapes.triangle.bottom) === 2);
+
+  // hover: tooltip with name, category, wind in mph and kt, gusts, pressure; leaving hides it; click opens the stat card, Escape closes it
+  await ev((id) => { window.SSTSIM.stormForce(id, { th: 'tc', v: 105, vr: 105, p: 946 }); window.SSTSIM.stormDraw(); }, i1);
+  const px = await ev((id) => window.SSTSIM.stormPx(id), i1);
+  await page.mouse.move(px.x - 40, px.y - 40); await page.mouse.move(px.x, px.y, { steps: 4 });
+  await page.waitForTimeout(150);
+  const tip = await ev(() => { const t = document.getElementById('storm-tip'); return { shown: t.style.display === 'block', text: t.innerText.replace(/\n/g, ' | '), city: document.getElementById('city-tip').style.display }; });
+  check(`[${label}] hovering a storm shows its card tooltip: ${tip.text}`, tip.shown && /Arthur/.test(tip.text) && /Major Hurricane \(Cat 3\)/.test(tip.text) && /120 mph \(105 kt\)/.test(tip.text) && /gusts 145 mph/.test(tip.text) && /946 hPa/.test(tip.text) && tip.city !== 'block');
+  await page.mouse.click(px.x, px.y); await page.waitForTimeout(250);
+  const card = await ev(() => { const c = document.getElementById('storm-card'), g = (id) => document.getElementById(id).textContent; return { hidden: c.hidden, name: g('sc-name'), cat: g('sc-cat'), mph: g('sc-mph'), p: g('sc-p'), gust: g('sc-gust'), mv: g('sc-mv'), formed: g('sc-formed'), ace: g('sc-ace'), peak: document.getElementById('sc-peak').style.display !== 'none', text: c.innerText.replace(/\s+/g, ' ') }; });
+  check(`[${label}] clicking a live storm opens its stat card (${card.name}, ${card.cat}, ${card.mph} mph, ${card.p} hPa, ${card.gust}, ${card.mv}, formed ${card.formed})`, !card.hidden && card.name === 'Arthur' && /Major Hurricane/.test(card.cat) && card.mph === '120' && card.p === '946' && /145 mph \((water|land)\)/.test(card.gust) && /ACE/.test(card.text) && /Damage/.test(card.text) && /Formed/.test(card.text) && /Movement/.test(card.text) && card.formed !== '–');
+  await page.keyboard.press('Escape'); await page.waitForTimeout(100);
+  await page.mouse.move(px.x + 400, px.y + 200); await page.waitForTimeout(100);
+  const closed = await ev(() => ({ card: document.getElementById('storm-card').hidden, tip: document.getElementById('storm-tip').style.display }));
+  check(`[${label}] Escape closes the card and moving away hides the tooltip`, closed.card === true && closed.tip === 'none');
+
+  // layout: at desktop, tablet and phone widths the season bar stays on screen and clear of the clock, the open panel and the dock,
+  // and an open stat card stays on screen and clear of the dock (the bar once ran over the panel title and off a phone's edge)
+  const lay = [];
+  for (const [w, h] of [[1280, 800], [900, 700], [390, 844]]) {
+    await page.setViewportSize({ width: w, height: h }); await page.waitForTimeout(150);
+    lay.push(await ev(({ w, h }) => {
+      const S = window.SSTSIM, rect = (id) => { const b = document.getElementById(id).getBoundingClientRect(); return { l: b.left, t: b.top, r: b.right, b: b.bottom }; };
+      const hit = (p, q) => p.l < q.r - 0.5 && q.l < p.r - 0.5 && p.t < q.b - 0.5 && q.t < p.b - 0.5;
+      const bar = rect('season'), card = document.getElementById('storm-card'), wasHidden = card.hidden;
+      card.hidden = false; const cr = rect('storm-card'); card.hidden = wasHidden;       // the card still holds the text of the click above, so it has its real height
+      const others = ['clock', 'panel', 'dock'].map((id) => [id, rect(id)]);
+      return { w, h, bar, inside: bar.l >= 0 && bar.r <= w && bar.t >= 0 && bar.b <= h, over: others.filter(([, r]) => hit(bar, r)).map(([id]) => id), cardInside: cr.l >= 0 && cr.r <= w && cr.t >= 0 && cr.b <= h, cardOverDock: hit(cr, rect('dock')) };
+    }, { w, h }));
+  }
+  await page.setViewportSize({ width: 1280, height: 800 }); await page.waitForTimeout(150);
+  check(`[${label}] the season bar fits on screen and overlaps nothing at 1280, 900 and 390 px wide (${lay.map((x) => x.w + ': ' + Math.round(x.bar.l) + '-' + Math.round(x.bar.r) + ' x ' + Math.round(x.bar.t) + '-' + Math.round(x.bar.b) + (x.over.length ? ' over ' + x.over.join('+') : '')).join('; ')}), and the stat card fits and clears the dock`,
+    lay.every((x) => x.inside && x.over.length === 0 && x.cardInside && !x.cardOverDock));
+
+  // a slider reaches the storms: the same hour of the same seed with Wind shear at 0 and at +25 kt (identical time path, only the slider differs)
+  const sl = await ev(() => {
+    const S = window.SSTSIM, at = (shift) => { S.applySeed(500); S.setPlaying(false); S.stormAuto(false); S.tick(24 * 75); S.set('shearShift', shift); S.tick(3); const e = S.stormEnvSample(15, -55); S.set('shearShift', 0); return e; };
+    const a = at(0), b = at(25);
+    return { a: a.shear, b: b.shear, ha: a.hour, hb: b.hour };
+  });
+  check(`[${label}] the Wind shear slider reaches the storms at the next 3-hour keyframe: the same hour of the same seed sees ${sl.a.toFixed(1)} kt of shear at 0 and ${sl.b.toFixed(1)} kt at +25`, sl.ha === sl.hb && sl.b - sl.a > 12 && sl.b - sl.a < 27);
+
+  // automatic seeding: off by default in this test, on with the box ticked
+  const auto = await ev(() => {
+    const S = window.SSTSIM; S.applySeed(99); S.setPlaying(false); S.stormAuto(false); S.tick(24 * 25); const off = S.stormState().seeds.W + S.stormState().seeds.N;
+    S.applySeed(99); S.setPlaying(false); S.stormAuto(true); S.tick(24 * 25); const on = S.stormState().seeds.W + S.stormState().seeds.N;
+    S.stormAuto(false); return { off, on };
+  });
+  check(`[${label}] with automatic systems off nothing is seeded (${auto.off}); with them on waves and regional seeds appear (${auto.on} in 25 days)`, auto.off === 0 && auto.on > 0);
+
+  // THE determinism claim: same seed, same storms and the same weather whether the page redrew every 6 hours, never, or the clock moved in 1-hour steps
+  const det = await ev(() => {
+    const S = window.SSTSIM;
+    const snap = () => ({ j: S.stormJSON(), a: S.sample(15, -50), b: S.sample(25, -80), c: S.sample(32, -40), n: S.enso().n34 });
+    const run = (mode) => {
+      S.applySeed(777); S.setPlaying(false); S.stormAuto(true);
+      if (mode === 'redraw6') for (let i = 0; i < 4 * 24; i++) S.advance(6);
+      else if (mode === 'hourly') for (let i = 0; i < 24 * 24; i++) S.tick(1);
+      else S.tick(24 * 24);
+      S.advance(0); return snap();
+    };
+    const A = run('redraw6'), B = run('hourly'), C = run('one');
+    const same = (x, y) => x.j === y.j && x.n === y.n && ['a', 'b', 'c'].every((k) => ['sst', 'humid', 'shear'].every((f) => x[k][f] === y[k][f]));
+    const D = (S.applySeed(778), S.setPlaying(false), S.stormAuto(true), S.tick(24 * 24), S.advance(0), snap());
+    S.stormAuto(false);
+    return { ab: same(A, B), ac: same(A, C), diff: !same(A, D), len: A.j.length, sst: [A.a.sst, B.a.sst, C.a.sst], shear: [A.a.shear, B.a.shear, C.a.shear], n: [A.n, B.n, C.n] };
+  });
+  check(`[${label}] one seed gives the same storms and the same SST / humidity / shear / ENSO whether the page redrew every 6 h, the clock ran in 1-h steps, or it moved in one call (${(det.len / 1024).toFixed(0)} KB of storm state; SST ${det.sst.map((x) => x.toFixed(4)).join(' / ')}, shear ${det.shear.map((x) => x.toFixed(3)).join(' / ')})`, det.ab && det.ac);
+  check(`[${label}] a different seed gives different storms`, det.diff);
+  await ev(() => { window.SSTSIM.storms(false); window.SSTSIM.restart(); });   // leave the page without storms for anything after this
+}
+
 async function checkEnsoHold(page, label) {
   const ev = (fn, arg) => page.evaluate(fn, arg);
   const r = await ev(() => {
@@ -1114,6 +1227,9 @@ async function checkBasin(label, dist, extra) {
   await page.goto(pathToFileURL(dist).href, { waitUntil: 'load', timeout: 30000 });
   await page.waitForFunction(() => window.__ready === true, { timeout: 15000 });
   await page.waitForTimeout(1000);
+  const stormsDefault = await page.evaluate(() => (window.SSTSIM.storms ? window.SSTSIM.storms() : null));   // the Atlantic page has the storm engine, on by default
+  if (label === 'Atlantic') check(`[${label}] the storm engine is on by default`, stormsDefault === true);
+  await page.evaluate(() => { if (window.SSTSIM.storms) window.SSTSIM.storms(false); });   // every check below tests the environment, so it runs on the unchanged simulation (storms have their own checks)
 
   check(`[${label}] loads with no JS errors`, errors.length === 0);
   if (errors.length) console.log('  ' + errors.join('\n  '));
@@ -1625,6 +1741,7 @@ await checkBasin('Atlantic', ATLANTIC_DIST, async (page, label) => {
 
   await checkSteering(page, label, STEER_SPECS.atlantic);
   await checkEnsoHold(page, label);
+  await checkStorms(page, label);
   await checkCityMarkers(page, label, 25.76, -80.19, 'Miami');
 });
 

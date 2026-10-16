@@ -1,6 +1,56 @@
 # Roadmap
 
 ## Just landed
+- **First visible storms in the Atlantic simulator (step 1 of 7, milestone M2) — not calibrated yet.** The engine of the entry below is now
+  inside `src/template.html` (Atlantic only; the other eight pages are byte-for-byte what they were) and the page draws what it does.
+  *What you see.* Tropical waves as dashed north-south lines; lows as an orange L with their central pressure (off by default);
+  tropical depressions / storms / hurricanes as circles coloured by category (TD blue, TS green, C1 yellow, C2 orange, C3 red, C4
+  magenta, C5 purple), **subtropical systems as squares** in the same colours, extratropical / post-tropical cyclones as grey
+  triangles; a six-hourly dot every 6 h along a coloured track, a white dot where a system became a depression, a faint dotted
+  trail for the wave stage, a name label at the head (`EX Arthur` once post-tropical) or at the peak of a finished track. Hover a
+  dot: name, category, wind in mph with kt in brackets, gusts, pressure and time (`Arthur | Major Hurricane (Cat 3) | 120 mph
+  (105 kt) · gusts 145 mph | 946 hPa · now` is a real check, your reference card). Click a live storm or any dot of a finished
+  track: the stat card (category, wind, pressure, Peak badge, ACE, shear, gusts, movement, SST, formed; Damage stays "—" until
+  the damage step), Esc or × closes it. The top bar `Atlantic 2026 | DEP | NAMED | HURR | MAJOR | CAT 5 | ACE` counts from the
+  six-hourly fixes. `Customization` gains Tropical waves / Lows / Storm names; `Experimentation → Advanced` gains `Storms form
+  on their own` and `Storm activity (seeds)`. On a tablet and a phone the season bar moves under the clock as a compact grid
+  (the first version ran over the open panel at 900 px and off the screen edge at 390 px; found by screenshot, now a test that
+  fails on the old CSS).
+  *How it is wired.* `advanceHours()` walks in sub-chunks that end on every absolute 3-hour boundary; at each boundary
+  the page takes a keyframe (the three steering layers and sea-level pressure every 3 h; SST, humidity and shear once a day at 00Z
+  and whenever a slider, ENSO or the seed changed) and the engine runs hour by hour on the latest one, so storms depend on the
+  seed, the settings and the actions, never on how often the page redraws. **Finding:** that was not true of the weather
+  before. SST, humidity, shear and ENSO draw their random numbers lazily inside `computeField()`, which the live page calls on
+  a wall-clock throttle; with storms off, one seed advanced 120 days gives different fields at the same moment depending on
+  the redraw cadence (two seeds, 243 cells on a 5° grid, against a daily redraw: a 160-h cadence, what 64× does, changes
+  humidity by 15-17 points and shear by 9-10 kt on average per cell (cell maxima 68-72 points and 37-38 kt), SST by 0.4-0.5 °C
+  (up to 2.7), Niño 3.4 by 0.3-0.7 °C; one call and one final redraw gives 0.4-1.1 °C in Niño 3.4; a daily and a 3-hourly
+  redraw are identical because the draws are per day). With storms on, those draws are pinned to the midnight keyframe, which makes
+  the environment and the storms a pure function of the seed: a browser check advances one seed three ways (a redraw every 6 h,
+  1-hour steps, one call) and requires byte-identical storm state and identical SST / humidity / shear / ENSO. With storms off
+  (`SSTSIM.storms(false)`, which `checkBasin` sets for all nine pages so the existing environment checks stay exactly what they
+  were and fast) the old code path runs unchanged. The page's `stormEnv` reads the engine-owned keyframe copies; the low tracker
+  gets the pressure minima of the sim's own sea-level-pressure field (mirror image of the highs detector: below 1008 hPa, 2 hPa
+  deeper than the mean of the ring of nodes two steps (8°) away, 18-68°, refined with a parabola).
+  *Numbers.* Storms on cost 56-59 ms per simulated day measured with `tick` (100 days in 5.6-5.9 s; storms off is 0.02 ms because
+  `tick` does no field work, the page's own redraw costs 50-70 ms anyway), the storm layer redraws in 0.6-0.7 ms with 15
+  systems and 611 fixes, and a 12-season Monte-Carlo (214 days each, four cores) takes 52 s. At 64× live play the fields at each
+  midnight roughly double the frame cost; not optimised yet. Browser suite: 13 new checks (season bar before anything formed
+  and after placing systems, a placed depression getting dep 1 and the name Arthur, the three marker shapes read off canvas
+  pixels, hover, click card, Esc, the layout at 1280 / 900 / 390 px, the Wind shear slider reaching the storms at the next
+  keyframe (6.9 kt at 0 and 31.9 kt at +25 for the same hour of the same seed), seeding on / off, the three-cadence determinism,
+  a different seed giving different storms, the engine on by default in the Atlantic) on top of the 60 node checks; 1593 in total.
+  *Caveat, and what comes next: nothing is calibrated.* Twelve uncalibrated seasons (seeds 1-12, Jun 1 to Dec 31, the engine's
+  placeholder parameters in the real simulated environment): **18.0** depressions (real tracks 16.3), **9.5** named storms
+  (real 14.4), **2.5** hurricanes (7.2), **1.0** majors (3.2), ACE **68** (122). Genesis is about right and intensification
+  too weak (26 % of named storms become hurricanes, real 50 %), and the spread between seasons is far too wide: named storms
+  per season were 11, 8, 4, 12, 2, 4, 1, 8, 15, 20, 26, 3 (SD 7.7, real 5.5) and ACE ran from 0.1 to 283 (SD 95, real
+  65.5, range 32-250). The likely suspects are the humidity gate (its midpoint sits at the basin's typical 700 hPa humidity, so
+  small seasonal differences swing the growth rate) and the environment seen along the tracks; milestone 3 measures the
+  environment along real tracks from the ERA5 files already on disk, fits the gates to that, then checks the aggregates and
+  the held-out facts of `data/generated/atlantic-tc-ref.json`. Lows thresholds are not yet checked against ERA5, the 2027+ name
+  lists are from memory, and Place mode, the season summary, save / resume and the Continue card are the next milestones.
+
 - **Storm engine, version 1 (`src/storms.js`) with 60 node-only checks — not in the pages yet.** One pure-JS module (no DOM, a classic
   script that sets `globalThis.HFStorms`, inlined by `tools/build.mjs` through a new fourth placeholder `/*__STORMS__*/` that a template
   without it simply ignores; `package.json` is `"type": "module"`, so an `export` would have broken the inlined `<script>`) holds the

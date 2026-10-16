@@ -108,7 +108,7 @@ body.steer-on #panel{max-height:calc(100% - 300px)}   /* the steering legend sit
 #attr{position:absolute;right:0;bottom:0;z-index:900;font-size:10.5px;color:var(--dim);background:#1a1a1c;padding:2px 8px;border-top-left-radius:6px;pointer-events:none}
 
 /* notices + loader */
-#toast{left:50%;top:16px;transform:translateX(-50%);padding:9px 16px;font-size:13px;display:none}
+#toast{left:50%;top:64px;transform:translateX(-50%);padding:9px 16px;font-size:13px;display:none}
 #city-tip{padding:9px 12px;max-width:210px;pointer-events:none;display:none;z-index:950}
 #city-tip b{font-size:13px;font-weight:600;display:block}
 #city-tip div{font-size:11.5px;color:var(--dim);margin-top:3px;line-height:1.5}
@@ -124,7 +124,35 @@ body.steer-on #panel{max-height:calc(100% - 300px)}   /* the steering legend sit
 .leaflet-control-attribution a{color:#bdbdbd!important}
 canvas.overlay{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none}
 
+/* storms: season bar, hover tooltip, stat card */
+#season{left:50%;top:14px;transform:translateX(-50%);display:flex;align-items:center;padding:7px 4px;font-size:12.5px;white-space:nowrap}
+#season span{padding:0 11px;border-left:1px solid var(--line);color:var(--dim)}
+#season span:first-child{border-left:0;color:var(--text);font-weight:600}
+#season b{color:var(--text);font-weight:600;font-variant-numeric:tabular-nums;margin-right:5px}
+#storm-tip{padding:9px 12px;max-width:236px;pointer-events:none;display:none;z-index:960}
+#storm-tip b{font-size:13px;font-weight:600;display:block}
+#storm-tip div{font-size:11.5px;color:var(--dim);margin-top:3px;line-height:1.5}
+#storm-card{right:324px;top:50%;transform:translateY(-50%);width:262px;padding:12px 14px}
+#storm-card[hidden]{display:none}
+#panel.collapsed ~ #storm-card{right:14px}
+#sc-close{position:absolute;right:8px;top:8px;width:26px;height:26px;border:0;background:transparent;color:var(--dim);border-radius:6px;cursor:pointer;font-size:17px;line-height:1}
+#sc-close:hover{background:rgba(255,255,255,.09);color:var(--text)}
+#sc-name{font-size:17px;font-weight:600;display:block;padding-right:26px}
+#sc-cat{font-size:12.5px;color:var(--dim)}
+.sc-main{display:flex;align-items:flex-end;gap:18px;margin:10px 0 9px}
+.sc-main b{font-size:30px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1}
+.sc-main small{display:block;font-size:11px;color:var(--dim);margin-top:3px}
+#sc-peak{margin-left:auto;font-size:11px;font-weight:600;color:#141414;background:var(--ice);border-radius:6px;padding:2px 7px}
+.sc-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px 14px;border-top:1px solid var(--line);padding-top:9px}
+.sc-grid span{display:block;font-size:11px;color:var(--dim)}
+.sc-grid b{font-size:13px;font-weight:600;font-variant-numeric:tabular-nums}
+
 @media (max-width:1040px){
+  #season{left:14px;top:209px;transform:none;display:grid;grid-template-columns:repeat(3,1fr);width:max-content;min-width:236px;row-gap:5px;padding:8px 2px;font-size:12px}
+  #season span{padding:0 8px}
+  #season span:first-child{grid-column:1/-1;padding:0 12px 6px;border-bottom:1px solid var(--line)}
+  #season span:nth-child(2),#season span:nth-child(5){border-left:0}
+  #storm-card{right:14px;top:auto;bottom:130px;transform:none}
   #readout{bottom:84px}
   #legend{bottom:112px}
   #steer-legend{bottom:200px}
@@ -133,6 +161,8 @@ canvas.overlay{position:absolute;left:0;top:0;width:100%;height:100%;pointer-eve
   body.steer-on #panel{max-height:calc(100% - 412px)}
 }
 @media (max-width:640px){
+  #season{top:192px;font-size:11.5px}
+  #storm-card{left:14px;right:14px;width:auto;bottom:120px}
   #clock{min-width:0;padding:9px 12px}
   #c-time{font-size:34px}
   #panel{width:calc(100% - 28px);top:auto;bottom:196px;max-height:38%}
@@ -198,6 +228,9 @@ canvas.overlay{position:absolute;left:0;top:0;width:100%;height:100%;pointer-eve
         <label class="chk"><input type="checkbox" id="jetline"><span> Jet stream line (axis of strongest shear)<i id="jet-note"></i></span></label>
         <label class="chk"><input type="checkbox" id="steerarrows"><span> Steering arrows (colour = speed)</span></label>
         <label class="chk"><input type="checkbox" id="highs"><span> Highs (H) with sea-level pressure</span></label>
+        <label class="chk"><input type="checkbox" id="stwaves" checked><span> Tropical waves (dashed lines)</span></label>
+        <label class="chk"><input type="checkbox" id="stlows"><span> Lows (L) with sea-level pressure</span></label>
+        <label class="chk"><input type="checkbox" id="stlabels" checked><span> Storm names</span></label>
       </div>
     </section>
     <section class="subsec collapsed" id="sec-exp">
@@ -262,6 +295,11 @@ canvas.overlay{position:absolute;left:0;top:0;width:100%;height:100%;pointer-eve
             <div class="sl"><label for="p-enso">El Niño / La Niña influence</label><output id="p-enso-o">1.0×</output></div>
             <input id="p-enso" type="range" min="0" max="4" step="0.05" value="1">
           </div>
+          <label class="chk"><input type="checkbox" id="st-auto" checked><span> Storms form on their own</span></label>
+          <div class="row">
+            <div class="sl"><label for="p-stact" title="How often waves and the other seeds appear: 1.0× is about the real Atlantic">Storm activity (seeds)</label><output id="p-stact-o">1.0×</output></div>
+            <input id="p-stact" type="range" min="0" max="3" step="0.1" value="1">
+          </div>
           <label class="chk"><input type="checkbox" id="seed-vary" checked> Seed nudges swing, currents and El Niño</label>
         </div>
         <div class="seedrow">
@@ -290,6 +328,19 @@ canvas.overlay{position:absolute;left:0;top:0;width:100%;height:100%;pointer-eve
 
 <div id="toast" class="card" role="status"></div>
 <div id="city-tip" class="card" role="tooltip"><b></b><div></div></div>
+<div id="season" class="card" role="status" aria-label="Season totals"><span id="se-year">Atlantic</span><span><b id="se-dep">0</b>DEP</span><span><b id="se-named">0</b>NAMED</span><span><b id="se-hurr">0</b>HURR</span><span><b id="se-major">0</b>MAJOR</span><span><b id="se-c5">0</b>CAT 5</span><span><b id="se-ace">0.0</b>ACE</span></div>
+<div id="storm-tip" class="card" role="tooltip"><b></b><div></div></div>
+<aside id="storm-card" class="card" hidden aria-label="Storm details">
+  <button id="sc-close" aria-label="Close storm details" title="Close (Esc)">&times;</button>
+  <b id="sc-name">–</b><span id="sc-cat"></span>
+  <div class="sc-main"><div><b id="sc-mph">0</b><small>mph (1-min)</small></div><div><b id="sc-p">0</b><small>hPa</small></div><span id="sc-peak">Peak</span></div>
+  <div class="sc-grid">
+    <div><span>ACE</span><b id="sc-ace">0.0</b></div><div><span>Advisory</span><b id="sc-time">–</b></div>
+    <div><span>Shear</span><b id="sc-sh">–</b></div><div><span>Gusts</span><b id="sc-gust">–</b></div>
+    <div><span>Movement</span><b id="sc-mv">–</b></div><div><span>SST</span><b id="sc-sst">–</b></div>
+    <div><span>Damage</span><b>—</b></div><div><span>Formed</span><b id="sc-formed">–</b></div>
+  </div>
+</aside>
 <div id="attr"></div>
 
 <nav id="dock" class="card" aria-label="Playback">
@@ -313,6 +364,7 @@ canvas.overlay{position:absolute;left:0;top:0;width:100%;height:100%;pointer-eve
 
 <script type="application/json" id="sim-data">/*__DATA__*/</script>
 <script>/*__LEAFLET_JS__*/</script>
+<script>/*__STORMS__*/</script>
 <script>
 (function () {
 'use strict';
@@ -701,7 +753,7 @@ function ensoSet(target) {             // put the index and the oscillator on a 
 }
 function forceEnso(target) {           // jump to a chosen state; the Atlantic then responds with its natural 3–6 month delay
   if (ensoHold) ensoHeld = target;     // ...and while ENSO is held, the chosen state is the one that stays
-  ensoSet(target); anomDirty = true; updateEnsoUI(); refresh();
+  ensoSet(target); anomDirty = true; stormEnvChanged(); updateEnsoUI(); refresh();
 }
 
 let simHour = 0, dayCount = 0, pc = new Float32Array(K), pcH = new Float32Array(KH), pcS = new Float32Array(KS), gsShift = 0, eddies = [], nextShed = 0, lcDip = 0;
@@ -757,6 +809,7 @@ function initSim(seed) {
   if (ensoHold) { ensoSet(ensoHeld); ensoHist.fill(ensoHeld); }   // a held ENSO survives a restart: the new run starts already in that regime, lagged responses included
   eddies.push({ x: -90.5, y: 25.3, age: 90, dir: 1 });      // one shed eddy already drifting west at the start
   anomDirty = true;
+  stormsReset();                                             // a new season of storms for the new year of weather
 }
 function stepDay() {
   dayCount++;
@@ -1829,7 +1882,7 @@ function fitCanvases() {
   const s = map.getSize(); DPR = Math.min(2, window.devicePixelRatio || 1);
   if (s.x !== W || s.y !== H || sstCanvas.width !== Math.round(W * DPR)) {
     W = s.x; H = s.y;
-    for (const c of [sstCanvas, baseCanvas, gridCanvas, jetCanvas, steerCanvas]) { c.width = Math.round(W * DPR); c.height = Math.round(H * DPR); }
+    for (const c of [sstCanvas, baseCanvas, gridCanvas, jetCanvas, steerCanvas, stormCanvas]) { c.width = Math.round(W * DPR); c.height = Math.round(H * DPR); }
   }
 }
 function paintLand(ctx, list, minX, minY, ws, stroke) {
@@ -2209,6 +2262,252 @@ function steerReadout() {
 }
 /* ==== STEER DRAW END ==== */
 
+/* ==== STORM HOOKS BEGIN ==== */
+/* The storm engine (src/storms.js, inlined above as HFStorms) is pure: it knows nothing about this page. This block is everything
+   that connects the two -- the environment the storms live in, the clock, the drawing, the hover / click cards and the season bar.
+   Time: advanceHours() walks in sub-chunks that end on every absolute 3-hour boundary; the engine runs hour by hour on the LAST
+   keyframe (a copy of the steering nodes every 3 h, of SST / humidity / shear once a day at 00Z and whenever a slider moved), so a
+   storm sees the same weather however the clock is chunked or however often the page happened to redraw. The lazy weather draws that
+   computeField() would otherwise make at render time (ensureSynDay / ensureShearSynDay) are pinned to the midnight keyframe, which
+   makes SST, humidity, shear and ENSO a pure function of the seed while storms are on. */
+const stormCanvas = makeCanvas(461); stormCanvas.id = 'storm-canvas';
+let stormMgr = null, stormsOn = true, stormFieldsDirty = true, stormsDirty = true, stormActivity = 1, stormAuto = true, stormSel = null, stormHot = null, stormHits = [], lastStormCardAt = 0;
+const STORM_KEY_H = 3;
+const kfU = [new Float32Array(SN), new Float32Array(SN), new Float32Array(SN)], kfV = [new Float32Array(SN), new Float32Array(SN), new Float32Array(SN)], kfP = new Float32Array(SN);
+const kfSst = new Float32Array(N), kfHumid = new Float32Array(N), kfShear = new Float32Array(N);
+let kfFieldHour = -1;
+function stormKeyframe(fields) {
+  steerUpdate();
+  kfU[0].set(stU.shallow); kfV[0].set(stV.shallow); kfU[1].set(stU.medium); kfV[1].set(stV.medium); kfU[2].set(stU.deep); kfV[2].set(stV.deep); kfP.set(stPt);
+  if (fields) { computeField(); kfSst.set(sst); kfHumid.set(humid); kfShear.set(shear); kfFieldHour = simHour; stormFieldsDirty = false; }
+}
+/* the sea-level-pressure minima (lows) of a node-grid pressure field: the mirror image of steerDetectHighs(), refined with a parabola */
+const ST_LOW_MAX = 1008, ST_LOW_PROM = 2.0, ST_LOW_LAT0 = 18, ST_LOW_LAT1 = 68;
+function detectLowsOn(Pn) {
+  const out = [];
+  for (let j = 2; j < SNY - 2; j++) for (let i = 2; i < SNX - 2; i++) {
+    const n = j * SNX + i, p = Pn[n], al = Math.abs(stNodeLat[n]);
+    if (!(p <= ST_LOW_MAX) || al < ST_LOW_LAT0 || al > ST_LOW_LAT1) continue;
+    let low = true;
+    for (let dj = -1; dj <= 1 && low; dj++) for (let di = -1; di <= 1; di++) { if ((di || dj) && Pn[n + dj * SNX + di] <= p) { low = false; break; } }
+    if (!low) continue;
+    const ring = (Pn[n - 2] + Pn[n + 2] + Pn[n - 2 * SNX] + Pn[n + 2 * SNX] + Pn[n - 2 - 2 * SNX] + Pn[n + 2 - 2 * SNX] + Pn[n - 2 + 2 * SNX] + Pn[n + 2 + 2 * SNX]) / 8;
+    if (ring - p < ST_LOW_PROM) continue;
+    const l = Pn[n - 1], r = Pn[n + 1], u = Pn[n - SNX], dn = Pn[n + SNX];
+    const cx = l + r - 2 * p, cy = u + dn - 2 * p;
+    const ox = cx > 1e-6 ? Math.max(-1, Math.min(1, (l - r) / (2 * cx))) : 0, oy = cy > 1e-6 ? Math.max(-1, Math.min(1, (dn - u) / (2 * cy))) : 0;
+    const pk = p - (cx > 1e-6 ? (r - l) * (r - l) / (8 * cx) : 0) - (cy > 1e-6 ? (u - dn) * (u - dn) / (8 * cy) : 0);
+    out.push({ lat: stNodeLat[n] + oy * STRES, lon: stNodeLon[n] + ox * STRES, p: pk, prom: ring - p });
+  }
+  return out;
+}
+const stormEnv = {
+  box: { lat0: ST_LAT0, lat1: ST_LAT1, lon0: ST_LON0, lon1: ST_LON1 },
+  sst: (la, lo) => sampleField(kfSst, la, lo), rh: (la, lo) => sampleField(kfHumid, la, lo), shear: (la, lo) => sampleField(kfShear, la, lo),
+  steer(la, lo, o) { o[0] = stSample(kfU[0], la, lo); o[1] = stSample(kfV[0], la, lo); o[2] = stSample(kfU[1], la, lo); o[3] = stSample(kfV[1], la, lo); o[4] = stSample(kfU[2], la, lo); o[5] = stSample(kfV[2], la, lo); },
+  slp: (la, lo) => stSample(kfP, la, lo), isLand: (la, lo) => isLand(la, lo), lows: () => detectLowsOn(kfP),
+};
+function stormsReset() {
+  stormMgr = HFStorms.create({ seed: ((P.seed * 2654435761) ^ 0x517171) >>> 0, startMs: START_MS, hour0: simHour, auto: stormAuto, autoRate: stormActivity });
+  stormFieldsDirty = true; kfFieldHour = -1; stormSel = null; stormHot = null; stormHits = []; stormsDirty = true;
+  const card = $('storm-card'), tip = $('storm-tip'); if (card) card.hidden = true; if (tip) tip.style.display = 'none';
+  updateSeasonBar();
+}
+function stormEnvChanged() { stormFieldsDirty = true; }             // a slider / ENSO / seed change: the storms see the new fields at the next 3-hour keyframe
+function stormsAdvance(n) {
+  if (!stormMgr) stormsReset();
+  if (kfFieldHour < 0) stormKeyframe(true);                        // first use after a (re)start: keyframe at the current hour
+  let left = n;
+  while (left > 0) {
+    const k = Math.min(left, STORM_KEY_H - (((simHour % STORM_KEY_H) + STORM_KEY_H) % STORM_KEY_H));
+    simHour += k;
+    if (simHour % 24 === 0) stepDay();                               // a sub-chunk never crosses midnight: it ends exactly on it
+    jetClockH += k * P.jetSpeed;
+    left -= k;
+    stormMgr.advanceTo(simHour, stormEnv);                           // every hour runs on the keyframe taken at or before its start
+    if (simHour % STORM_KEY_H === 0) {
+      const midnight = simHour % 24 === 0;
+      if (midnight) { const d = Math.floor(simHour / 24); ensureSynDay(d); ensureShearSynDay(d); }
+      stormKeyframe(midnight || stormFieldsDirty);
+    }
+  }
+  dirty = true; stormsDirty = true; updateSeasonBar();
+}
+function stormsSwitch(on) {
+  if (on === stormsOn) return stormsOn;
+  stormsOn = !!on;
+  if (stormsOn) stormsReset();                                     // storms resume from the current hour with a fresh season
+  stormsDirty = true; drawStorms(); updateSeasonBar();
+  return stormsOn;
+}
+
+/* ---- labels, colours, shapes ---------------------------------------------------------------------------------------- */
+const STORM_COL = { TD: '#3d8bff', TS: '#2fd27a', C1: '#ffe14a', C2: '#ffa534', C3: '#ff4d3d', C4: '#e53fb5', C5: '#a45dff', EX: '#a9a9a9' };
+const NUM_WORD = ['Zero', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen', 'Twenty', 'Twenty-One', 'Twenty-Two', 'Twenty-Three', 'Twenty-Four', 'Twenty-Five', 'Twenty-Six', 'Twenty-Seven', 'Twenty-Eight', 'Twenty-Nine', 'Thirty'];
+const numWord = (k) => NUM_WORD[k] || String(k);
+function stormColor(fix) { if (fix.th === 'ex' || fix.th === 'nl') return STORM_COL.EX; return STORM_COL[HFStorms.category(fix.v).short] || STORM_COL.TD; }
+function stormDate(h) { const d = simDate(h); return String(d.getUTCHours()).padStart(2, '0') + 'Z ' + MON[d.getUTCMonth()] + ' ' + d.getUTCDate(); }
+function stormDateFull(h) { const d = simDate(h); return String(d.getUTCHours()).padStart(2, '0') + 'z ' + MON[d.getUTCMonth()] + ' ' + d.getUTCDate() + ' ' + d.getUTCFullYear(); }
+function stormKindName(S, fix) {                                    // the long status text of a fix
+  if (fix.th === 'ex') return 'Extratropical (post-tropical)';
+  if (fix.th === 'nl') return S.depNum > 0 ? 'Remnant low' : 'Non-tropical low';
+  if (fix.th === 'wv') return fix.st === 'DB' ? 'Disturbance' : 'Tropical wave';
+  if (fix.th === 'sc') return fix.v >= 34 ? 'Subtropical Storm' : 'Subtropical Depression';
+  const c = HFStorms.category(fix.v);
+  return c.cat >= 3 ? 'Major Hurricane (Cat ' + c.cat + ')' : c.name;
+}
+function stormTitle(S, fix) {                                       // "Bertha", or "Tropical Depression Three" before it has a name
+  if (S.name) return S.name;
+  if (fix.th === 'nl' && S.depNum === 0) return 'Low ' + S.id;
+  if (S.depNum > 0) return (fix.th === 'sc' ? 'Subtropical Depression ' : 'Tropical Depression ') + numWord(S.depNum);
+  return S.id;
+}
+function stormShortLabel(S, fix) {
+  if (fix.th === 'nl' && S.depNum === 0) return 'Low';
+  if (S.name) return (fix.th === 'ex' ? 'EX ' : fix.th === 'nl' ? 'L ' : '') + S.name;
+  return (fix.th === 'sc' ? 'SD ' : fix.th === 'ex' ? 'EX ' : 'TD ') + (S.depNum || '');
+}
+function stormShape(g, shape, x, y, r, fill, stroke, lw) {          // circle (tropical), square (subtropical), triangle (extratropical)
+  g.beginPath();
+  if (shape === 'square') g.rect(x - r, y - r, 2 * r, 2 * r);
+  else if (shape === 'triangle') { g.moveTo(x, y - r * 1.15); g.lineTo(x + r, y + r * 0.85); g.lineTo(x - r, y + r * 0.85); g.closePath(); }
+  else g.arc(x, y, r, 0, Math.PI * 2);
+  g.fillStyle = fill; g.fill(); if (stroke) { g.lineWidth = lw || 1.4; g.strokeStyle = stroke; g.stroke(); }
+}
+const shapeOf = (th) => (th === 'sc' ? 'square' : th === 'ex' ? 'triangle' : 'circle');
+
+/* ---- drawing -------------------------------------------------------------------------------------------------------- */
+function drawStorms() {
+  stormsDirty = false;
+  const g = stormCanvas.getContext('2d'); g.setTransform(DPR, 0, 0, DPR, 0, 0); g.clearRect(0, 0, W, H);
+  stormHits = [];
+  if (!stormsOn || !stormMgr) return;
+  const toPx = (lat, lon) => map.latLngToContainerPoint([lat, lon]);
+  const showWaves = $('stwaves').checked, showLows = $('stlows').checked, showNames = $('stlabels').checked;
+  if (showLows) for (const t of stormMgr.lows.tracks) {
+    if (!t.alive || t.fixes.length < 3) continue;
+    const p = toPx(t.lat, t.lon); if (p.x < -20 || p.y < -20 || p.x > W + 20 || p.y > H + 20) continue;
+    g.beginPath(); g.arc(p.x, p.y, 10, 0, 7); g.fillStyle = '#d6532f'; g.fill(); g.lineWidth = 2; g.strokeStyle = '#fff'; g.stroke();
+    g.fillStyle = '#fff'; g.font = '700 12px system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('L', p.x, p.y + 0.5);
+    const tx = String(Math.round(t.p)); g.font = '600 11px system-ui, sans-serif'; const tw = g.measureText(tx).width + 10;
+    g.fillStyle = 'rgba(10,14,24,.82)'; g.beginPath(); g.roundRect(p.x - tw / 2, p.y + 12, tw, 16, 8); g.fill(); g.fillStyle = '#fff'; g.fillText(tx, p.x, p.y + 20.5);
+    stormHits.push({ x: p.x, y: p.y, r: 12, low: t });
+  }
+  if (showWaves) for (const S of stormMgr.systems) {
+    if (!S.alive || S.th !== 'wv') continue;
+    const p = toPx(S.lat, S.lon); if (p.x < -20 || p.y < -30 || p.x > W + 20 || p.y > H + 30) continue;
+    g.save(); g.lineCap = 'round'; g.setLineDash([5, 4]);
+    g.lineWidth = 4; g.strokeStyle = 'rgba(20,12,4,.55)'; g.beginPath(); g.moveTo(p.x, p.y - 15); g.lineTo(p.x, p.y + 15); g.stroke();
+    g.lineWidth = 2; g.strokeStyle = S.vr >= 20 ? '#ffd27a' : '#ffa24d'; g.beginPath(); g.moveTo(p.x, p.y - 15); g.lineTo(p.x, p.y + 15); g.stroke();
+    g.restore();
+    stormHits.push({ x: p.x, y: p.y, r: 13, wave: S });
+  }
+  const list = stormMgr.systems.filter((S) => S.depNum > 0 || (S.alive && S.th !== 'wv')).sort((a, b) => (a.alive - b.alive) || (a.tdHour - b.tdHour) || (a.born - b.born));
+  g.lineJoin = 'round'; g.lineCap = 'round';
+  for (const S of list) {
+    const fx = S.fixes, pts = fx.map((f) => { const p = toPx(f.lat, f.lon); return { x: p.x, y: p.y, f }; });
+    if (S.alive) { const p = toPx(S.lat, S.lon), f = HFStorms.makeFix(S, stormMgr.hour, S.ace); f.lat = S.lat; f.lon = S.lon; pts.push({ x: p.x, y: p.y, f, live: true }); }
+    if (pts.length === 0) continue;
+    if (pts.every((q) => q.x < -60 || q.y < -60 || q.x > W + 60 || q.y > H + 60)) continue;
+    // pre-genesis trail: faint and dotted
+    let first = pts.findIndex((q) => q.f.th !== 'wv'); if (first < 0) first = pts.length;
+    if (first > 1) { g.save(); g.setLineDash([2, 4]); g.lineWidth = 1.5; g.strokeStyle = 'rgba(255,255,255,.35)'; g.beginPath(); g.moveTo(pts[0].x, pts[0].y); for (let i = 1; i <= Math.min(first, pts.length - 1); i++) g.lineTo(pts[i].x, pts[i].y); g.stroke(); g.restore(); }
+    const from = Math.max(0, first - 1);
+    // the track: dark halo, then the colour of each leg by the intensity at its end
+    g.lineWidth = 5.5; g.strokeStyle = 'rgba(8,10,16,.6)'; g.beginPath(); g.moveTo(pts[from].x, pts[from].y); for (let i = from + 1; i < pts.length; i++) g.lineTo(pts[i].x, pts[i].y); g.stroke();
+    for (let i = from + 1; i < pts.length; i++) { g.lineWidth = 3; g.strokeStyle = stormColor(pts[i].f); g.beginPath(); g.moveTo(pts[i - 1].x, pts[i - 1].y); g.lineTo(pts[i].x, pts[i].y); g.stroke(); }
+    // six-hourly advisory dots; the first tropical fix is the white start dot
+    let startDone = false;
+    for (let i = from; i < pts.length; i++) {
+      const q = pts[i], f = q.f; if (q.live || f.th === 'wv') continue;
+      const white = !startDone && (f.th === 'tc' || f.th === 'sc'); if (white) startDone = true;
+      stormShape(g, shapeOf(f.th), q.x, q.y, 4.2, white ? '#ffffff' : stormColor(f), 'rgba(8,10,16,.85)', 1.3);
+      stormHits.push({ x: q.x, y: q.y, r: 8, S, f });
+    }
+    // the live head
+    const last = pts[pts.length - 1];
+    if (S.alive) {
+      const f = last.f; stormShape(g, shapeOf(S.th), last.x, last.y, 8.5, stormColor(f), '#ffffff', 2.2);
+      stormHits.push({ x: last.x, y: last.y, r: 13, S, f, live: true });
+    }
+    if (showNames) {
+      let lab = null;
+      if (S.alive) lab = { x: last.x, y: last.y, text: stormShortLabel(S, last.f), dx: 13 };
+      else { const pk = pts.find((q) => q.f.h === S.peakHour && !q.live) || pts[pts.length - 1]; lab = { x: pk.x, y: pk.y, text: stormShortLabel(S, pk.f), dx: 9 }; }
+      g.font = '600 12.5px system-ui, sans-serif'; g.textAlign = 'left'; g.textBaseline = 'middle';
+      g.lineWidth = 3.5; g.strokeStyle = 'rgba(8,10,16,.85)'; g.strokeText(lab.text, lab.x + lab.dx, lab.y); g.fillStyle = '#fff'; g.fillText(lab.text, lab.x + lab.dx, lab.y);
+    }
+  }
+  // the selected fix / storm gets a ring
+  if (stormSel) {
+    const S = stormMgr.get(stormSel.id); const hit = stormHits.find((hh) => hh.S === S && (stormSel.h < 0 ? hh.live : hh.f && hh.f.h === stormSel.h));
+    if (hit) { g.lineWidth = 2.4; g.strokeStyle = '#ffffff'; g.beginPath(); g.arc(hit.x, hit.y, hit.r + 3, 0, 7); g.stroke(); }
+  }
+  if (stormSel && stormSel.h < 0 && performance.now() - lastStormCardAt > 400) { lastStormCardAt = performance.now(); fillStormCard(); }
+}
+function fillStormCard() {
+  const card = $('storm-card'); if (!card || !stormSel) return;
+  const S = stormMgr.get(stormSel.id); if (!S) { card.hidden = true; stormSel = null; return; }
+  const fx = S.fixes, f = stormSel.h < 0 ? HFStorms.makeFix(S, stormMgr.hour, S.ace) : fx.find((q) => q.h === stormSel.h);
+  if (!f) { card.hidden = true; stormSel = null; return; }
+  const d = HFStorms.describe(S, f), over = !!f.land;
+  $('sc-name').textContent = S.name || stormTitle(S, f);
+  $('sc-cat').textContent = stormKindName(S, f);
+  $('sc-mph').textContent = d.windMph; $('sc-p').textContent = d.pressure;
+  $('sc-peak').style.display = (f.h === S.peakHour && f.v === S.peakV && f.th !== 'wv') ? '' : 'none';
+  $('sc-ace').textContent = f.ace.toFixed(1);
+  $('sc-sh').textContent = f.sh + ' kt';
+  $('sc-gust').textContent = d.gustMph + ' mph (' + (over ? 'land' : 'water') + ')';
+  $('sc-mv').textContent = d.move.replace('nearly stationary', 'Stationary');
+  $('sc-sst').textContent = (f.sst * 9 / 5 + 32).toFixed(1) + ' °F';
+  $('sc-formed').textContent = S.tdHour >= 0 ? stormDateFull(S.tdHour) : '—';
+  $('sc-time').textContent = stormDate(f.h);
+  card.hidden = false;
+}
+function openStormCard(S, f, live) { stormSel = { id: S.id, h: live ? -1 : f.h }; lastStormCardAt = 0; fillStormCard(); stormsDirty = true; drawStorms(); }
+function closeStormCard() { stormSel = null; $('storm-card').hidden = true; stormsDirty = true; drawStorms(); }
+function stormPick(cx, cy) {
+  let best = null, bd = 1e9;
+  for (const h of stormHits) { const d = Math.hypot(cx - h.x, cy - h.y); if (d <= h.r && d < bd) { bd = d; best = h; } }
+  return best;
+}
+function stormHover(cx, cy) {
+  const tip = $('storm-tip'), h = stormsOn ? stormPick(cx, cy) : null;
+  const key = h ? (h.S ? h.S.id + ':' + (h.live ? 'live' : h.f.h) : h.low ? h.low.id : h.wave.id) : null;
+  if (key !== stormHot) { stormHot = key; stormCanvas.style.cursor = ''; }
+  if (!h) { tip.style.display = 'none'; map.getContainer().style.cursor = ''; return false; }
+  map.getContainer().style.cursor = 'pointer';
+  let title, lines;
+  if (h.low) { title = 'Low ' + h.low.id.slice(1); lines = [Math.round(h.low.p) + ' hPa · ' + h.low.fixes.length * 6 + ' h old']; }
+  else if (h.wave) { const S = h.wave; title = 'Tropical wave'; lines = [fmtLL(S.lat, S.lon), HFStorms.compass((Math.atan2(S.cx, S.cy) / DEG + 360) % 360) + ' at ' + Math.round(Math.hypot(S.cx, S.cy)) + ' kt']; }
+  else {
+    const S = h.S, f = h.f, d = HFStorms.describe(S, f);
+    title = stormTitle(S, f);
+    lines = [stormKindName(S, f), d.windMph + ' mph (' + d.windKt + ' kt) · gusts ' + d.gustMph + ' mph', d.pressure + ' hPa · ' + (h.live ? 'now' : stormDate(f.h))];
+  }
+  tip.querySelector('b').textContent = title; tip.querySelector('div').innerHTML = lines.join('<br>');
+  const left = Math.max(8, Math.min(W - 236, cx + 16)), top = Math.max(8, Math.min(H - 110, cy + 16));
+  tip.style.left = left + 'px'; tip.style.top = top + 'px'; tip.style.display = 'block';
+  return true;
+}
+function stormClick(cx, cy) {
+  const h = stormsOn ? stormPick(cx, cy) : null;
+  if (h && h.S) openStormCard(h.S, h.f, !!h.live);
+  else if (stormSel) closeStormCard();
+}
+let seasonText = '';
+function updateSeasonBar() {
+  const el = $('season'); if (!el) return;
+  el.style.display = stormsOn && stormMgr ? '' : 'none';
+  if (!stormsOn || !stormMgr) return;
+  const s = stormMgr.stats(), t = String(s.year) + '|' + s.dep + '|' + s.named + '|' + s.hurr + '|' + s.major + '|' + s.cat5 + '|' + s.ace;
+  if (t === seasonText) return; seasonText = t;
+  $('se-year').textContent = 'Atlantic ' + s.year; $('se-dep').textContent = s.dep; $('se-named').textContent = s.named; $('se-hurr').textContent = s.hurr;
+  $('se-major').textContent = s.major; $('se-c5').textContent = s.cat5; $('se-ace').textContent = s.ace.toFixed(1);
+}
+/* ==== STORM HOOKS END ==== */
+
+
 function render() {
   needRender = false; fitCanvases();
   const z = map.getZoom(), ws = 256 * Math.pow(2, z), pb = map.getPixelBounds(), minX = pb.min.x, minY = pb.min.y;
@@ -2278,6 +2577,7 @@ function render() {
   drawGrid(minX, minY, ws);
   drawJetLine();
   drawSteer();
+  drawStorms();
   updateReadout();
 }
 let renderQueued = false;
@@ -2291,8 +2591,9 @@ window.addEventListener('resize', () => { map.invalidateSize(); syncMinZoom(); s
  *  Readout + legend
  * ------------------------------------------------------------------ */
 let pointer = null;
-map.on('mousemove', (e) => { pointer = e.latlng; updateReadout(); updateCityTip(e.containerPoint.x, e.containerPoint.y); });
-map.on('mouseout', () => { pointer = null; updateReadout(); hoveredCity = -1; $('city-tip').style.display = 'none'; });
+map.on('mousemove', (e) => { pointer = e.latlng; updateReadout(); if (stormHover(e.containerPoint.x, e.containerPoint.y)) updateCityTip(-1e4, -1e4); else updateCityTip(e.containerPoint.x, e.containerPoint.y); });
+map.on('click', (e) => stormClick(e.containerPoint.x, e.containerPoint.y));
+map.on('mouseout', () => { pointer = null; updateReadout(); hoveredCity = -1; $('city-tip').style.display = 'none'; stormHover(-1e4, -1e4); });
 $('cities').onchange = () => { hoveredCity = -1; $('city-tip').style.display = 'none'; scheduleRender(); };
 const fmtLL = (lat, lon) => Math.abs(lat).toFixed(1) + '°' + (lat >= 0 ? 'N' : 'S') + ' ' + Math.abs(lon).toFixed(1) + '°' + (lon >= 0 ? 'E' : 'W');
 function updateReadout() { updateReadoutBase(); steerReadout(); }
@@ -2364,6 +2665,7 @@ function updateSpeedUI() {
 }
 function setPlaying(p) { playing = p; $('ic-pause').style.display = p ? '' : 'none'; $('ic-play').style.display = p ? 'none' : ''; $('b-play').setAttribute('aria-label', p ? 'Pause' : 'Play'); }
 function advanceHours(n) {
+  if (stormsOn) { stormsAdvance(n); return; }   // storms on: sub-chunks on absolute 3-hour keyframes (STORM HOOKS)
   const d0 = Math.floor(simHour / 24); simHour += n; const d1 = Math.floor(simHour / 24);
   for (let d = d0; d < Math.min(d1, d0 + 800); d++) stepDay();
   jetClockH += n * P.jetSpeed;   // the jet's own clock: the speed slider rescales time itself, so moving it never makes the jet jump
@@ -2385,6 +2687,7 @@ function frame(now) {
     if (jetLineOn.checked) drawJetLine();
     if (steerOn()) steerFrame(now);                         // arrows and highs: a few ms, so every few frames, not every 3 simulated hours
   }
+  if (stormsDirty && stormsOn) drawStorms();                // the storms move with every simulated hour; this is cheap
   requestAnimationFrame(frame);
 }
 function restart() { initSim(P.seed); acc = 0; lastClock = ''; updateClock(); refresh(); }
@@ -2399,13 +2702,14 @@ $('enso-hold').onchange = () => {
     ensoHold = true; ensoHeld = n34;
     const t = Math.round(n34 * 10) / 10; $('p-ensonow').value = t; $('p-ensonow-o').textContent = ensoLabel(t) + ' (' + (t >= 0 ? '+' : '−') + Math.abs(t).toFixed(1) + ')';
   } else { ensoHold = false; ensoSet(ensoHeld); }   // the oscillator takes over again from the held value
-  anomDirty = true; updateEnsoUI(); refresh();
+  anomDirty = true; stormEnvChanged(); updateEnsoUI(); refresh();
 };
 window.addEventListener('keydown', (e) => {
   if (e.target && /INPUT|TEXTAREA/.test(e.target.tagName) && e.target.type !== 'range' && e.target.type !== 'checkbox') return;
   if (e.code === 'Space') { e.preventDefault(); setPlaying(!playing); }
   else if (e.key === '[') $('b-slower').click(); else if (e.key === ']') $('b-faster').click();
   else if (e.key === 'r' || e.key === 'R') restart();
+  else if (e.key === 'Escape') closeStormCard();
 });
 
 /* panel */
@@ -2431,15 +2735,19 @@ map.on('zoom', updateDetailOpacity);
 $('op').oninput = () => { $('op-o').textContent = $('op').value + '%'; scheduleRender(); };
 $('l265').onchange = scheduleRender; $('l2').onchange = scheduleRender; $('jetline').onchange = scheduleRender;
 $('steerarrows').onchange = steerChanged; $('highs').onchange = steerChanged;
+$('stwaves').onchange = $('stlows').onchange = $('stlabels').onchange = () => { stormsDirty = true; drawStorms(); };
+$('st-auto').onchange = () => { stormAuto = $('st-auto').checked; if (stormMgr) stormMgr.auto = stormAuto; };
+$('p-stact').oninput = () => { stormActivity = parseFloat($('p-stact').value); $('p-stact-o').textContent = stormActivity.toFixed(1) + '×'; if (stormMgr) stormMgr.autoRate = stormActivity; };
+$('sc-close').onclick = closeStormCard;
 document.querySelectorAll('#seg-depth button').forEach((b) => b.onclick = () => { steerLayer = b.dataset.d; document.querySelectorAll('#seg-depth button').forEach((x) => x.setAttribute('aria-pressed', x === b)); drawSteerLegend(); drawSteer(); updateReadout(); });
 const sliders = [['p-warm', 'warming', (v) => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(1) + ' °C'], ['p-moist', 'moisture', (v) => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(0) + ' %'], ['p-shear', 'shearShift', (v) => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(0) + ' kt'], ['p-var', 'variability', (v) => v.toFixed(1) + '×'], ['p-wx', 'synoptic', (v) => v.toFixed(1) + '×'], ['p-wxs', 'shearSynoptic', (v) => v.toFixed(1) + '×'], ['p-jets', 'jetSpeed', (v) => v.toFixed(1) + '×'], ['p-sea', 'seasonal', (v) => v.toFixed(2).replace(/0$/, '') + '×'], ['p-feat', 'features', (v) => v.toFixed(2).replace(/0$/, '') + '×'], ['p-enso', 'enso', (v) => v.toFixed(2).replace(/0$/, '') + '×']];
-sliders.forEach(([id, key, fmt]) => { $(id).oninput = () => { P[key] = parseFloat($(id).value); $(id + '-o').textContent = fmt(P[key]); refresh(); }; });
+sliders.forEach(([id, key, fmt]) => { $(id).oninput = () => { P[key] = parseFloat($(id).value); $(id + '-o').textContent = fmt(P[key]); stormEnvChanged(); refresh(); }; });
 /* the seed gives each run its own slightly different climate: seasonal swing, currents/upwelling and ENSO strength move by a small but noticeable amount */
 function hash01(seed, k) { let t = (seed ^ Math.imul(k, 0x9E3779B1)) >>> 0; t = Math.imul(t ^ (t >>> 16), 0x85EBCA6B); t = Math.imul(t ^ (t >>> 13), 0xC2B2AE35); t ^= t >>> 16; return (t >>> 0) / 4294967296; }
 function seedJitter(seed, k, lo, hi) { const mag = lo + (hi - lo) * hash01(seed, k * 2 + 1), v = 1 + (hash01(seed, k * 2 + 2) < 0.5 ? -mag : mag); return Math.round(v / 0.05) * 0.05; }
 function seedSliderValues(seed) { return { 'p-sea': seedJitter(seed, 1, 0.08, 0.22), 'p-feat': seedJitter(seed, 2, 0.10, 0.30), 'p-enso': seedJitter(seed, 3, 0.12, 0.40) }; }
 function setSliderValues(vals) { for (const id in vals) $(id).value = vals[id]; sliders.forEach(([id, key, fmt]) => { P[key] = parseFloat($(id).value); $(id + '-o').textContent = fmt(P[key]); }); }
-$('b-reset').onclick = () => { setSliderValues(Object.assign({ 'p-warm': 0, 'p-moist': 0, 'p-shear': 0, 'p-var': 1, 'p-wx': 1, 'p-wxs': 1, 'p-jets': 1 }, $('seed-vary').checked ? seedSliderValues(P.seed) : { 'p-sea': 1, 'p-feat': 1, 'p-enso': 1 })); refresh(); };
+$('b-reset').onclick = () => { setSliderValues(Object.assign({ 'p-warm': 0, 'p-moist': 0, 'p-shear': 0, 'p-var': 1, 'p-wx': 1, 'p-wxs': 1, 'p-jets': 1 }, $('seed-vary').checked ? seedSliderValues(P.seed) : { 'p-sea': 1, 'p-feat': 1, 'p-enso': 1 })); stormEnvChanged(); refresh(); };
 function applySeed(s) { s = Math.max(1, Math.min(999999, Math.floor(s) || 1)); $('seed').value = s; P.seed = s; if ($('seed-vary').checked) setSliderValues(seedSliderValues(s)); restart(); }
 $('seed-vary').onchange = () => { setSliderValues($('seed-vary').checked ? seedSliderValues(P.seed) : { 'p-sea': 1, 'p-feat': 1, 'p-enso': 1 }); refresh(); };
 $('seed').onchange = () => applySeed(parseFloat($('seed').value));
@@ -2458,10 +2766,20 @@ $('loading').style.display = 'none';
 lastNow = performance.now(); requestAnimationFrame(frame);
 
 window.SSTSIM = {
+  storms(on) { return on === undefined ? stormsOn : stormsSwitch(on); },
+  stormState() { return stormMgr ? { on: stormsOn, hour: stormMgr.hour, stats: stormMgr.stats(), lows: stormMgr.lows.tracks.filter((t) => t.alive).length, seeds: Object.assign({}, stormMgr.n), systems: stormMgr.systems.map((S) => ({ id: S.id, name: S.name, th: S.th, st: HFStorms.statusOf(S), lat: S.lat, lon: S.lon, v: S.v, vr: S.vr, p: S.p, alive: S.alive, depNum: S.depNum, peakV: S.peakV, ace: S.ace, fixes: S.fixes.length, end: S.endReason, origin: S.origin })) } : null; },
+  stormJSON() { return JSON.stringify(stormMgr.serialize()); },
+  stormPlace(spec) { const S = stormMgr.place(spec); stormsDirty = true; drawStorms(); return S.id; },
+  stormForce(id, patch) { const S = stormMgr.get(id); Object.assign(S, patch); stormsDirty = true; drawStorms(); return !!S; },
+  stormAuto(on) { stormAuto = !!on; if (stormMgr) stormMgr.auto = stormAuto; },
+  stormPx(id) { const S = stormMgr.get(id); if (!S) return null; const p = map.latLngToContainerPoint([S.lat, S.lon]); return { x: p.x, y: p.y }; },
+  stormFixPx(id, i) { const S = stormMgr.get(id); const f = S && S.fixes[i < 0 ? S.fixes.length + i : i]; if (!f) return null; const p = map.latLngToContainerPoint([f.lat, f.lon]); return { x: p.x, y: p.y, h: f.h }; },
+  stormDraw() { drawStorms(); }, stormHover, stormClick,
+  stormEnvSample(lat, lon) { return { hour: kfFieldHour, sst: sampleField(kfSst, lat, lon), rh: sampleField(kfHumid, lat, lon), shear: sampleField(kfShear, lat, lon) }; },
   advance(h) { advanceHours(h); updateClock(); refresh(); },
   sample(lat, lon) { return { sst: sampleField(sst, lat, lon), normal: sampleField(normal, lat, lon), humid: sampleField(humid, lat, lon), shear: sampleField(shear, lat, lon) }; },
   state() { return { simHour, seed: P.seed, date: simDate(simHour).toISOString(), eddies: eddies.length, gsShift }; },
-  set(k, v) { P[k] = v; refresh(); }, enso() { return { n34, lag0: ensoLag(0), lag3: ensoLag(91), lag6: ensoLag(183), hold: ensoHold, held: ensoHeld }; }, forceEnso, jetLat(lon) { return jetAxisF[Math.round((lon - LON0) / RES)]; },
+  set(k, v) { P[k] = v; stormEnvChanged(); refresh(); }, enso() { return { n34, lag0: ensoLag(0), lag3: ensoLag(91), lag6: ensoLag(183), hold: ensoHold, held: ensoHeld }; }, forceEnso, jetLat(lon) { return jetAxisF[Math.round((lon - LON0) / RES)]; },
   // Live axis straight from the jet clock (what the line is drawn from), not the copy baked into the last computeField(); tick() moves the clocks WITHOUT the 50-70 ms field redraw advance() does, so a test can sample the jet hour by hour cheaply.
   jetLatLive(lon) { jetAxisFinal(jetAxisNow); const fc = (lon - LON0) / DM.cres, c0 = Math.min(CNX - 2, Math.max(0, Math.floor(fc))), t = fc - c0; return jetAxisNow[c0] * (1 - t) + jetAxisNow[c0 + 1] * t; }, tick(h) { advanceHours(h); }, setView(v) { document.querySelector('#seg-view button[data-v="' + v + '"]').click(); },
   steerNow() { steerUpdate(); return true; },
