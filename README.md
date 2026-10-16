@@ -52,7 +52,10 @@ nothing to run by hand.
   Committed (see Known gaps); `tools/` has the pipelines that make them.
 - `tools/build.mjs` the build script.
 - `tests/run.mjs` the test suite.
-- `docs/roadmap.md` what's next, basin by basin.
+- `docs/roadmap.md` what's next, basin by basin. `docs/storms-plan.md` is the approved design of the storm system (tropical
+  waves, lows, cyclones, names, ACE, season stats, save/resume).
+- `tools/make_tc_ref.py` + `data/generated/atlantic-tc-ref.json`: the real Atlantic best-track statistics the storm engine is
+  calibrated and tested against (1991-2020 normals, daily ACE bands, genesis, rapid intensification, wind-pressure, ENSO).
 
 ## How the simulation works (keep these ideas when changing things)
 - Grid: 0.25° over lon -110..40, lat -40..72 (601×449). Time: 1 sim hour per 60 ms

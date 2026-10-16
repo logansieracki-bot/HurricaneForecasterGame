@@ -1,6 +1,36 @@
 # Roadmap
 
 ## Just landed
+- **Storm system, step 1 of 7 — the approved plan and the real best-track reference it is calibrated against (no app change yet).**
+  `docs/storms-plan.md` is the approved design for tropical waves, lows, tropical / subtropical / extratropical cyclones,
+  manual + automatic spawning with a forecast preview, names, ACE, season stats and mid-season save/resume (Atlantic first;
+  the order is core systems → AOIs/invests → cone → wind field 1 → wind field 2 → watches/warnings → city damage). The first
+  piece is the data: `tools/make_tc_ref.py` reads the IBTrACS-derived Atlantic tables inside the PyPI wheel `huracanpy` 1.5.0
+  (pinned by sha256 against PyPI's own digest, cached in git-ignored `data/raw/`) and writes `data/generated/atlantic-tc-ref.json`
+  (37 KB, derived statistics only). NHC, NCEI, AOML and WMO are all refused by the sandbox's proxy, so raw HURDAT2 text and the
+  official name tables are *not* available; this is a third-party mirror of NOAA public data, so it is checked, not trusted.
+  *Checked against NHC.* With the definitions the engine will use (named storm = a six-hourly row with status TS/SS/HU;
+  hurricane = HU row; major = HU row ≥ 96 kt; ACE = Σ(wind/100)² over TS/SS/HU rows; season = IBTrACS season) the 1991-2020 means
+  are **14.4 named storms (NHC 14.4), 7.17 hurricanes (7.2), 3.2 majors (3.2), ACE 122.5 (NHC about 122)**, with an ACE spread
+  of 32-250 (SD 65.5); 2005 comes out 28 named / 15 H / 7 MH / ACE 250 and 2020 30 / 13 / 6 / 180. The mean date of the first
+  named storm is Jun 19 and of the third Aug 3 (NHC: about Jun 20 and Aug 3), the median ACE day is Sep 12 and the smoothed
+  ACE peak Sep 8.
+  *What the file holds* (everything the engine is later compared with, in the same definitions): per-year counts and ACE
+  1980-2024; the daily cumulative-ACE and named-storm curves (mean, 10/25/50/75/90th percentiles, min, max) that will become
+  the season graph's climatology bands; genesis by month (Aug 3.6, Sep 4.5, Oct 2.5 named storms a year) and where (median
+  20.1N 63.2W; 17 % of named storms form in 10-20N 40-20W, 16 % in the Gulf box 20-30N 100-80W, 13 % in 10-20N 60-40W, 10 % off the
+  Southeast coast) plus a 5° map of first depression positions; 24-h intensity change by starting class; rapid-intensification
+  shares; 6-hourly translation velocity by latitude band for weak and hurricane-strength storms; lifetimes; the peak-intensity
+  histogram; status mix; extratropical-transition and subtropical counts; the wind-pressure relation; ENSO composites.
+  *Findings that already shape the engine.* A gain of ≥ 30 kt in 24 h (RI) happens in **5.7 %** of 24-h windows, 18.5 a season,
+  and **66 %** of hurricanes, **90 %** of majors and **98 %** of Cat-4+ storms had at least one; 49.8 % of named storms reach
+  hurricane strength, 22.2 % major, 3.2 % Cat 5, and 25 % last under two days. The wind-pressure relation is
+  Δp = 0.0123·V^1.83 hPa (V in kt, Δp below 1013 hPa; rms 6.4 hPa; a latitude term only improves it to 5.9), e.g. 96 kt ≈ 962 hPa,
+  137 kt ≈ 915 hPa. 44.7 % of named storms end up extratropical (6.4 a year) and 1.7 a year are subtropical storms. ENSO: the 12
+  El Niño years (ASO Niño 3.4 > 0.5) average 9.5 named storms and ACE 69, the 13 La Niña years 15.9 and 134 (**ratio 1.94**), the
+  17 neutral years 14.1 and 125 — the check the finished sim has to reproduce.
+  *Caveats.* It is a processed IBTrACS table (no storm names, no wind radii), of unstated IBTrACS version, from a mirror that is not
+  checksummed against NOAA; the NHC tallies above are the cross-check. The WMO name lists are not in it (see the plan).
 - **Experimentation is now Basic / Advanced, with two new "average" sliders: Moisture and Wind shear (all 9 basins).**
   `Ocean layers → Experimentation` opens on a **Basic** tab that holds only `Set ENSO now`, `Keep ENSO at this value`,
   `Warming`, `Moisture (average humidity)` and `Wind shear (average)`. Everything else is under **Advanced**: year-to-year
