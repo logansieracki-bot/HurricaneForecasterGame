@@ -46,6 +46,152 @@
   question, not attempted). The ENSO sliders on the Basic tab are the older ones whose three lag terms sum to 1.7–2.8x a
   sustained event's real response (the caveat under "Later"); fixing that is a separate, bigger change.
 
+- **Steering arrows and highs in the other eight basins (all nine now).** East Pacific, West Pacific, North Indian Ocean,
+  Australian Region, South-West Indian Ocean, South Pacific, South Atlantic and Mediterranean have what the Atlantic got:
+  `Steering arrows (colour = speed)`, `Highs (H) with sea-level pressure`, the `Storm strength` selector
+  (Experimentation → Advanced), the readout's heading / speed / pressure lines, and the shared
+  `Day-to-day weather (shear, steering, highs)` and `Weather speed (jet, steering, highs)` sliders (in these eight they were
+  `Day-to-day weather (wind shear)` and `Jet stream speed` until now; same sliders, wider job). The client is the
+  Atlantic's, lifted out of `src/template.html` block by block by script (every anchor matched exactly once), so the nine pages
+  are identical apart from per-basin constants. The one thing that is new in the code is the box edge: `ST_LON0/1`, `ST_LAT0/1`
+  keep the highs' search and the arrows inside the simulated area and fade the arrows over its outer 6 degrees like the field
+  raster (in the Atlantic that edge is off the map; in the others you can pan to it), and `stNormLon` reads longitudes into the
+  South Pacific's date-line frame (160..240). Same random stream as in the Atlantic, so adding steering changed nothing else a
+  seed does (a check per basin: SST, humidity, shear and ENSO after 6 days are bit-for-bit what they are with the features off).
+
+  *Data.* The Atlantic's pipeline (`tools/build_steer_all.sh`, all nine rows now): real ERA5 monthly layer winds and sea-level
+  pressure 2007-2021 -> one joint EOF set (K = 8) with the ENSO response fitted over its three lags together and a seasonal
+  amplitude for the EOF part -> the day-to-day calibration on the real daily fields 2017-2021 (pressure weather, the
+  wind-pressure coupling, the ribbon, the residual flow) -> the mean ribbon and the variance closure measured on the built page.
+  For the others the ribbon and the per-latitude statistics are measured on an analysis box that adds the whole jet band to the
+  displayed rows (like the shear jet: most boxes do not contain the jet), the pressure-weather statistics wrap the date line
+  for the South Pacific, and a length scale that never falls below 1/e inside the window is reported as the window's length
+  (the East Pacific's tropical pressure anomaly is larger than its sector). With `--no-extend` the generalized scripts
+  reproduce the Atlantic's committed weather and calibration files byte for byte (checked).
+
+  | basin | nodes (4°) | joint EOF, K = 8 | sustained El Niño, deep u peak, kt per °C (old fit) | ribbon at the axis, deep / weak kt | largest mean ribbon removed (± SE) kt |
+  |---|---|---|---|---|---|
+  | Atlantic | 38 x 29 | 59% | 3.2 (6.7) | 25.6 / 8.8 | 15.7 (0.63) |
+  | East Pacific | 29 x 21 | 65% | 6.0 (12.5) | 27.5 / 9.1 | 15.2 (0.63) |
+  | West Pacific | 21 x 16 | 68% | 4.4 (9.5) | 35.6 / 10.7 | 25.8 (0.90) |
+  | North Indian Ocean | 18 x 11 | 64% | 2.2 (4.8) | 21.9 / 2.9 | 14.7 (0.54) |
+  | Australian Region | 22 x 13 | 70% | 2.0 (4.0) | 20.7 / 2.6 | 10.0 (0.45) |
+  | South-West Indian Ocean | 20 x 12 | 75% | 1.9 (3.9) | 23.6 / 5.9 | 12.0 (0.54) |
+  | South Pacific | 21 x 11 | 74% | 6.0 (12.4) | 18.1 / 2.8 | 8.8 (0.41) |
+  | South Atlantic | 18 x 11 | 80% | 3.2 (6.7) | 25.7 / 7.9 | 14.1 (0.61) |
+  | Mediterranean | 14 x 5 | 89% | 2.3 (4.6) | 27.8 / 8.0 | 15.9 (0.64) |
+
+  *What the checks found* (each invisible until it was compared with the real data, basin by basin).
+  (a) **A clock bug in my own jet check.** The check that compares the arrows along the simulated jet axis with the real
+  composite read the season's start from wherever the previous check had left the simulation clock, but every sample
+  restarts from the basin's own start date, so its window was shifted by up to a quarter of a year: the Atlantic had been
+  sampled from mid-August to January instead of June to November (39.3 kt along the axis against the real 34.4; in the
+  right months it is 35.7). In the new basins the same bug made the ribbon look 20-46% too strong, which sent me looking
+  for a calibration error that was not there. The check now reads the start date from a fresh run (the highs check
+  already did).
+  (b) **A symmetric ribbon on an asymmetric jet.** Along the real daily axis the deep-layer wind is 16-22 kt weaker 10 degrees
+  equatorward of the axis in every southern basin, but only 3.5 / 2.6 / -1.0 kt weaker 10 degrees poleward in the South
+  Atlantic / Australian Region / South-West Indian Ocean (the westerlies keep growing towards the polar front; the
+  Atlantic's drop is 20 / 22 either way). The simulated ribbon is a symmetric stripe, so there its poleward flank falls
+  off 9 / 7 / 3 kt where the real one does not. The check tests each flank only where the real wind falls off.
+  (c) **A mean-wind bias that was sampling noise.** With 30 seeds the Mediterranean (10 interior nodes) showed a 3.0 kt
+  grid-mean bias and the South Pacific 1.1 kt; with 100 seeds, per season, every grid mean is within 1.8 standard errors
+  of the real climatology in the South Pacific, South-West Indian Ocean, South Atlantic and Mediterranean, and the
+  node-by-node rms is at the level of the sampling noise. The check now measures the noise from the spread of the seeds' means
+  and judges the bias against it (a grid mean must be within 0.7 kt or 3.5 standard errors, and what is left node by
+  node after removing the noise must be small), so a small grid is not failed for being small and a ribbon mean left in
+  (mutation: 5.2 kt bias in the South-West Indian Ocean) still is.
+  (d) **Sharp seasonal minima come out too variable.** The seasonal amplitude of the EOF part (`eofAmp`) is smoothed over
+  neighbouring months (1-2-1) to tame 15-year variance estimates, which lifts a sharp minimum: the North Indian Ocean's
+  year-to-year spread at 24-32N in August is 2.3 kt, July 3.3, September 3.7, and the slow part reproduces it at +27%
+  (2.9 kt) where every other month is within -10..+8%. Because the residual flow cannot be negative (it is floored at
+  0 where everything else already exceeds the target: 33-37% of the North Indian Ocean's deep nodes in July-September,
+  39-46% of the Mediterranean's in July-August, 27% of the West Pacific's in August), the total stays a little high
+  there: simulated/real standard deviation up to 1.30 (North Indian Ocean, August, 24-32N), 1.16 (East Pacific, August,
+  30-40N), 1.14 (South Pacific). Not fixed: less smoothing would change the committed Atlantic data too and means
+  re-running the slow part, the weather calibration and the means for every basin (hours, 13 GB each); listed under "Later".
+  (e) **A missing `</div>` in my port.** The steering legend's markup was left open in all eight pages, which made the
+  playback dock, the toast, the city tooltip and the attribution children of the legend card, and that card is hidden until the
+  arrows are ticked: the dock would have been invisible in every basin but the Atlantic. The steering block passed in every basin
+  with it that way; I saw it on a screenshot. A check now asserts that every floating card is a direct child of the page and
+  the dock is visible with the arrows off (and fails on the unclosed markup).
+
+  *What it reproduces, simulated vs the real ERA5 (2007-2021 monthly, 2017-2021 daily; thresholds in the tests were set
+  from many seeds, not from one run; the Atlantic first, for reference).*
+
+  | basin | deep winds, simulated / real standard deviation (month x band cells) | highs a day, Jan / Apr / Jul / Oct, simulated (real) | central pressure of the highs, 10th / 50th / 90th percentile, hPa: simulated (real) | along the jet axis, kt: simulated (real) |
+  |---|---|---|---|---|
+  | Atlantic | 0.96-1.08 (16) | N 4.9 (4.7) / 4.6 (4.8) / 3.8 (4.5) / 5.0 (4.8); S 2.1 (1.9) / 2.9 (2.6) / 3.8 (3.1) / 1.9 (1.9) | 1018.7 / 1023.5 / 1033.0 (1018.6 / 1023.4 / 1032.2) | 35.7 (34.4) |
+  | East Pacific | 0.94-1.16 (16) | N 2.6 (2.6) / 1.7 (1.9) / 2.1 (2.5) / 2.3 (2.1) | 1018.6 / 1023.8 / 1033.5 (1018.5 / 1024.8 / 1032.7) | 27.4 (24.9) |
+  | West Pacific | 0.95-1.11 (16) | N 1.6 (1.4) / 1.8 (1.6) / 0.5 (0.5) / 1.9 (1.9) | 1018.8 / 1024.0 / 1034.5 (1018.9 / 1024.6 / 1033.3) | 42.0 (42.7) |
+  | North Indian Ocean | 0.97-1.30 (12) | N 0.3 (0.1) / 0.0 / 0.0 / 0.0 (0.0) | not tested (a high one day in ten) | 27.7 (31.9) |
+  | Australian Region | 0.97-1.10 (12) | S 0.6 (0.6) / 1.0 (1.1) / 1.5 (1.4) / 1.2 (1.1) | 1018.9 / 1023.7 / 1032.9 (1019.0 / 1023.8 / 1030.5) | 27.7 (28.1) |
+  | South-West Indian Ocean | 0.95-1.09 (12) | S 0.8 (0.9) / 1.1 (0.9) / 1.4 (1.3) / 0.9 (1.2) | 1021.5 / 1027.6 / 1035.9 (1020.8 / 1026.5 / 1033.0) | 29.3 (26.0) |
+  | South Pacific | 0.92-1.14 (12) | S 0.3 (0.2) / 0.4 (0.2) / 0.5 (0.6) / 0.7 (0.5) | not tested (0.2-0.6 a day) | 23.6 (25.8) |
+  | South Atlantic | 0.93-1.10 (12) | S 0.6 (0.5) / 0.7 (0.4) / 0.8 (1.0) / 0.6 (0.6) | 1019.2 / 1024.4 / 1030.5 (1019.2 / 1023.4 / 1030.7) | 33.5 (29.5) |
+  | Mediterranean | 0.95-1.05 (4) | N 0.1 (0.1) / 0.1 (0.1) / 0.0 (0.0) / 0.1 (0.1) | not tested (a high one day in ten) | 33.7 (27.1) |
+
+  Weak-storm (shallow) winds: 0.93-1.12 in every basin. The travelling pressure highs and lows are 93-111% of their
+  real size in February / August (rms of P' over 30-60 degrees; over 16-28N in the North Indian Ocean, 36-44N in the
+  Mediterranean). With the weather off, each month's year-to-year spread of the deep winds is 0.80-1.27 of the real
+  one, and its seasonal cycle is kept (August over February, simulated vs real: East Pacific 32% / 46% vs 30% / 40% at
+  20-30 / 30-40N; West Pacific 56% / 70% vs 62% / 70%; North Indian Ocean 38% / 38% vs 34% / 29% at 16-24 / 24-32N;
+  southern basins, where August is winter: Australian Region 114% / 140% vs 114% / 151%, South-West Indian Ocean 110% / 119% vs
+  115% / 148%, South Pacific 109% / 116% vs 117% / 113%, South Atlantic 176% / 149% vs 174% / 152%; Mediterranean 51% vs 49%;
+  pooled EOFs would give 100%). Mean winds and pressure are the real climatology: grid-mean bias at most 0.47 / 0.57 /
+  0.24 / 0.63 / 0.74 / 1.09 / 0.70 / 0.84 kt (u, deep; East Pacific ... Mediterranean, 30-90 seeds per season; the
+  sampling error of those means is 0.4-1.2 kt, see (c)) and 0.2-0.6 hPa. Arrows circulate round the highs the way real ones do, 8 degrees out (weak / strong
+  storms; real Atlantic 11.7 kt, 98% / 88%): East Pacific 14.2 / 13.3 kt, anticyclonic round 99% / 83% of 98 highs; West
+  Pacific 10.2 / 6.3 kt, 96% / 69% of 67; Australian Region 13.6 / 10.4 kt, 100% / 90% of 48; South-West Indian Ocean 17.7 /
+  16.0 kt, 100% / 93% of 57 (the other way round in the south). A held El Nino minus La Nina (+2 / -2, variability and
+  weather off, 190 days), deep-layer westerlies and sea-level pressure, these are the fitted responses and not tuned:
+  East Pacific +16.1 kt at 30N 156W, -8.2 at 6N 156W, +12.3 at 34N 148W, -5.6 hPa at 46N 172W; West Pacific +9.7 at 36N 172E,
+  +4.2 at 4N 140E, +5.1 at 40N 154E, -3.8 hPa at 48N 176E; North Indian Ocean +4.1 at 20N 62E, -3.2 at the equator 86E, +3.2 at
+  24N 62E, +1.8 hPa at 28N 86E; Australian Region +3.8 at 20S 106E, -2.4 at the equator 106E, +3.6 at 40S 146E, +2.1 hPa at
+  12S 98E; South-West Indian Ocean +4.6 at 18S 62E, -2.8 at 4S 86E, +2.0 at 38S 56E, +2.0 hPa at 16S 94E; South Pacific +16.6 at
+  24S 152W, -8.5 at the equator 156W, +10.9 at 28S 155W, -2.9 hPa at 32S 136W; South Atlantic -4.0 at 20S 30W, +4.0 at 4S 34W,
+  +7.9 at 36S 34W, +1.3 hPa at 4S 30W; Mediterranean +6.3 at 44N 2W, -3.5 at 36N 30E, +4.1 at 41N 6E, -1.9 hPa at 48N 10W.
+  Smoothness and reproducibility are as in the Atlantic (hourly heading change at most a few degrees, a seed gives
+  bit-identical steering however the run is chunked). The pages grew by 0.08-0.39 MB each (East Pacific 1.67 -> 2.06 MB,
+  Mediterranean 0.91 -> 0.99).
+
+  *Tests.* `STEER_SPECS` has an entry for every basin (the Atlantic's plus eight new ones), and `checkSteering` runs from it in
+  each basin's block, between the shear checks and the ENSO-hold ones: 62 checks in the Atlantic, East Pacific, West Pacific,
+  Australian Region and South-West Indian Ocean, 60 in the South Atlantic, 58 in the South Pacific, 54 in the North Indian Ocean
+  and the Mediterranean (the last four have too few highs for the drift, circulation, central-pressure and icon checks); 20-50 s
+  a basin. The suite goes 1045 -> 1520 checks (all passing). A spec is the basin's real figures plus a few options for what the Atlantic
+  does not need (the header comment of the block lists them: icons wanted in view, the latitude band of the pressure
+  weather, the tolerances of the variance budget and of the mean-wind checks, no trade-wind half in the layers check, the jet
+  composite's tolerance and its one-sided stripe). The real figures come from two read-only scripts that apply the page's own rules
+  to the real daily fields, `tools/real_steer_highs.py` (highs a day by month, central pressures) and
+  `tools/real_steer_axis.py` (the along-axis composite). Probe points are chosen to be open ocean, on screen and clear of the
+  floating cards (a hover in the bottom-left corner hit the readout card, which grows under the pointer as it fills). Mutations
+  the block was checked to fail on, in the South-West Indian Ocean: no mean ribbon removed (mean bias 5.2 kt), no ribbon at all, the
+  ENSO lagged terms dropped, the ENSO sign flipped, the pressure-wind coupling 1.4x, the travelling pressure 1.3x, a
+  1013 hPa threshold for highs, no prominence rule, a wrong medium-layer weight, the weather slider ignored, the readout heading
+  reversed, no edge fade, the year-to-year EOF part doubled; in the South Pacific, the date-line longitude frame
+  not normalised; the unclosed legend markup; and the ones that matter for the loosened tolerances: the mean ribbon left in is caught in the
+  South Pacific, West Pacific and Mediterranean too (mean bias and node errors), the doubled EOF part in the North Indian Ocean and
+  East Pacific, the 1.3x travelling pressure in the North Indian Ocean. The 1.4x pressure-wind coupling (deep layer only) is
+  caught where that coupling carries much of the variance (East Pacific, South-West Indian Ocean) and not in the North Indian
+  Ocean, West Pacific or Mediterranean, where it carries little (an error that small is also invisible on the page).
+
+  *Caveats.* (1) SST, humidity and shear still use the older one-lag-at-a-time ENSO fits (a sustained event counts 1.7-2.8x),
+  which a held El Nino makes visible; steering uses the joint fit, whose sustained-event response is half the old one's in
+  every basin (table above). (2) Sharp seasonal minima come out up to 30% too variable (finding d). (3) The simulated jet axis
+  composite is within -13..+14% of the real one in seven basins and +24% in the Mediterranean, whose box holds the axis a quarter
+  of the time and whose axis already sits 1.15 degrees too far poleward (see "Later"); the ribbon is symmetric across the axis
+  where the real southern jet is not (finding b); and, as in the Atlantic, the ribbon has its cyclone-season amplitude all year
+  (the real winter jet is stronger; only the Atlantic's winter/summer ratio, 47 vs 31 kt, was measured). (4) Local mean-wind errors at
+  the jet's edge: the West Pacific's node-by-node mean has 3.2 kt rms left after the sampling noise (the Atlantic 2.1 kt in total),
+  worst node 8.6 kt (4.1 standard errors) at 44N in the months the jet passes (-4.9 kt in June, +4.4 in January and April): the
+  mean ribbon removed is one map for all months, which is the suspect, not isolated. (5) Highs: the South-West Indian Ocean's
+  and Australian Region's strongest highs are 2.4-2.9 hPa above the real 90th percentile (1035.9 vs 1033.0, 1032.9 vs 1030.5);
+  the North Indian Ocean and the Mediterranean have a high about one day in ten in winter, so usually no H on the map at all;
+  the South Pacific 0.2-0.6 a day. (6) Not validated against best-track storm motion (the sandbox cannot reach NHC/NCEI).
+  (7) The 6-degree fade at the simulated area's edge is new on screen here (the Atlantic's edge is off the map), and only
+  arrows fade; a basin's field raster and jet line already did.
+
 - **Steering arrows and highs (Atlantic first), plus "Keep ENSO at this value" (all 9 basins).**
   `Customization → Steering arrows (colour = speed)` draws arrows on a lattice that follows the zoom
   (about 290 on a 1280x800 window, never closer than ~46 px): direction is where the flow pushes a storm,
@@ -163,9 +309,8 @@
   reproducibility; isolation (SST, humidity, shear and ENSO after 6 days are bit-for-bit what they are with the
   features off); the layers; the icons. Plus `checkEnsoHold` (9 checks) in every basin. The new block was checked to fail on each of: a build without the smear (mean bias 3.2 kt, node rms 5.7 kt, 39.6 kt along the axis), a flipped geostrophic sign (highs circulate the wrong way: 25% anticyclonic), a flipped arrow heading, a flipped ENSO sign, the weather slider ignored, the jet clock replaced by the simulation clock, no seasonal EOF amplitude (August's spread 99% of February's, real 32%), a residual 1.5x too big (std ratio 1.16-1.43), no ribbon, no prominence rule in the highs, and a narrow pressure spectrum (2.8 northern highs a day in June). One thing it found about itself: the first version of the seasonal-spread check measured the budget with the residual already closed, so removing the seasonal EOF amplitude passed it; the slow part now has its own check (weather off).
 
-  *Caveats.* (1) Only the Atlantic's client has the steering code; the other eight basins have the ENSO box and
-  nothing else yet. They are a scripted port plus each basin's own calibration (`tools/build_steer_all.sh` lists
-  the commands; the rows are commented out). (2) Highs: northern counts run +9 to +15% in December-February,
+  *Caveats.* (1) [Written for the Atlantic alone; the other eight basins have the same client now, see the entry
+  above.] (2) Highs: northern counts run +9 to +15% in December-February,
   southern +15 to +39% in August-October. (3) The ribbon amplitude is the June-November one in every month: the real
   winter jet is stronger (along-axis deep wind at the axis 47 kt in DJF vs 31 in JJA, same sector), so winter jet-following is
   understated; and the real wind along the axis spreads wider than the simulated (10th-90th percentile 5-62 kt vs
@@ -1681,17 +1826,18 @@ again building EPAC):**
   that "Keep ENSO at this value" can hold an event: the steering field already uses the joint fit
   (`climate_lib.enso_regression_lagsum`, which halves the sustained response), so the same call in
   `make_climate.py` / `make_humidity.py` / `make_shear.py` is the fix.
-- Steering arrows and highs for the other 8 basins: the Atlantic's client code ported by script like the
-  shear/jet was, plus each basin's own calibration (`tools/build_steer_all.sh`, rows commented out), the
-  per-basin checks (`STEER_SPECS` in `tests/run.mjs` takes a spec entry per basin) and a look at each. Waiting
-  for a look at the Atlantic first.
 - The seasonal-amplitude fix `make_steer.py` applies to its EOF part (`eofAmp`) belongs on the SST, humidity
   and shear EOFs too: they are fitted over all months together and have the same mismatch (the real
   year-to-year spread of a month's mean varies a lot with the season).
-- Steering: a winter jet (the ribbon is the June-November amplitude all year; the real DJF along-axis wind is
-  47 kt against 31 in JJA), the real spread of the wind along the axis (wider than simulated), lows as objects
-  next to the highs, and dry air under a high feeding the humidity field. And the real test of all of it:
+- Steering: a winter jet (in every basin the ribbon is its cyclone-season amplitude all year; in the Atlantic the
+  real DJF along-axis wind is 47 kt against 31 in JJA), the real spread of the wind along the axis (wider than
+  simulated), lows as objects next to the highs, and dry air under a high feeding the humidity field. And the real test of all of it:
   steering of real best-track storms, once the storm model exists (the sandbox cannot reach NHC/NCEI).
+- Steering: sharp seasonal minima of the year-to-year spread come out up to 30% too variable (the 1-2-1 smoothing of `eofAmp`
+  over months lifts them; the residual flow cannot go negative to compensate): less smoothing, then the slow part, the weather
+  calibration and the means re-run for every basin including the Atlantic (hours of compute, 13 GB each, and the committed Atlantic
+  data change). And the southern basins' jet is asymmetric across the traced axis (the real westerlies keep growing poleward) where
+  the ribbon is a symmetric stripe: a profile for each side.
 - Wind Shear's jet axis in the Mediterranean sits 1.15 degrees too far poleward on average
   (+3 kt field bias, the largest of the nine): compute the smear from the simulated axis
   distribution instead of the real one, which would make "the time mean equals the real

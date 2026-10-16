@@ -64,6 +64,9 @@ def box_arrays(lon0, lon1, lat0, lat1):
         out[f] = b.values.astype("float64")
         times = b["time"].values
         lat, lon = b["lat"].values, b["lon"].values
+    # A box that crosses the dateline carries the labels 160..178, -180..-120 (South Pacific); unwrap them to 160..240 so that
+    # distances, the longitude sector and the TC discs below are measured on a continuous axis. A no-op for every other box.
+    lon = np.where(lon < lon0, lon + 360.0, lon)
     return out, times, lat, lon
 
 
@@ -128,12 +131,16 @@ def _corr_efold(arr, mask, li, cols, step_km):
     x = x - np.nanmean(x)
     var = np.nanmean(x * x)
     prev = 1.0
-    for k in range(1, 40):
+    kmax = min(40, x.shape[2] - 4)         # a lag has to leave a few columns to correlate
+    for k in range(1, kmax):
         c = np.nanmean(x[:, :, : x.shape[2] - k] * x[:, :, k:]) / var
         if c < 1 / np.e:
             return (k - 1 + (prev - 1 / np.e) / (prev - c)) * step_km
         prev = c
-    return None
+    # The correlation never fell below 1/e inside the sector (the tropical pressure anomaly over the Pacific is larger than a
+    # window this wide): the pattern is bigger than the window, so the window's own length is a lower bound -- and the
+    # honest answer, since a wave this long is nearly uniform across the basin.
+    return (kmax - 1) * step_km
 
 
 def _speed(arr, mask, li, cols, lat_mid, sep):
@@ -184,12 +191,18 @@ def band_scales(Pa, Ru, Rv, mask, lat, lon, cols):
 
 
 def build(basin, lon0, lon1, lat0, lat1, months, band=(20, 65), extend=True, out_dir=None):
-    X, times, lat, lon = box_arrays(lon0, lon1, lat0, lat1)
+    # Everything is measured on the ANALYSIS box -- the displayed rows plus the whole jet search band and the ribbon's support, exactly as
+    # make_shear_jet.py does, because most basins' boxes do not contain the jet -- and only the per-node maps shipped at the end are cut back
+    # to the displayed rows (r0 = first displayed row inside the analysis box, cny = how many there are). With --no-extend the two boxes are one.
+    elat0, elat1 = msj.analysis_lat_range(lat0, lat1, band, extend)
+    X, times, lat, lon = box_arrays(lon0, lon1, elat0, elat1)
+    r0 = int(round((elat1 - lat1) / cl.CRES)); cny = int(round((lat1 - lat0) / cl.CRES)) + 1
+    lon_hi = float(lon[-1])
     T = len(times)
     ym = np.array([int(str(t)[:4]) * 100 + int(str(t)[5:7]) for t in times.astype("datetime64[D]")])
     mon = ym % 100
     A = {k: year_month_anomalies(v, ym) for k, v in X.items()}
-    mask = tc_mask(X["p"], lat, lon, lon0, lon1 if lon1 > lon0 else 180)
+    mask = tc_mask(X["p"], lat, lon, lon0, lon_hi)
     print(f"days {T}, grid {len(lat)}x{len(lon)}, TC-masked samples {mask.mean() * 100:.2f}%")
     Gu, Gv = geostrophic(A["p"] * 100.0, lat, lon)
 
@@ -240,7 +253,7 @@ def build(basin, lon0, lon1, lat0, lat1, months, band=(20, 65), extend=True, out
     def up(a):                                                                      # 4 deg nodes -> 2 deg grid by repetition (statistics only)
         return np.repeat(np.repeat(a, 2, axis=1), 2, axis=2)[:, : len(lat), : len(lon)]
     Vn = {"shallow": (A["u_s"] - up(rib["shallow"][0]), A["v_s"] - up(rib["shallow"][1])), "deep": (A["u_d"] - up(rib["deep"][0]), A["v_d"] - up(rib["deep"][1]))}
-    sec = (lon >= lon0 + 6) & (lon <= (lon1 if lon1 > lon0 else 180) - 6)
+    sec = (lon >= lon0 + 6) & (lon <= lon_hi - 6)
     alat = np.abs(lat)
     alpha = {"shallow": [], "deep": []}; kappa = []; band_rows = []
     centers = []
@@ -265,7 +278,7 @@ def build(basin, lon0, lon1, lat0, lat1, months, band=(20, 65), extend=True, out
     Rd_u = Vn["deep"][0] - np.interp(np.abs(lat), centers, [r["deep"][0] for r in band_rows])[None, :, None] * Gu
     Rd_v = Vn["deep"][1] - np.interp(np.abs(lat), centers, [r["deep"][0] for r in band_rows])[None, :, None] * Gv
     waves = band_scales(A["p"], Rd_u, Rd_v, mask, lat, lon, np.where(sec)[0])
-    ny, nx = len(lat_nodes), len(col_idx)
+    ny, nx = len(range(0, cny, GRID_STEP)), len(col_idx)
     sigP = np.zeros((12, ny, nx)); sigR = np.zeros((12, ny, nx))
     Pm = np.where(mask, np.nan, A["p"]); Rm = np.where(mask, np.nan, Rd_u ** 2 + Rd_v ** 2)
     for m in range(1, 13):
@@ -273,7 +286,7 @@ def build(basin, lon0, lon1, lat0, lat1, months, band=(20, 65), extend=True, out
         sp = np.sqrt(np.nanmean(Pm[sel] ** 2, axis=0)); sr = np.sqrt(np.nanmean(Rm[sel], axis=0))
         # smooth over a 3x3 block of 2-degree cells, then take the 4-degree nodes
         sp = uniform_filter(np.nan_to_num(sp, nan=np.nanmean(sp)), size=3, mode="nearest"); sr = uniform_filter(np.nan_to_num(sr, nan=np.nanmean(sr)), size=3, mode="nearest")
-        sigP[m - 1] = sp[::GRID_STEP, ::GRID_STEP]; sigR[m - 1] = sr[::GRID_STEP, ::GRID_STEP]
+        sigP[m - 1] = sp[r0:r0 + cny:GRID_STEP, ::GRID_STEP]; sigR[m - 1] = sr[r0:r0 + cny:GRID_STEP, ::GRID_STEP]
     for arr in (sigP, sigR):                                                      # 1-2-1 smoothing across neighbouring months (cyclic)
         arr[:] = 0.25 * np.roll(arr, 1, axis=0) + 0.5 * arr + 0.25 * np.roll(arr, -1, axis=0)
     print(f"  sigma P' (hPa) month 1/7: {sigP[0].mean():.2f}/{sigP[6].mean():.2f}   map max {sigP.max():.1f}   sigma R (kt) month 1/7: {sigR[0].mean():.1f}/{sigR[6].mean():.1f}   map max {sigR.max():.1f}")
@@ -288,7 +301,7 @@ def build(basin, lon0, lon1, lat0, lat1, months, band=(20, 65), extend=True, out
         for m in range(1, 13):
             q = np.nanmean(Q[mon == m], axis=0)
             q = uniform_filter(np.nan_to_num(q, nan=np.nanmean(q)), size=3, mode="nearest")
-            out[m - 1] = q[::GRID_STEP, ::GRID_STEP]
+            out[m - 1] = q[r0:r0 + cny:GRID_STEP, ::GRID_STEP]
         return 0.25 * np.roll(out, 1, axis=0) + 0.5 * out + 0.25 * np.roll(out, -1, axis=0)
     var_daily = np.stack([month_var(A["u_s"], A["v_s"]), month_var(A["u_d"], A["v_d"])], axis=1)      # (12, 2 [shallow, deep], ny, nx)
     calib_path = os.path.join(out_dir or os.path.join(ROOT, "data", "generated"), f"{basin}-steer-calib.json")

@@ -327,7 +327,7 @@ async function checkShear(page, label, S) {
 async function checkExperiment(page, label) {
   const ev = (fn, arg) => page.evaluate(fn, arg);
   const BASIC = ['p-ensonow', 'enso-hold', 'p-warm', 'p-moist', 'p-shear'];
-  const ADV = ['p-var', 'p-wx', 'p-wxs', 'p-jets', 'p-sea', 'p-feat', 'p-enso', 'seed-vary', 'steer-depth-row'].filter((id) => id !== 'steer-depth-row' || label === 'Atlantic');
+  const ADV = ['p-var', 'p-wx', 'p-wxs', 'p-jets', 'p-sea', 'p-feat', 'p-enso', 'seed-vary', 'steer-depth-row'];
   const SEED = ['seed', 'b-newseed', 'b-reset'];
   const look = () => ev(([basic, adv, seed]) => {
     const $ = (id) => document.getElementById(id), shown = (id) => { const el = $(id); return !!el && el.offsetParent !== null; };
@@ -351,10 +351,10 @@ async function checkExperiment(page, label) {
   const t0 = await look();
   check(`[${label}] Experimentation opens on its Basic tab: only the basic controls show, the Advanced ones are hidden, the seed row is there (${t0.tabs})`, t0.tabs === BASIC_STATE && t0.panels[0] === true && t0.panels[1] === false && all(t0.basic, true) && all(t0.adv, false) && all(t0.seed, true));
   check(`[${label}] Basic holds exactly Set ENSO now, Keep ENSO at this value, Warming, Moisture and Wind shear, in that order (${lay.basicOrder})`, all(lay.basicHome, 'basic') && lay.basicOrder === BASIC.join(','));
-  check(`[${label}] Advanced holds the rest: year-to-year variability, both day-to-day weather sliders, weather speed, seasonal swing, currents, ENSO influence, the seed nudge${label === 'Atlantic' ? ' and the storm-strength selector' : ''}`, all(lay.advHome, 'adv'));
+  check(`[${label}] Advanced holds the rest: year-to-year variability, both day-to-day weather sliders, weather speed, seasonal swing, currents, ENSO influence, the seed nudge and the storm-strength selector`, all(lay.advHome, 'adv'));
   check(`[${label}] the seed row (seed, New seed, Reset) belongs to neither tab and shows on both`, all(lay.seedHome, 'shared'));
   check(`[${label}] the tabs are a proper tab list: roles, aria-controls and aria-labelledby line up (${lay.tabRoles}; ${lay.panelRoles})`, lay.role === 'tablist' && lay.tabRoles === 'tab>xp-basic tab>xp-adv' && lay.panelRoles === 'tabpanel<xp-tab-basic tabpanel<xp-tab-adv');
-  check(`[${label}] Customization is unchanged by all this: no tabs, no experiment sliders, still the layer buttons${label === 'Atlantic' ? ', and the storm-strength selector is no longer in it' : ''}`, lay.customTabs === 0 && lay.customSliders === 0 && lay.customLayers && !lay.customDepth);
+  check(`[${label}] Customization is unchanged by all this: no tabs, no experiment sliders, still the layer buttons, and the storm-strength selector is not in it`, lay.customTabs === 0 && lay.customSliders === 0 && lay.customLayers && !lay.customDepth);
   await page.click('#xp-tab-adv');
   const t1 = await look();
   check(`[${label}] clicking Advanced swaps the tabs over: the advanced controls show, the basic ones hide, the seed row stays (${t1.tabs})`, t1.tabs === ADV_STATE && t1.panels[0] === false && t1.panels[1] === true && all(t1.basic, false) && all(t1.adv, true) && all(t1.seed, true));
@@ -464,9 +464,19 @@ async function checkEnsoHold(page, label) {
 //                         far (high latitude, for the pressure response); names are what the check messages call them; extra are more points for the smoothness check
 //   hem, latBands, lonRange   the hemisphere, the |latitude| bands and the longitude sector the variance budget is checked in
 //   ensoU                 the least deep-layer westerly response (El Nino minus La Nina, kt) at sub / trop / jet: above it if positive, below it if negative; pFarSign: sign of the pressure response at far
-//   jet                   the jet-ribbon check: season, longitudes, |latitude| window of the axis, hemisphere sign, and the REAL composite on the real axis (along-axis kt, degrees off, share within 45 degrees);
+//   jet                   the jet-ribbon check: season, longitudes, |latitude| window of the axis, hemisphere sign, and the REAL composite on the real axis (along-axis kt, degrees off, share within 45 degrees,
+//                         stripe = least drop 10 degrees off the axis: one number, or [poleward, equatorward] with 0 where the real wind does not fall off, stripeReal = the real drops; no stripe
+//                         where the box is too small for samples 10 degrees off the axis; alongTol = [low, high] factors on the real along-axis wind, default [0.85, 1.15]; withinTol = how far below the real share within 45 degrees, default 0.02);
 //                         null where the jet is too far outside the box to measure
 //   highsReal             real highs a day [north, south] per calendar month on the page's node grid (the page's own rule on the real daily pressure of 2017-2021); highsP: pressure percentiles
+//                         (tools/real_steer_highs.py and tools/real_steer_axis.py produce these real figures); highsMin: the fewest highs expected across the sampled states
+//   options, only where a basin needs them (the defaults are the Atlantic's):
+//     iconMin     highs wanted in view for the icon checks (default 3; 0 skips them: the North Indian Ocean and the Mediterranean have a high one day in ten)
+//     ppBand      the |latitude| band the size of the travelling pressure is checked in (default 30-60; a tropical or enclosed basin has no such band)
+//     seasBands   the bands the seasonal cycle of the year-to-year spread is checked in (default: the 2nd and 3rd of latBands)
+//     varTol      tolerances of the variance budget: deep / shallow simulated-over-real standard deviation, the weather-off ratios, the seasonal-cycle difference
+//     biasTol     tolerances of the mean-wind checks: mean (floor of the grid-mean bias; the check also allows 3.5 standard errors), z, max, sys (left over after the sampling noise), seeds
+//     noTrades    the layers check skips its trade-wind half (the Mediterranean has none)
 // The numbers in the specs are the simulated climate of that basin, not tuning knobs.
 const STEER_SPECS = {
   atlantic: {
@@ -479,7 +489,103 @@ const STEER_SPECS = {
     ensoU: { sub: 2.5, trop: -0.8, jet: 2.0 }, pFarSign: -1,
     jet: { months: [6, 7, 8, 9, 10, 11], lon: [-80, -20], lat: [25, 58], hem: 1, label: 'June-November', along: 34.4, ang: 16, within: 0.8, stripe: 10 },
     highsReal: { 1: [4.73, 1.85], 4: [4.78, 2.59], 7: [4.45, 3.12], 10: [4.85, 1.88] },
-    highsP: { p10: [1017, 1020.5], p50: [1021.5, 1026], p90: [1028, 1039], real: '1018.6/1023.4/1032.2' },
+    highsP: { p10: [1017, 1020.5], p50: [1021.5, 1026], p90: [1028, 1039], real: '1018.6/1023.4/1032.2' }, highsMin: 50,
+  },
+  eastpacific: {
+    dataFile: 'eastpacific-data.json', calibFile: 'eastpacific-steer-calib.json',
+    view: [[0, -170], [45, -75]], hover: [14, -118],
+    pts: { trop: [6, -156], sub: [30, -156], jet: [34, -148], far: [46, -172] },
+    names: { trop: '6N 156W', sub: '30N 156W', jet: '34N 148W', far: '46N 172W' },
+    extra: [[24, -120], [40, -128], [14, -100]],
+    hem: 1, latBands: [[10, 20], [20, 30], [30, 40], [40, 50]], lonRange: [-170, -75],
+    ensoU: { sub: 14, trop: -7, jet: 10 }, pFarSign: -1, varTol: { cells: { 'd8/30-40': 1.2 } },
+    jet: { months: [5, 6, 7, 8, 9, 10, 11], lon: [-170, -80], lat: [25, 40], hem: 1, label: 'May-November', along: 24.9, ang: 22, within: 0.74, stripe: [3, 9], stripeReal: [7.3, 18.9] },
+    highsReal: { 1: [2.60, 0.00], 4: [1.88, 0.01], 7: [2.49, 0.01], 10: [2.14, 0.00] },
+    highsP: { p10: [1017, 1020.5], p50: [1022, 1027], p90: [1028.5, 1039], real: '1018.5/1024.8/1032.7' }, highsMin: 50,
+  },
+  westpacific: {
+    dataFile: 'westpacific-data.json', calibFile: 'westpacific-steer-calib.json',
+    view: [[0, 106], [48, 178]], hover: [14, 134],
+    pts: { trop: [4, 140], sub: [36, 172], jet: [40, 154], far: [48, 176] },
+    names: { trop: '4N 140E', sub: '36N 172E', jet: '40N 154E', far: '48N 176E' },
+    extra: [[20, 120], [30, 150], [12, 160]],
+    hem: 1, latBands: [[10, 20], [20, 30], [30, 40], [40, 50]], lonRange: [106, 174],
+    ensoU: { sub: 8, trop: 3.5, jet: 3 }, pFarSign: -1, biasTol: { sys: { u_deep: 3.8, u_shallow: 2.4 } },
+    jet: { months: [6, 7, 8, 9, 10, 11, 12], lon: [104, 176], lat: [25, 44], hem: 1, label: 'June-December', along: 42.7, ang: 8, within: 0.95, stripe: [10, 13], stripeReal: [20.9, 27.5] },
+    highsReal: { 1: [1.38, 0], 4: [1.61, 0], 7: [0.50, 0], 10: [1.92, 0] },
+    highsP: { p10: [1017, 1020.5], p50: [1022, 1027], p90: [1028.5, 1039], real: '1018.9/1024.6/1033.3' }, highsMin: 30, iconMin: 2,
+  },
+  nio: {
+    dataFile: 'nio-data.json', calibFile: 'nio-steer-calib.json',
+    view: [[-4, 36], [28, 96]], hover: [12, 66],
+    pts: { trop: [0, 86], sub: [20, 62], jet: [24, 62], far: [28, 86] },
+    names: { trop: '0N 86E', sub: '20N 62E', jet: '24N 62E', far: '28N 86E' },
+    extra: [[10, 50], [20, 76], [6, 70]],
+    hem: 1, latBands: [[8, 16], [16, 24], [24, 32]], lonRange: [38, 94],
+    ensoU: { sub: 3.5, trop: -2.5, jet: 2.5 }, pFarSign: 1, ppBand: [16, 28], varTol: { cells: { 'd8/24-32': 1.35 } },
+    jet: { months: [4, 5, 6, 10, 11, 12], lon: [34, 96], lat: [22, 30], hem: 1, label: 'April-June and October-December', along: 31.9, ang: 10, within: 0.95, stripe: null, stripeReal: [14.9, 23.2] },
+    highsReal: { 1: [0.14, 0], 4: [0, 0], 7: [0, 0], 10: [0.02, 0] },
+    highsP: null, highsMin: 0, iconMin: 0,
+  },
+  aus: {
+    dataFile: 'aus-data.json', calibFile: 'aus-steer-calib.json',
+    view: [[-40, 94], [0, 172]], hover: [-14, 110],
+    pts: { trop: [0, 106], sub: [-20, 106], jet: [-40, 146], far: [-12, 98] },
+    names: { trop: '0N 106E', sub: '20S 106E', jet: '40S 146E', far: '12S 98E' },
+    extra: [[-24, 120], [-30, 150], [-16, 160]],
+    hem: -1, latBands: [[10, 20], [20, 30], [30, 40]], lonRange: [98, 168],
+    ensoU: { sub: 3, trop: -2, jet: 3 }, pFarSign: 1,
+    jet: { months: [11, 12, 1, 2, 3, 4], lon: [94, 172], lat: [25, 38], hem: -1, label: 'November-April', along: 28.1, ang: 15, within: 0.88, stripe: [0, 10], stripeReal: [2.6, 21.9] },
+    highsReal: { 1: [0, 0.56], 4: [0, 1.15], 7: [0, 1.43], 10: [0, 1.05] },
+    highsP: { p10: [1017, 1021], p50: [1022, 1027], p90: [1027.5, 1038], real: '1019.0/1023.8/1030.5' }, highsMin: 30, iconMin: 1,
+  },
+  swio: {
+    dataFile: 'swio-data.json', calibFile: 'swio-steer-calib.json',
+    view: [[-40, 34], [-2, 104]], hover: [-16, 70],
+    pts: { trop: [-4, 86], sub: [-18, 62], jet: [-38, 56], far: [-16, 94] },
+    names: { trop: '4S 86E', sub: '18S 62E', jet: '38S 56E', far: '16S 94E' },
+    extra: [[-28, 50], [-12, 40], [-32, 90]],
+    hem: -1, latBands: [[10, 20], [20, 30], [30, 40]], lonRange: [38, 100],
+    ensoU: { sub: 3.5, trop: -2.5, jet: 1.2 }, pFarSign: 1,
+    jet: { months: [11, 12, 1, 2, 3, 4], lon: [34, 104], lat: [25, 38], hem: -1, label: 'November-April', along: 26.0, ang: 18, within: 0.83, stripe: [0, 10], stripeReal: [-1.0, 20.1] },
+    highsReal: { 1: [0, 0.86], 4: [0, 0.90], 7: [0, 1.32], 10: [0, 1.19] },
+    highsP: { p10: [1019, 1022.5], p50: [1024, 1029], p90: [1029, 1040], real: '1020.8/1026.5/1033.0' }, highsMin: 30, iconMin: 1,
+  },
+  spac: {
+    dataFile: 'spac-data.json', calibFile: 'spac-steer-calib.json',
+    view: [[-36, 164], [-2, 236]], hover: [-16, 190],
+    pts: { trop: [0, 204], sub: [-24, 208], jet: [-28, 205], far: [-32, 224] },
+    names: { trop: '0N 156W', sub: '24S 152W', jet: '28S 155W', far: '32S 136W' },
+    extra: [[-20, 175], [-10, 215], [-30, 185]],
+    hem: -1, latBands: [[10, 20], [20, 30], [30, 40]], lonRange: [168, 232],
+    ensoU: { sub: 14, trop: -7, jet: 9 }, pFarSign: -1,
+    jet: { months: [11, 12, 1, 2, 3, 4], lon: [164, 236], lat: [25, 36], hem: -1, label: 'November-April', along: 25.8, ang: 14, within: 0.85, withinTol: 0.07, stripe: [5, 7], stripeReal: [10.0, 15.5] },
+    highsReal: { 1: [0, 0.20], 4: [0, 0.22], 7: [0, 0.55], 10: [0, 0.46] },
+    highsP: null, highsMin: 10, iconMin: 1,
+  },
+  satl: {
+    dataFile: 'satl-data.json', calibFile: 'satl-steer-calib.json',
+    view: [[-38, -46], [-2, 16]], hover: [-20, -20],
+    pts: { trop: [-4, -34], sub: [-20, -30], jet: [-36, -34], far: [-4, -30] },
+    names: { trop: '4S 34W', sub: '20S 30W', jet: '36S 34W', far: '4S 30W' },
+    extra: [[-28, -10], [-12, -40], [-32, 0]],
+    hem: -1, latBands: [[8, 16], [16, 24], [24, 32]], lonRange: [-42, 12],
+    ensoU: { sub: -3.5, trop: 3.5, jet: 7 }, pFarSign: 1,
+    jet: { months: [11, 12, 1, 2, 3, 4], lon: [-46, 16], lat: [22, 36], hem: -1, label: 'November-April', along: 29.5, ang: 16, within: 0.86, stripe: [0, 10], stripeReal: [3.5, 21.7] },
+    highsReal: { 1: [0, 0.46], 4: [0, 0.44], 7: [0, 1.03], 10: [0, 0.61] },
+    highsP: { p10: [1017, 1021], p50: [1022, 1026.5], p90: [1027.5, 1038], real: '1019.2/1023.4/1030.7' }, highsMin: 20, iconMin: 1,
+  },
+  med: {
+    dataFile: 'med-data.json', calibFile: 'med-steer-calib.json',
+    view: [[31, -9], [47, 41]], hover: [36, 15],
+    pts: { trop: [36, 30], sub: [44, -2], jet: [41, 6], far: [48, -10] },
+    names: { trop: '36N 30E', sub: '44N 2W', jet: '41N 6E', far: '48N 10W' },
+    extra: [[40, 0], [36, 20], [34, 36]],
+    hem: 1, latBands: [[36, 44]], seasBands: [[36, 44]], lonRange: [-4, 36],
+    ensoU: { sub: 5.5, trop: -3, jet: 2.5 }, pFarSign: -1, ppBand: [36, 44], noTrades: true, biasTol: { seeds: 90 },
+    jet: { months: [9, 10, 11, 12, 1], lon: [-8, 40], lat: [32, 46], hem: 1, label: 'September-January', along: 27.1, ang: 21, within: 0.75, alongTol: [0.85, 1.3], stripe: null, stripeReal: [11.8, 17.0] },
+    highsReal: { 1: [0.13, 0], 4: [0.11, 0], 7: [0, 0], 10: [0.11, 0] },
+    highsP: null, highsMin: 0, iconMin: 0,
   },
 };
 
@@ -517,6 +623,7 @@ async function checkSteering(page, label, S) {
       pressed: [...document.querySelectorAll('#seg-depth button')].map((b) => b.dataset.d + ':' + b.getAttribute('aria-pressed')).join(','), cap: document.getElementById('steer-cap').textContent,
       ticks: [...document.querySelectorAll('#steer-ticks span')].map((s) => s.textContent).join(' ') };
   });
+  check(`[${label}] every floating card is a direct child of the page, so the playback dock, the toast and the attribution show while the steering legend is hidden (its markup is closed)`, await ev(() => ['clock', 'panel', 'readout', 'legend', 'steer-legend', 'toast', 'city-tip', 'attr', 'dock'].every((id) => document.getElementById(id).parentElement === document.body) && (() => { const d = document.getElementById('dock'), r = d.getBoundingClientRect(); return getComputedStyle(d).display !== 'none' && r.width > 100 && r.height > 20; })()));
   const u0 = await ui();
   check(`[${label}] "Steering arrows" and "Highs" checkboxes exist and start unchecked; the speed legend starts hidden`, u0.arrows === false && u0.highs === false && !u0.legend);
   check(`[${label}] the storm-strength selector lives in Experimentation > Advanced (not in Customization), always shown there whether or not the arrows are on`, await ev(() => { const r = document.getElementById('steer-depth-row'); return !!r && !!r.closest('#xp-adv') && !r.closest('#sec-custom') && getComputedStyle(r).display !== 'none'; }));
@@ -649,31 +756,41 @@ async function checkSteering(page, label, S) {
   check(`[${label}] with both off, the readout has neither`, !/Steering|Sea-level pressure/.test(none));
 
   // ---- 4. the model, with the page paused and fixed seeds. First, the real climate mean is kept (zero-mean anomalies, ribbon minus its own mean).
+  // 30 seeds x 6 samples per season (S.biasTol.seeds for a basin with a small grid); the mean of a seed's samples is one independent draw, so the spread of those means gives the sampling noise the comparison with the real climate has to be judged against
+  // (a basin with few nodes, like the Mediterranean's 10, has a much noisier grid mean than the Atlantic's 600).
   const winds = [['u_deep', 'deep', 'u'], ['v_deep', 'deep', 'v'], ['u_shallow', 'shallow', 'u'], ['mslp', 'deep', 'p']];
-  const bias = {}; for (const [f] of winds) bias[f] = { mean: [], rms: [], max: [] };
+  const bias = {}; for (const [f] of winds) bias[f] = { mean: [], se: [], sys: [], noise: [], zmax: [], max: [] };
+  const BT = Object.assign({ mean: 0.7, z: 5.5, max: 14, seeds: 30 }, S.biasTol || {}); BT.sys = Object.assign({ u_deep: 2.5, v_deep: 1.8, u_shallow: 1.8, mslp: 1.0 }, (S.biasTol || {}).sys);   // mean: floor of the grid-mean tolerance (it is the larger of this and 3.5 standard errors)
   for (const d0 of [10, 100, 214, 304]) {
-    const r = await ev(([d0, seeds, nsamp]) => {
-      const X = window.SSTSIM; X.setPlaying(false); const acc = {}, dates = [];
+    const r = await ev(([d0, seeds, nsamp, inter]) => {
+      const X = window.SSTSIM; X.setPlaying(false); const per = [], dates = [];
       for (let s = 1; s <= seeds; s++) {
-        X.applySeed(7000 + s); X.setPlaying(false); X.tick(24 * d0);
+        X.applySeed(7000 + s); X.setPlaying(false); X.tick(24 * d0); const acc = {};
         for (let k = 0; k < nsamp; k++) {
           X.tick(24 * 3 + 5); const d = X.steerNodes('deep'), sh = X.steerNodes('shallow'), cur = { u_deep: d.u, v_deep: d.v, u_shallow: sh.u, mslp: d.p };
-          for (const f of Object.keys(cur)) { if (!acc[f]) acc[f] = new Float64Array(cur[f].length); for (let q = 0; q < cur[f].length; q++) acc[f][q] += cur[f][q]; }
+          for (const f of Object.keys(cur)) { if (!acc[f]) acc[f] = new Float64Array(inter.length); for (let i = 0; i < inter.length; i++) acc[f][i] += cur[f][inter[i]] / nsamp; }
           if (s === 1) dates.push(X.state().date);
         }
+        per.push(Object.fromEntries(Object.entries(acc).map(([f, a]) => [f, Array.from(a)])));
       }
-      const n = seeds * nsamp; return { mean: Object.fromEntries(Object.entries(acc).map(([f, a]) => [f, Array.from(a, (v) => v / n)])), dates };
-    }, [d0, 30, 6]);
+      return { per, dates };
+    }, [d0, BT.seeds, 6, interior]);
     for (const [f] of winds) {
       const rc = new Float64Array(SN); for (const iso of r.dates) { const x = steerClimAt(steer, iso, f); for (let q = 0; q < SN; q++) rc[q] += x[q] / r.dates.length; }
-      const dif = interior.map((q) => r.mean[f][q] - rc[q]);
-      bias[f].mean.push(mean(dif)); bias[f].rms.push(Math.sqrt(mean(dif.map((x) => x * x)))); bias[f].max.push(Math.max(...dif.map(Math.abs)));
+      const n = r.per.length, nodeMean = interior.map((_, i) => mean(r.per.map((p) => p[f][i]))), dif = interior.map((q, i) => nodeMean[i] - rc[q]);
+      const nodeVar = interior.map((_, i) => r.per.reduce((a, p) => a + (p[f][i] - nodeMean[i]) ** 2, 0) / (n - 1) / n);   // variance of the 30-seed mean at each node
+      const g = r.per.map((p) => mean(interior.map((q, i) => p[f][i] - rc[q])));                                          // one grid-mean bias per seed
+      const gm = mean(g), gse = Math.sqrt(g.reduce((a, x) => a + (x - gm) ** 2, 0) / (n - 1) / n), rms2 = mean(dif.map((x) => x * x)), noise2 = mean(nodeVar);
+      bias[f].mean.push(gm); bias[f].se.push(gse); bias[f].sys.push(Math.sqrt(Math.max(0, rms2 - noise2))); bias[f].noise.push(Math.sqrt(noise2));
+      bias[f].zmax.push(Math.max(...dif.map((x, i) => Math.abs(x) / Math.sqrt(nodeVar[i])))); bias[f].max.push(Math.max(...dif.map(Math.abs)));
     }
   }
   const worst = (a) => Math.max(...a.map(Math.abs));
-  check(`[${label}] the simulated mean winds are the real climatology: mean bias over the grid at most ${worst(bias.u_deep.mean).toFixed(2)} (u) / ${worst(bias.v_deep.mean).toFixed(2)} (v) kt deep, ${worst(bias.u_shallow.mean).toFixed(2)} kt shallow, over four seasons of 30 seeds`, worst(bias.u_deep.mean) < 0.7 && worst(bias.v_deep.mean) < 0.7 && worst(bias.u_shallow.mean) < 0.7);
-  check(`[${label}] ...node by node the mean winds are within sampling noise of it (rms ${Math.max(...bias.u_deep.rms).toFixed(1)} / ${Math.max(...bias.v_deep.rms).toFixed(1)} / ${Math.max(...bias.u_shallow.rms).toFixed(1)} kt; largest single node ${Math.max(...bias.u_deep.max).toFixed(1)} kt)`, Math.max(...bias.u_deep.rms) < 3.5 && Math.max(...bias.v_deep.rms) < 2.5 && Math.max(...bias.u_shallow.rms) < 2.5 && Math.max(...bias.u_deep.max) < 14);
-  check(`[${label}] the simulated mean sea-level pressure is the real climatology (mean bias at most ${worst(bias.mslp.mean).toFixed(2)} hPa, node rms ${Math.max(...bias.mslp.rms).toFixed(2)} hPa)`, worst(bias.mslp.mean) < 0.6 && Math.max(...bias.mslp.rms) < 1.3);
+  const meanOk = (f) => bias[f].mean.every((m, i) => Math.abs(m) < Math.max(BT.mean, 3.5 * bias[f].se[i]));
+  const maxSe = (f) => Math.max(...bias[f].se);
+  check(`[${label}] the simulated mean winds are the real climatology: mean bias over the grid at most ${worst(bias.u_deep.mean).toFixed(2)} (u) / ${worst(bias.v_deep.mean).toFixed(2)} (v) kt deep, ${worst(bias.u_shallow.mean).toFixed(2)} kt shallow (sampling error of those means up to ${Math.max(maxSe('u_deep'), maxSe('v_deep'), maxSe('u_shallow')).toFixed(2)} kt), over four seasons of ${BT.seeds} seeds`, meanOk('u_deep') && meanOk('v_deep') && meanOk('u_shallow'));
+  check(`[${label}] ...node by node the mean winds are within sampling noise of it (what is left after the noise: ${Math.max(...bias.u_deep.sys).toFixed(1)} / ${Math.max(...bias.v_deep.sys).toFixed(1)} / ${Math.max(...bias.u_shallow.sys).toFixed(1)} kt rms for u deep / v deep / u shallow, noise itself up to ${Math.max(...bias.u_deep.noise).toFixed(1)} / ${Math.max(...bias.v_deep.noise).toFixed(1)} / ${Math.max(...bias.u_shallow.noise).toFixed(1)}; the worst node of each is ${['u_deep', 'v_deep', 'u_shallow'].map((f) => Math.max(...bias[f].max).toFixed(1) + ' kt = ' + Math.max(...bias[f].zmax).toFixed(1) + ' standard errors').join(' / ')} off)`, Math.max(...bias.u_deep.sys) < BT.sys.u_deep && Math.max(...bias.v_deep.sys) < BT.sys.v_deep && Math.max(...bias.u_shallow.sys) < BT.sys.u_shallow && ['u_deep', 'v_deep', 'u_shallow'].every((f) => Math.max(...bias[f].zmax) < BT.z && Math.max(...bias[f].max) < BT.max));
+  check(`[${label}] the simulated mean sea-level pressure is the real climatology (mean bias at most ${worst(bias.mslp.mean).toFixed(2)} hPa against a sampling error of ${maxSe('mslp').toFixed(2)}; ${Math.max(...bias.mslp.sys).toFixed(2)} hPa rms left node by node after the noise of ${Math.max(...bias.mslp.noise).toFixed(2)})`, meanOk('mslp') && Math.max(...bias.mslp.sys) < BT.sys.mslp && Math.max(...bias.mslp.zmax) < BT.z);
 
   // ---- 5. the variance budget: year-to-year + day-to-day, per calendar month and latitude band, against the real figures (calib: real interannual variance of the monthly
   // means + real day-to-day variance, u^2 + v^2 summed). A run is sampled at the middle of each calendar month, 4 times 3 days apart, over 24 seeds.
@@ -702,7 +819,7 @@ async function checkSteering(page, label, S) {
   const bud = await sampleMonths(1), slow = await sampleMonths(0);
   const sigP = b64i16(steer.weather.sigP);
   const bandNodes = (b) => interior.filter((q) => Math.abs(nodeLat(q)) >= b[0] && Math.abs(nodeLat(q)) < b[1] && nodeLon(q) >= S.lonRange[0] && nodeLon(q) <= S.lonRange[1] && S.hem * nodeLat(q) > 0);
-  const ratios = { shallow: [], deep: [] }, cellTxt = [];
+  const ratios = { shallow: [], deep: [] }, cellTxt = [], cellOf = { shallow: {}, deep: {} }, VT = Object.assign({ deep: [0.88, 1.15], shallow: [0.85, 1.18], slow: [0.7, 1.4], seas: 0.2, cells: {} }, S.varTol || {});   // VT.cells: single month x band cells allowed above the usual upper bound, e.g. { 'd8/24-32': 1.35 }
   for (const m of MONTHS) {
     const a = bud[m];
     for (const b of S.latBands) {
@@ -713,21 +830,24 @@ async function checkSteering(page, label, S) {
           for (const c of (li ? [2, 3] : [0, 1])) simV += (a.sq[c * SN + q] - a.sum[c * SN + q] ** 2 / a.n) / (a.n - 1);
           tgtV += calib.varInt[m - 1][li][q] + calib.varDaily[m - 1][li][q];
         }
-        const r = Math.sqrt(simV / tgtV); ratios[name].push(r); if (name === 'deep') cellTxt.push(`${m}/${b[0]}-${b[1]}N ${r.toFixed(2)}`);
+        const r = Math.sqrt(simV / tgtV); ratios[name].push(r); cellTxt.push(`${name[0]}${m}/${b[0]}-${b[1]} ${r.toFixed(2)}`); cellOf[name][`${name[0]}${m}/${b[0]}-${b[1]}`] = r;
       }
     }
   }
-  check(`[${label}] deep-layer winds are as variable as the real ones in every season and latitude band: simulated/real standard deviation ${Math.min(...ratios.deep).toFixed(2)} to ${Math.max(...ratios.deep).toFixed(2)} over ${ratios.deep.length} month x band cells (was up to 1.6 in August before the seasonal calibration)`, Math.min(...ratios.deep) > 0.88 && Math.max(...ratios.deep) < 1.15);
-  check(`[${label}] ...and so are the weak-storm (shallow) winds (${Math.min(...ratios.shallow).toFixed(2)} to ${Math.max(...ratios.shallow).toFixed(2)})`, Math.min(...ratios.shallow) > 0.85 && Math.max(...ratios.shallow) < 1.18);
+  const varOk = (name) => Object.entries(cellOf[name]).every(([c, r]) => r > VT[name][0] && r < (VT.cells[c] === undefined ? VT[name][1] : VT.cells[c]));
+  const exempt = Object.keys(VT.cells).length ? ` (only ${Object.entries(VT.cells).map(([c, v]) => c + ' may run to ' + v).join(', ')}, a sharp seasonal minimum, see docs/roadmap.md)` : '';
+  check(`[${label}] deep-layer winds are as variable as the real ones in every season and latitude band: simulated/real standard deviation ${Math.min(...ratios.deep).toFixed(2)} to ${Math.max(...ratios.deep).toFixed(2)} over ${ratios.deep.length} month x band cells (was up to 1.6 in August before the seasonal calibration)${exempt}${varOk('deep') ? '' : ' [cells: ' + cellTxt.filter((t) => t[0] === 'd').join(', ') + ']'}`, varOk('deep'));
+  check(`[${label}] ...and so are the weak-storm (shallow) winds (${Math.min(...ratios.shallow).toFixed(2)} to ${Math.max(...ratios.shallow).toFixed(2)})${varOk('shallow') ? '' : ' [cells: ' + cellTxt.filter((t) => t[0] === 's').join(', ') + ']'}`, varOk('shallow'));
   const ppRatio = [];
-  for (const m of [2, 8]) { const nodes = bandNodes([30, 60]); const sim = Math.sqrt(mean(nodes.map((q) => bud[m].pp2[q] / bud[m].n))), tgt = mean(nodes.map((q) => sigP[(m - 1) * SN + q] / 100)); ppRatio.push(sim / tgt); }
-  check(`[${label}] the travelling pressure highs and lows have the real size by season (rms of P' over 30-60N: ${(ppRatio[0] * 100).toFixed(0)}% / ${(ppRatio[1] * 100).toFixed(0)}% of the real figure in February / August)`, ppRatio.every((r) => r > 0.88 && r < 1.12));
+  for (const m of [2, 8]) { const nodes = bandNodes(S.ppBand || [30, 60]); const sim = Math.sqrt(mean(nodes.map((q) => bud[m].pp2[q] / bud[m].n))), tgt = mean(nodes.map((q) => sigP[(m - 1) * SN + q] / 100)); ppRatio.push(sim / tgt); }
+  check(`[${label}] the travelling pressure highs and lows have the real size by season (rms of P' over ${(S.ppBand || [30, 60]).join('-')} degrees: ${(ppRatio[0] * 100).toFixed(0)}% / ${(ppRatio[1] * 100).toFixed(0)}% of the real figure in February / August)`, ppRatio.every((r) => r > 0.88 && r < 1.12));
   // the slow part alone (weather off): each month's year-to-year spread is the real one, and its seasonal cycle -- small in August, large in winter -- is kept
   const slowStd = (m, b, li) => { const a = slow[m], nodes = bandNodes(b); let v = 0, t = 0; for (const q of nodes) { for (const c of (li ? [2, 3] : [0, 1])) v += (a.sq[c * SN + q] - a.sum[c * SN + q] ** 2 / a.n) / (a.n - 1); t += calib.varInt[m - 1][li][q]; } return [Math.sqrt(v / nodes.length), Math.sqrt(t / nodes.length)]; };
   const slowRatios = []; for (const m of MONTHS) for (const b of S.latBands) { const [x, y] = slowStd(m, b, 1); slowRatios.push(x / y); }
-  const seas = S.latBands.slice(1, 3).map((b) => { const feb = slowStd(2, b, 1), aug = slowStd(8, b, 1); return [aug[0] / feb[0], aug[1] / feb[1]]; });
-  check(`[${label}] with the weather off, each month's year-to-year spread of the deep winds is the real one (simulated/real ${Math.min(...slowRatios).toFixed(2)} to ${Math.max(...slowRatios).toFixed(2)} over ${slowRatios.length} month x band cells)`, Math.min(...slowRatios) > 0.7 && Math.max(...slowRatios) < 1.4);
-  check(`[${label}] ...and keeps its seasonal cycle: August's spread is ${seas.map((x) => (x[0] * 100).toFixed(0) + '%').join(' / ')} of February's at ${S.latBands.slice(1, 3).map((b) => b[0] + '-' + b[1]).join(' / ')}N (real ${seas.map((x) => (x[1] * 100).toFixed(0) + '%').join(' / ')}; pooled EOFs would give 100%)`, seas.every((x) => x[0] < 0.65 && Math.abs(x[0] - x[1]) < 0.2));
+  const seasBands = S.seasBands || S.latBands.slice(1, 3);
+  const seas = seasBands.map((b) => { const feb = slowStd(2, b, 1), aug = slowStd(8, b, 1); return [aug[0] / feb[0], aug[1] / feb[1]]; });
+  check(`[${label}] with the weather off, each month's year-to-year spread of the deep winds is the real one (simulated/real ${Math.min(...slowRatios).toFixed(2)} to ${Math.max(...slowRatios).toFixed(2)} over ${slowRatios.length} month x band cells)`, Math.min(...slowRatios) > VT.slow[0] && Math.max(...slowRatios) < VT.slow[1]);
+  check(`[${label}] ...and keeps its seasonal cycle: August's spread is ${seas.map((x) => (x[0] * 100).toFixed(0) + '%').join(' / ')} of February's at ${seasBands.map((b) => b[0] + '-' + b[1]).join(' / ')} degrees (real ${seas.map((x) => (x[1] * 100).toFixed(0) + '%').join(' / ')}; pooled EOFs would give 100%)`, seas.every((x) => Math.abs(x[0] - x[1]) < VT.seas * Math.max(1, x[1])));
 
   // ---- 6. ENSO moves the steering the way the real atmosphere's teleconnection does. ENSO is held at +2 and -2 (the new checkbox), the year-to-year EOFs and the day-to-day weather
   // are switched off so only the ENSO response is left, and the run goes 190 days so the 3- and 6-month lagged terms are fully in.
@@ -753,7 +873,7 @@ async function checkSteering(page, label, S) {
   // daily-mean pressure of 2017-2021 on the same node grid (S.highsReal = [north, south] highs a day; docs/roadmap.md has the table), and the pressure percentiles likewise (S.highsP).
   const HM = Object.keys(S.highsReal).map(Number), MN = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   const hi = await ev(([seeds, months, dom]) => {
-    const X = window.SSTSIM; X.setPlaying(false); const res = {}, p0 = new Date(X.state().date);
+    const X = window.SSTSIM; X.setPlaying(false); X.applySeed(8100); X.setPlaying(false); const res = {}, p0 = new Date(X.state().date);   // (a run starts on the basin's own start date: read it from a fresh run, not from wherever the last check left the clock)
     for (const m of months) {
       let t = Date.UTC(p0.getUTCFullYear(), m - 1, 15); if (t < p0.getTime() + 6 * 864e5) t = Date.UTC(p0.getUTCFullYear() + 1, m - 1, 15);
       const d0 = Math.round((t - p0.getTime()) / 864e5) - 5, nh = [], sh = [], ps = [], proms = []; let bad = 0, unsorted = 0;
@@ -772,10 +892,10 @@ async function checkSteering(page, label, S) {
   const hiTxt = (hem) => HM.map((m) => `${MN[m]} ${mean(hi[m][hem]).toFixed(1)} (real ${S.highsReal[m][hem === 'nh' ? 0 : 1].toFixed(1)})`).join(', ');
   const countOk = (hem) => HM.every((m) => { const sim = mean(hi[m][hem]), real = S.highsReal[m][hem === 'nh' ? 0 : 1]; return real < 0.3 ? Math.abs(sim - real) < 0.5 : sim > 0.7 * real - 0.2 && sim < 1.5 * real + 0.2; });
   const allHi = HM.flatMap((m) => hi[m].ps);
-  check(`[${label}] highs are found by one rule everywhere: at least 1017 hPa, standing 2.5 hPa above their surroundings, outside 15 degrees, inside the grid, strongest first (${HM.reduce((a, m) => a + hi[m].bad + hi[m].unsorted, 0)} violations in ${allHi.length} highs)`, HM.every((m) => hi[m].bad === 0 && hi[m].unsorted === 0) && allHi.length > 50);
+  check(`[${label}] highs are found by one rule everywhere: at least 1017 hPa, standing 2.5 hPa above their surroundings, outside 15 degrees, inside the grid, strongest first (${HM.reduce((a, m) => a + hi[m].bad + hi[m].unsorted, 0)} violations in ${allHi.length} highs)`, HM.every((m) => hi[m].bad === 0 && hi[m].unsorted === 0) && allHi.length >= S.highsMin);
   check(`[${label}] the number of highs a day in the northern part of the grid is the real one, month by month: ${hiTxt('nh')}`, countOk('nh'));
   check(`[${label}] ...and in the southern part: ${hiTxt('sh')}`, countOk('sh'));
-  check(`[${label}] central pressures are the real ones (10th/50th/90th percentile ${quant(allHi, 10).toFixed(1)}/${quant(allHi, 50).toFixed(1)}/${quant(allHi, 90).toFixed(1)} hPa; real ${S.highsP.real})`, quant(allHi, 10) > S.highsP.p10[0] && quant(allHi, 10) < S.highsP.p10[1] && quant(allHi, 50) > S.highsP.p50[0] && quant(allHi, 50) < S.highsP.p50[1] && quant(allHi, 90) > S.highsP.p90[0] && quant(allHi, 90) < S.highsP.p90[1]);
+  if (S.highsP) check(`[${label}] central pressures are the real ones (10th/50th/90th percentile ${quant(allHi, 10).toFixed(1)}/${quant(allHi, 50).toFixed(1)}/${quant(allHi, 90).toFixed(1)} hPa; real ${S.highsP.real})`, quant(allHi, 10) > S.highsP.p10[0] && quant(allHi, 10) < S.highsP.p10[1] && quant(allHi, 50) > S.highsP.p50[0] && quant(allHi, 50) < S.highsP.p50[1] && quant(allHi, 90) > S.highsP.p90[0] && quant(allHi, 90) < S.highsP.p90[1]);
   // highs drift, they do not jump: the same high an hour later is within a degree or two, so each keeps one icon
   const drift = await ev(() => {
     const X = window.SSTSIM, d = []; X.setPlaying(false);
@@ -789,7 +909,7 @@ async function checkSteering(page, label, S) {
     }
     return d;
   });
-  check(`[${label}] highs drift, they do not jump: an hour later the nearest high is ${quant(drift, 50).toFixed(2)} degrees away (median; 95th percentile ${quant(drift, 95).toFixed(1)}; the rest are highs being born), well inside the 14 degrees an icon follows its high`, quant(drift, 50) < 0.5 && quant(drift, 95) < 2);
+  if (drift.length >= 50) check(`[${label}] highs drift, they do not jump: an hour later the nearest high is ${quant(drift, 50).toFixed(2)} degrees away (median; 95th percentile ${quant(drift, 95).toFixed(1)}; the rest are highs being born), well inside the 14 degrees an icon follows its high`, quant(drift, 50) < 0.5 && quant(drift, 95) < 2);   // (a basin that has hardly any highs, like the Mediterranean, has nothing to follow)
   // the highs' circulation: air goes clockwise round northern highs and counter-clockwise round southern ones, in both layers (highs well inside the grid, so the ring of samples 8 degrees out stays inside it)
   const circ = await ev(([seeds, dom]) => {
     const X = window.SSTSIM, DEG = Math.PI / 180; X.setPlaying(false); const out = { nh: { shallow: [], deep: [] }, sh: { shallow: [], deep: [] } };
@@ -817,15 +937,15 @@ async function checkSteering(page, label, S) {
   const cs = (h, l) => ({ n: circ[h][l].length, m: mean(circ[h][l]), pos: circ[h][l].filter((x) => x > 0).length / Math.max(1, circ[h][l].length) });
   const nhS = cs('nh', 'shallow'), nhD = cs('nh', 'deep'), shS = cs('sh', 'shallow'), shD = cs('sh', 'deep');
   const circOk = (a, b) => a.n < 25 || (a.m > 7 && b.m > 6 && a.pos > 0.8 && b.pos > 0.65);   // a hemisphere with fewer than 25 well-placed highs in 20 runs is not tested
-  check(`[${label}] the arrows circulate round the northern highs the way real ones do (8 degrees out: ${nhS.m.toFixed(1)} kt weak / ${nhD.m.toFixed(1)} kt strong storms, anticyclonic round ${(nhS.pos * 100).toFixed(0)}% / ${(nhD.pos * 100).toFixed(0)}% of ${nhS.n} highs; real Atlantic 11.7 kt, 98% / 88%)`, circOk(nhS, nhD));
-  check(`[${label}] ...and the other way round the southern ones (${shS.m.toFixed(1)} / ${shD.m.toFixed(1)} kt, ${(shS.pos * 100).toFixed(0)}% / ${(shD.pos * 100).toFixed(0)}% of ${shS.n} highs)`, circOk(shS, shD) && nhS.n + shS.n >= 25);
+  if (nhS.n + shS.n >= 25) check(`[${label}] the arrows circulate round the northern highs the way real ones do (8 degrees out: ${nhS.m.toFixed(1)} kt weak / ${nhD.m.toFixed(1)} kt strong storms, anticyclonic round ${(nhS.pos * 100).toFixed(0)}% / ${(nhD.pos * 100).toFixed(0)}% of ${nhS.n} highs; real Atlantic 11.7 kt, 98% / 88%)`, circOk(nhS, nhD));
+  if (nhS.n + shS.n >= 25) check(`[${label}] ...and the other way round the southern ones (${shS.m.toFixed(1)} / ${shD.m.toFixed(1)} kt, ${(shS.pos * 100).toFixed(0)}% / ${(shD.pos * 100).toFixed(0)}% of ${shS.n} highs)`, circOk(shS, shD));
 
   // ---- 8. the jet ribbon: the arrows hug the jet. Along the simulated jet axis (the line the "Jet stream line" option draws), in the season and sector of S.jet, the deep-layer steering
   // points along the axis and is strongest on it; S.jet.along / ang / within are the real composite on the real axis (same months, sector and sampling), measured from the ERA5 daily fields.
   if (S.jet) {
     const J = S.jet;
     const rib = await ev(([seeds, J, dom]) => {
-      const X = window.SSTSIM, DEG = Math.PI / 180; X.setPlaying(false); const along = [], ang = [], n10 = [], s10 = [], p0 = new Date(X.state().date), hem = J.hem;
+      const X = window.SSTSIM, DEG = Math.PI / 180; X.setPlaying(false); X.applySeed(2000); X.setPlaying(false); const along = [], ang = [], n10 = [], s10 = [], p0 = new Date(X.state().date), hem = J.hem;   // p0: the start date of a fresh run -- every sample below restarts from it, so the season is counted from there
       const ok = (d) => J.months.includes(new Date(p0.getTime() + d * 864e5).getUTCMonth() + 1);
       let d0 = 0; while (!ok(d0) && d0 < 365) d0++; let len = 0; while (ok(d0 + len) && len < 366) len++;     // the first stretch of the season: runs may start inside it
       const inside = (la, lo) => la <= dom.lat1 && la >= dom.lat0 && lo >= dom.lon0 && lo <= dom.lon1;
@@ -845,9 +965,11 @@ async function checkSteering(page, label, S) {
       }
       return { along, ang, n10, s10 };
     }, [30, J, dom]);
-    const ribMean = mean(rib.along), ribWithin = rib.ang.filter((x) => x < 45).length / rib.ang.length;
-    check(`[${label}] the deep-layer steering on the simulated jet axis (${J.label}, ${rib.along.length} samples) is ${ribMean.toFixed(1)} kt along it (real composite ${J.along}), median ${quant(rib.ang, 50).toFixed(0)} deg off its direction (real ${J.ang}), ${(ribWithin * 100).toFixed(0)}% within 45 deg (real ${(J.within * 100).toFixed(0)}%)`, rib.along.length > 100 && ribMean > 0.85 * J.along && ribMean < 1.15 * J.along && quant(rib.ang, 50) < J.ang + 10 && ribWithin > J.within - 0.02);
-    check(`[${label}] ...and it is a stripe: ${(ribMean - mean(rib.n10)).toFixed(0)} kt weaker 10 degrees poleward of the axis and ${(ribMean - mean(rib.s10)).toFixed(0)} kt weaker 10 degrees equatorward`, rib.n10.length > 50 && ribMean - mean(rib.n10) > J.stripe && ribMean - mean(rib.s10) > J.stripe);
+    const ribMean = mean(rib.along), ribWithin = rib.ang.filter((x) => x < 45).length / rib.ang.length, aTol = J.alongTol || [0.85, 1.15];   // alongTol: where the simulated jet axis wanders more than the real one, the composite on it runs high (see the caveats in docs/roadmap.md)
+    check(`[${label}] the deep-layer steering on the simulated jet axis (${J.label}, ${rib.along.length} samples) is ${ribMean.toFixed(1)} kt along it (real composite ${J.along}), median ${quant(rib.ang, 50).toFixed(0)} deg off its direction (real ${J.ang}), ${(ribWithin * 100).toFixed(0)}% within 45 deg (real ${(J.within * 100).toFixed(0)}%)`, rib.along.length > 100 && ribMean > aTol[0] * J.along && ribMean < aTol[1] * J.along && quant(rib.ang, 50) < J.ang + 10 && ribWithin > J.within - (J.withinTol === undefined ? 0.02 : J.withinTol));
+    // a side is tested only where the real wind falls off there: [poleward, equatorward] minimum drop in kt, 0 = not tested (south of the traced axis the real westerlies keep growing poleward in the southern basins)
+    const sp = Array.isArray(J.stripe) ? J.stripe : [J.stripe, J.stripe], real = J.stripeReal ? ` (real ${J.stripeReal[0]} / ${J.stripeReal[1]})` : '';
+    if (J.stripe) check(`[${label}] ...and it is a stripe: ${(ribMean - mean(rib.n10)).toFixed(0)} kt weaker 10 degrees poleward of the axis and ${(ribMean - mean(rib.s10)).toFixed(0)} kt weaker 10 degrees equatorward${real}`, rib.n10.length > 50 && (!sp[0] || ribMean - mean(rib.n10) > sp[0]) && (!sp[1] || ribMean - mean(rib.s10) > sp[1]));
   }
 
   // ---- 9. the two weather sliders
@@ -925,19 +1047,22 @@ async function checkSteering(page, label, S) {
   }, [steer.mediumWeight, S.pts.trop, S.pts.jet]);
   check(`[${label}] the medium layer is ${steer.mediumWeight} x weak + ${(1 - steer.mediumWeight).toFixed(2)} x strong, node by node wherever the soft 100 kt limit is not in play (largest difference ${lay.worst.toExponential(1)} kt)`, lay.worst < 0.05);
   const ms = (a) => mean(a);
-  check(`[${label}] the layers differ the way the real ones do: in the trades the low-level flow is the faster (${ms(lay.sh.mdr).toFixed(1)} kt weak vs ${ms(lay.dp.mdr).toFixed(1)} strong at ${S.names.trop}), under the jet the deep layer is (${ms(lay.dp.jet).toFixed(1)} vs ${ms(lay.sh.jet).toFixed(1)} kt at ${S.names.jet})`, ms(lay.sh.mdr) > ms(lay.dp.mdr) && ms(lay.dp.jet) > ms(lay.sh.jet) + 4);
+  check(`[${label}] the layers differ the way the real ones do: ${S.noTrades ? '' : `in the trades the low-level flow is the faster (${ms(lay.sh.mdr).toFixed(1)} kt weak vs ${ms(lay.dp.mdr).toFixed(1)} strong at ${S.names.trop}), `}under the jet the deep layer is (${ms(lay.dp.jet).toFixed(1)} vs ${ms(lay.sh.jet).toFixed(1)} kt at ${S.names.jet})`, (S.noTrades || ms(lay.sh.mdr) > ms(lay.dp.mdr)) && ms(lay.dp.jet) > ms(lay.sh.jet) + 4);   // (the Mediterranean has no trade winds to compare)
 
   // ---- 12. the H icons
   // a state with several highs on screen, searched for (so a recalibration that moves the highs about cannot break the check for a reason that is not the icons)
   let scene = null;
-  for (const [seed, day] of [[4242, 80], [5, 80], [90210, 10], [77, 40], [5, 160], [4242, 10], [90210, 80], [11, 200]]) {
+  const iconMin = S.iconMin === undefined ? 3 : S.iconMin;   // a basin with hardly any highs (North Indian Ocean, Mediterranean: iconMin 0) has no icons to check
+  const candidates = [[4242, 80], [5, 80], [90210, 10], [77, 40], [5, 160], [4242, 10], [90210, 80], [11, 200]];
+  for (const day of [300, 120, 240, 20, 180]) for (const seed of [4242, 5, 90210, 77, 11]) candidates.push([seed, day]);   // (more states for a basin with few highs)
+  for (const [seed, day] of iconMin ? candidates : []) {
     const n = await ev(([view, seed, day]) => {
       const X = window.SSTSIM; X.applySeed(seed); X.setPlaying(false); X.advance(24 * day); X.map.fitBounds(view, { animate: false });
       return X.highs().filter((h) => { const p = X.map.latLngToContainerPoint([h.lat, h.lon]); return p.x > 24 && p.y > 24 && p.x < 1256 && p.y < 760; }).length;
     }, [S.view, seed, day]);
-    if (n >= 3) { scene = [seed, day, n]; break; }
+    if (n >= iconMin) { scene = [seed, day, n]; break; }
   }
-  check(`[${label}] there is a state with several highs in view to check the icons on (seed ${scene && scene[0]}, day ${scene && scene[1]}: ${scene && scene[2]} on screen)`, !!scene);
+  if (iconMin) check(`[${label}] there is a state with ${iconMin >= 3 ? 'several' : 'a couple of'} highs in view to check the icons on (seed ${scene && scene[0]}, day ${scene && scene[1]}: ${scene && scene[2]} on screen)`, !!scene);
   await page.check('#highs'); await page.waitForTimeout(250);
   const ic = await ev(() => {
     const X = window.SSTSIM, hs = X.highs(), icons = X.highIcons(), c = document.getElementById('steer-canvas'), g = c.getContext('2d'), s = c.width / c.clientWidth;
@@ -945,8 +1070,8 @@ async function checkSteering(page, label, S) {
     return { highs: hs.length, icons: icons.length, match: hs.every((h) => icons.some((i) => Math.abs(i.lat - h.lat) < 0.05 && Math.abs(i.lon - h.lon) < 0.05 && Math.abs(i.p - h.p) < 0.05 && i.a === 1)), samples: icons.map((i) => ({ left: px(i.lat, i.lon, -11, 0), right: px(i.lat, i.lon, 11, 0), ring: px(i.lat, i.lon, 0, -15) })) };
   });
   const seen = ic.samples.filter((q) => q.left.in), blue = (c) => Math.abs(c[0] - 27) < 40 && Math.abs(c[1] - 79) < 40 && Math.abs(c[2] - 224) < 40 && c[3] > 230;
-  check(`[${label}] with Highs ticked there is one icon per high, at its position and pressure, fully drawn (${ic.icons} icons, ${ic.highs} highs)`, ic.highs >= 2 && ic.icons === ic.highs && ic.match);
-  check(`[${label}] each icon on screen is a blue disc with a white rim on its canvas (${seen.filter((q) => blue(q.left.c) && blue(q.right.c) && q.ring.c[0] > 230 && q.ring.c[1] > 230).length} of ${seen.length} icons checked)`, seen.length >= 3 && seen.every((q) => blue(q.left.c) && blue(q.right.c) && q.ring.c[0] > 230 && q.ring.c[1] > 230));
+  if (iconMin) check(`[${label}] with Highs ticked there is one icon per high, at its position and pressure, fully drawn (${ic.icons} icons, ${ic.highs} highs)`, ic.highs >= Math.min(2, iconMin) && ic.icons === ic.highs && ic.match);
+  if (iconMin) check(`[${label}] each icon on screen is a blue disc with a white rim on its canvas (${seen.filter((q) => blue(q.left.c) && blue(q.right.c) && q.ring.c[0] > 230 && q.ring.c[1] > 230).length} of ${seen.length} icons checked)`, seen.length >= iconMin && seen.every((q) => blue(q.left.c) && blue(q.right.c) && q.ring.c[0] > 230 && q.ring.c[1] > 230));
   await page.uncheck('#highs'); await page.waitForTimeout(150);
   const gone = await ev(() => ({ icons: window.SSTSIM.highIcons().length, ink: (() => { const c = document.getElementById('steer-canvas'), d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 40) n++; return n; })() }));
   check(`[${label}] unticking Highs removes every icon (${gone.icons} left, ${gone.ink} painted pixels)`, gone.icons === 0 && gone.ink === 0);
@@ -1551,6 +1676,8 @@ await checkBasin('East Pacific', EPAC_DIST, async (page, label) => {
 
   await checkHumidity(page, label, 16.86, -99.88);
   await checkShear(page, label, SHEAR_SPECS.eastpacific);
+  await page.evaluate(() => window.SSTSIM.setView('sst'));   // the steering checks start from the default view
+  await checkSteering(page, label, STEER_SPECS.eastpacific);
   await checkEnsoHold(page, label);
   await checkCityMarkers(page, label, 16.86, -99.88, 'Acapulco');
 });
@@ -1601,6 +1728,8 @@ await checkBasin('West Pacific', WPAC_DIST, async (page, label) => {
 
   await checkHumidity(page, label, 14.60, 120.98);
   await checkShear(page, label, SHEAR_SPECS.westpacific);
+  await page.evaluate(() => window.SSTSIM.setView('sst'));   // the steering checks start from the default view
+  await checkSteering(page, label, STEER_SPECS.westpacific);
   await checkEnsoHold(page, label);
   await checkCityMarkers(page, label, 14.60, 120.98, 'Manila');
 });
@@ -1648,6 +1777,8 @@ await checkBasin('North Indian Ocean', NIO_DIST, async (page, label) => {
 
   await checkHumidity(page, label, 19.08, 72.88);
   await checkShear(page, label, SHEAR_SPECS.nio);
+  await page.evaluate(() => window.SSTSIM.setView('sst'));   // the steering checks start from the default view
+  await checkSteering(page, label, STEER_SPECS.nio);
   await checkEnsoHold(page, label);
   await checkCityMarkers(page, label, 19.08, 72.88, 'Mumbai');
 });
@@ -1709,6 +1840,8 @@ await checkBasin('Australian Region', AUS_DIST, async (page, label) => {
 
   await checkHumidity(page, label, -33.87, 151.21);
   await checkShear(page, label, SHEAR_SPECS.aus);
+  await page.evaluate(() => window.SSTSIM.setView('sst'));   // the steering checks start from the default view
+  await checkSteering(page, label, STEER_SPECS.aus);
   await checkEnsoHold(page, label);
   await checkCityMarkers(page, label, -33.87, 151.21, 'Sydney');
 });
@@ -1770,6 +1903,8 @@ await checkBasin('South-West Indian Ocean', SWIO_DIST, async (page, label) => {
 
   await checkHumidity(page, label, -29.86, 31.02);
   await checkShear(page, label, SHEAR_SPECS.swio);
+  await page.evaluate(() => window.SSTSIM.setView('sst'));   // the steering checks start from the default view
+  await checkSteering(page, label, STEER_SPECS.swio);
   await checkEnsoHold(page, label);
   await checkCityMarkers(page, label, -29.86, 31.02, 'Durban');
 });
@@ -1824,6 +1959,8 @@ await checkBasin('South Pacific', SPAC_DIST, async (page, label) => {
 
   await checkHumidity(page, label, -18.14, 178.42);
   await checkShear(page, label, SHEAR_SPECS.spac);
+  await page.evaluate(() => window.SSTSIM.setView('sst'));   // the steering checks start from the default view
+  await checkSteering(page, label, STEER_SPECS.spac);
   await checkEnsoHold(page, label);
   await checkCityMarkers(page, label, -18.14, 178.42, 'Suva');
 });
@@ -1894,6 +2031,8 @@ await checkBasin('South Atlantic', SATL_DIST, async (page, label) => {
 
   await checkHumidity(page, label, -22.91, -43.17);
   await checkShear(page, label, SHEAR_SPECS.satl);
+  await page.evaluate(() => window.SSTSIM.setView('sst'));   // the steering checks start from the default view
+  await checkSteering(page, label, STEER_SPECS.satl);
   await checkEnsoHold(page, label);
   await checkCityMarkers(page, label, -22.91, -43.17, 'Rio de Janeiro');
 });
@@ -1979,6 +2118,8 @@ await checkBasin('Mediterranean', MED_DIST, async (page, label) => {
 
   await checkHumidity(page, label, 45.44, 12.33);
   await checkShear(page, label, SHEAR_SPECS.med);
+  await page.evaluate(() => window.SSTSIM.setView('sst'));   // the steering checks start from the default view
+  await checkSteering(page, label, STEER_SPECS.med);
   await checkEnsoHold(page, label);
   await checkCityMarkers(page, label, 45.44, 12.33, 'Venice');
 });

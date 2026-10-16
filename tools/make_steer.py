@@ -127,12 +127,15 @@ def build(basin, lon0, lon1, lat0, lat1, k=8, out_dir=None):
 
     print(f"wrote {dest}   grid {nx}x{ny} @ {cl.CRES * GRID_STEP} deg, K={k}, T={T} months")
     lat_n = boxes[FIELDS[0]]["lat"].values
-    rows = ", ".join(f"{a0}-{a1}N" for a0, a1 in ((15, 30), (30, 45), (45, 60)))
-    print(f"  seasonal EOF amplitude (deep-layer u, mean over bands {rows}), months 1..12:")
+    rows = ", ".join(f"{a0}-{a1}" for a0, a1 in ((15, 30), (30, 45), (45, 60)))
+    print(f"  seasonal EOF amplitude (deep-layer u, mean over |latitude| bands {rows}), months 1..12:")
     for a0, a1 in ((15, 30), (30, 45), (45, 60)):
-        li = np.where((lat_n >= a0) & (lat_n < a1))[0]
+        li = np.where((np.abs(lat_n) >= a0) & (np.abs(lat_n) < a1))[0]
+        if len(li) == 0:
+            print(f"    {a0}-{a1}: (no rows of this box in the band)")
+            continue
         a4 = amp.reshape(12, F, ny, nx)[:, iu_d][:, li].mean(axis=(1, 2))
-        print(f"    {a0}-{a1}N: " + " ".join(f"{x:.2f}" for x in a4))
+        print(f"    {a0}-{a1}: " + " ".join(f"{x:.2f}" for x in a4))
     print("  joint-EOF cumulative variance (weighted state):", " ".join(f"{c * 100:.0f}" for c in cum[:12]), "%  (k=1..12)")
     print("  weights 1/rms anomaly:", {f: round(float(w), 3) for f, w in zip(FIELDS, wf)})
     print("  phi (monthly persistence of each mode):", out["phi"])

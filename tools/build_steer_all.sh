@@ -1,7 +1,9 @@
 #!/bin/bash
-# Rebuilds the steering-flow / sea-level-pressure data (steering arrows + highs) for the basins whose client
-# has it (so far only the Atlantic; the other eight rows are listed so the boxes, seasons and bands are in one
-# place, commented out until their templates are ported) and bakes it into each basin's data file.
+# Rebuilds the steering-flow / sea-level-pressure data (steering arrows + highs) for all nine basins and bakes it
+# into each basin's data file. The Atlantic's row is the one that was built first (--no-extend: its displayed box
+# already contains the whole jet band); the other eight measure the jet ribbon and the per-latitude statistics on an
+# analysis box that adds the whole band (and the ribbon's support) to the displayed rows, like the shear jet does.
+# Memory: make_steer_weather.py peaks at ~13 GB (the global daily caches), so run the rows one after another.
 #
 #   0. tools/pull_era5_steer.py     ERA5 layer-mean winds (shallow 850-700, medium 850-500, deep 850-200 hPa;
 #                                   monthly 2007-2021, daily 2017-2021) and 6-hourly sea-level pressure, global,
@@ -22,6 +24,11 @@
 #                                   is counted  ->  <basin>-steer-means.json.
 #   5. merge + build again           to bake the measured means and residual maps in.
 #
+# The real-data figures the page's tests compare with (STEER_SPECS in tests/run.mjs: highs a day by month, central pressures,
+# the along-axis composite of the jet ribbon) come from two read-only scripts that apply the page's own rules to the real daily
+# ERA5 fields: tools/real_steer_highs.py <basin> <box> and tools/real_steer_axis.py <box> <band> <months> <sector>. They are not
+# part of the rebuild; run them when a spec's numbers need to be checked or a basin's box changes.
+#
 # Arguments per basin (the same boxes, seasons and bands as build_shear_all.sh):
 #   basin  lon0 lon1 lat0 lat1   months (the basin's own cyclone season: the jet and ribbon statistics use it)
 #   band   the signed latitude interval the jet axis is traced in (20,65 north, -65,-20 south)
@@ -34,14 +41,14 @@ if [ "$1" = "--pull" ]; then
 fi
 ROWS=(
   "atlantic -110 40 -40 72 6,7,8,9,10,11 20,65 data.json --no-extend"
-  # "eastpacific -180 -68 -32 50 5,6,7,8,9,10,11 20,65 eastpacific-data.json"
-  # "westpacific 100 180 -6 56 6,7,8,9,10,11,12 20,65 westpacific-data.json"
-  # "nio 30 100 -8 32 4,5,6,10,11,12 20,65 nio-data.json"
-  # "aus 90 176 -44 4 11,12,1,2,3,4 -65,-20 aus-data.json"
-  # "swio 30 108 -44 0 11,12,1,2,3,4 -65,-20 swio-data.json"
-  # "spac 160 -120 -40 0 11,12,1,2,3,4 -65,-20 spac-data.json"
-  # "satl -50 20 -40 0 11,12,1,2,3,4 -65,-20 satl-data.json"
-  # "med -10 42 30 48 9,10,11,12,1 20,65 med-data.json"
+  "eastpacific -180 -68 -32 50 5,6,7,8,9,10,11 20,65 eastpacific-data.json"
+  "westpacific 100 180 -6 56 6,7,8,9,10,11,12 20,65 westpacific-data.json"
+  "nio 30 100 -8 32 4,5,6,10,11,12 20,65 nio-data.json"
+  "aus 90 176 -44 4 11,12,1,2,3,4 -65,-20 aus-data.json"
+  "swio 30 108 -44 0 11,12,1,2,3,4 -65,-20 swio-data.json"
+  "spac 160 -120 -40 0 11,12,1,2,3,4 -65,-20 spac-data.json"
+  "satl -50 20 -40 0 11,12,1,2,3,4 -65,-20 satl-data.json"
+  "med -10 42 30 48 9,10,11,12,1 20,65 med-data.json"
 )
 for row in "${ROWS[@]}"; do
   read -r basin lon0 lon1 lat0 lat1 months band data flags <<< "$row"

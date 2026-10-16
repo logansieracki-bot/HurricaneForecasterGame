@@ -251,7 +251,7 @@ nothing to run by hand.
   slider instead of letting the oscillator move it away (the gauge says "· held"). The 3- and 6-month lagged
   terms are held too, so the fields get the event's full response once six months have passed, and it survives
   restart and a new seed. Same code in all nine basins.
-- Steering flow and highs (Atlantic; the other eight basins are next): `Customization → Steering arrows` draws
+- Steering flow and highs (all nine basins): `Customization → Steering arrows` draws
   arrows whose direction is where the flow pushes a storm and whose colour is its speed (0–70+ kt, own legend),
   for one of three layers picked with `Storm strength` (weak 850–700 hPa, medium 850–500, strong 850–200 hPa —
   the standard BAM family); `Highs (H) with sea-level pressure` marks every high with an H and its central
@@ -275,6 +275,15 @@ nothing to run by hand.
   weather runs on the jet's own dilated, slider-scaled clock, and `Day-to-day weather (shear, steering, highs)`
   is the one slider for all three; steering has its own random stream, so adding it changed nothing else a seed
   does. `tools/build_steer_all.sh` lists the pipeline; `docs/roadmap.md` has the numbers and the caveats.
+  The eight basins after the Atlantic run the same client (the steering block is lifted out of `src/template.html`
+  by script, so the nine pages are identical apart from per-basin constants and the box edge: the arrows fade over
+  the outer 6° of the simulated area, and the South Pacific's box across the date line is read in its own 160..240°
+  frame) on their own data. Each one's real-data checks come from a spec entry (`STEER_SPECS` in `tests/run.mjs`):
+  mean winds and pressure within sampling noise of the real climatology, simulated/real standard deviation of the
+  deep-layer winds 0.92–1.16 over month × latitude-band cells (1.30 in one summer cell of the North Indian
+  Ocean, see the caveat in `docs/roadmap.md`), highs a day within a few tenths of the real count month by month,
+  the El Niño response in the sign the real data have. The ribbon and the per-latitude statistics are measured on an
+  analysis box wider than the displayed one (most boxes do not contain the jet), like the shear jet.
 
 ## Imagery
 The "Blue Marble" theme is a crop **embedded in the build** (`data.bm`, drawn on
@@ -306,5 +315,5 @@ check that Satellite still resolves to something usable.
 - ERSST at 2° is warm-biased in coastal cells; several corrections are hand-tuned
   (see the shelf, Northeast shelf, Gulf Stream blocks in `src/template.html`).
 - All nine basins run in Simulation mode; Forecaster mode hasn't been started (its
-  menu card is disabled). Steering arrows and highs exist in the Atlantic so far; the
-  other eight basins are next (`docs/roadmap.md`).
+  menu card is disabled). Steering arrows and highs are in all nine basins; the
+  Mediterranean and the North Indian Ocean have hardly any highs to show (about one day in ten in winter).

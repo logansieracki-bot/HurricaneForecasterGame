@@ -92,6 +92,13 @@ input[type=range]{width:100%;margin:2px 0 0;accent-color:#d4d4d4;height:20px}
 #ticks span{position:absolute;transform:translateX(-50%);white-space:nowrap}
 #ticks span.key{color:var(--text);font-weight:600}
 #legend-cap{font-size:11.5px;color:var(--dim);margin-top:2px}
+#steer-legend{right:14px;bottom:122px;width:292px;padding:10px 14px 9px}
+#steer-legend canvas{display:block;width:100%;height:11px;border-radius:3px}
+#steer-ticks{position:relative;height:16px;margin-top:3px;font-size:11px;color:var(--dim);font-variant-numeric:tabular-nums}
+#steer-ticks span{position:absolute;transform:translateX(-50%);white-space:nowrap}
+#steer-cap{font-size:11.5px;color:var(--dim);margin-top:2px}
+body.steer-on #panel{max-height:calc(100% - 300px)}   /* the steering legend sits above the field legend, so the panel gives up the room */
+#steer-legend.low{bottom:34px}
 
 .themes{display:grid;grid-template-columns:repeat(2,1fr);gap:6px;margin-top:4px}
 .themes button{border:1px solid var(--line);background:rgba(255,255,255,.05);border-radius:9px;padding:6px 4px 5px;text-align:center;font-size:11.5px;cursor:pointer;color:var(--dim);transition:background .12s ease,border-color .12s ease,color .12s ease}
@@ -120,13 +127,18 @@ canvas.overlay{position:absolute;left:0;top:0;width:100%;height:100%;pointer-eve
 @media (max-width:1040px){
   #readout{bottom:84px}
   #legend{bottom:112px}
+  #steer-legend{bottom:200px}
+  #steer-legend.low{bottom:112px}
   #panel{max-height:calc(100% - 300px)}
+  body.steer-on #panel{max-height:calc(100% - 412px)}
 }
 @media (max-width:640px){
   #clock{min-width:0;padding:9px 12px}
   #c-time{font-size:34px}
   #panel{width:calc(100% - 28px);top:auto;bottom:196px;max-height:38%}
   #legend{width:calc(100% - 28px);bottom:112px;right:14px}
+  #steer-legend{width:calc(100% - 28px);bottom:190px;right:14px}
+  #steer-legend.low{bottom:112px}
   #readout{display:none}
   .leaflet-control-zoom{display:none}
   #dock{width:calc(100% - 28px);justify-content:space-between}
@@ -184,6 +196,8 @@ canvas.overlay{position:absolute;left:0;top:0;width:100%;height:100%;pointer-eve
         <label class="chk"><input type="checkbox" id="l265" checked><span id="l265-label"> 26.5 °C line (cyclone threshold)</span></label>
         <label class="chk"><input type="checkbox" id="l2"><span id="l2-label"> Contour lines every 2 °C</span></label>
         <label class="chk"><input type="checkbox" id="jetline"><span> Jet stream line (axis of strongest shear)<i id="jet-note"></i></span></label>
+        <label class="chk"><input type="checkbox" id="steerarrows"><span> Steering arrows (colour = speed)</span></label>
+        <label class="chk"><input type="checkbox" id="highs"><span> Highs (H) with sea-level pressure</span></label>
       </div>
     </section>
     <section class="subsec collapsed" id="sec-exp">
@@ -214,6 +228,12 @@ canvas.overlay{position:absolute;left:0;top:0;width:100%;height:100%;pointer-eve
           </div>
         </div>
         <div id="xp-adv" role="tabpanel" aria-labelledby="xp-tab-adv" hidden>
+          <div class="row" id="steer-depth-row">
+            <div class="sl"><span>Storm strength (steering arrows)</span></div>
+            <div class="seg" id="seg-depth" role="group" aria-label="Storm strength">
+              <button data-d="shallow" aria-pressed="false">Weak</button><button data-d="medium" aria-pressed="false">Medium</button><button data-d="deep" aria-pressed="true">Strong</button>
+            </div>
+          </div>
           <div class="row">
             <div class="sl"><label for="p-var">Year-to-year variability</label><output id="p-var-o">1.0×</output></div>
             <input id="p-var" type="range" min="0" max="3" step="0.1" value="1">
@@ -223,11 +243,11 @@ canvas.overlay{position:absolute;left:0;top:0;width:100%;height:100%;pointer-eve
             <input id="p-wx" type="range" min="0" max="3" step="0.1" value="1">
           </div>
           <div class="row">
-            <div class="sl"><label for="p-wxs">Day-to-day weather (wind shear)</label><output id="p-wxs-o">1.0×</output></div>
+            <div class="sl"><label for="p-wxs">Day-to-day weather (shear, steering, highs)</label><output id="p-wxs-o">1.0×</output></div>
             <input id="p-wxs" type="range" min="0" max="3" step="0.1" value="1">
           </div>
           <div class="row">
-            <div class="sl"><label for="p-jets">Jet stream speed</label><output id="p-jets-o">1.0×</output></div>
+            <div class="sl"><label for="p-jets">Weather speed (jet, steering, highs)</label><output id="p-jets-o">1.0×</output></div>
             <input id="p-jets" type="range" min="0" max="3" step="0.1" value="1">
           </div>
           <div class="row">
@@ -260,6 +280,12 @@ canvas.overlay{position:absolute;left:0;top:0;width:100%;height:100%;pointer-eve
   <canvas id="legend-canvas" width="264" height="11"></canvas>
   <div id="ticks"></div>
   <div id="legend-cap">Sea surface temperature, °C</div>
+</div>
+
+<div id="steer-legend" class="card" style="display:none">
+  <canvas id="steer-legend-canvas" width="584" height="22"></canvas>
+  <div id="steer-ticks"></div>
+  <div id="steer-cap"></div>
 </div>
 
 <div id="toast" class="card" role="status"></div>
@@ -427,7 +453,7 @@ function jetProfileAt(absOffset) {   // piecewise-linear lookup into the real me
 // Legibility, not a fit (same choice as the Atlantic): shearSynStdC is the real leftover variance
 // after the jet is accounted for (median ~15.9 kt), and drawn 1:1 it swings about as hard as the
 // ribbon is tall, so the jet would read as one more blob in a speckled field instead of a band. Drawn
-// at half weight the ribbon stands out; the "Day-to-day weather (wind shear)" slider still
+// at half weight the ribbon stands out; the "Day-to-day weather (shear, steering, highs)" slider still
 // multiplies this, so 2x on the slider gives back the full fitted amplitude.
 const SHEAR_TEXTURE_GAIN = 0.5;
 // The real axis was traced inside a 20-65N search band (make_shear_jet.py) and piles up against its
@@ -675,6 +701,7 @@ function initSim(seed) {
   for (let k = 0; k < KH; k++) pcH[k] = randn();
   for (let k = 0; k < KS; k++) pcS[k] = randn();
   initJet(seed);
+  initSteer(seed);
   for (let q = 0; q < CN; q++) humidSynC[q] = randn() * humidSynStdC[q];
   for (let q = 0; q < CN; q++) shearSynC[q] = randn() * shearSynStdC[q];
   lastSynDay = 0; synDay = -999;
@@ -691,6 +718,7 @@ function stepDay() {
   for (let k = 0; k < K; k++) pc[k] = PHI_DAY[k] * pc[k] + Math.sqrt(1 - PHI_DAY[k] * PHI_DAY[k]) * randn();
   for (let k = 0; k < KH; k++) pcH[k] = PHI_DAY_H[k] * pcH[k] + Math.sqrt(1 - PHI_DAY_H[k] * PHI_DAY_H[k]) * randn();
   for (let k = 0; k < KS; k++) pcS[k] = PHI_DAY_S[k] * pcS[k] + Math.sqrt(1 - PHI_DAY_S[k] * PHI_DAY_S[k]) * randn();
+  stepSteerDay();
   const pg = Math.exp(-1 / 8); gapIdx = pg * gapIdx + Math.sqrt(1 - pg * pg) * randn();   // ~1-week-correlated gap-wind burst index, shared across the three jets (same synoptic cold-front passages drive all of them)
   anomDirty = true;
 }
@@ -852,6 +880,245 @@ function jetAxisFinal(dst) {
   const sws = P.shearSynoptic;
   for (let c = 0; c < CNX; c++) dst[c] = limitJetAxis(jetMeanPathC[c] + sws * (dst[c] - jetMeanPathC[c]));
 }
+
+/* ==== STEER MODEL BEGIN ==== */
+/* ------------------------------------------------------------------ *
+ *  Steering flow and sea-level pressure: what the steering arrows and the highs are drawn from.
+ *
+ *  The slow part is the same recipe as every other field here: real monthly climatology + a joint EOF
+ *  (shallow- and deep-layer winds and sea-level pressure together, so the patterns keep the real coupling
+ *  between them) + an ENSO response, on a 4 degree grid of its own (DATA.steer, tools/make_steer.py). The EOF
+ *  part is rescaled by calendar month (eofAmp): the real year-to-year spread has a strong seasonal cycle that
+ *  one set of EOFs fitted on all months cannot have.
+ *  The day-to-day part rides on top of it (tools/make_steer_weather.py has the real-data calibration):
+ *    - the jet RIBBON: a westerly stripe along the same axis that draws the jet line and the shear ribbon,
+ *      pointing along the axis' local direction (so the arrows hug it and swing north-east ahead of troughs);
+ *    - PRESSURE WEATHER: a field of travelling highs and lows P' (a sum of waves whose size, speed and
+ *      strength per latitude band and month are the measured ones). The highs the app labels are the maxima
+ *      of climatology + EOF/ENSO anomaly + P'. The winds answer to P' geostrophically, alpha(latitude) times
+ *      the geostrophic wind, with alpha fitted by regression (0.7-0.8 north of 35 degrees, weak in the tropics);
+ *    - the RESIDUAL flow: rotational waves for what no surface pattern explains (upper troughs, tropical waves).
+ *  Climate means are exactly the real ones: P', the residual and the EOF/ENSO terms have zero mean, and the
+ *  ribbon is applied minus the mean ribbon the simulation itself produces (stSmear, measured by
+ *  tools/calibrate_steer_means.mjs). So is the variance, month by month: the same script sizes the residual
+ *  (sigR deep, sigRs shallow) as what is left of the real year-to-year + day-to-day variance once everything
+ *  else is counted. Everything weather-like runs on the jet's own (dilated, slider-scaled) clock.
+ * ------------------------------------------------------------------ */
+const ST = DATA.steer, STD = ST.domain, STW = ST.weather;
+const SNX = STD.nx, SNY = STD.ny, SN = SNX * SNY, STRES = STD.res, STF = ST.fields.length, KST = ST.K;
+const F_US = ST.fields.indexOf('u_shallow'), F_VS = ST.fields.indexOf('v_shallow'), F_UD = ST.fields.indexOf('u_deep'), F_VD = ST.fields.indexOf('v_deep'), F_P = ST.fields.indexOf('mslp');
+const ST_MED_W = ST.mediumWeight;   // medium layer (850-500 hPa) = ST_MED_W * shallow + (1 - ST_MED_W) * deep
+// the simulated box's own edges, in the map's longitude frame (a box across the date line -- the South Pacific -- runs 160..240, not 160..-120), which is also where the field raster and
+// the jet line fade out. The 4 degree nodes stop up to 3 degrees short of the box's far edges; the field is simply held at its last node out there (stSample clamps), which is what the real
+// field does over so short a distance.
+const ST_LON0 = LON0, ST_LON1 = LON0 + (NX - 1) * RES, ST_LAT1 = LAT1, ST_LAT0 = LAT1 - (NY - 1) * RES;
+const stNormLon = (lon) => (lon < ST_LON0 - 180 ? lon + 360 : lon);   // a longitude in -180..180 -> the grid's frame (the same rule as the South Pacific's own normLon)
+const stClim = new Float32Array(12 * STF * SN), stEof = new Float32Array(KST * STF * SN), stEnso = new Float32Array(3 * STF * SN);
+{ const a = b64i16(ST.clim); for (let q = 0; q < a.length; q++) stClim[q] = a[q] / 10;
+  for (let m = 0; m < 12; m++) { const o = (m * STF + F_P) * SN; for (let q = 0; q < SN; q++) stClim[o + q] += 1000; } }   // pressure was packed as hPa - 1000
+{ const a = b64i16(ST.eof); for (let q = 0; q < a.length; q++) stEof[q] = a[q] / 1000; }
+{ const a = b64i16(ST.enso); for (let q = 0; q < a.length; q++) stEnso[q] = a[q] / 1000; }
+const stEofAmp = new Float32Array(12 * STF * SN).fill(1);       // the EOF part's factor by calendar month (the real year-to-year spread has a strong seasonal cycle)
+if (ST.eofAmp) { const a = b64i16(ST.eofAmp); for (let q = 0; q < a.length; q++) stEofAmp[q] = a[q] / 1000; }
+const stEofSum = new Float32Array(STF * SN);
+const PHI_DAY_ST = ST.phi.map((p) => Math.pow(Math.max(0.3, p), 1 / 30.44));
+const stSigP = new Float32Array(12 * SN), stSigR = new Float32Array(12 * SN), stSmear = new Float32Array(4 * SN);   // smear: shallow u, v, deep u, v
+{ const a = b64i16(STW.sigP); for (let q = 0; q < a.length; q++) stSigP[q] = a[q] / 100; }
+{ const a = b64i16(STW.sigR); for (let q = 0; q < a.length; q++) stSigR[q] = a[q] / 100; }
+const stSigRs = STW.sigRs ? new Float32Array(12 * SN) : null;   // shallow-layer residual rms speed, by month and node (older data: kappa x the deep one)
+if (stSigRs) { const a = b64i16(STW.sigRs); for (let q = 0; q < a.length; q++) stSigRs[q] = a[q] / 100; }
+if (STW.means && STW.means.smear) { const a = b64i16(STW.means.smear); for (let q = 0; q < 4 * SN; q++) stSmear[q] = a[q] / 100; }
+const ST_RIB_S = STW.ribbon.shallow, ST_RIB_D = STW.ribbon.deep, ST_RIB_STEP = STW.ribbon.offsets[1] - STW.ribbon.offsets[0];   // ribbon profile (kt) by distance from the axis (deg), 0 beyond its last entry
+
+/* node geometry and the per-node constants that depend on latitude only */
+const stNodeLat = new Float32Array(SN), stNodeLon = new Float32Array(SN), stCosLat = new Float32Array(SN);
+const stAlphaS = new Float32Array(SN), stAlphaD = new Float32Array(SN), stKappa = new Float32Array(SN), stKG = new Float32Array(SN);
+for (let j = 0; j < SNY; j++) for (let i = 0; i < SNX; i++) {
+  const n = j * SNX + i, lat = STD.lat1 - j * STRES, al = Math.abs(lat);
+  stNodeLat[n] = lat; stNodeLon[n] = STD.lon0 + i * STRES; stCosLat[n] = Math.cos(lat * DEG);
+  stAlphaS[n] = interp1(STW.alpha.lat, STW.alpha.shallow, al); stAlphaD[n] = interp1(STW.alpha.lat, STW.alpha.deep, al); stKappa[n] = interp1(STW.kappa.lat, STW.kappa.shallow, al);
+  const fe = 2 * 7.292e-5 * Math.sin(Math.max(al, 15) * DEG) * (lat < 0 ? -1 : 1);
+  stKG[n] = 0.1943844 / (1.2 * fe);   // kt of geostrophic wind per (hPa per km) of pressure gradient (rho 1.2, f held at its 15 degree value inside 15 degrees)
+}
+
+/* own random stream, so adding this never changes what any other part of a seed does */
+let strs = 1;
+function stRand() { strs |= 0; strs = strs + 0x6D2B79F5 | 0; let t = Math.imul(strs ^ strs >>> 15, 1 | strs); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }
+function stRandn() { let u = 0; while (u === 0) u = stRand(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * stRand()); }
+const pcStPrev = new Float32Array(KST), pcStCur = new Float32Array(KST);
+function stepSteerDay() { pcStPrev.set(pcStCur); for (let k = 0; k < KST; k++) pcStCur[k] = PHI_DAY_ST[k] * pcStCur[k] + Math.sqrt(1 - PHI_DAY_ST[k] * PHI_DAY_ST[k]) * stRandn(); }
+
+/* Wave fields. Five latitude bands (centres in |latitude|), each with ST_WAVE_M plane waves of a ring spectrum
+   (wavelength the measured one, +-25% spread), random directions and phases, drifting zonally at the band's measured
+   speed (slowed like the jet, by JET_DILATION) with each wave's strength beating slowly so the pattern also evolves
+   instead of only sliding. Bands are blended smoothly in latitude. Pressure P' is a plain scalar sum; the residual
+   flow is the winds of a streamfunction sum, so it is rotational like the real one (vorticity 6-13x the divergence). */
+const ST_P_SPREAD = 0.45;   // log-normal spread of the pressure waves' wavenumbers (the flow's waves keep a +-25% ring): a narrow ring has too few maxima -- against the real field the highs rule found 4.2-5.0 a day over the Atlantic where a +-25% ring gave 2.8-4.3, up to 39% short; this basin's own counts against the real field are in docs/roadmap.md (the Atlantic's went from up to 39% short to within -18% to +15% every month)
+const ST_WAVE_M = 14, ST_NB = STW.waves.lat.length, ST_MT = ST_NB * ST_WAVE_M, ST_RE = 6371, ST_BAND_SIG = 12, ST_MOD = 0.45, ST_MOD_NORM = 1 / Math.sqrt(1 + ST_MOD * ST_MOD / 2);
+const stG = new Float32Array(ST_NB * SN), stGp = new Float32Array(ST_NB * SN), stXs = new Float32Array(ST_NB * SN);   // band weight, its latitude derivative (per km), zonal metric ratio
+for (let n = 0; n < SN; n++) {
+  const lat = stNodeLat[n], al = Math.abs(lat), sg = lat < 0 ? -1 : 1;
+  const wt = (a) => { let s = 0; const w = new Array(ST_NB); for (let b = 0; b < ST_NB; b++) { const z = (a - STW.waves.lat[b]) / ST_BAND_SIG; w[b] = Math.exp(-0.5 * z * z); s += w[b] * w[b]; } s = Math.sqrt(s); return w.map((x) => x / s); };   // sum of squares 1: independent waves keep unit variance where two bands overlap
+  const w0 = wt(al), wp = wt(al + 0.5), wm = wt(Math.max(0, al - 0.5));
+  for (let b = 0; b < ST_NB; b++) {
+    stG[b * SN + n] = w0[b]; stGp[b * SN + n] = sg * (wp[b] - wm[b]) / 111.2;   // change per degree over a 1 degree step, then per km
+    stXs[b * SN + n] = Math.cos(STW.waves.lat[b] * DEG) / Math.max(0.3, stCosLat[n]);
+  }
+}
+function makeWaveSet() { return { kx: new Float32Array(ST_MT), ky: new Float32Array(ST_MT), om: new Float32Array(ST_MT), amp: new Float32Array(ST_MT), nu: new Float32Array(ST_MT), mph: new Float32Array(ST_MT), C: new Float32Array(SN * ST_MT), S: new Float32Array(SN * ST_MT), cw: new Float32Array(ST_MT), sw: new Float32Array(ST_MT), md: new Float32Array(ST_MT) }; }
+const stWP = makeWaveSet(), stWR = makeWaveSet();
+function buildWaves(ws, lam, cReal, psi) {
+  for (let b = 0; b < ST_NB; b++) {
+    const k0 = 2 * Math.PI / lam[b], cSim = cReal[b] / JET_DILATION * 86.4;   // km per jet-day
+    for (let m = 0; m < ST_WAVE_M; m++) {
+      const i = b * ST_WAVE_M + m, kk = k0 * (psi ? 1 + 0.25 * Math.max(-2, Math.min(2, stRandn())) : Math.exp(ST_P_SPREAD * Math.max(-2, Math.min(2, stRandn())) - ST_P_SPREAD * ST_P_SPREAD / 2)), th = 2 * Math.PI * stRand(), ph = 2 * Math.PI * stRand();
+      ws.kx[i] = kk * Math.cos(th); ws.ky[i] = kk * Math.sin(th); ws.om[i] = ws.kx[i] * cSim;
+      ws.amp[i] = Math.sqrt(2 / ST_WAVE_M) * (psi ? 1 / kk : 1); ws.nu[i] = 2 * Math.PI / (4 + 8 * stRand()); ws.mph[i] = 2 * Math.PI * stRand();
+      const cb = Math.cos(STW.waves.lat[b] * DEG);
+      for (let n = 0; n < SN; n++) {
+        const X = ST_RE * cb * (stNodeLon[n] - STD.lon0) * DEG, Y = ST_RE * stNodeLat[n] * DEG, s = ws.kx[i] * X + ws.ky[i] * Y + ph;
+        ws.C[n * ST_MT + i] = Math.cos(s); ws.S[n * ST_MT + i] = Math.sin(s);
+      }
+    }
+  }
+}
+function evalWaves(ws, t, val, dx, dy) {          // t in jet-days; val, dx (per km), dy (per km) at every node, band-blended
+  for (let i = 0; i < ST_MT; i++) { ws.cw[i] = Math.cos(ws.om[i] * t); ws.sw[i] = Math.sin(ws.om[i] * t); ws.md[i] = ws.amp[i] * (1 + ST_MOD * Math.sin(ws.nu[i] * t + ws.mph[i])) * ST_MOD_NORM; }
+  const C = ws.C, S = ws.S, cw = ws.cw, sw = ws.sw, md = ws.md, kx = ws.kx, ky = ws.ky;
+  for (let n = 0; n < SN; n++) {
+    let v = 0, gx = 0, gy = 0;
+    const o = n * ST_MT;
+    for (let b = 0; b < ST_NB; b++) {
+      let sc = 0, sx = 0, sy = 0;
+      for (let i = b * ST_WAVE_M, e = i + ST_WAVE_M; i < e; i++) {
+        const c = C[o + i], s = S[o + i], cc = c * cw[i] + s * sw[i], ss = s * cw[i] - c * sw[i], w = md[i];
+        sc += w * cc; sx -= w * kx[i] * ss; sy -= w * ky[i] * ss;
+      }
+      const g = stG[b * SN + n];
+      v += g * sc; gx += g * stXs[b * SN + n] * sx; gy += g * sy + stGp[b * SN + n] * sc;
+    }
+    val[n] = v; dx[n] = gx; dy[n] = gy;
+  }
+}
+
+/* The current steering field, per layer, plus the sea-level pressure it goes with. Recomputed whenever the clocks or sliders
+   moved (steerEnsure) -- it is cheap (about 2 ms), so the arrows can follow the jet clock every frame. */
+const stU = { shallow: new Float32Array(SN), medium: new Float32Array(SN), deep: new Float32Array(SN) };
+const stV = { shallow: new Float32Array(SN), medium: new Float32Array(SN), deep: new Float32Array(SN) };
+const stPt = new Float32Array(SN), stPp = new Float32Array(SN);       // total sea-level pressure, and its day-to-day part P'
+const stGu = new Float32Array(SN), stGv = new Float32Array(SN), stRdu = new Float32Array(SN), stRdv = new Float32Array(SN), stS1u = new Float32Array(SN), stS1v = new Float32Array(SN);   // the pieces of the deep winds, kept for tests: geostrophic wind of P', residual flow, slow (climatology+EOF+ENSO) part
+const st1 = new Float32Array(STF * SN), stWv = new Float32Array(SN), stWx = new Float32Array(SN), stWy = new Float32Array(SN);
+const stSigPB = new Float32Array(SN), stSigRB = new Float32Array(SN), stSigRsB = new Float32Array(SN), stRsu = new Float32Array(SN), stRsv = new Float32Array(SN), stRibU = { shallow: new Float32Array(SN), deep: new Float32Array(SN) }, stRibV = { shallow: new Float32Array(SN), deep: new Float32Array(SN) };
+const stSlopeC = new Float32Array(CNX);
+let stStamp = '';
+function ribMag(arr, d) { const n = d / ST_RIB_STEP, n0 = n | 0; return n0 >= arr.length - 1 ? 0 : arr[n0] + (n - n0) * (arr[n0 + 1] - arr[n0]); }
+function steerRibbon() {            // the ribbon vectors at the nodes for the CURRENT jet axis (before the smear is taken off)
+  jetAxisFinal(jetAxisNow);
+  for (let c = 0; c < CNX; c++) { const c1 = Math.min(CNX - 1, c + 1), c0 = Math.max(0, c - 1); stSlopeC[c] = (jetAxisNow[c1] - jetAxisNow[c0]) / ((c1 - c0) * DM.cres); }
+  for (let i = 0; i < SNX; i++) {
+    const fc = (STD.lon0 + i * STRES - LON0) / DM.cres, c0 = Math.min(CNX - 2, Math.max(0, Math.floor(fc))), t = fc - c0;
+    const a = jetAxisNow[c0] * (1 - t) + jetAxisNow[c0 + 1] * t, sl = stSlopeC[c0] * (1 - t) + stSlopeC[c0 + 1] * t;
+    for (let j = 0; j < SNY; j++) {
+      const n = j * SNX + i, d = Math.abs(stNodeLat[n] - a), cl = stCosLat[n], nr = Math.hypot(cl, sl);
+      const ms = d >= 14 ? 0 : ribMag(ST_RIB_S, d), md = d >= 14 ? 0 : ribMag(ST_RIB_D, d);
+      stRibU.shallow[n] = ms * cl / nr; stRibV.shallow[n] = ms * sl / nr; stRibU.deep[n] = md * cl / nr; stRibV.deep[n] = md * sl / nr;
+    }
+  }
+}
+function steerUpdate() {
+  const d = simDate(simHour), y = d.getUTCFullYear(), doy = (d.getTime() - Date.UTC(y, 0, 1)) / 86400000;
+  const ylen = ((y % 4 === 0 && y % 100 !== 0) || y % 400 === 0) ? 366 : 365, p = doy / ylen * 12 - 0.5, m1 = Math.floor(p), w = cr(p - m1), M = (x) => ((x % 12) + 12) % 12;
+  const mi0 = M(m1 - 1), mi1 = M(m1), mi2 = M(m1 + 1), mi3 = M(m1 + 2), vs = P.variability, es = P.enso, sws = P.shearSynoptic;
+  const FS = STF * SN, fr = simHour / 24 - Math.floor(simHour / 24);
+  // slow part: climatology (4-month cubic blend) + EOF + ENSO
+  { const a0 = mi0 * FS, a1 = mi1 * FS, a2 = mi2 * FS, a3 = mi3 * FS;
+    for (let q = 0; q < FS; q++) st1[q] = w[0] * stClim[a0 + q] + w[1] * stClim[a1 + q] + w[2] * stClim[a2 + q] + w[3] * stClim[a3 + q];
+    let anyEof = false; stEofSum.fill(0);
+    for (let k = 0; k < KST; k++) { const c = vs * ((1 - fr) * pcStPrev[k] + fr * pcStCur[k]); if (!c) continue; anyEof = true; const o = k * FS; for (let q = 0; q < FS; q++) stEofSum[q] += c * stEof[o + q]; }
+    if (anyEof) for (let q = 0; q < FS; q++) st1[q] += (w[0] * stEofAmp[a0 + q] + w[1] * stEofAmp[a1 + q] + w[2] * stEofAmp[a2 + q] + w[3] * stEofAmp[a3 + q]) * stEofSum[q];
+    const c0 = es * ensoLag(0), c3 = es * ensoLag(91), c6 = es * ensoLag(183);
+    for (let q = 0; q < FS; q++) st1[q] += c0 * stEnso[q] + c3 * stEnso[FS + q] + c6 * stEnso[2 * FS + q]; }
+  // amplitude maps for this time of year, and their gradients
+  for (let n = 0; n < SN; n++) {
+    stSigPB[n] = Math.max(0, w[0] * stSigP[mi0 * SN + n] + w[1] * stSigP[mi1 * SN + n] + w[2] * stSigP[mi2 * SN + n] + w[3] * stSigP[mi3 * SN + n]);
+    stSigRB[n] = Math.max(0, w[0] * stSigR[mi0 * SN + n] + w[1] * stSigR[mi1 * SN + n] + w[2] * stSigR[mi2 * SN + n] + w[3] * stSigR[mi3 * SN + n]);
+    stSigRsB[n] = stSigRs ? Math.max(0, w[0] * stSigRs[mi0 * SN + n] + w[1] * stSigRs[mi1 * SN + n] + w[2] * stSigRs[mi2 * SN + n] + w[3] * stSigRs[mi3 * SN + n]) : stKappa[n] * stSigRB[n];
+  }
+  const t = jetClockH / 24;
+  evalWaves(stWP, t, stWv, stWx, stWy);          // unit-variance pressure waves and their gradients
+  stEvalPsi(t);                                  // unit-rms-speed residual flow (the winds of a streamfunction wave field)
+  steerRibbon();
+  const medW = ST_MED_W;
+  for (let j = 0; j < SNY; j++) for (let i = 0; i < SNX; i++) {
+    const n = j * SNX + i, cl = stCosLat[n];
+    const iE = Math.min(SNX - 1, i + 1), iW = Math.max(0, i - 1), jN = Math.max(0, j - 1), jS = Math.min(SNY - 1, j + 1);
+    const dxk = (iE - iW) * STRES * 111.2 * Math.max(0.3, cl), dyk = (jS - jN) * STRES * 111.2;
+    const sg = stSigPB[n], sgx = (stSigPB[j * SNX + iE] - stSigPB[j * SNX + iW]) / dxk, sgy = (stSigPB[jN * SNX + i] - stSigPB[jS * SNX + i]) / dyk;   // north is row 0, so d/dy = (north - south)
+    // pressure weather P' (hPa) and its gradient (hPa per km), scaled by the weather slider
+    const pv = sws * sg * stWv[n], px = sws * (sg * stWx[n] + sgx * stWv[n]), py = sws * (sg * stWy[n] + sgy * stWv[n]);
+    stPp[n] = pv; stPt[n] = st1[F_P * SN + n] + pv;
+    const gu = -stKG[n] * py, gv = stKG[n] * px;                       // geostrophic wind of P', kt
+    const sr = sws * stSigRB[n], ru = sr * stPsiU[n], rv = sr * stPsiV[n];   // residual flow, kt (unit rms speed times the rms-speed map)
+    const srs = sws * stSigRsB[n], rsu = srs * stPsiU[n], rsv = srs * stPsiV[n];   // the shallow layer's own (same pattern, its own size)
+    stGu[n] = gu; stGv[n] = gv; stRdu[n] = ru; stRdv[n] = rv; stRsu[n] = rsu; stRsv[n] = rsv; stS1u[n] = st1[F_UD * SN + n]; stS1v[n] = st1[F_VD * SN + n];
+    const us = st1[F_US * SN + n] + stAlphaS[n] * gu + stRibU.shallow[n] - stSmear[n] + rsu;
+    const vsh = st1[F_VS * SN + n] + stAlphaS[n] * gv + stRibV.shallow[n] - stSmear[SN + n] + rsv;
+    const ud = st1[F_UD * SN + n] + stAlphaD[n] * gu + stRibU.deep[n] - stSmear[2 * SN + n] + ru;
+    const vd = st1[F_VD * SN + n] + stAlphaD[n] * gv + stRibV.deep[n] - stSmear[3 * SN + n] + rv;
+    stLimit(us, vsh, stU.shallow, stV.shallow, n); stLimit(ud, vd, stU.deep, stV.deep, n);
+    stLimit(medW * us + (1 - medW) * ud, medW * vsh + (1 - medW) * vd, stU.medium, stV.medium, n);
+  }
+  stStamp = stStampNow();
+}
+function stLimit(u, v, du, dv, n) { const s = Math.hypot(u, v); if (s > 100) { const k = (100 + 12 * Math.tanh((s - 100) / 12)) / s; u *= k; v *= k; } du[n] = u; dv[n] = v; }
+const stPsiU = new Float32Array(SN), stPsiV = new Float32Array(SN), stPv = new Float32Array(SN), stPx = new Float32Array(SN), stPy = new Float32Array(SN);
+function stEvalPsi(t) { evalWaves(stWR, t, stPv, stPx, stPy); for (let n = 0; n < SN; n++) { stPsiU[n] = -stPy[n]; stPsiV[n] = stPx[n]; } }   // u = -dpsi/dy, v = dpsi/dx
+function stStampNow() { return simHour + '|' + jetClockH + '|' + P.variability + '|' + P.enso + '|' + P.shearSynoptic + '|' + n34 + '|' + P.seed; }
+function steerEnsure() { if (stStamp !== stStampNow()) steerUpdate(); }
+function initSteer(seed) {
+  strs = (Math.imul(seed | 0, 0x9E3779B1) ^ 0x7F4A7C15) >>> 0 || 1;
+  for (let k = 0; k < KST; k++) pcStCur[k] = stRandn();
+  pcStPrev.set(pcStCur);
+  buildWaves(stWP, STW.waves.lamP, STW.waves.cP, false); buildWaves(stWR, STW.waves.lamR, STW.waves.cR, true);
+  stStamp = '';
+}
+/* bicubic (Catmull-Rom, the same basis the rest of the app uses) sample of a node-grid array at a latitude/longitude */
+function stSample(arr, lat, lon) {
+  const fx = Math.max(0, Math.min(SNX - 1, (lon - STD.lon0) / STRES)), fy = Math.max(0, Math.min(SNY - 1, (STD.lat1 - lat) / STRES));
+  const i1 = Math.min(SNX - 2, Math.floor(fx)), j1 = Math.min(SNY - 2, Math.floor(fy)), wx = cr(fx - i1), wy = cr(fy - j1);
+  let s = 0;
+  for (let a = 0; a < 4; a++) {
+    const j = Math.max(0, Math.min(SNY - 1, j1 - 1 + a)); let r = 0;
+    for (let b = 0; b < 4; b++) r += wx[b] * arr[j * SNX + Math.max(0, Math.min(SNX - 1, i1 - 1 + b))];
+    s += wy[a] * r;
+  }
+  return s;
+}
+/* The highs: maxima of the total sea-level pressure field that are strong enough and stand out from their surroundings. Found on the
+   node grid and refined with a parabola through each maximum's neighbours, so the position and pressure shown are not quantised to 4 degrees. */
+const ST_HIGH_MIN = 1017, ST_HIGH_PROM = 2.5, ST_HIGH_LAT = 15;   // no highs inside 15 degrees: the equatorial trough has none to speak of, and over the Andes the reduced pressure is an extrapolation artefact
+function steerDetectHighs() {
+  const out = [];
+  for (let j = 2; j < SNY - 2; j++) for (let i = 2; i < SNX - 2; i++) {
+    const n = j * SNX + i, p = stPt[n];
+    if (p < ST_HIGH_MIN || Math.abs(stNodeLat[n]) < ST_HIGH_LAT) continue;
+    let top = true;
+    for (let dj = -1; dj <= 1 && top; dj++) for (let di = -1; di <= 1; di++) { if ((di || dj) && stPt[n + dj * SNX + di] >= p) { top = false; break; } }
+    if (!top) continue;
+    const ring = (stPt[n - 2] + stPt[n + 2] + stPt[n - 2 * SNX] + stPt[n + 2 * SNX] + stPt[n - 2 - 2 * SNX] + stPt[n + 2 - 2 * SNX] + stPt[n - 2 + 2 * SNX] + stPt[n + 2 + 2 * SNX]) / 8;
+    if (p - ring < ST_HIGH_PROM) continue;
+    const l = stPt[n - 1], r = stPt[n + 1], u = stPt[n - SNX], dn = stPt[n + SNX];
+    const cx = 2 * p - l - r, cy = 2 * p - u - dn;
+    const ox = cx > 1e-6 ? Math.max(-1, Math.min(1, (r - l) / (2 * cx))) : 0, oy = cy > 1e-6 ? Math.max(-1, Math.min(1, (u - dn) / (2 * cy))) : 0;
+    const pk = p + (cx > 1e-6 ? (r - l) * (r - l) / (8 * cx) : 0) + (cy > 1e-6 ? (u - dn) * (u - dn) / (8 * cy) : 0);
+    const hl = stNodeLat[n] + oy * STRES;
+    if (Math.abs(hl) < ST_HIGH_LAT) continue;   // the parabola can pull one just inside the line; the rule is about where the high IS
+    out.push({ lat: hl, lon: stNodeLon[n] + ox * STRES, p: pk, prom: p - ring });
+  }
+  out.sort((a, b) => b.p - a.p);
+  return out;
+}
+/* ==== STEER MODEL END ==== */
 
 function computeField() {
   const d = simDate(simHour), y = d.getUTCFullYear(), doy = (d.getTime() - Date.UTC(y, 0, 1)) / 86400000;
@@ -1415,7 +1682,7 @@ function fitCanvases() {
   const s = map.getSize(); DPR = Math.min(2, window.devicePixelRatio || 1);
   if (s.x !== W || s.y !== H || sstCanvas.width !== Math.round(W * DPR)) {
     W = s.x; H = s.y;
-    for (const c of [sstCanvas, baseCanvas, gridCanvas, jetCanvas]) { c.width = Math.round(W * DPR); c.height = Math.round(H * DPR); }
+    for (const c of [sstCanvas, baseCanvas, gridCanvas, jetCanvas, steerCanvas]) { c.width = Math.round(W * DPR); c.height = Math.round(H * DPR); }
   }
 }
 function paintLand(ctx, list, minX, minY, ws, stroke) {
@@ -1669,13 +1936,132 @@ function updateThresholdLabels() {
   $('l2-label').textContent = ' Contour lines every ' + V.step + V.unit;
 }
 
+/* ==== STEER DRAW BEGIN ==== */
+/* The steering arrows and the highs. Like the jet line they get a canvas of their own (between the jet line and the
+   borders/cities) and work over every view, and they are cheap enough (a few hundred arrows, a handful of icons) to be
+   redrawn every few frames from steerUpdate()'s node field while the heavy raster waits for its own pace.
+   Arrows: one length, colour = speed, direction = where the flow is pushing; anchored to latitude/longitude (so they
+   do not swim when you pan) on a lattice whose spacing follows the zoom; fading out toward the edge of the simulated area. */
+const steerCanvas = makeCanvas(457); steerCanvas.id = 'steer-canvas';
+const STEER_STOPS = [[0, 106, 76, 255], [8, 47, 123, 255], [16, 0, 207, 255], [24, 46, 232, 140], [32, 242, 238, 58], [42, 255, 161, 26], [54, 255, 59, 48], [70, 255, 233, 244]];   // indigo > blue > cyan > green > yellow > orange > red > white-hot (not the jet line's magenta)
+const STEER_VMAX = 70;
+const STEER_LUT = Array.from({ length: 161 }, (_, k) => { const v = k / 2; let i = 0; while (i < STEER_STOPS.length - 2 && v > STEER_STOPS[i + 1][0]) i++; const a = STEER_STOPS[i], b = STEER_STOPS[i + 1], t = Math.max(0, Math.min(1, (v - a[0]) / (b[0] - a[0]))); return 'rgb(' + [1, 2, 3].map((q) => Math.round(a[q] + (b[q] - a[q]) * t)).join(',') + ')'; });
+const steerColor = (sp) => STEER_LUT[Math.min(160, Math.round(sp * 2))];
+const STEER_LAYERS = { shallow: { label: 'weak storms', hpa: '850–700 hPa' }, medium: { label: 'medium storms', hpa: '850–500 hPa' }, deep: { label: 'strong storms', hpa: '850–200 hPa' } };
+const STEER_NICE = [1, 1.5, 2, 3, 4, 5, 6, 8, 10, 15, 20], STEER_FADE_DEG = 6, STEER_CALM_KT = 2.5;   // the arrows fade over the outer 6 degrees of the simulated box, like the field raster and the jet line
+let steerLayer = 'deep', steerShown = [], lastSteerAt = 0, steerRec = null;   // steerRec: tests ask drawSteer() to list the arrows it draws
+const COMPASS = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
+const compass = (deg) => COMPASS[Math.round(deg / 22.5) % 16];
+const steerOn = () => $('steerarrows').checked || $('highs').checked;
+/* An arrow is drawn thousands of times a minute but only has ~40 colours, so each colour's arrow (halo and all) is painted once into a small
+   sprite, at twice the screen resolution, and then blitted rotated. Stroking the halo of every arrow every frame took ~50 ms per frame at 2000x1300 in
+   software rendering; the blits take about a millisecond. */
+const STEER_NCOL = 40, steerSprites = {};
+function steerSprite(ci, small, calm) {
+  const k = ci + (small ? 'S' : 'L') + (calm ? 'c' : '') + DPR, hit = steerSprites[k];
+  if (hit) return hit;
+  const L = small ? 24 : 28, sw = 1.7, hl = 9.5, hw = 5.6, pad = 3.5, w = (calm ? 8 : L) + 2 * pad, h = (calm ? 8 : 2 * hw) + 2 * pad, rs = Math.max(2, 2 * DPR);
+  const c = document.createElement('canvas'); c.width = Math.ceil(w * rs); c.height = Math.ceil(h * rs);
+  const g = c.getContext('2d'); g.scale(rs, rs); g.translate(w / 2, h / 2);
+  g.lineJoin = 'round'; g.lineWidth = 2.8; g.strokeStyle = 'rgba(8,10,16,.72)'; g.fillStyle = steerColor((ci + 0.5) / STEER_NCOL * STEER_VMAX);
+  g.beginPath();
+  if (calm) g.arc(0, 0, 2.6, 0, 7);
+  else { g.moveTo(-L / 2, -sw); g.lineTo(L / 2 - hl, -sw); g.lineTo(L / 2 - hl, -hw); g.lineTo(L / 2, 0); g.lineTo(L / 2 - hl, hw); g.lineTo(L / 2 - hl, sw); g.lineTo(-L / 2, sw); g.closePath(); }
+  g.stroke(); g.fill();
+  return (steerSprites[k] = { c, w, h });
+}
+
+function steerUpdateIcons() {              // match this update's maxima with the icons already on screen, so each high keeps its identity and moves smoothly
+  const det = steerDetectHighs();
+  for (const s of steerShown) s.matched = false;
+  for (const d of det) {
+    let best = null, bd = 1e9;
+    for (const s of steerShown) { if (s.matched) continue; const dd = Math.hypot(s.tlat - d.lat, (s.tlon - d.lon) * Math.cos(d.lat * DEG)); if (dd < bd) { bd = dd; best = s; } }
+    if (best && bd < 14) { best.matched = true; best.gone = false; best.tlat = d.lat; best.tlon = d.lon; best.tp = d.p; }
+    else steerShown.push({ lat: d.lat, lon: d.lon, p: d.p, tlat: d.lat, tlon: d.lon, tp: d.p, a: 0, matched: true, gone: false });
+  }
+  for (const s of steerShown) if (!s.matched) s.gone = true;
+}
+function drawSteer() {
+  const g = steerCanvas.getContext('2d'); g.setTransform(DPR, 0, 0, DPR, 0, 0); g.clearRect(0, 0, W, H);
+  const arrowsOn = $('steerarrows').checked, highsOn = $('highs').checked;
+  if (!arrowsOn && !highsOn) { steerShown = []; return; }
+  steerEnsure();
+  const b = map.getBounds(), n0 = Math.min(b.getNorth(), ST_LAT1), s0 = Math.max(b.getSouth(), ST_LAT0), w0 = Math.max(b.getWest(), ST_LON0), e0 = Math.min(b.getEast(), ST_LON1);
+  if (arrowsOn && n0 > s0 && e0 > w0) {
+    const cl = (n0 + s0) / 2, ppd = Math.abs(map.latLngToContainerPoint([cl, 0]).x - map.latLngToContainerPoint([cl, 1]).x);   // pixels per degree of longitude here
+    const small = W < 700, minPx = small ? 40 : Math.round(46 * Math.max(1, 0.85 * Math.sqrt(W * H / 1238400))), deg = STEER_NICE.find((d) => d * ppd >= minPx) || 20;   // a bigger screen gets proportionally fewer arrows per pixel: they only have to read, not tile the map
+    const U = stU[steerLayer], V = stV[steerLayer], key = small ? 1 : 0;
+    for (let la = Math.ceil(s0 / deg) * deg; la <= n0; la += deg) for (let lo = Math.ceil(w0 / deg) * deg; lo <= e0; lo += deg) {
+      const edge = Math.min(lo - ST_LON0, ST_LON1 - lo, la - ST_LAT0, ST_LAT1 - la) / STEER_FADE_DEG;
+      if (edge <= 0) continue;
+      const u = stSample(U, la, lo), v = stSample(V, la, lo), sp = Math.hypot(u, v), p = map.latLngToContainerPoint([la, lo]);
+      const spr = steerSprite(Math.min(STEER_NCOL - 1, Math.floor(sp / STEER_VMAX * STEER_NCOL)), key, sp < STEER_CALM_KT);
+      if (steerRec) steerRec.push({ lat: la, lon: lo, x: p.x, y: p.y, u, v, speed: sp, alpha: Math.min(1, edge), calm: sp < STEER_CALM_KT });
+      g.globalAlpha = Math.min(1, edge);
+      if (sp < STEER_CALM_KT) { g.setTransform(DPR, 0, 0, DPR, p.x * DPR, p.y * DPR); g.drawImage(spr.c, -spr.w / 2, -spr.h / 2, spr.w, spr.h); continue; }
+      const a = Math.atan2(-v, u), c = Math.cos(a) * DPR, sn = Math.sin(a) * DPR;   // screen y runs down; the map is Mercator, which keeps directions, so the wind's own heading is the arrow's heading
+      g.setTransform(c, sn, -sn, c, p.x * DPR, p.y * DPR); g.drawImage(spr.c, -spr.w / 2, -spr.h / 2, spr.w, spr.h);
+    }
+    g.setTransform(DPR, 0, 0, DPR, 0, 0);
+    g.globalAlpha = 1;
+  }
+  if (highsOn) {
+    const r = W < 700 ? 12 : 15;
+    for (let k = steerShown.length - 1; k >= 0; k--) {
+      const s = steerShown[k];
+      if (playing) { s.lat += (s.tlat - s.lat) * 0.3; s.lon += (s.tlon - s.lon) * 0.3; s.p += (s.tp - s.p) * 0.3; s.a = Math.max(0, Math.min(1, s.a + (s.gone ? -0.12 : 0.12))); }
+      else { s.lat = s.tlat; s.lon = s.tlon; s.p = s.tp; s.a = s.gone ? 0 : 1; }   // paused: no animation to wait for
+      if (s.gone && s.a <= 0) { steerShown.splice(k, 1); continue; }
+      const p = map.latLngToContainerPoint([s.lat, s.lon]);
+      if (p.x < -r || p.y < -r || p.x > W + r || p.y > H + r) continue;
+      const edge = Math.min(s.lon - ST_LON0, ST_LON1 - s.lon, s.lat - ST_LAT0, ST_LAT1 - s.lat) / STEER_FADE_DEG;
+      g.globalAlpha = s.a * Math.max(0, Math.min(1, edge));
+      g.save(); g.translate(p.x, p.y);
+      g.beginPath(); g.arc(1, 2, r + 2.5, 0, 7); g.fillStyle = 'rgba(0,0,0,.35)'; g.fill();
+      g.beginPath(); g.arc(0, 0, r, 0, 7); g.fillStyle = '#1b4fe0'; g.fill();
+      g.lineWidth = 2.6; g.strokeStyle = '#ffffff'; g.stroke();
+      g.fillStyle = '#fff'; g.font = '700 ' + (r + 2) + 'px system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('H', 0, 1);
+      const t = String(Math.round(s.p)); g.font = '600 12.5px system-ui, sans-serif'; const tw = g.measureText(t).width + 12;
+      g.fillStyle = 'rgba(10,14,24,.82)'; g.beginPath(); g.roundRect(-tw / 2, r + 4, tw, 18, 9); g.fill(); g.lineWidth = 1; g.strokeStyle = 'rgba(255,255,255,.55)'; g.stroke();
+      g.fillStyle = '#fff'; g.fillText(t, 0, r + 13.5); g.restore();
+    }
+    g.globalAlpha = 1;
+  }
+}
+function steerFrame(now) { if (now - lastSteerAt < 90) return; lastSteerAt = now; steerUpdate(); steerUpdateIcons(); drawSteer(); }
+function drawSteerLegend() {
+  const c = $('steer-legend-canvas'), g = c.getContext('2d'), w = c.width;
+  for (let x = 0; x < w; x++) { g.fillStyle = steerColor(x / (w - 1) * STEER_VMAX); g.fillRect(x, 0, 1, c.height); }
+  $('steer-ticks').innerHTML = [0, 10, 20, 30, 40, 50, 60, 70].map((t) => '<span style="left:' + (t / STEER_VMAX * 100) + '%">' + (t === 70 ? '70+' : t) + '</span>').join('');
+  $('steer-cap').textContent = 'Steering speed, ' + STEER_LAYERS[steerLayer].label + ' (' + STEER_LAYERS[steerLayer].hpa + '), kt';
+}
+function steerChanged() {
+  const a = $('steerarrows').checked;
+  $('steer-legend').style.display = a ? '' : 'none'; document.body.classList.toggle('steer-on', a);
+  if (steerOn()) { steerUpdate(); steerUpdateIcons(); }
+  drawSteer(); updateReadout();
+}
+function steerReadout() {
+  const wantS = $('steerarrows').checked, wantH = $('highs').checked;
+  if (!pointer || (!wantS && !wantH)) return;
+  const lat = pointer.lat, lon = stNormLon(((pointer.lng + 540) % 360) - 180);
+  if (lat > ST_LAT1 || lat < ST_LAT0 || lon < ST_LON0 || lon > ST_LON1) return;
+  steerEnsure();
+  let h = '';
+  if (wantS) { const u = stSample(stU[steerLayer], lat, lon), v = stSample(stV[steerLayer], lat, lon), sp = Math.hypot(u, v), hd = (Math.atan2(u, v) / DEG + 360) % 360; h += '<div>' + (sp < STEER_CALM_KT ? 'Steering: calm (under ' + STEER_CALM_KT + ' kt)' : 'Steering toward ' + Math.round(hd) + '° (' + compass(hd) + ') at ' + Math.round(sp) + ' kt') + '</div>'; }
+  if (wantH) h += '<div>Sea-level pressure ' + Math.round(stSample(stPt, lat, lon)) + ' hPa</div>';
+  $('readout').insertAdjacentHTML('beforeend', h);
+}
+/* ==== STEER DRAW END ==== */
+
 function render() {
   needRender = false; fitCanvases();
   const z = map.getZoom(), ws = 256 * Math.pow(2, z), pb = map.getPixelBounds(), minX = pb.min.x, minY = pb.min.y;
   const ctx = sstCanvas.getContext('2d');
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0); ctx.clearRect(0, 0, W, H);
 
-  const showSST = $('show-sst').checked; $('legend').style.display = showSST ? '' : 'none';
+  const showSST = $('show-sst').checked; $('legend').style.display = showSST ? '' : 'none'; $('steer-legend').classList.toggle('low', !showSST);
   if (showSST) {
   /* SST raster */
   const sc = interacting ? 0.3 : (W * H > 1.6e6 ? 0.4 : 0.5), sw = Math.max(2, Math.ceil(W * sc)), sh = Math.max(2, Math.ceil(H * sc));
@@ -1744,6 +2130,7 @@ function render() {
   drawBaseLayer(minX, minY, ws);
   drawGrid(minX, minY, ws);
   drawJetLine();
+  drawSteer();
   updateReadout();
 }
 let renderQueued = false;
@@ -1761,7 +2148,8 @@ map.on('mousemove', (e) => { pointer = e.latlng; updateReadout(); updateCityTip(
 map.on('mouseout', () => { pointer = null; updateReadout(); hoveredCity = -1; $('city-tip').style.display = 'none'; });
 $('cities').onchange = () => { hoveredCity = -1; $('city-tip').style.display = 'none'; scheduleRender(); };
 const fmtLL = (lat, lon) => Math.abs(lat).toFixed(1) + '°' + (lat >= 0 ? 'N' : 'S') + ' ' + Math.abs(lon).toFixed(1) + '°' + (lon >= 0 ? 'E' : 'W');
-function updateReadout() {
+function updateReadout() { updateReadoutBase(); steerReadout(); }
+function updateReadoutBase() {
   const el = $('readout');
   if (!pointer) { el.innerHTML = '<b>–</b><div>Move the pointer over the ocean</div>'; return; }
   const lat = pointer.lat, lon = ((pointer.lng + 540) % 360) - 180;
@@ -1835,7 +2223,7 @@ function advanceHours(n) {
   dirty = true;
 }
 let lastRefreshMs = 0;   // how long the last full redraw took -- the pacing below keeps the main thread from spending more than ~40% of its time on them, whatever the machine
-function refresh(force) { const t0 = performance.now(); computeField(); lastComputeHour = simHour; dirty = false; render(); lastComputeAt = performance.now(); lastRefreshMs = lastComputeAt - t0; }
+function refresh(force) { const t0 = performance.now(); computeField(); if (steerOn()) { steerUpdate(); steerUpdateIcons(); } lastComputeHour = simHour; dirty = false; render(); lastComputeAt = performance.now(); lastRefreshMs = lastComputeAt - t0; }
 function frame(now) {
   const dt = Math.min(250, now - lastNow); lastNow = now;
   if (playing) {
@@ -1846,7 +2234,10 @@ function frame(now) {
   // often than the redraw itself can afford -- it used to be every 6 hours at 1x, about 3 redraws a second, which is what
   // made anything drifting across the map visibly step instead of glide.
   if (dirty && now - lastComputeAt >= Math.max(120, 2.5 * lastRefreshMs) && Math.abs(simHour - lastComputeHour) >= (SPEEDS[speedIdx] <= 2 ? 3 : 6)) refresh();
-  else if (playing && jetLineOn.checked) drawJetLine();   // the line is cheap, so it moves every frame; the heavy layers wait for the check above
+  else if (playing) {                                       // the line is cheap, so it moves every frame; the heavy layers wait for the check above
+    if (jetLineOn.checked) drawJetLine();
+    if (steerOn()) steerFrame(now);                         // arrows and highs: a few ms, so every few frames, not every 3 simulated hours
+  }
   requestAnimationFrame(frame);
 }
 function restart() { initSim(P.seed); acc = 0; lastClock = ''; updateClock(); refresh(); }
@@ -1892,6 +2283,8 @@ $('detail').onchange = () => { syncDetail(); $('attr').textContent = TH.attr + (
 map.on('zoom', updateDetailOpacity);
 $('op').oninput = () => { $('op-o').textContent = $('op').value + '%'; scheduleRender(); };
 $('l265').onchange = scheduleRender; $('l2').onchange = scheduleRender; $('jetline').onchange = scheduleRender;
+$('steerarrows').onchange = steerChanged; $('highs').onchange = steerChanged;
+document.querySelectorAll('#seg-depth button').forEach((b) => b.onclick = () => { steerLayer = b.dataset.d; document.querySelectorAll('#seg-depth button').forEach((x) => x.setAttribute('aria-pressed', x === b)); drawSteerLegend(); drawSteer(); updateReadout(); });
 const sliders = [['p-warm', 'warming', (v) => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(1) + ' °C'], ['p-moist', 'moisture', (v) => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(0) + ' %'], ['p-shear', 'shearShift', (v) => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(0) + ' kt'], ['p-var', 'variability', (v) => v.toFixed(1) + '×'], ['p-wx', 'synoptic', (v) => v.toFixed(1) + '×'], ['p-wxs', 'shearSynoptic', (v) => v.toFixed(1) + '×'], ['p-jets', 'jetSpeed', (v) => v.toFixed(1) + '×'], ['p-sea', 'seasonal', (v) => v.toFixed(2).replace(/0$/, '') + '×'], ['p-feat', 'features', (v) => v.toFixed(2).replace(/0$/, '') + '×'], ['p-enso', 'enso', (v) => v.toFixed(2).replace(/0$/, '') + '×']];
 sliders.forEach(([id, key, fmt]) => { $(id).oninput = () => { P[key] = parseFloat($(id).value); $(id + '-o').textContent = fmt(P[key]); refresh(); }; });
 /* the seed gives each run its own slightly different climate: seasonal swing, currents/upwelling and ENSO strength move by a small but noticeable amount */
@@ -1909,7 +2302,7 @@ $('b-newseed').onclick = () => applySeed(1 + Math.floor(Math.random() * 999999))
  *  Start
  * ------------------------------------------------------------------ */
 setTheme('sat');
-drawLegend(); updateThresholdLabels(); updateSpeedUI();
+drawLegend(); drawSteerLegend(); updateThresholdLabels(); updateSpeedUI();
 if (window.innerWidth < 700) $('panel').classList.add('collapsed');
 const seed0 = 1 + Math.floor(Math.random() * 999999);
 $('seed').value = seed0; P.seed = seed0; setSliderValues(seedSliderValues(seed0)); initSim(seed0); updateClock();
@@ -1924,6 +2317,17 @@ window.SSTSIM = {
   set(k, v) { P[k] = v; refresh(); }, enso() { return { n34, lag0: ensoLag(0), lag3: ensoLag(91), lag6: ensoLag(183), hold: ensoHold, held: ensoHeld }; }, forceEnso, jetLat(lon) { return jetAxisF[Math.round((lon - LON0) / RES)]; },
   // Live axis straight from the jet clock (what the line is drawn from), not the copy baked into the last computeField(); tick() moves the clocks WITHOUT the 50-70 ms field redraw advance() does, so a test can sample the jet hour by hour cheaply.
   jetLatLive(lon) { jetAxisFinal(jetAxisNow); const fc = (lon - LON0) / DM.cres, c0 = Math.min(CNX - 2, Math.max(0, Math.floor(fc))), t = fc - c0; return jetAxisNow[c0] * (1 - t) + jetAxisNow[c0 + 1] * t; }, tick(h) { advanceHours(h); }, setView(v) { document.querySelector('#seg-view button[data-v="' + v + '"]').click(); },
+  steerNow() { steerUpdate(); return true; },
+  steerAt(lat, lon, layer) { steerEnsure(); const l = layer || steerLayer, u = stSample(stU[l], lat, lon), v = stSample(stV[l], lat, lon); return { u, v, speed: Math.hypot(u, v), toward: (Math.atan2(u, v) / DEG + 360) % 360 }; },
+  pressureAt(lat, lon) { steerEnsure(); return stSample(stPt, lat, lon); }, pressureAnomalyAt(lat, lon) { steerEnsure(); return stSample(stPp, lat, lon); },
+  highs() { steerEnsure(); return steerDetectHighs(); }, highIcons() { return steerShown.map((s) => ({ lat: s.lat, lon: s.lon, p: s.p, a: s.a, gone: s.gone })); },
+  steerGrid() { steerEnsure(); return { nx: SNX, ny: SNY, lat1: STD.lat1, lon0: STD.lon0, res: STRES, lat: Array.from(stNodeLat), lon: Array.from(stNodeLon) }; },
+  steerNodes(layer) { steerEnsure(); const l = layer || steerLayer; return { u: Array.from(stU[l]), v: Array.from(stV[l]), p: Array.from(stPt), pp: Array.from(stPp) }; },
+  steerRibbonNodes() { steerRibbon(); return { shallow: [Array.from(stRibU.shallow), Array.from(stRibV.shallow)], deep: [Array.from(stRibU.deep), Array.from(stRibV.deep)] }; },
+  steerParts() { steerEnsure(); return { slowU: Array.from(stS1u), slowV: Array.from(stS1v), gU: Array.from(stGu), gV: Array.from(stGv), rU: Array.from(stRdu), rV: Array.from(stRdv), rsU: Array.from(stRsu), rsV: Array.from(stRsv), alphaD: Array.from(stAlphaD), alphaS: Array.from(stAlphaS), ribU: Array.from(stRibU.deep), ribV: Array.from(stRibV.deep) }; },
+  setSteerLayer(l) { document.querySelector('#seg-depth button[data-d="' + l + '"]').click(); },
+  steerArrows() { steerRec = []; drawSteer(); const r = steerRec; steerRec = null; return r; },                 // the arrows drawn right now: where (lat/lon and screen px), the wind there, how faded
+  steerColorOf(sp) { return steerColor((Math.min(STEER_NCOL - 1, Math.floor(sp / STEER_VMAX * STEER_NCOL)) + 0.5) / STEER_NCOL * STEER_VMAX); },   // the colour an arrow of that speed is painted
   setXpTab, setPlaying, restart, map, render, setTheme, setGridMode, sliderVals() { return { seasonal: P.seasonal, features: P.features, enso: P.enso, warming: P.warming, moisture: P.moisture, shearShift: P.shearShift, variability: P.variability, synoptic: P.synoptic, shearSynoptic: P.shearSynoptic, jetSpeed: P.jetSpeed, seed: P.seed }; }, applySeed, isLand,
   bm() {
     const detail = !!(detailLayer && map.hasLayer(detailLayer));
