@@ -435,7 +435,7 @@ async function checkStorms(page, label) {
     const S = window.SSTSIM; S.setPlaying(false); S.applySeed(4242); S.setPlaying(false); S.storms(true); S.stormAuto(false);
     const bar = document.getElementById('season');
     return { on: S.storms(), shown: getComputedStyle(bar).display !== 'none', text: bar.innerText.replace(/\s+/g, ' ').trim(), canvas: !!document.getElementById('storm-canvas'),
-      controls: ['stwaves', 'stlows', 'stlabels', 'st-auto', 'p-stact', 'storm-tip', 'storm-card'].every((id) => !!document.getElementById(id)), cardHidden: document.getElementById('storm-card').hidden,
+      controls: ['stwaves', 'stlows', 'stdist', 'stlabels', 'st-auto', 'p-stact', 'storm-tip', 'storm-card'].every((id) => !!document.getElementById(id)), cardHidden: document.getElementById('storm-card').hidden,
       state: S.stormState() };
   });
   const mk = await ev(() => window.SSTSIM.stormMapsKeys());
@@ -451,7 +451,7 @@ async function checkStorms(page, label) {
     return { ids, st, by, bar: ['se-dep', 'se-named', 'se-hurr', 'se-major', 'se-c5', 'se-ace'].map((id) => document.getElementById(id).textContent), year: document.getElementById('se-year').textContent };
   });
   const [i1, i2, i3] = b.ids, s1 = b.by[i1], s2 = b.by[i2], s3 = b.by[i3];
-  check(`[${label}] a placed tropical depression gets a depression number and the first name at its first six-hourly fix (${s1.name || '-'}, dep ${s1.depNum}), a placed low stays a low (${s3.st})`, s1.depNum >= 1 && s1.name === 'Arthur' && s3.th === 'nl' && s3.depNum === 0);
+  check(`[${label}] a placed tropical depression gets a depression number and the first name at its first advisory fix (${s1.name || '-'}, dep ${s1.depNum}), a placed low stays a low (${s3.st})`, s1.depNum >= 1 && s1.name === 'Arthur' && s3.th === 'nl' && s3.depNum === 0);
   check(`[${label}] the season bar follows the counters: DEP ${b.bar[0]}, NAMED ${b.bar[1]}, ACE ${b.bar[5]} (stats ${JSON.stringify(b.st.stats)})`, +b.bar[0] === b.st.stats.dep && +b.bar[1] === b.st.stats.named && +b.bar[5] === b.st.stats.ace && b.st.stats.dep >= 2 && b.st.stats.named >= 1 && /Atlantic \d{4}/.test(b.year));
 
   // the three marker shapes: circle (tropical), square (subtropical), triangle (extratropical), read off the canvas pixels around each head
@@ -471,20 +471,30 @@ async function checkStorms(page, label) {
   check(`[${label}] a tropical cyclone is drawn as a circle (no corners: ${nFilled(shapes.circle.c)}/4), a subtropical one as a square (corners ${nFilled(shapes.square.c)}/4), an extratropical one as a triangle (top ${nFilled(shapes.triangle.top)}/2, base ${nFilled(shapes.triangle.bottom)}/2)`,
     shapes.circle.center && nFilled(shapes.circle.c) <= 1 && shapes.square.center && nFilled(shapes.square.c) >= 3 && shapes.triangle.center && nFilled(shapes.triangle.top) === 0 && nFilled(shapes.triangle.bottom) === 2);
 
-  // precursors are drawn: a wave as a dashed north-south axis, a local disturbance as an X in a dashed ring (and both are on by default)
+  // precursors are one lifecycle and are drawn by the stage they have reached: a wave as a dashed north-south axis, a low as a red disc with an L, a disturbance (either of them with the potential to
+  // become a cyclone) as an X in a dashed ring; all three are on by default
   const pre = await ev(() => {
     const S = window.SSTSIM, cv = document.getElementById('storm-canvas'), g = cv.getContext('2d'), d = cv.width / cv.clientWidth;
     const id = S.stormPlace({ kind: 'wave', lat: 24, lon: -58 }), p = S.stormPx(id);
-    const px = (dx, dy) => g.getImageData(Math.round((p.x + dx) * d), Math.round((p.y + dy) * d), 1, 1).data[3] > 100;
+    const rgba = (dx, dy) => Array.from(g.getImageData(Math.round((p.x + dx) * d), Math.round((p.y + dy) * d), 1, 1).data), px = (dx, dy) => rgba(dx, dy)[3] > 100;
     const count = (pts) => pts.filter(([dx, dy]) => px(dx, dy)).length, line = Array.from({ length: 29 }, (_, k) => [0, k - 14]), diag = [-6, -5, -4, -3, 3, 4, 5, 6].flatMap((k) => [[k, k], [k, -k]]);
-    const on = document.getElementById('stwaves').checked && document.getElementById('stlows').checked;
-    S.stormForce(id, { kind: 'M' }); S.stormDraw(); const wave = { axis: count(line), diag: count(diag) };
-    S.stormForce(id, { kind: 'N' }); S.stormDraw(); const seed = { axis: count(line), diag: count(diag), center: px(0, 0) };
+    const red = (dx, dy) => { const c = rgba(dx, dy); return c[3] > 100 && c[0] > 180 && c[1] < 130 && c[2] < 100; };
+    const look = () => ({ axis: count(line), diag: count(diag), disc: red(7, 0) && red(-7, 0), side: px(7, 0) || px(-7, 0) });
+    const on = ['stwaves', 'stlows', 'stdist'].every((k) => document.getElementById(k).checked);
+    S.stormForce(id, { kind: 'M', dist: false }); S.stormDraw(); const wave = look();
+    S.stormForce(id, { kind: 'N', dist: false }); S.stormDraw(); const low = look();
+    S.stormForce(id, { kind: 'N', dist: true }); S.stormDraw(); const distN = look();
+    S.stormForce(id, { kind: 'M', dist: true }); S.stormDraw(); const distM = look();
+    const box = (k, v) => { document.getElementById(k).checked = v; };
+    S.stormForce(id, { kind: 'M', dist: false }); box('stwaves', false); S.stormDraw(); const waveOff = look(); box('stwaves', true);
+    S.stormForce(id, { kind: 'N', dist: false }); box('stlows', false); S.stormDraw(); const lowOff = look(); box('stlows', true);
+    S.stormForce(id, { kind: 'N', dist: true }); box('stdist', false); S.stormDraw(); const distOff = look(); box('stdist', true);
     S.stormForce(id, { alive: false }); S.stormDraw();
-    return { wave, seed, on };
+    return { wave, low, distN, distM, on, waveOff, lowOff, distOff };
   });
-  check(`[${label}] a wave is a dashed north-south axis (${pre.wave.axis} of 29 pixels on the axis, ${pre.wave.diag} on the diagonals) and a local disturbance an X in a ring (${pre.seed.diag} of 16 diagonal pixels, centre ${pre.seed.center}), and waves and lows are drawn by default`,
-    pre.wave.axis >= 12 && pre.wave.diag <= 2 && pre.seed.diag >= 9 && pre.seed.center && pre.on);
+  check(`[${label}] a wave is a dashed north-south axis (${pre.wave.axis} of 29 pixels on the axis, ${pre.wave.diag} on the diagonals), a low a red disc (${pre.low.disc}), a disturbance of either kind an X in a ring (${pre.distN.diag} and ${pre.distM.diag} of 16 diagonal pixels, no disc), and all three are drawn by default, each under its own box (with it off: ${pre.waveOff.axis} axis pixels, disc ${pre.lowOff.disc}, ${pre.distOff.diag} X pixels)`,
+    pre.wave.axis >= 12 && pre.wave.diag <= 2 && !pre.wave.side && !pre.wave.disc && pre.low.disc && pre.distN.diag >= 9 && pre.distM.diag >= 9 && !pre.distN.disc && !pre.distM.disc && !pre.distN.side && !pre.distM.side && pre.on
+    && pre.waveOff.axis <= 2 && !pre.lowOff.disc && pre.distOff.diag <= 2);
 
   // lows are drawn only where a depression could still form: over water between 18 and 45N
   const lows = await ev(() => {
@@ -594,6 +604,59 @@ async function checkStorms(page, label) {
   check(`[${label}] eight whole seasons through the page look like the real Atlantic: ${mn('dep').toFixed(1)} depressions, ${mn('named').toFixed(1)} named storms, ${mn('hurr').toFixed(1)} hurricanes, ${mn('major').toFixed(1)} majors, ACE ${mn('ace').toFixed(0)} on average (real 15.8 / 14.4 / 7.2 / 3.2 / 122; seasons: ${seas.map((x) => x.named + '/' + x.hurr + '/' + x.major + '/' + Math.round(x.ace)).join(', ')} named/hurricanes/majors/ACE)`,
     mn('dep') >= SEASON_BANDS.dep[0] && mn('dep') <= SEASON_BANDS.dep[1] && mn('named') >= SEASON_BANDS.named[0] && mn('named') <= SEASON_BANDS.named[1] && mn('hurr') >= SEASON_BANDS.hurr[0] && mn('hurr') <= SEASON_BANDS.hurr[1]
     && mn('major') >= SEASON_BANDS.major[0] && mn('major') <= SEASON_BANDS.major[1] && mn('ace') >= SEASON_BANDS.ace[0] && mn('ace') <= SEASON_BANDS.ace[1] && seas.every((x) => x.named >= 3));
+  // the storm engine reads SST, humidity and shear from its own half-resolution grid (a quarter of the work); at its nodes the values must be exactly the map's full-resolution fields, also with the sliders moved
+  const grid = await ev(() => {
+    const S = window.SSTSIM, out = [];
+    S.applySeed(4242); S.setPlaying(false); S.stormAuto(false);
+    const probe = (name) => { const r = S.stormFieldCheck(); out.push({ name, max: r.max, nan: r.nanMismatch, nodes: r.nodes, live: r.live, interp: r.interp, pts: r.pts }); };
+    S.tick(24 * 20); probe('day 20, 00Z');
+    S.tick(24 * 70 + 7); probe('day 90, 07Z');
+    S.set('warming', 2); S.set('shearShift', 15); S.set('moisture', 8); S.tick(24 * 3 + 11); probe('sliders moved, 18Z');
+    S.tick(6 + 24 * 4); probe('four days on, 00Z');
+    S.set('warming', 0); S.set('shearShift', 0); S.set('moisture', 0);
+    return out;
+  });
+  check(`[${label}] the storm engine's half-resolution environment is exactly the map's fields at its nodes and interpolates between them as written (${grid.map((g) => g.name + ': ' + g.nodes + ' nodes, largest difference ' + g.max.join('/') + ' (SST/humidity/shear)' + (g.live ? ', the engine\'s own keyframe ' + g.live.max.join('/') : '') + ', ' + g.pts + ' lookups off by ' + g.interp.toExponential(1)).join('; ')})`,
+    grid.every((g) => g.max.every((m) => m === 0) && g.nan === 0 && g.nodes > 50000 && g.pts > 600 && g.interp < 1e-6) && grid.filter((g) => g.live).length >= 2 && grid.every((g) => !g.live || (g.live.max.every((m) => m === 0) && g.live.nanMismatch === 0)));
+
+  // the live loop at 16x: the clock runs in slices that leave the page time to draw (no frame is blocked for long and the page keeps moving), and whatever the machine manages, the storms are the ones a single call to the same hour gives
+  const live = await ev(async () => {
+    const S = window.SSTSIM, speedX = document.getElementById('speed-x'), sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    S.applySeed(901); S.setPlaying(false); S.storms(true); S.stormAuto(true); S.tick(24 * 40); S.advance(0);
+    while (speedX.textContent !== '16×') document.getElementById('b-faster').click();
+    S.setPlaying(true); await sleep(700);                                       // the first frames after a long synchronous call wait for the browser's own painting: not what is measured
+    const h0 = S.state().simHour;
+    let frames = 0, worst = 0, last = performance.now(), run = true;
+    const raf = (t) => { frames++; worst = Math.max(worst, t - last); last = t; if (run) requestAnimationFrame(raf); };
+    requestAnimationFrame(raf); await sleep(3000); run = false; S.setPlaying(false);
+    const h1 = S.state().simHour, json = S.stormJSON();
+    while (speedX.textContent !== '1×') document.getElementById('b-slower').click();
+    S.applySeed(901); S.setPlaying(false); S.stormAuto(true); S.tick(h1); S.advance(0);
+    const again = S.stormJSON(); S.stormAuto(false);
+    return { h0, h1, frames, worst: Math.round(worst), same: again === json, kb: Math.round(json.length / 1024), speed: speedX.textContent };
+  });
+  check(`[${label}] playing at 16x for 3 s with storms on: the clock moved ${live.h1 - live.h0} hours, the page drew ${live.frames} frames and none was blocked for more than ${live.worst} ms, and the storms (${live.kb} KB) are exactly those of one call to hour ${live.h1}`,
+    live.same && live.h1 - live.h0 >= 60 && live.frames >= 12 && live.worst < 600 && live.speed === '1×');
+
+  // a slow machine (the processor throttled to a third): the clock falls behind instead of freezing the page, and what it owes is capped, so there is no burst of catching up when the machine recovers
+  // (the first version of the live loop advanced everything that was owed in one frame: 9 frames in 3 s at this slowness instead of 22-26)
+  await ev(() => { const S = window.SSTSIM, speedX = document.getElementById('speed-x'); S.applySeed(901); S.setPlaying(false); S.storms(true); S.stormAuto(true); S.tick(24 * 40); S.advance(0); while (speedX.textContent !== '16×') document.getElementById('b-faster').click(); });
+  const cdp = await page.context().newCDPSession(page);
+  let slow;
+  try {
+    await cdp.send('Emulation.setCPUThrottlingRate', { rate: 3 });
+    slow = await ev(async () => {
+      const S = window.SSTSIM, speedX = document.getElementById('speed-x'), sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+      S.setPlaying(true); await sleep(700);
+      const h0 = S.state().simHour; let frames = 0, run = true; const raf = () => { frames++; if (run) requestAnimationFrame(raf); };
+      requestAnimationFrame(raf); await sleep(3000); run = false;
+      const owed = S.owedHours(), adv = S.state().simHour - h0; S.setPlaying(false); S.stormAuto(false);
+      while (speedX.textContent !== '1×') document.getElementById('b-slower').click();
+      return { frames, owed: Math.round(owed * 10) / 10, adv };
+    });
+  } finally { await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 }); await cdp.detach(); }
+  check(`[${label}] on a slow machine (processor throttled to a third) the page at 16x still draws ${slow.frames} frames in 3 s while the clock runs behind (${slow.adv} hours in them), and it owes the clock only ${slow.owed} hours (capped at 24)`,
+    slow.frames >= 12 && slow.adv >= 30 && slow.owed <= 25);
   await ev(() => { window.SSTSIM.storms(false); window.SSTSIM.restart(); });   // leave the page without storms for anything after this
 }
 
@@ -624,7 +687,7 @@ async function checkPlace(page, label) {
     if (F) for (const f of F.fixes.slice(4, 14)) { const q = S.placePx(f.lat, f.lon); let n = 0; for (let dx = -4; dx <= 4; dx++) for (let dy = -4; dy <= 4; dy++) if (px(q.x + dx, q.y + dy)[3] > 60) n++; line.push(n); }
     return { white: c[0] > 235 && c[1] > 235 && c[2] > 235 && c[3] > 200, line, fixes: F ? F.fixes.length : 0, label: S.placeLabel() };
   }, at);
-  check(`[${label}] a white dot sits at the pointer and the forecast line is drawn along the predicted fixes (${probe.fixes} fixes, "${probe.label}")`, probe.white && probe.fixes >= 20 && probe.line.length === 10 && probe.line.every((n) => n > 0) && probe.label.length > 5);
+  check(`[${label}] a white dot sits at the pointer and the forecast line is drawn along the predicted fixes (${probe.fixes} three-hourly fixes, "${probe.label}")`, probe.white && probe.fixes >= 40 && probe.line.length === 10 && probe.line.every((n) => n > 0) && probe.label.length > 5);
   const kinds = await ev(async () => {
     const out = {};
     for (const k of ['wave', 'td', 'sd', 'low']) { document.querySelector(`#place-menu button[data-kind="${k}"]`).click(); await new Promise((r) => setTimeout(r, 120)); out[k] = [document.querySelector(`#place-menu button[data-kind="${k}"]`).getAttribute('aria-checked'), window.SSTSIM.placeLabel(), document.querySelectorAll('#place-menu button[aria-checked="true"]').length]; }
@@ -653,7 +716,23 @@ async function checkPlace(page, label) {
     for (const a of pre.fixes) { const c = byH.get(a.h); if (!c) continue; n++; worst = Math.max(worst, Math.abs(a.lat - c.lat), Math.abs(a.lon - c.lon)); vmax = Math.max(vmax, Math.abs(a.v - c.v)); }
     return { n, worst, vmax, peak: pre.peak.v };
   }, pre);
-  check(`[${label}] the system then does exactly what the preview said: ${follow.n} six-hourly fixes over 7 days, largest position difference ${follow.worst.toFixed(2)} degrees, wind ${follow.vmax} kt (peak ${follow.peak} kt)`, follow.n >= 20 && follow.worst === 0 && follow.vmax === 0);
+  check(`[${label}] the system then does exactly what the preview said: ${follow.n} three-hourly fixes over 7 days, largest position difference ${follow.worst.toFixed(2)} degrees, wind ${follow.vmax} kt (peak ${follow.peak} kt)`, follow.n >= 40 && follow.worst === 0 && follow.vmax === 0);
+
+  // the advisory dots come every three hours: the six-hourly (synoptic) ones are the big dots, the ones between them small, so a peak that comes and goes quickly still shows; a hover on a small one shows its own time
+  const dots = await ev(() => {
+    const S = window.SSTSIM, live = JSON.parse(S.stormJSON()).systems.find((x) => x.id === 'M1'); window.__hfView = { c: S.map.getCenter(), z: S.map.getZoom() };
+    S.map.fitBounds(live.fixes.map((f) => [f.lat, f.lon]), { animate: false, padding: [110, 110] }); S.stormDraw();
+    return { hours: live.fixes.map((f) => f.h), dots: S.stormDots('M1') };
+  });
+  const syn = (d) => /^(00|06|12|18)Z/.test(d.t), big = dots.dots.filter((d) => d.r === 8), small = dots.dots.filter((d) => d.r === 6);
+  check(`[${label}] the placed system's fixes are three hours apart (${dots.hours.length}), the dots at 00, 06, 12 and 18Z are the big ones (${big.length}, hit radius 8) and the ones between them small (${small.length}, hit radius 6)`,
+    dots.hours.length >= 40 && dots.hours.every((h, i) => i === 0 || h - dots.hours[i - 1] === 3) && big.length >= 10 && small.length >= 10 && dots.dots.slice(1).every((d) => (d.r === 8) === syn(d)));
+  const alone = small.filter((d) => dots.dots.every((o) => o === d || Math.hypot(o.x - d.x, o.y - d.y) > 14)).sort((a, b) => a.y - b.y)[0];
+  if (alone) { await page.mouse.move(alone.x - 30, alone.y - 30); await page.mouse.move(alone.x, alone.y, { steps: 3 }); await page.waitForTimeout(120); }
+  const tipDot = await ev(() => { const t = document.getElementById('storm-tip'); return { shown: t.style.display === 'block', text: t.innerText.replace(/\n/g, ' | ') }; });
+  check(`[${label}] hovering a small three-hourly dot (${alone ? alone.t : 'none found'}) shows the advisory of that hour: ${tipDot.text}`, !!alone && tipDot.shown && tipDot.text.includes(alone.t) && !syn(alone));
+  await page.mouse.move(2, 2); await page.waitForTimeout(80);
+  await ev(() => { const S = window.SSTSIM, v = window.__hfView; S.map.setView(v.c, v.z, { animate: false }); S.stormDraw(); });
 
   // looking ahead leaves the live simulation exactly as it was: the same 40 days with and without a preview every 5 days
   const inter = await ev(() => {
@@ -764,7 +843,7 @@ async function checkSummary(page, label) {
   // the turn of the year: a late-season storm, Jan 1 passes; its paths disappear, the bar starts the next year, the card opens on the season just ended
   const r = await ev(() => {
     const S = window.SSTSIM; S.applySeed(12); S.setPlaying(false); S.stormAuto(false); S.tick(24 * 200);
-    const layers = (on) => { for (const id of ['stwaves', 'stlows']) { const c = document.getElementById(id); c.checked = on; c.dispatchEvent(new Event('change')); } };
+    const layers = (on) => { for (const id of ['stwaves', 'stlows', 'stdist']) { const c = document.getElementById(id); c.checked = on; c.dispatchEvent(new Event('change')); } };
     layers(false);                                                              // waves, disturbances and lows are drawn by default and are not season paths: count the cyclones' own ink
     const year = S.stormState().stats.year;
     S.stormPlace({ kind: 'td', lat: 24, lon: -70, v: 65 }); S.tick(24 * 8); S.advance(0);       // a late-December hurricane in the western subtropics: it earns some ACE and is gone well before Jan 1
@@ -792,7 +871,7 @@ async function checkSummary(page, label) {
   check(`[${label}] the arrows step between seasons: ${n1.title} (${n1.sub}, nothing yet: ${n1.cells}) and back to ${n2.title}, each arrow disabled at its end`,
     n1.title === 'Atlantic ' + (r.year + 1) && /^Season so far, to Jan \d+$/.test(n1.sub) && n1.cells === '0,0,0,0,0,0.0' && n1.empty && n1.next && !n1.prev && n2.title === 'Atlantic ' + r.year && n2.prev && !n2.next);
   await page.click('#sum-close');
-  await ev(() => { for (const id of ['stwaves', 'stlows']) { const c = document.getElementById(id); c.checked = true; c.dispatchEvent(new Event('change')); } window.SSTSIM.storms(false); window.SSTSIM.restart(); });
+  await ev(() => { for (const id of ['stwaves', 'stlows', 'stdist']) { const c = document.getElementById(id); c.checked = true; c.dispatchEvent(new Event('change')); } window.SSTSIM.storms(false); window.SSTSIM.restart(); });
 }
 
 async function checkEnsoHold(page, label) {

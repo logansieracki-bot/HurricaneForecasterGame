@@ -1,6 +1,58 @@
 # Roadmap
 
 ## Just landed
+- **Storms, milestone 8: the precursors as one lifecycle, rapid intensification that follows the conditions, advisory dots every three hours, and a lighter engine at 4x to 16x (after the next round of trying it).**
+  *What you found:* a wave could not become a disturbance (a disturbance was a separate kind of thing, "it's like evolution": wave or low, then the potential to be a cyclone, then a disturbance); the
+  clock lagged badly at 4x, 8x and 16x, most of all with `Place` and a placed system; rapid intensification should come when the conditions are great and be extreme (a day or so) when they are perfect, "do some
+  research"; and the dots were too far apart for a peak that comes and goes quickly to show.
+  *One lifecycle.* A tropical wave or a non-tropical low is a precursor with a state, not a kind: when its wind reaches 19 kt, or the growth law has begun to develop it (`dev >= 0`), it is a *disturbance*
+  (`S.dist`, with a hysteresis: back to a wave or a low only under 17 kt), and a disturbance that holds its development becomes a depression. The status codes follow (`WV`, `LO`, `DB`, then `TD` and on: HURDAT2's
+  own), the tracked pressure lows of the page's weather carry the same flag (from their potential), and the page draws the stage a system has reached: a dashed line (wave), a red `L` with its pressure (low), an X in a
+  dashed ring (disturbance), under three boxes in `Customization` (`Tropical waves`, `Lows`, `Disturbances`, all on). Over four seasons of 214 days sampled every six hours there are on average 2.0 waves, 0.15 lows and 0.73 disturbances alive at any time, and all 137 of the 137 depressions of eight seasons (seeds 1301-1308) that began as a wave, a seed or a low passed through the disturbance stage first (the median stay in it is 18 to 51 hours depending on the season).
+  *Dots every three hours.* Every fix, name, counter and peak is now three-hourly; the ACE (and the season's ACE curve) still takes only the synoptic 00 / 06 / 12 / 18Z fixes, as HURDAT2 does, so the totals did not move.
+  The big dots are the synoptic ones, the small dots between them, both can be hovered (hit radius 8 and 6 px), a placed system's seven days are 56 fixes and the preview line draws the synoptic ones only. The lab's rows stay
+  six-hourly (with a `land` flag), a save of a whole season is 135-540 KB (it was 125-360) and takes 2-7 ms.
+  *A lighter engine.* Where the time went (the page profiled headless at 16x, one simulated day): the engine's hour-by-hour physics is nothing; a day costs the environment (the fine fields: ten up-samplings of the
+  coarse anomalies, two combine passes over 601 x 449 cells), the steering waves (`evalWaves`, 8 ms a day) and the browser's own canvas commit; a `Place` press ran the whole seven-day shadow environment on the main thread
+  (0.65 s at 16x). What changed: (1) the engine gets its own copy of SST, humidity and shear on every second node (0.5 degrees, 301 x 225: a quarter of the cells), computed by the same combine code from the same up-sampled
+  anomalies, so its values are *exactly* the map's at those nodes (a browser check compares them, largest difference 0 in all three fields at three times and with the sliders moved, and the lookups between the nodes
+  against the same weights written out by hand); (2) exact micro-optimisations (the clamp bounds of the up-sampling hoisted out of the loops, a copy instead of a recomputation when the next day's synoptic
+  texture is wanted), with the same fingerprint of the weather and the storms before and after; (3) a frame loop that spends at most 12 ms of a frame on the simulation and owes the rest (never more than 24
+  hours, so a slow machine runs behind instead of freezing and does not burst when it recovers), (4) redraws of the big layers that get rarer as the clock gets faster, and (5) the storm canvas redrawn 20-30 times a
+  second, not 60. Measured in headless Chromium (software rendering, 5 s of play each, no profiler), old build against new:
+  `speed   sim hours/s (asked)   frames/s   longest gap` -
+  4x: 67 / 67 (67), 21 / 37, 150 / 150 ms; 8x: 133 / 133 (133), 14 / 35, 150 / 200 ms; 16x: 229 / 253 (267), 4 / 27, 383 / 217 ms; 32x: 256 / 363 (533), 2 / 17, 667 / 200 ms; 64x: 252 / 312 (1067), 1 / 18, 1333 / 200 ms;
+  pressing `Place` at 16x blocks the page for 645 ms before and 222 ms after. A simulated day costs 70.5 ms before and 31.9 ms after in the sampling profiler. Not solved: 32x and 64x still run at about a third of
+  their nominal speed (the up-sampling of the fine map fields, which the display needs, and the steering waves are what is left).
+  *Rapid intensification that follows the conditions.* The research, in `tools/make_tc_ri.py` and `data/generated/atlantic-tc-ri.json` (IBTrACS 1980-2021, 10,996 24-hour windows of tropical rows over water
+  south of 40N, each with the monthly ERSST at the point): a window gains 30 kt or more in 6.3 % of cases, 50 kt in 0.73 %, 65 kt in 0.16 %, 80 kt in 0.03 %; by sea temperature (under 27, 27-28, 28-29, 29 and over) the
+  30-kt share is 1.2 / 5.8 / 7.1 / 12.3 % and the 50-kt share 0 / 0.54 / 0.69 / 2.1 %; by the wind at the start (under 45, 45-65, 65-95, 95 and over kt) 4.8 / 7.4 / 8.8 / 3.8 %; the strongest windows are Wilma 2005 (95 kt
+  in a day from 65 kt, over 29.4 degC water at 16N 80W; three of the top six windows are hers), Felix 2007 (85), Matthew 2016 (75), Eta 2020 (70) and one storm each of 2017 and 2008 (70), all in the Caribbean over water of 28.7 degC or more but the last (27.7); the rows are the best track's six-hourly ones. The
+  model (`ri` in `src/storms.js`): while a tropical cyclone over water has no episode running and the last one ended 18 hours ago, an episode starts in an hour with probability `haz x cond^hp` where `cond` is the product of
+  how warm the sea is (a smooth gate, 25.5-27.8 degC), how little shear it feels, how moist the air is, whether the wind is in the range where episodes start (34-58 kt up, 135-160 kt down) and how much of the potential wind
+  is still free, and an episode adds `rate x sin(pi t / duration)` kt an hour for 12 to 36 hours (and ends early at 93 % of the potential wind). *In a perfect environment* (the pinnacle index `pn`, 0 to 1: sea
+  temperature rising from 27.6 to 29.6 degC, shear going to nothing (half-way at 9 kt on the page's scale), humidity rising from 52 to 64 %, and a quarter to a half of the potential wind still free) the range of the rates is wider on both ends (`xLo`, `xHi`): from 1.2-2.1 kt an hour up
+  to 2.0-5.9, drawn so that the fast ones are rare (`rk`). The values are the product of nine rounds of paired-seed sweeps (48 seasons each, the same weather for every variant, `tools/storm_mc.mjs --sets`, compared with
+  `tools/storm_ri.mjs`); the intensity law's `kUp` stayed at its calibrated 0.029 and the start rate `haz` was trimmed to 0.038 so the season totals stay where they were. In synthetic environments held fixed (node check, 40
+  seeds each, a 50-kt storm at 18N for a week) the strongest 24-hour gain averages 1 / 37 / 43 / 51 / 65 kt from a hostile to a perfect environment, and in the perfect one it is 65 kt or more in 18 of 40 seeds and 80 kt or more in
+  8 (maximum 107 kt), against 7 and 1 in a great one (29 degC, 5 kt of shear). On 240 seasons (1401-1448, 1501-1596, 1601-1696; the first block steered the choice of the values, the other 192 did not):
+  the windows gaining 30 / 50 / 65 / 80 kt are 6.6 / 0.90 / 0.17 / 0.03 % (real 6.3 / 0.73 / 0.16 / 0.03), by sea temperature 0.5 / 3.5 / 6.3 / 9.6 % (real 1.2 / 5.8 / 7.1 / 12.3) for 30 kt and 0 / 0.2 / 0.6 / 1.6 %
+  (0 / 0.54 / 0.69 / 2.1) for 50 kt; 68 % of hurricanes (66 %) and 95 % of majors (90 %) gain 30 kt or more in a day at least once; the six strongest gains of a storm in the 240 seasons are 105, 105, 100, 95, 85 and 85 kt (the
+  real record's rate of one storm of 95 kt or more in 42 seasons would give about six in 240; we have four). Season totals (214 days) with the new values: 17.0 depressions / 14.1 named / 7.7 hurricanes / 3.6 majors / ACE 131
+  (A, 48 seasons: 16.5 / 13.4 / 6.7 / 3.1 / 110; B, 96: 17.5 / 14.5 / 8.3 / 4.0 / 144; C, 96: 16.7 / 13.9 / 7.6 / 3.5 / 129; the previous build on the 96 seasons of B: 17.4 / 14.4 / 7.9 / 3.8 / 144, whose
+  rapid intensification was 3 to 4 times the real one at 50 kt and above). Known misses: the episodes start earlier in a storm's life than the real record's (windows starting at 45-65 kt gain 30 kt in 14 % of cases against
+  7.4 %, from 65-95 kt 5.8 % against 8.8 %, from 95 kt up 1.0 % against 3.8 %: the sea-temperature gate and the potential wind, which is fixed by the page's SST and has no ocean heat content, hold the late episodes back), the
+  27-28 degC and 29 degC and up classes are 40 % and 22 % below the real share at 30 kt, and category 5 storms are 0.25 a season (0.47).
+  *Tests:* 159 node checks and 1584 browser checks pass: the node ones added for the lifecycle (a disturbance is a stage, not a kind; every depression passed through it in the lifecycle seasons), the three-hourly
+  record, and the ladder above; the browser ones for the three drawn stages, the dots and the hover on a small one, the storm grid, the clock at 16x for 3 s (the storms are exactly those of one call to the same hour) and on
+  a processor throttled to a third. *Mutation checks:* `tools/storm_mutants.mjs` has 73 edits now (22 new ones for this milestone; the old X4, which turned a disturbance into a wave, is replaced by the pair Y1 / Y2). The first pass over the 22 and the changed X6 killed 19; the
+  survivors each showed a check that did not look at what its name said: *the Disturbances box doing nothing* (no check ever unticked a box: each now hides its own stage), *the storm grid keeping the previous day's large-scale anomalies*
+  (the check forced a fresh grid, which hid the missing refresh: it now also compares the keyframe the engine actually reads, at the midnights, and with the sliders moved) and *rapid intensification ignoring the shear, the sea
+  temperature or the room under the potential wind* (a soft factor in a product is invisible to a check of totals: the new node check counts the episodes that start in 40 week-long runs with each factor as shipped and made blind). The
+  clock's time budget and the cap on what it owes are caught only by the checks on a processor throttled to a third (Chrome's own CPU throttling, `Emulation.setCPUThrottlingRate`): on a fast machine without it neither changes anything.
+  The full run then left one survivor, E6 of milestone 5 (a storm summary that rounds its ACE twice): its check only fails when a storm's ACE sits within 0.005 of a rounding boundary, which the new weather did not give;
+  a node check that the archived storms keep their ACE unrounded kills it. All 73 are caught. The limit of the claim is the one of milestone 7: the edits are hand-made, and the offline lab, not CI, measures the engine
+  against the real record.
 - **Storms, milestone 7: mutation checks of the storm work, and the end of step 1 (the core system, Atlantic).** *What step 1 is now:* every kind of system (waves, disturbances, lows, tropical and
   subtropical cyclones, extratropical and post-tropical cyclones) born by the simulator's own weather or put on the map with `Place` and a seven-day preview; names, six-hourly advisory dots, hover and
   click cards, the season bar, the season summary with the ACE graph over the real seasons and a card that opens by itself when the year turns, paths that disappear at the end of the season, and a
@@ -2120,10 +2172,12 @@ again building EPAC):**
   warnings, city damage and statistics (the cards already show `-` for what they will hold). Step 1, the core system, is the Atlantic only: the other eight basins
   need their own real best-track maps, calibration (`tools/make_tc_*.py`, `tools/storm_fit.mjs`, `tools/storm_mc.mjs`) and a template that ports the storm hooks
   (the build already inlines `src/storms.js` into any template that has the `/*__STORMS__*/` placeholder).
-- Storms, the known misses of milestone 3 to take first (numbers in its entry): East Coast, Mexico and Canada landfalls low and Greater Antilles / Bahamas and
-  South America high, a fifth of the numbered depressions never reaching storm strength (real 11 %), the heavy top of the season distribution (the highest of 96
-  simulated seasons has ACE 383, the real record 250), post-tropical systems about 20 % too slow and too few, subtropical storms 1.2 a year (real 1.7), the page's
-  pressure lows fewer and longer-lived than ERA5's, and the moisture slider's effect far stronger than the warming slider's.
+- Storms, the known misses of milestones 3 and 8 to take first (numbers in their entries): East Coast, Mexico and Canada landfalls low and Greater Antilles / Bahamas and
+  South America high, a sixth of the numbered depressions never reaching storm strength (real 12 %), the heavy top of the season distribution (the highest of 240
+  simulated seasons has ACE 440, the real record 250), category 5 storms 0.25 a season (0.47), post-tropical systems about 20 % too slow and too few, subtropical storms 1.1 a year
+  (real 1.7), the page's pressure lows fewer and longer-lived than ERA5's, the moisture slider's effect far stronger than the warming slider's, rapid intensification that starts
+  earlier in a storm's life than the real record's (and has no ocean heat content behind it: a warm eddy or the Loop Current cannot make a storm stronger than the sea-surface
+  temperature says), and the clock at 32x and 64x, which still runs at about a third of its nominal speed (the up-sampling of the fine map fields, which the display needs, and the steering waves are what is left of the cost).
 - Save / resume is one slot in one browser; several slots, a file to export and import, and the autosave switch and GIF export of the original plan are not built.
 - Forecaster mode (hurricane hunters, model guidance, cones/AOIs) — deliberately
   not started; Simulation mode across basins comes first.

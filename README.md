@@ -68,14 +68,15 @@ nothing to run by hand.
   `atlantic-tc-validate.json`: what the simulated tracks are checked against (residual motion, 2- and 4-day displacements, reach,
   loops, the fate of depressions by latitude); `tools/make_tc_et.py` + `atlantic-tc-et.json`: how real storms become extratropical (the rate as a
   function of latitude, sea temperature, shear and the storm's own wind, the wind kept through the change, the length of the post-tropical track, the remnant lows) with
-  `tools/storm_et.mjs` computing the same statistics for the simulated storms; `tools/make_tc_env.py`, `make_tc_motion.py`, `check_lows.py`: the environment, motion
+  `tools/storm_et.mjs` computing the same statistics for the simulated storms; `tools/make_tc_ri.py` + `atlantic-tc-ri.json`: how often real storms gain 30 / 50 / 65 / 80 kt in 24 hours,
+  by sea temperature and by the wind they start with (IBTrACS 1980-2021 with the monthly ERSST at the point), with `tools/storm_ri.mjs` computing the same table for the simulated storms; `tools/make_tc_env.py`, `make_tc_motion.py`, `check_lows.py`: the environment, motion
   and pressure-low references. `tools/storm_fit.mjs` fits the engine's maps to the page's own weather (`clim`, `wet`, `fit`, `rescale`, `refine`, `motion`, `maps`;
   result `atlantic-tc-storm-maps.json`, merged into `data.json` under `storms.maps` by `merge_data.mjs --storm-maps`; the real normals and daily ACE
   percentiles the season summary draws against go in beside them as `storms.ace` / `storms.normals` with `merge_data.mjs --storms`),
   `tools/storm_mc.mjs` runs whole seasons through the built page (any number of parameter sets at once, same weather),
   `tools/storm_opt.mjs` calibrates the intensity law and the environmental coupling with CMA-ES, `tools/storm_validate.mjs`
-  checks tracks, landfalls and genesis against the real best track, and `tools/storm_mutants.mjs` breaks the storm code in 51 ways, one at a time, and runs the
-  checks that should notice (all 51 are caught; `docs/roadmap.md` has what the first pass found and how the checks were changed).
+  checks tracks, landfalls and genesis against the real best track, and `tools/storm_mutants.mjs` breaks the storm code in 73 ways, one at a time, and runs the
+  checks that should notice (all 73 are caught; `docs/roadmap.md` has what the passes found and how the checks were changed).
 
 ## How the simulation works (keep these ideas when changing things)
 - Grid: 0.25° over lon -110..40, lat -40..72 (601×449). Time: 1 sim hour per 60 ms
@@ -309,18 +310,20 @@ nothing to run by hand.
   analysis box wider than the displayed one (most boxes do not contain the jet), like the shear jet.
 - Storms (Atlantic only, the test basin; step 1 of the 7-step storm roadmap in `docs/storms-plan.md`). `src/storms.js` is
   the engine (pure JS, no DOM) and the block between `/* ==== STORM HOOKS BEGIN/END ==== */` in `src/template.html` is
-  everything that connects it to the page. **Systems:** tropical waves (dashed lines), lows, tropical depressions /
-  storms / hurricanes (circles coloured by Saffir-Simpson category), subtropical depressions / storms (squares) and
-  extratropical / post-tropical cyclones (grey triangles), each with a six-hourly track of advisory dots, a white dot where it
-  became a depression, and a name label; the waves, lows and name labels are toggles under `Customization`, and the
+  everything that connects it to the page. **Systems:** the precursors are one lifecycle: a tropical wave (dashed line) or a
+  low (a red `L`) that has the potential to become a cyclone turns into a *disturbance* (an X in a dashed ring), which turns into a
+  depression; then tropical depressions / storms / hurricanes (circles coloured by Saffir-Simpson category), subtropical depressions /
+  storms (squares) and extratropical / post-tropical cyclones (grey triangles), each with a track of advisory dots every three hours
+  (big at the synoptic 00 / 06 / 12 / 18Z, small between, so a peak that comes and goes in a few hours still shows), a white dot where it
+  became a depression, and a name label; the waves, lows, disturbances and name labels are toggles under `Customization`, and the
   Advanced tab has `Storms form on their own` and `Storm activity (seeds)`. Hover a dot for name, category, wind in mph
   (kt) and gusts; click a live storm or a finished track for the stat card (category, wind, pressure, Peak, ACE, shear,
   gusts, movement, SST, formed). The top bar is the season: `Atlantic 2026 | DEP | NAMED | HURR | MAJOR | CAT 5 | ACE`
-  from the six-hourly fixes with HURDAT2's own definitions. **Season summary:** the bar's `Summary` button opens a card with the totals and the real 1991-2020 average
+  from the fixes with HURDAT2's own definitions (the ACE from the 00 / 06 / 12 / 18Z ones only). **Season summary:** the bar's `Summary` button opens a card with the totals and the real 1991-2020 average
   beneath each, a graph of the season's accumulated cyclone energy through the year over the real seasons (the middle 50 % and 80 % as bands, the median dashed; the
   other seasons of the run as thin lines) and one row per cyclone (a click flies to it and opens its stat card); at Jan 1 the finished season's paths disappear, the bar
   starts the new year from zero, a cyclone still alive finishes under its own year, and the card opens by itself on the season that has just ended. **Save / resume:**
-  the season is kept in the browser (`localStorage`, 125-360 KB over a whole season, written in 2-6 ms: the weather generators' states and clocks, the storms as plain JSON, the
+  the season is kept in the browser (`localStorage`, 135-540 KB over a whole season, written in 2-7 ms: the weather generators' states and clocks, the storms as plain JSON, the
   controls) every few seconds while the clock runs, a moment after a change while it is paused, and when the page is hidden, closed or left by the dock's Menu button; the
   main menu then shows a `Continue` card (season, date, named storms and hurricanes, ACE) that reopens the simulator paused with `?resume=1`, and `Start` (a new game) or
   `Discard this season` deletes it. A season saved at 00Z continues bit for bit like the uninterrupted one; saved at another hour the storms, fields and counters are
@@ -335,8 +338,10 @@ nothing to run by hand.
   pulses of 14-60 days: the climate the page does not carry), and is declared a depression only while the growth law could keep one
   alive; a system moves with the real mean drift of its kind at its place and time of year plus the anomaly of the page's own
   steering from its mean (so the weather decides which of the real tracks it follows, and ENSO acts through it); intensity is
-  a logistic growth law bounded by the environment's potential, with rapid-intensification episodes, a cold wake, a cap on how fast
-  wind can be lost, and land decay; a tropical cyclone ends by one of two competing random exits at the real best track's rate (it
+  a logistic growth law bounded by the environment's potential, with rapid-intensification episodes (they start at a rate that rises with
+  warm water, little shear, moist air and room below the potential wind: none in a hostile environment, 30 kt or more in a day in about
+  6 % of the 24-hour windows over the real record's warm water, and in a perfect one, water above 29.5 °C with next to no shear in very moist air, they run
+  up to 2.5 times faster and take a storm up by 80 to 100 kt in about a day), a cold wake, a cap on how fast wind can be lost, and land decay; a tropical cyclone ends by one of two competing random exits at the real best track's rate (it
   becomes extratropical, keeping its wind, at about 41N over 20 °C water in strong shear; or it dissipates, a weak storm far more often
   than a strong one), a post-tropical cyclone starts fast (25 kt in its first row) and slows with age, may re-intensify in a strong jet,
   and a weak storm over land is finished in half a day. Selecting a storm (or one of its dots) hides every other path until it is
@@ -346,7 +351,11 @@ nothing to run by hand.
   `node tools/merge_data.mjs atlantic --storm-maps data.json`, rebuild, and check on seeds the fit never saw with
   `node tools/storm_mc.mjs --seeds 401-496 --out raw.json` and `node tools/storm_validate.mjs raw.json`; the intensity law and the
   transition's intercepts come from `tools/storm_opt.mjs` and `storm_mc.mjs --sets` scans; `docs/roadmap.md` has the whole procedure and
-  its numbers). **Time and weather:** `advanceHours()` walks in sub-chunks that end on every absolute 3-hour
+  its numbers). **Speed:** the engine reads SST, humidity and shear from its own half-resolution grid (every second node of the map's, a quarter of the
+  work; the values are exactly the map's at those nodes, a browser check compares them), the clock's frame loop stops advancing after 12 ms of simulation and owes
+  the rest (at most 24 hours), so a slow machine falls behind instead of freezing, and the layers redraw less often the faster the clock runs; in headless Chromium
+  here the page keeps 37 / 35 / 27 / 17 / 18 frames a second at 4× / 8× / 16× / 32× / 64× (it was 21 / 14 / 4 / 2 / 1) and pressing `Place` at 16× blocks for 0.22 s (0.65 s);
+  `docs/roadmap.md` has the table. **Time and weather:** `advanceHours()` walks in sub-chunks that end on every absolute 3-hour
   boundary; the engine runs hour by hour on the last *keyframe* (a copy of the three steering layers and sea-level pressure
   every 3 h; of SST, humidity and shear once a day at 00Z and whenever a slider, ENSO or the seed changed). Storms are
   therefore a pure function of the seed, the settings and the actions, however fast the clock runs or often the page
@@ -389,15 +398,17 @@ check that Satellite still resolves to something usable.
   see `docs/roadmap.md`).
 - ERSST at 2° is warm-biased in coastal cells; several corrections are hand-tuned
   (see the shelf, Northeast shelf, Gulf Stream blocks in `src/template.html`).
-- Storms exist in the Atlantic only (the test basin). 96 held-out seasons (the 214 days from Jun 1) average 16.6 depressions, 13.2 named
-  storms, 7.1 hurricanes, 3.5 majors and ACE 133 against the real 1991-2020 15.8 / 13.9 / 7.2 / 3.2 / 122, with season-to-season SD of the named
-  count 5.1 (real 5.5) and of ACE 75 (66, but a heavier top: the highest simulated season is 383, the real record's 250), and 43 % of named storms
-  becoming extratropical (45 %) at a median 41N (41N). Known misses (`docs/roadmap.md` has them all): East Coast landfalls 0.70 a season (real
-  1.13), Mexico 1.35 (2.17) and Canada 0.08 (0.23) are low and the Greater Antilles / Bahamas (1.84 against 1.23) and South America (0.42 against
-  0.03) high; a fifth of numbered depressions never reach storm strength (real 11 %); post-tropical systems are about 20 % too slow after
-  their transition and there are fewer of them than in the data; subtropical storms are 1.2 a year (1.7); the page's own pressure lows are
+- Storms exist in the Atlantic only (the test basin). 240 seasons the calibration was not fitted on (seeds 1401-1448, 1501-1596, 1601-1696; the 214 days from Jun 1)
+  average 17.0 depressions, 14.1 named storms, 7.7 hurricanes, 3.6 majors and ACE 131 against the real 1991-2020 15.8 / 13.9 / 7.2 / 3.2 / 122 (the three blocks of
+  seeds differ more than chance explains: ACE 110, 144 and 129), with season-to-season SD of the named count 4.9 (real 5.5) and of ACE 77 (66, but a heavier top: the
+  highest simulated season is 440, the real record's 250), and 43 % of named storms becoming extratropical (45 %) at a median 41N (41N). Rapid intensification
+  (24-hour gains of 30 / 50 / 65 / 80 kt in 6.6 / 0.90 / 0.17 / 0.03 % of the windows over water, real 6.3 / 0.73 / 0.16 / 0.03) follows the sea temperature, but starts earlier in a
+  storm's life than the real record's (14 % of the windows that start at 45-65 kt gain 30 kt, real 7 %; 1 % from 95 kt up, real 4 %). Known misses (`docs/roadmap.md` has them all):
+  East Coast landfalls 0.86 a season (real 1.13), Mexico 1.56 (2.17) and Canada 0.07 (0.23) are low and the Greater Antilles / Bahamas (1.94 against 1.23) and South America (0.53 against
+  0.03) high; category 5 storms 0.25 a season (0.47); a sixth of numbered depressions never reach storm strength (real 12 %); post-tropical systems are about 20 % too slow after
+  their transition and there are fewer of them than in the data; subtropical storms are 1.1 a year (1.7); the page's own pressure lows are
   fewer and longer-lived than ERA5's; the moisture slider's effect is far stronger than the warming slider's. The lows thresholds, the
-  2027+ name lists and the performance at 64× are also open. No impacts or invests yet.
+  2027+ name lists and the clock at 32× and 64× (about a third of its nominal speed in headless Chromium) are also open. No impacts or invests yet.
 - All nine basins run in Simulation mode; Forecaster mode hasn't been started (its
   menu card is disabled). Steering arrows and highs are in all nine basins; the
   Mediterranean and the North Indian Ocean have hardly any highs to show (about one day in ten in winter).

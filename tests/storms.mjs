@@ -179,8 +179,8 @@ const LAND = (la, lo) => (lo > -16.3 && lo < 38 && la > 4 && la < 30) || (lo < -
     const mh = storms.filter((S) => tcf(S).some((f) => f.st === 'HU' && f.v >= 96)).length, c5 = storms.filter((S) => tcf(S).some((f) => f.st === 'HU' && f.v >= 137)).length;
     return nm === st.named && hu === st.hurr && mh === st.major && c5 === st.cat5;
   })());
-  const aceFix = storms.reduce((a, S) => a + S.fixes.filter((f) => (f.th === 'tc' || f.th === 'sc') && f.v >= 34).reduce((b, f) => b + H.aceOf(f.v), 0), 0);
-  check('season ACE equals the sum of (v/100)^2 over the tropical / subtropical fixes of 34 kt or more (' + st.ace + ')', near(aceFix, st.ace, 0.2) && near(m.season.aceDaily.reduce((a, b) => a + b, 0), st.ace, 0.2));
+  const aceFix = storms.reduce((a, S) => a + S.fixes.filter((f) => f.h % 6 === 0 && (f.th === 'tc' || f.th === 'sc') && f.v >= 34).reduce((b, f) => b + H.aceOf(f.v), 0), 0);
+  check('season ACE equals the sum of (v/100)^2 over the synoptic (00 / 06 / 12 / 18Z) tropical / subtropical fixes of 34 kt or more (' + st.ace + ')', near(aceFix, st.ace, 0.2) && near(m.season.aceDaily.reduce((a, b) => a + b, 0), st.ace, 0.2));
   check('best-track fixes are reported the way HURDAT2 holds them: wind in 5-kt steps, integer hPa, 0.1 degree', storms.every((S) => S.fixes.every((f) => (f.th === 'wv' || f.v % 5 === 0) && Number.isInteger(f.p) && Math.abs(f.lat * 10 - Math.round(f.lat * 10)) < 1e-6)));
   const latAll = m.systems.flatMap((S) => S.fixes.map((f) => f.lat));
   check('nothing forms or travels within 6 degrees of the equator (lowest latitude ' + Math.min(...latAll).toFixed(1) + ')', Math.min(...latAll) >= 6);
@@ -198,7 +198,7 @@ const LAND = (la, lo) => (lo > -16.3 && lo < 38 && la > 4 && la < 30) || (lo < -
   const north = makeEnv({ sst: (la) => (la > 31 ? 17 : 28.5), shear: 28, rh: 55, steer: () => [10, 6, 12, 7, 15, 8] });
   const S = m.place({ kind: 'td', lat: 28, lon: -70, v: 70 });
   m.advanceTo(160, north);
-  const ex = S.fixes.filter((f) => f.th === 'ex' && f.v >= 35), tc = S.fixes.filter((f) => f.th === 'tc');
+  const ex = S.fixes.filter((f) => f.th === 'ex' && f.v >= 35), tc = S.fixes.filter((f) => f.th === 'tc' && f.h % 6 === 0);
   check('an extratropical cyclone with winds of 40+ kt adds nothing to ACE: ' + ex.length + ' EX fixes at 35+ kt, ACE stays ' + (ex.length ? ex[0].ace : '-') + ' = the tropical sum ' + tc.reduce((a, f) => a + H.aceOf(f.v), 0).toFixed(2),
     ex.length >= 2 && ex.every((f) => f.ace === ex[0].ace) && near(ex[0].ace, tc.reduce((a, f) => a + H.aceOf(f.v), 0), 0.01) && near(m.season.ace, ex[0].ace, 0.011));
 }
@@ -233,9 +233,9 @@ const LAND = (la, lo) => (lo > -16.3 && lo < 38 && la > 4 && la < 30) || (lo < -
   for (const spec2 of [{ kind: 'td', lat: 17, lon: -50 }, { kind: 'sd', lat: 30, lon: -60 }, { kind: 'low', lat: 40, lon: -50 }]) {
     const m2 = H.create({ seed: 14, startMs: START, auto: false }), pre2 = m2.forecast(spec2, envNow, 6 * 24), pl = m2.place(spec2);
     m2.advanceTo(6 * 24, envNow);
-    const mine2 = pl.fixes.filter((f) => f.h <= 6 * 24);
+    const byH2 = {}; for (const f of pl.fixes) if (f.h <= 6 * 24) byH2[f.h] = f;
     check(`the preview of a placed ${spec2.kind === 'td' ? 'tropical depression' : spec2.kind === 'sd' ? 'subtropical depression' : 'low'} is the placed system's track too (${pre2.fixes.length} fixes, ends ${pre2.alive ? 'alive' : pre2.endReason})`,
-      pre2.fixes.length > 2 && pre2.fixes.slice(1).filter((f) => f.h % 6 === 0).every((f, i) => mine2[i] && Math.abs(f.lat - mine2[i].lat) < 1e-9 && Math.abs(f.lon - mine2[i].lon) < 1e-9 && f.v === mine2[i].v) && (spec2.kind !== 'low' || pre2.fixes.length > 8));
+      pre2.fixes.length > 2 && pre2.fixes.slice(1).filter((f) => f.h % 3 === 0).every((f) => byH2[f.h] && Math.abs(f.lat - byH2[f.h].lat) < 1e-9 && Math.abs(f.lon - byH2[f.h].lon) < 1e-9 && f.v === byH2[f.h].v) && (spec2.kind !== 'low' || pre2.fixes.length > 16));
   }
   check('a preview changes nothing in the manager (no ids, no counters)', m.n.M === 1 && H.create({ seed: 12, startMs: START, auto: false }).forecast(spec, envNow, 48) && true);
   const p1 = H.create({ seed: 55, startMs: START }), p2 = H.create({ seed: 55, startMs: START });
@@ -244,7 +244,7 @@ const LAND = (la, lo) => (lo > -16.3 && lo < 38 && la > 4 && la < 30) || (lo < -
   const key = (mgr) => JSON.stringify(mgr.systems.filter((S) => S.id[0] === 'W' || S.id[0] === 'N').map((S) => [S.id, S.fixes.length, S.lat, S.lon, S.v]));
   check('hand-placing a storm does not change any automatic wave or seed', key(p1) === key(p2));
   const dev = H.create({ seed: 3, startMs: START, auto: false }), far = dev.forecast({ kind: 'td', lat: 15, lon: -50 }, makeEnv({ sst: 29, shear: 5 }), 240);
-  check('a forecast reports peak, development, ACE and fixes every six hours from the start', far.fixes[0].h === 0 && far.fixes[1].h === 6 && far.peak.v >= 100 && far.developed && far.ace > 5 && far.fixes.length >= 40);
+  check('a forecast reports peak, development, ACE and fixes every three hours from the start', far.fixes[0].h === 0 && far.fixes[1].h === 3 && far.fixes[2].h === 6 && far.peak.v >= 100 && far.developed && far.ace > 5 && far.fixes.length >= 80);
   // a cyclone put on the map is a numbered depression even if it has changed class before its first six-hourly fix (a 70-kt storm at 41N does so one time in three)
   { const q = H.create({ seed: 9, startMs: START, auto: false, params: { etHaz: { b0: 12 } } }), P = q.place({ kind: 'td', lat: 41, lon: -50, v: 70 });
     q.advanceTo(12, makeEnv({ sst: 18, shear: 40 }));
@@ -267,6 +267,7 @@ const LAND = (la, lo) => (lo > -16.3 && lo < 38 && la > 4 && la < 30) || (lo < -
   const m2 = H.create({ seed: 8, startMs: Date.UTC(2026, 11, 28), auto: false }); const C = m2.place({ kind: 'td', lat: 18, lon: -40 });
   m2.advanceTo(40 * 24, env);
   check('the finished season is closed once its last storm dies, and the new year starts again from the 2027 list', m2.archive.length === 1 && !m2.archive[0].open && m2.archive[0].storms.length >= 1 && H.nameFor(2027, 0) === 'Ana');
+  check('the archived storms keep their ACE unrounded (the page rounds once, to a tenth: rounding here too turned 10.5475 into 10.55 and then 10.6): ' + m2.archive[0].storms.map((x) => x.ace).join(', '), m2.archive[0].storms.some((x) => x.ace > 0 && Math.abs(x.ace * 100 - Math.round(x.ace * 100)) > 1e-6));
   void B;
 }
 
@@ -640,6 +641,37 @@ const LAND = (la, lo) => (lo > -16.3 && lo < 38 && la > 4 && la < 30) || (lo < -
     check('with maps the preview of a placed wave is exactly the wave that is placed (same hazard draws, same noise)', pre.fixes.filter((f) => byH[f.h]).length >= 18 && pre.fixes.filter((f) => byH[f.h]).every((f) => f.lat === byH[f.h].lat && f.lon === byH[f.h].lon && f.v === byH[f.h].v)); }
 }
 
+/* ---- precursors are one lifecycle: wave / low -> disturbance -> depression ------------------------------------------------------------------------- */
+{
+  const GRl = { lon0: -105, lat0: 5, res: 5, nx: 21, ny: 13 }, flatl = (v) => Array.from({ length: 12 }, () => Array.from({ length: GRl.ny }, () => new Array(GRl.nx).fill(v)));
+  const mapsL = (haz) => ({ grid: GRl, drift: { weak: { u: flatl(-8), v: flatl(3) }, strong: { u: flatl(-6), v: flatl(5) }, sub: { u: flatl(4), v: flatl(1) }, ex: { u: flatl(15), v: flatl(5) } }, steerClim: [0, 0, 0, 0, 0, 0].map((x) => flatl(x)), haz: { T: flatl(haz), S: flatl(0) }, env0: { rh: flatl(54), shear: flatl(10), sst: flatl(27.5), sstRel: flatl(0) } });
+  const zero = () => [0, 0, 0, 0, 0, 0], T0 = Date.UTC(2026, 7, 20);
+  const good = makeEnv({ sst: 29, shear: 5, rh: 62, steer: zero }), poor = makeEnv({ sst: 24, shear: 35, rh: 40, steer: zero }), mixed = makeEnv({ sst: 27.5, shear: 12, rh: 55, steer: zero });
+  const stages = (S) => S.fixes.filter((f) => f.th === 'wv').map((f) => f.st), firstTc = (S) => S.fixes.findIndex((f) => f.th !== 'wv');
+  let dev = 0, viaDb = 0, seedLo = 0, seedDb = 0;
+  for (let sd = 1; sd <= 12; sd++) {
+    const m = H.create({ seed: sd, startMs: T0, auto: false, maps: mapsL(0.01) }), W = m.place({ kind: 'wave', lat: 14, lon: -45 }), N = m._seedSystem('N', 'wv', 26, -80, 16, 0, 'seed', false);
+    if (H.statusOf(N) === 'LO' && !N.dist) seedLo++;
+    m.advanceTo(24 * 8, good);
+    const i = firstTc(W); if (i > 0) { dev++; if (stages(W).includes('DB')) viaDb++; }
+    const sN = stages(N); if (sN.includes('DB') || firstTc(N) > 0) seedDb++;
+  }
+  check(`a wave in a good environment is a disturbance before it is a depression, the same system on its way: of ${dev} that developed (of 12), ${viaDb} had disturbance fixes before the depression's first`, dev >= 8 && viaDb === dev);
+  check(`a local seed is born a low (status LO, drawn as an L) and becomes a disturbance when it has the potential: ${seedLo} of 12 were born LO and ${seedDb} reached DB or a depression in a good environment`, seedLo === 12 && seedDb >= 8);
+  let dbPoor = 0, devPoor = 0, flips = 0, maxFlips = 0;
+  for (let sd = 1; sd <= 12; sd++) {
+    const m = H.create({ seed: sd, startMs: T0, auto: false, maps: mapsL(0.01) }), W = m.place({ kind: 'wave', lat: 14, lon: -45 });
+    m.advanceTo(24 * 8, poor); if (stages(W).includes('DB')) dbPoor++; if (firstTc(W) > 0) devPoor++;
+    const m2 = H.create({ seed: sd, startMs: T0, auto: false, maps: mapsL(0.0004) }), W2 = m2.place({ kind: 'wave', lat: 14, lon: -45 });
+    m2.advanceTo(24 * 10, mixed); const st = stages(W2); let f = 0; for (let k = 1; k < st.length; k++) if (st[k] !== st[k - 1]) f++; flips += f; maxFlips = Math.max(maxFlips, f);
+  }
+  check(`in a hostile environment (cold water, 35 kt of shear, dry air) a wave never becomes a disturbance (${dbPoor} of 12) nor a depression (${devPoor}); in a marginal one the stage does not flicker: at most ${maxFlips} changes of stage in ten days, ${(flips / 12).toFixed(1)} on average`, dbPoor === 0 && devPoor === 0 && maxFlips <= 4);
+  // a tracked pressure low: a disturbance (X) when its place and time give it the potential, a low (L) when they do not
+  const lowAt = (env, haz) => { const m = H.create({ seed: 5, startMs: T0, auto: true, params: { waveRate0: 0 }, maps: mapsL(haz) }), E = Object.assign({}, env, { lows: () => [{ lat: 28, lon: -75, p: 1004, prom: 6 }] }); m.advanceTo(24 * 3, E); return m.lows.tracks.find((q) => q.alive); };
+  const tg = lowAt(good, 1e-7), tp = lowAt(poor, 1e-7);
+  check(`a tracked low over warm water with little shear is a disturbance (dist ${tg && tg.dist}), one over cold water with strong shear stays a low (dist ${tp && tp.dist})`, !!tg && tg.dist === true && !!tp && !tp.dist);
+}
+
 /* ---- the calibrated defaults ------------------------------------------------------------------------------------------------------------------------------------ */
 {
   H.calibrated(true);
@@ -660,6 +692,33 @@ const LAND = (la, lo) => (lo > -16.3 && lo < 38 && la > 4 && la < 30) || (lo < -
   const gI = [], gH = []; for (let s = 1; s <= 40; s++) { gI.push(gain24(trace(18, 50, ideal, 168, s))); gH.push(gain24(trace(18, 50, hostile, 168, s))); }
   check(`rapid intensification is in the calibrated values: in a good environment (29 degC, 5 kt of shear, moist) the strongest 24-hour gain of a week averages ${mean(gI).toFixed(0)} kt and is 30 kt or more in ${gI.filter((g) => g >= 30).length} of 40 seeds, in a hostile one in ${gH.filter((g) => g >= 30).length} of 40`,
     mean(gI) > 45 && gI.filter((g) => g >= 30).length >= 30 && gH.filter((g) => g >= 30).length === 0);
+  // rapid intensification follows the conditions: none in a hostile environment, some in a marginal one, much in a good one and a great one, and in a perfect one (30.4 degC, next to no shear, very moist air)
+  // an episode that can take a storm up by 80 to 100 kt in about a day (the real Atlantic record has three storms with a gain of 75 kt or more in 24 h in 42 seasons: Wilma's 95, Felix's 85 and Matthew's 75)
+  const rungs = [['hostile', hostile], ['marginal', makeEnv({ sst: 27.4, shear: 10, rh: 52, steer: zero })], ['good', makeEnv({ sst: 28.4, shear: 8, rh: 58, steer: zero })], ['great', ideal], ['perfect', makeEnv({ sst: 30.4, shear: 1, rh: 68, steer: zero })]];
+  const ladder = rungs.map(([name, env]) => {
+    const g = [], pn = [];
+    for (let sd = 1; sd <= 40; sd++) { const S = system('tc', 18, -55, 50, sd), vs = [S.vr]; for (let h = 0; h < 168 && S.alive; h++) { H.stepSystem(S, env, h, sd, D); vs.push(S.vr); if (S.ri) pn.push(S.ri.pn); } g.push(gain24(vs)); }
+    return { name, mean: mean(g), n30: g.filter((x) => x >= 30).length, n50: g.filter((x) => x >= 50).length, n65: g.filter((x) => x >= 65).length, n80: g.filter((x) => x >= 80).length, max: Math.max(...g), pn: pn.length ? mean(pn) : 0 };
+  });
+  const [lH, lM, lG, lGr, lP] = ladder;
+  check(`the strongest 24-hour gain of a week grows with the conditions: ${ladder.map((x) => x.name + ' ' + x.mean.toFixed(0)).join(' < ')} kt (means of 40 seeds from a 50-kt storm at 18N)`, ladder.every((x, i) => i === 0 || x.mean > ladder[i - 1].mean + 4));
+  check(`rapid intensification is rare in a marginal environment (50 kt or more in ${lM.n50} of 40 seeds), common in a good one (30 kt or more in ${lG.n30}, 50 kt or more in ${lG.n50}) and absent in a hostile one (${lH.n30})`, lH.n30 === 0 && lM.n50 <= 7 && lM.n30 >= 20 && lG.n30 >= 32 && lG.n50 >= 6 && lG.n65 <= 6);
+  check(`in a perfect environment it is extreme: the strongest 24-hour gain is 65 kt or more in ${lP.n65} of 40 seeds, 80 kt or more in ${lP.n80} and ${lP.max.toFixed(0)} kt at most, against ${lGr.n65} / ${lGr.n80} / ${lGr.max.toFixed(0)} in a great one (the extra speed comes from the pinnacle index of the episodes: ${lP.pn.toFixed(2)} against ${lGr.pn.toFixed(2)} and ${lG.pn.toFixed(2)})`,
+    lP.n65 >= 12 && lP.n80 >= 3 && lP.max >= 85 && lP.max <= 125 && lGr.n80 <= 3 && lP.n65 > lGr.n65 + 5 && lP.pn > lGr.pn + 0.25 && lG.pn < 0.2);
+  // the start of an episode is gated by each of the conditions: switching one factor off (the same environment, that factor made blind) brings the episodes back
+  const started = (p, env, lat, v0) => {
+    let eps = 0, hours = 0;
+    for (let sd = 1; sd <= 40; sd++) { const S = system('tc', lat, -55, v0, sd); let on = false; for (let h = 0; h < 168 && S.alive; h++) { H.stepSystem(S, env, h, sd, p); hours++; if (S.ri && !on) eps++; on = !!S.ri; } }
+    return { eps, rate: 1000 * eps / hours };
+  };
+  const blind = (patch) => H.mergeParams(D, { ri: patch });
+  const gates = [
+    ['shear (90 kt on the page\'s scale)', makeEnv({ sst: 29, shear: 90, rh: 62, steer: zero }), 18, 50, { shear: 1e9 }, (a, b) => a.rate < 0.55 * b.rate && b.eps >= 60],
+    ['cool water (25 degC)', makeEnv({ sst: 25, shear: 3, rh: 66, steer: zero }), 18, 50, { sst: [-50, -40] }, (a, b) => a.eps === 0 && b.eps >= 20],
+    ['dry air (40 %)', makeEnv({ sst: 29, shear: 5, rh: 40, steer: zero }), 18, 50, { rh: [-50, -40] }, (a, b) => a.eps === 0 && b.eps >= 8],
+    ['no room left (a 110-kt hurricane over 27.8 degC)', makeEnv({ sst: 27.8, shear: 5, rh: 62, steer: zero }), 18, 110, { room: [-5, -4] }, (a, b) => a.eps === 0 && b.eps >= 40],
+  ].map(([name, env, lat, v0, patch, ok]) => { const a = started(D, env, lat, v0), b = started(blind(patch), env, lat, v0); return { name, a, b, ok: ok(a, b) }; });
+  check(`an episode needs the conditions: episodes started in 40 week-long runs, as shipped / with that factor blind: ${gates.map((g) => g.name + ' ' + g.a.eps + ' / ' + g.b.eps).join('; ')}`, gates.every((g) => g.ok));
   const fin = (lat) => mean(Array.from({ length: 20 }, (_, i) => { const vs = trace(lat, 100, ideal, 72, i + 1); return vs[vs.length - 1]; })), f15 = fin(15), f32 = fin(32);
   check(`the calibrated potential wind falls poleward: a 100-kt hurricane over the same 29 degC water is at ${f15.toFixed(0)} kt after three days at 15N and ${f32.toFixed(0)} kt at 32N`, f15 > 100 && f15 - f32 > 25);
   const GRc = { lon0: -105, lat0: 5, res: 5, nx: 21, ny: 13 }, flatc = (v) => Array.from({ length: 12 }, () => Array.from({ length: GRc.ny }, () => new Array(GRc.nx).fill(v)));

@@ -31,7 +31,7 @@ const mutants = [
   M('E3', S, [E('from: q.from || 0', 'from: 0')], ['node', 'summary'], 'a season forgets the day its count started'),
   M('E4', S, [E("S.th !== 'wv')) this._finalizePrev();", "S.th !== 'wv')) void 0;")], ['node'], 'the old season is never closed'),
   M('E5', S, [E('const byDep = (a, b) => a.depNum - b.depNum', 'const byDep = (a, b) => b.depNum - a.depNum')], ['node', 'summary'], 'cyclones listed newest first'),
-  M('E6', S, [E('ace: S.ace, end: S.end', 'ace: Math.round(S.ace * 100) / 100, end: S.end')], ['summary'], 'a storm summary rounds its ACE twice'),
+  M('E6', S, [E('ace: S.ace, end: S.end', 'ace: Math.round(S.ace * 100) / 100, end: S.end')], ['node', 'summary'], 'a storm summary rounds its ACE twice'),
   M('U1', T, [E("['DEP', rec.dep, n && n.dep], ['NAMED', rec.named, n && n.named]", "['DEP', rec.named, n && n.dep], ['NAMED', rec.dep, n && n.named]")], ['summary'], 'DEP and NAMED totals swapped on the card'),
   M('U1b', T, [E("['HURR', rec.hurr, n && n.hurr], ['MAJOR', rec.major, n && n.major]", "['HURR', rec.major, n && n.hurr], ['MAJOR', rec.hurr, n && n.major]")], ['summary'], 'HURR and MAJOR totals swapped on the card'),
   M('U1c', T, [E("['MAJOR', rec.major, n && n.major], ['CAT 5', rec.cat5, n && n.cat5]", "['MAJOR', rec.cat5, n && n.major], ['CAT 5', rec.major, n && n.cat5]")], ['summary'], 'MAJOR and CAT 5 totals swapped on the card'),
@@ -53,9 +53,9 @@ const mutants = [
   M('X1', T, [E('const only = stormSel ? stormSel.id : null;', 'const only = null;')], ['storms'], 'selecting a storm does not hide the other paths'),
   M('X2', T, [E('<input type="checkbox" id="stlows" checked>', '<input type="checkbox" id="stlows">')], ['storms'], 'lows are off by default'),
   M('X3', T, [E("if (!t.alive || t.fixes.length < 3 || t.lat < 18 || t.lat > 45 || isLand(t.lat, t.lon)) continue;", "if (!t.alive || t.fixes.length < 3) continue;")], ['storms'], 'lows are drawn over land and everywhere'),
-  M('X4', T, [R("if \\(S\\.kind === 'N'\\) \\{\\s+// a local disturbance", "if (false) { // a local disturbance")], ['storms'], 'a local disturbance looks like a wave'),
+  M('X4', T, [E("showWaves = $('stwaves').checked && !only,", "showWaves = false,")], ['storms'], 'waves are never drawn'),
   M('X5', S, [E('etHaz: {b0: -6.1},', 'etHaz: {b0: -30},')], ['node', 'storms'], 'no extratropical transition'),
-  M('X6', S, [E('ri: {haz: 0.04,', 'ri: {haz: 0,')], ['node', 'storms'], 'no rapid intensification'),
+  M('X6', S, [E('ri: {haz: 0.038,', 'ri: {haz: 0,')], ['node', 'storms'], 'no rapid intensification'),
   M('X7', S, [E('  vpLat: 0.5,', '  vpLat: 0,')], ['node', 'storms'], 'no cap on the wind a storm can reach poleward'),
   M('X8', S, [E('  tdMargin: 0.12,', '  tdMargin: 0,')], ['node', 'storms'], 'depressions are declared that could not live'),
   M('X9', S, [E('driftGain: { wv: 0.75, tc: 0.75, sc: 0.75, ex: 0.75, nl: 0.6 }', 'driftGain: { wv: 0, tc: 0, sc: 0, ex: 0, nl: 0 }')], ['node', 'storms'], 'storms ignore the anomaly of the page steering'),
@@ -80,6 +80,29 @@ const mutants = [
   M('S14', I, [E("location.href = b.href + '?resume=1'; };", 'location.href = b.href; };')], ['save'], 'Continue opens a new game'),
   M('S15', T, [E('Object.assign(P, u.P); sliders.forEach', 'sliders.forEach')], ['save'], 'the sliders are not restored'),
   M('S16', T, [E('else if (RESUME) setPlaying(false);', 'else if (RESUME) setPlaying(true);')], ['save'], 'a resumed season starts running'),
+  // ---- M8: the precursors as one lifecycle, three-hourly fixes, the storm engine's own environment grid, the frame loop, rapid intensification that follows the conditions
+  M('Y1', T, [E("const stage = S.dist ? 'dist' : S.kind === 'N' ? 'low' : 'wave';", "const stage = S.kind === 'N' ? 'low' : 'wave';")], ['storms'], 'a disturbance is drawn as a wave or a low'),
+  M('Y2', T, [E("const stage = S.dist ? 'dist' : S.kind === 'N' ? 'low' : 'wave';", "const stage = S.dist ? 'dist' : 'wave';")], ['storms'], 'a low is drawn as a wave'),
+  M('Y3', T, [E('<input type="checkbox" id="stdist" checked>', '<input type="checkbox" id="stdist">')], ['storms'], 'disturbances are off by default'),
+  M('Y4', T, [E("showDist = $('stdist').checked && !only", 'showDist = !only')], ['storms', 'summary'], 'the Disturbances box does nothing'),
+  M('Y5', S, [E('if (S.dev >= 0 || S.v >= par.distOn) S.dist = true;', 'if (false) S.dist = true;')], ['node'], 'no system ever becomes a disturbance'),
+  M('Y6', S, [E('else if (S.v < par.distOff) S.dist = false;', 'else S.dist = false;')], ['node'], 'a disturbance falls back to a wave the moment its wind dips (no hysteresis)'),
+  M('Y7', S, [E("case 'wv': return S.dist ? 'DB' : S.kind === 'N' ? 'LO' : 'WV';", "case 'wv': return S.kind === 'N' ? 'LO' : 'WV';")], ['node'], 'the status of a disturbance is never DB'),
+  M('Y8', S, [E('if (isTC && rv >= 34 && h % 6 === 0) { add = aceOf(rv);', 'if (isTC && rv >= 34) { add = aceOf(rv);')], ['node'], 'ACE counted at every three-hourly fix (twice what it should be)'),
+  M('Y9', S, [E('if (this.hour % 3 === 0) this._record(this.hour, env);', 'if (this.hour % 6 === 0) this._record(this.hour, env);')], ['node', 'place'], 'fixes only every six hours again'),
+  M('Y10', T, [E('r: syn ? 8 : 6, S, f', 'r: 8, S, f')], ['place'], 'the small dots can not be hovered'),
+  M('Y11', T, [E('const syn = white || f.h % 6 === 0;', 'const syn = true;')], ['place'], 'every dot is a big one'),
+  M('Y12', T, [E("p = j * NXS + i, q = p + NXS;\n  return (arr[p] * (1 - ax) + arr[p + 1] * ax) * (1 - ay) + (arr[q] * (1 - ax) + arr[q + 1] * ax) * ay;", "p = j * NXS + i, q = p + NXS;\n  return (arr[p] * (1 - ax) + arr[p + 1] * ax) * ay + (arr[q] * (1 - ax) + arr[q + 1] * ax) * (1 - ay);")], ['storms'], 'the storm grid is interpolated with the wrong weights'),
+  M('Y13', T, [E('+ hes * sHEnsoF[ks] + hws * syn + hmo;', '+ hes * sHEnsoF[ks] + hmo;')], ['storms'], 'the storm grid leaves out the humidity texture'),
+  M('Y14', T, [E("sws * SHEAR_TEXTURE_GAIN * syn + ssh;\n        const off = Math.abs(lat - jetAxisF[i]);", "sws * SHEAR_TEXTURE_GAIN * syn;\n        const off = Math.abs(lat - jetAxisF[i]);")], ['storms'], 'the storm grid forgets the shear slider'),
+  M('Y15', T, [E("  anomDirty = true; sAnomDirty = true;\n}\nfunction simDate(h)", "  anomDirty = true;\n}\nfunction simDate(h)")], ['storms'], "the storm grid keeps the previous day's large-scale anomalies"),
+  M('Y16', T, [E('if (performance.now() - t0 >= SIM_BUDGET_MS) break;', '')], ['storms'], 'the clock takes as long as it needs in a frame (no time budget)'),
+  M('Y17', T, [E('acc = Math.min(acc - done * STEP_MS, MAX_BACKLOG_H * STEP_MS);', 'acc -= done * STEP_MS;')], ['storms'], 'what a slow machine owes the clock is not capped'),
+  M('Y18', S, [E('xLo: 0.8, xHi: 3.8,', 'xLo: 0, xHi: 0,')], ['node'], 'a perfect environment is no faster than a great one'),
+  M('Y19', S, [E('/ (1 + Math.pow(shT / R.shear, 3))', '')], ['node'], 'rapid intensification ignores the shear'),
+  M('Y20', S, [E('const cond = smooth01(sstE, R.sst[0], R.sst[1])', 'const cond = 1')], ['node'], 'rapid intensification ignores the sea temperature'),
+  M('Y21', S, [E('if (V > 0.93 * vcap || lf > 0.3)', 'if (lf > 0.3)')], ['node'], 'an episode goes on past the potential wind'),
+  M('Y22', S, [E('smooth01(1 - V / Math.max(vcap, 1), R.room[0], R.room[1]) * gL;', 'gL;')], ['node'], 'an episode starts as easily next to the potential wind'),
 ];
 
 function applyEdits(text, edits, id) {
@@ -161,7 +184,7 @@ async function runMutant(m, results) {
 // ---------------------------------------------------------------------------------------------------------------------------------
 let list = base ? [M('base', S, [], ['node', 'storms', 'summary', 'place', 'save'], 'unmutated')] : (only ? mutants.filter((m) => only.includes(m.id)) : mutants);
 if (drivers) list = list.map((m) => ({ ...m, drivers: m.drivers.filter((d) => drivers.includes(d)) })).filter((m) => m.drivers.length);
-if (dry) { for (const m of mutants) { applyEdits(readFileSync(join(REPO, m.file), 'utf8'), m.edits, m.id); } console.log('all', mutants.length, 'anchors found exactly once'); process.exit(0); }
+if (dry) { let bad = 0; for (const m of mutants) { try { applyEdits(readFileSync(join(REPO, m.file), 'utf8'), m.edits, m.id); } catch (e) { bad++; console.log(e.message); } } console.log(bad ? bad + ' of ' + mutants.length + ' anchors broken' : 'all ' + mutants.length + ' anchors found exactly once'); process.exit(bad ? 1 : 0); }
 mkdirSync(OUT, { recursive: true });
 const results = [], running = new Set();
 for (const m of list) {

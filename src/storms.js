@@ -128,7 +128,9 @@ const CALIBRATED = {
   qSd: 0.7,
   tdMargin: 0.12,
   rhSelf: 5,
-  ri: {haz: 0.04, rate: [2.343, 5.02], shear: 8.609, rh: [44, 58]},                // rh: on the page's humidity scale (the main development region's mean is 54), not the 50-68 of a storm-centred field
+  ri: {haz: 0.038, hp: 0.6, rate: [1.2, 2.1], rk: 1.5, xLo: 0.8, xHi: 3.8, sst: [25.5, 27.8], pnSst: [27.6, 29.6], shear: 8.609, rh: [44, 58], vLow: [34, 58], vHigh: [135, 160], room: [0.05, 0.22]},
+                                                                                      // rh: on the page's humidity scale (the main development region's mean is 54), not the 50-68 of a storm-centred field;
+                                                                                      // the values are tools/storm_ri.mjs against the real record (data/generated/atlantic-tc-ri.json): the share of 24-h windows that gain 30 / 50 / 65 / 80 kt, by sea temperature
   envB: {rh: 0.12, shear: 0.1421, sst: 0.1715, sstAbs: 0.03626},
   rhLat: -12.39,
   sstLat: 0.2852,
@@ -176,7 +178,8 @@ function structureParams() {
     // subtropical systems (relaxed gates, capped intensity)
     sub: { sstGate: [22.0, 25.0], rhGate: [30, 55], shearScale: 26, gCrit: 0.30, kUp: 0.012, vCap: 62 },
     // rapid intensification
-    ri: { haz: 0.0075, dur: [12, 36], rate: [0.9, 2.4], cool: 18, sst: [27.4, 29.0], shear: 9, rh: [50, 68] },
+    ri: { haz: 0.0075, dur: [12, 36], rate: [0.9, 2.4], cool: 18, sst: [27.4, 29.0], shear: 9, rh: [50, 68],
+      hp: 1, rk: 1, xLo: 0, xHi: 0, pnSst: [28.0, 30.0], pnShear: 2.2, pnRh: [52, 64], pnRoom: [0.25, 0.55], vLow: [35, 55], vHigh: [105, 125], room: [0.12, 0.35] },     // vLow / vHigh / room: the wind range an episode can start in and the share of the potential wind that must still be free; hp: the exponent of the conditions in the start rate; rk: the exponent of the draw of the rate (above 1 most episodes are slow and the fast ones rare); xLo / xHi: how much faster an episode can be in a perfect environment (pn, 0-1: warm deep water, no shear, moist air, far from the potential wind)
     // the quality of a seed: how well organised this disturbance is, a persistent random factor on its growth gate (N(0,1), correlation time
     // qTau hours, gate x exp(qSd q) until the system is a storm): given the same environment some waves develop and most do not
     qSd: 0.4, qTau: 48, qFade: [35, 65],
@@ -242,6 +245,7 @@ function structureParams() {
     // activity factor on every development rate, exp(seasSd z_year + intraSd z(t)) with unit mean: z_year a draw per calendar year, z(t) six sinusoids of 14-60 day periods with random
     // phases (a pure function of the seed and the time). It is what makes some seasons hyperactive and some quiet, and storms cluster in time, as the real ones do
     act: { seasSd: 0.2, intraSd: 0.15, K: 6, T: [14, 60] },
+    distOn: 19, distOff: 17, distOnE: 1.2, distOffE: 0.9,                  // the disturbance stage of a wave or seed (wind, kt, with hysteresis) and of a tracked low (development rate relative to its place's mean)
     seedV: [14, 20], lifeN: [48, 144], distV: [14, 22], seedMul: 1, waveLatMax: 32,          // an easterly wave that has not developed by 32N is no longer one (it has become a trough)
   };
 }
@@ -409,7 +413,7 @@ function newSystem(o) {
   return {
     id: o.id, num: o.num, origin: o.origin || '', born: o.hour, th: o.th, sub: !!o.sub, dev: -1, life: o.life || 0, kind: o.kind || '',
     lat: o.lat, lon: o.lon, v: o.v, vr: o.v, p: 1008, cx: o.cx || 0, cy: o.cy || 0, wx: 0, wy: 0, zv: 0, zp: 0,
-    q: o.q || 0, shSm: null, rhSm: null, cw: 0, ri: null, riCoolUntil: -1, riTotal: 0, onLand: false, genCount: 0, lowCount: 0, landLow: 0, convCount: 0, nlTill: -1,
+    q: o.q || 0, dist: false, shSm: null, rhSm: null, cw: 0, ri: null, riCoolUntil: -1, riTotal: 0, onLand: false, genCount: 0, lowCount: 0, landLow: 0, convCount: 0, nlTill: -1,
     exDeep: 0, exEp: null, exLift: 0, ux: 0, uy: 0, etAt: -1, remnant: false, alive: true, end: null, endReason: '', depNum: 0, name: '', tdHour: -1, namedHour: -1,
     peakV: 0, peakP: 1020, peakHour: -1, ace: 0, season: 0, fixes: [], st: 'WV', lastShear: 15, lastRh: 50, lastSst: 27, lastLf: 0, kill: false,
   };
@@ -417,7 +421,7 @@ function newSystem(o) {
 function statusOf(S) {
   const v = round5(S.vr);
   switch (S.th) {
-    case 'wv': return v >= 20 ? 'DB' : 'WV';
+    case 'wv': return S.dist ? 'DB' : S.kind === 'N' ? 'LO' : 'WV';              // a wave or a low that has the potential to become a cyclone (S.dist) is a disturbance; the same system, one stage on
     case 'tc': return v >= 64 ? 'HU' : v >= 34 ? 'TS' : 'TD';
     case 'sc': return v >= 34 ? 'SS' : 'SD';
     case 'ex': return 'EX';
@@ -613,9 +617,12 @@ function stepSystem(S, env, h, seed, par, doy, ctx) {
         else dV += S.ri.rate * Math.sin(Math.PI * (h - S.ri.t0 + 0.5) / S.ri.dur);
       } else if (h >= S.riCoolUntil && lf < 0.1) {
         const cond = smooth01(sstE, R.sst[0], R.sst[1]) / (1 + Math.pow(shT / R.shear, 3)) * smooth01(rh, R.rh[0], R.rh[1])
-          * smooth01(V, 35, 55) * (1 - smooth01(V, 105, 125)) * smooth01(1 - V / Math.max(vcap, 1), 0.12, 0.35) * gL;
-        if (cond > 0.01 && rnd(seed, id, h, ST.RIT) < R.haz * cond) {
-          S.ri = { t0: h, dur: R.dur[0] + (R.dur[1] - R.dur[0]) * rnd(seed, id, h, ST.RID), rate: R.rate[0] + (R.rate[1] - R.rate[0]) * rnd(seed, id, h, ST.RIR) };
+          * smooth01(V, R.vLow[0], R.vLow[1]) * (1 - smooth01(V, R.vHigh[0], R.vHigh[1])) * smooth01(1 - V / Math.max(vcap, 1), R.room[0], R.room[1]) * gL;
+        if (cond > 0.01 && rnd(seed, id, h, ST.RIT) < R.haz * Math.pow(cond, R.hp)) {
+          // how perfect the environment is (0-1): very warm water, next to no shear, moist air, far from the potential wind; in a perfect one an episode can be much faster
+          const pn = R.xLo || R.xHi ? smooth01(sstE, R.pnSst[0], R.pnSst[1]) / (1 + Math.pow(shT / R.pnShear, 3)) * smooth01(rh, R.pnRh[0], R.pnRh[1]) * smooth01(1 - V / Math.max(vcap, 1), R.pnRoom[0], R.pnRoom[1]) * gL : 0;
+          const r0 = R.rate[0] + R.xLo * pn, r1 = R.rate[1] + R.xHi * pn;
+          S.ri = { t0: h, dur: R.dur[0] + (R.dur[1] - R.dur[0]) * rnd(seed, id, h, ST.RID), rate: r0 + (r1 - r0) * Math.pow(rnd(seed, id, h, ST.RIR), R.rk), pn };
         }
       }
     }
@@ -653,6 +660,7 @@ function stepSystem(S, env, h, seed, par, doy, ctx) {
   // ---- transitions and endings
   const lat2 = S.lat;
   if (th === 'wv') {
+    if (S.dev >= 0 || S.v >= par.distOn) S.dist = true; else if (S.v < par.distOff) S.dist = false;      // the disturbance stage: development has begun, or the environment holds the wind up near what a depression needs (with some hysteresis)
     if (S.vr >= (S.sub && M ? par.devVSub - 1 : par.genV) && lf < 0.5 && Math.abs(lat2) >= 6 && sstE > (S.sub && M ? 19 : 24) && (!M || (S.dev >= 0 && S.sust !== false))) S.genCount++; else S.genCount = 0;
     if (S.genCount >= par.genHold) { S.th = S.sub ? 'sc' : 'tc'; S.tdHour = h + 1; S.genCount = 0; }
     else {
@@ -860,6 +868,7 @@ Manager.prototype._updateLows = function (h, env) {
       const eS = envFactor(par, M, tw, t.lat, t.lon, sst, rh, sh, sstRef, true) * devGateAt(par, env, true, t.lat, sst, rh, sh, doy, par.sstOffset) * act;
       const hT = Math.min(par.hazMax, 6 * par.hazMul * mapAt(M, M.haz.T, tw, t.lat, t.lon) * eT * this.autoRate), hS = Math.min(par.hazMax, 6 * par.hazMul * mapAt(M, M.haz.S, tw, t.lat, t.lon) * eS * this.autoRate);
       if (ctx.diag) diagExposure(ctx, 'L', tw, t.lat, t.lon, eT, eS, 6);
+      const pot = Math.max(eT, eS); if (pot >= par.distOnE) t.dist = true; else if (pot < par.distOffE) t.dist = false;           // a low with the potential to become a cyclone is a disturbance too
       const u = rnd(this.seed, idNum('L', +t.id.slice(1)), h, ST.LOWSEED);
       if (u < hT + hS) {
         this.lows._finish(t, h); t.became = true;
@@ -882,27 +891,27 @@ Manager.prototype._updateLows = function (h, env) {
   }
 };
 
-Manager.prototype._record = function (h, env) {                             // six-hourly best-track fixes, naming, counters, ACE
+Manager.prototype._record = function (h, env) {                             // three-hourly fixes (the six-hourly ones are the synoptic times; ACE counts only those), naming, counters
   const season = this.season, par = this.par;
   for (const S of this.systems) {
     if (!S.alive && S.end !== h) continue;
     if (S.th === 'wv' && !S.alive) continue;                                   // a wave that never developed leaves no record
     const st = statusOf(S), isTC = S.th === 'tc' || S.th === 'sc', rv = round5(S.vr);
     const rec = S.season === season.year ? season : (this.prev && this.prev.year === S.season ? this.prev : season);
-    // a system put on the map as a cyclone is a numbered depression even if it changes class before its first six-hourly fix (a 70-kt storm placed at 41N is post-tropical within six hours one time in three)
+    // a system put on the map as a cyclone is a numbered depression even if it changes class before its first fix (a 70-kt storm placed at 41N is post-tropical within six hours one time in three)
     if ((isTC || S.origin === 'placed:td' || S.origin === 'placed:sd') && S.depNum === 0) { S.depNum = ++rec.dep; if (S.tdHour < 0) S.tdHour = h; rec.storms.push(S.id); }
     if (isTC && S.name === '' && rv >= par.namedV) {
       S.name = nameFor(rec.year, rec.namedIdx++); S.namedHour = h; rec.named++;
     }
     let add = 0;
-    if (isTC && rv >= 34) { add = aceOf(rv); S.ace += add; rec.ace += add; rec.aceDaily[this._aceDay(rec.year, h)] += add; }
+    if (isTC && rv >= 34 && h % 6 === 0) { add = aceOf(rv); S.ace += add; rec.ace += add; rec.aceDaily[this._aceDay(rec.year, h)] += add; }       // ACE: the synoptic 00 / 06 / 12 / 18Z fixes only, as the real definition has it
     if (isTC && st === 'HU' && !S.hurr) { S.hurr = true; rec.hurr++; }
     if (isTC && st === 'HU' && rv >= 96 && !S.major) { S.major = true; rec.major++; }
     if (isTC && st === 'HU' && rv >= 137 && !S.c5) { S.c5 = true; rec.cat5++; }
     if (isTC && rv > S.peakV) { S.peakV = rv; S.peakHour = h; S.peakP = Math.round(S.p); }
     if (isTC && Math.round(S.p) < S.peakP && rv >= S.peakV) S.peakP = Math.round(S.p);
     S.fixes.push(makeFix(S, h, S.ace));
-    if (S.th === 'wv' && S.fixes.length > 48) S.fixes.shift();
+    if (S.th === 'wv' && S.fixes.length > 96) S.fixes.shift();
   }
 };
 
@@ -948,8 +957,8 @@ Manager.prototype.advanceTo = function (target, envSrc) {
     if (this.auto) this._spawn(h, env);
     for (const S of this.systems) if (S.alive) stepSystem(S, env, h, this.seed, this.par, doy, this.ctx);
     this.hour = h + 1;
-    if (this.hour % 6 === 0) { this._record(this.hour, env); this._updateLows(this.hour, env); }
-    if (this.hour % 6 === 0) this._cleanup(this.hour);
+    if (this.hour % 3 === 0) this._record(this.hour, env);
+    if (this.hour % 6 === 0) { this._updateLows(this.hour, env); this._cleanup(this.hour); }
   }
 };
 
@@ -964,9 +973,9 @@ Manager.prototype.forecast = function (spec, envSrc, horizonH) {
     const doy = this.doyAt(h);
     if (this.maps) { ctx.tw = timeWeights(doy + (((h % 24) + 24) % 24) / 24); ctx.act = activityFactor(par, this.seed, this.dateAt(h).getUTCFullYear(), h); }
     stepSystem(S, env, h, this.seed, par, doy, ctx); h++;
-    if (h % 6 === 0 || !S.alive) {
+    if (h % 3 === 0 || !S.alive) {
       const rv = round5(S.vr), isTC = S.th === 'tc' || S.th === 'sc';
-      if (isTC && rv >= 34) { ace += aceOf(rv); named = true; }
+      if (isTC && rv >= 34) { if (h % 6 === 0) ace += aceOf(rv); named = true; }
       if (isTC) td = true;
       if (isTC && rv > peak.v) peak = { v: rv, h, p: Math.round(S.p) };
       fixes.push(makeFix(S, h, ace));
