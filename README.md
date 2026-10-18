@@ -17,7 +17,7 @@ Deployment below).
   for tests needs installing)
 - `npm run build` assembles `dist/atlantic-sst-simulator.html` from `src/template.html`
   + `vendor/leaflet` + `data/generated/data.json`
-- `npm test` first the node-only storm-engine tests (`tests/storms.mjs`, about a second, no build or
+- `npm test` first the node-only storm-engine tests (`tests/storms.mjs`, about eight seconds, no build or
   browser needed), then the end-to-end checks in headless Chromium (network stubbed to `file://`
   only, so it also proves the app never depends on reaching a live tile provider).
   Needs a Chromium build matching the installed `playwright` version — if you're
@@ -74,7 +74,8 @@ nothing to run by hand.
   percentiles the season summary draws against go in beside them as `storms.ace` / `storms.normals` with `merge_data.mjs --storms`),
   `tools/storm_mc.mjs` runs whole seasons through the built page (any number of parameter sets at once, same weather),
   `tools/storm_opt.mjs` calibrates the intensity law and the environmental coupling with CMA-ES, `tools/storm_validate.mjs`
-  checks tracks, landfalls and genesis against the real best track.
+  checks tracks, landfalls and genesis against the real best track, and `tools/storm_mutants.mjs` breaks the storm code in 51 ways, one at a time, and runs the
+  checks that should notice (all 51 are caught; `docs/roadmap.md` has what the first pass found and how the checks were changed).
 
 ## How the simulation works (keep these ideas when changing things)
 - Grid: 0.25° over lon -110..40, lat -40..72 (601×449). Time: 1 sim hour per 60 ms

@@ -486,6 +486,16 @@ async function checkStorms(page, label) {
   check(`[${label}] a wave is a dashed north-south axis (${pre.wave.axis} of 29 pixels on the axis, ${pre.wave.diag} on the diagonals) and a local disturbance an X in a ring (${pre.seed.diag} of 16 diagonal pixels, centre ${pre.seed.center}), and waves and lows are drawn by default`,
     pre.wave.axis >= 12 && pre.wave.diag <= 2 && pre.seed.diag >= 9 && pre.seed.center && pre.on);
 
+  // lows are drawn only where a depression could still form: over water between 18 and 45N
+  const lows = await ev(() => {
+    const S = window.SSTSIM, c = S.map.getCenter(), z = S.map.getZoom(); S.map.setView([30, -55], 3, { animate: false });
+    S.stormLowsSet([[30, -60, 1004], [10, -50, 1005], [50, -30, 990], [35, -90, 1006]]);                     // open water at 30N, then 10N, 50N and the Mississippi valley
+    const drawn = S.stormLowsDrawn(), on = document.getElementById('stlows').checked;
+    S.stormLowsSet(null); S.map.setView(c, z, { animate: false }); S.stormDraw();
+    return { drawn, on };
+  });
+  check(`[${label}] a low is drawn only over water between 18 and 45N (of four lows, at 30N 60W, 10N 50W, 50N 30W and over land at 35N 90W, drawn: ${JSON.stringify(lows.drawn)})`, lows.on && lows.drawn.length === 1 && lows.drawn[0][0] === 30 && lows.drawn[0][1] === -60);
+
   // hover: tooltip with name, category, wind in mph and kt, gusts, pressure; leaving hides it; click opens the stat card, Escape closes it
   await ev((id) => { window.SSTSIM.stormForce(id, { th: 'tc', v: 105, vr: 105, p: 946 }); window.SSTSIM.stormDraw(); }, i1);
   const px = await ev((id) => window.SSTSIM.stormPx(id), i1);
@@ -688,7 +698,9 @@ async function checkSummary(page, label) {
   const ev = (fn, arg) => page.evaluate(fn, arg);
   const a = await ev(() => {
     const S = window.SSTSIM; S.storms(true); S.setPlaying(false); S.applySeed(11); S.setPlaying(false); S.stormAuto(false); S.tick(24 * 70);
-    S.stormPlace({ kind: 'td', lat: 16, lon: -48, v: 60 }); S.stormPlace({ kind: 'td', lat: 12, lon: -35, v: 40 }); S.tick(24 * 9); S.advance(0);
+    S.stormPlace({ kind: 'td', lat: 16, lon: -48, v: 60 }); S.stormPlace({ kind: 'td', lat: 12, lon: -35, v: 40 });                // a major hurricane and a hurricane
+    S.stormPlace({ kind: 'td', lat: 44, lon: -42, v: 25 }); S.stormPlace({ kind: 'td', lat: 30, lon: -50, v: 36 });                // a depression that never becomes a storm, a storm that never becomes a hurricane: every total of the card is a different number
+    S.tick(24 * 9); S.advance(0);
     document.getElementById('detail').checked = false;
     const btn = document.getElementById('se-sum');
     return { exists: !!btn && document.getElementById('season').contains(btn), expanded: btn && btn.getAttribute('aria-expanded'), hidden: document.getElementById('sum-card').hidden };
@@ -706,7 +718,7 @@ async function checkSummary(page, label) {
     return { hidden: document.getElementById('sum-card').hidden, expanded: document.getElementById('se-sum').getAttribute('aria-expanded'), title: num('sum-title'), sub: num('sum-sub'), cap: num('sum-cap'),
       cells: [...document.querySelectorAll('#sum-tot div')].map((x) => x.querySelector('b').textContent), avgs: [...document.querySelectorAll('#sum-tot small')].map((x) => x.textContent),
       bar: ['se-dep', 'se-named', 'se-hurr', 'se-major', 'se-c5', 'se-ace'].map(num), stats: st.stats, year: num('se-year'), rows, cy: cy.map((x) => ({ name: x.name, depNum: x.depNum, ace: x.ace })), geo,
-      end: px(geo.endX, geo.endY), after: px(Math.min(geo.endX + 40, geo.w - 12), geo.endY - 6), band: px(X(250), Y(45.5)), above: px(X(250), Y(175)), jan: px(X(20), Y(120)) };
+      end: px(geo.endX, geo.endY), after: px(Math.min(geo.endX + 40, geo.w - 12), geo.endY - 6), inner: px(X(250), Y(35)), outer: px(X(250), Y(85)), above: px(X(250), Y(175)), jan: px(X(20), Y(120)) };
   });
   check(`[${label}] the Summary button opens the card: "${b.title}", ${b.sub}`, !b.hidden && b.expanded === 'true' && b.title === b.year && /^Season so far, to [A-Z][a-z]{2} \d+ · counted from Jun 1$/.test(b.sub));
   check(`[${label}] its totals are the season bar's (${b.cells.join(' / ')}), each with the real 1991-2020 average beneath (${b.avgs.join(' / ')})`,
@@ -714,8 +726,8 @@ async function checkSummary(page, label) {
   const rowAce = b.rows.reduce((t, r) => t + parseFloat(r[4]), 0);
   check(`[${label}] the table has one row per cyclone of the season, in order of formation (${b.rows.map((r) => r[0]).join(', ')}), each with the ACE the storm itself holds (rows add up to ${rowAce.toFixed(1)} of ${b.stats.ace})`,
     b.rows.length === b.cy.length && b.rows.length >= 1 && b.rows.every((r, i) => (b.cy[i].name ? r[0] === b.cy[i].name : /^TD \d+$/.test(r[0])) && Math.abs(parseFloat(r[4]) - b.cy[i].ace) <= 0.0501) && Math.abs(rowAce - b.stats.ace) <= 0.06 * b.rows.length);
-  check(`[${label}] the ACE graph: the season's line ends in a white dot at ${b.geo.value.toFixed(1)} (pixel ${b.end}), nothing is drawn after today (${b.after}), the real middle-50 % band is lighter than the empty plot above it (${b.band} vs ${b.above}) and nothing precedes the season in January (${b.jan})`,
-    b.end[3] > 200 && b.end[0] > 200 && b.end[1] > 200 && b.end[2] > 200 && !(b.after[3] > 200 && b.after[0] > 200 && b.after[1] > 200) && b.band[3] > 30 && b.above[3] === 0 && b.jan[3] === 0);
+  check(`[${label}] the ACE graph: the season's line ends in a white dot at ${b.geo.value.toFixed(1)} (pixel ${b.end}), nothing is drawn after today (${b.after}), on Sep 7 the real middle-50 % band (24-67 ACE, probed at 35) is a darker shade than the 10th-90th percentile band around it (15-101, probed at 85), which is lighter than the empty plot above it (${b.inner} / ${b.outer} / ${b.above}), and nothing precedes the season in January (${b.jan})`,
+    b.end[3] > 200 && b.end[0] > 200 && b.end[1] > 200 && b.end[2] > 200 && !(b.after[3] > 200 && b.after[0] > 200 && b.after[1] > 200) && b.inner[3] > b.outer[3] + 15 && b.outer[3] > 10 && b.above[3] === 0 && b.jan[3] === 0);
   check(`[${label}] the graph's caption says what the bands are and where the season stands against the median: ${b.cap}`, /1991–2020/.test(b.cap) && /median/.test(b.cap) && /By [A-Z][a-z]{2} \d+ the median season had \d+ ACE/.test(b.cap));
 
   // opening a storm from its row; Escape, the cross and the button close the card
@@ -2618,7 +2630,7 @@ async function checkSave() {
   await p1.evaluate(() => { window.SSTSIM.setPlaying(false); window.SSTSIM.deleteSave(); });        // this page is done: paused, nothing of it left on disk (two tabs would take turns at one save)
   // leaving without the Menu link (a closed tab, a typed address): the page saves as it goes away
   const q = await open(SIM, true);
-  const qHour = await q.evaluate(() => { const S = window.SSTSIM; S.setPlaying(false); S.deleteSave(); S.applySeed(8); S.setPlaying(false); S.stormAuto(true); S.tick(24 * 12 + 7); S.set('moisture', 6); return S.state().simHour; });
+  const qHour = await q.evaluate(() => { const S = window.SSTSIM; S.setPlaying(false); S.deleteSave(); S.applySeed(8); S.setPlaying(false); S.stormAuto(true); S.tick(24 * 12 + 7); S.saveNow(); S.tick(5); S.set('moisture', 6); return S.state().simHour; });   // saved at 12 d 7 h; the five hours and the slider since are not (the saver waits 1.2 s between writes)
   await q.goto(MENU, { waitUntil: 'load' });
   const qMeta = await meta(q);
   check(`[save] a page that is left any other way saves as it goes (hour ${qHour}, saved ${qMeta && qMeta.hour})`, !!qMeta && qMeta.hour === qHour);
@@ -2643,13 +2655,19 @@ async function checkSave() {
   await p1.goto(SIM + '?resume=1'); await p1.waitForFunction(() => window.__ready === true, { timeout: 30000 });
   const nothing = await p1.evaluate(() => ({ resume: document.body.dataset.resume, playing: document.getElementById('ic-pause').style.display !== 'none' }));
   check(`[save] ?resume=1 with nothing saved says so (${nothing.resume}) and starts a new season that runs (${nothing.playing})`, nothing.resume === 'none' && nothing.playing);
-  await p1.evaluate(() => {
-    localStorage.setItem('hf-save-meta', JSON.stringify({ v: 1, basin: 'atlantic', name: 'Atlantic', year: 2026, hour: 100, date: 'Jun 5', dep: 0, named: 0, hurr: 0, major: 0, ace: 0, savedAt: Date.now() }));
-    localStorage.setItem('hf-save', JSON.stringify({ v: 999 }));
-  });
-  await p1.goto(SIM + '?resume=1'); await p1.waitForFunction(() => window.__ready === true, { timeout: 30000 });
-  const bad = await p1.evaluate(() => ({ resume: document.body.dataset.resume, playing: document.getElementById('ic-pause').style.display !== 'none', meta: localStorage.getItem('hf-save-meta'), save: localStorage.getItem('hf-save') }));
-  check(`[save] a save from another version is refused (${bad.resume}), a new season runs and the unusable save is removed`, bad.resume === 'refused' && bad.playing && bad.meta === null && bad.save === null);
+  const refusals = [];
+  for (const kind of ['made-up', 'old format', 'other engine', 'other grid']) {                                  // a real save made on this page, changed in one way
+    await p1.evaluate((kind) => {
+      const S = window.SSTSIM; S.storms(true); S.setPlaying(false); S.applySeed(3); S.setPlaying(false); S.tick(24 * 3); S.saveNow();
+      let s = JSON.parse(localStorage.getItem('hf-save'));
+      if (kind === 'made-up') s = { v: 999 }; else if (kind === 'old format') s.v = 0; else if (kind === 'other engine') s.sv = String(s.sv) + '+1'; else s.n = s.n + 1;
+      localStorage.setItem('hf-save', JSON.stringify(s));
+    }, kind);
+    await p1.goto(SIM + '?resume=1'); await p1.waitForFunction(() => window.__ready === true, { timeout: 30000 });
+    refusals.push({ kind, ...(await p1.evaluate(() => ({ resume: document.body.dataset.resume, playing: document.getElementById('ic-pause').style.display !== 'none', meta: localStorage.getItem('hf-save-meta'), save: localStorage.getItem('hf-save') }))) });
+  }
+  check(`[save] a save that cannot be used is refused, said so, and removed, and a new season runs (${refusals.map((r) => r.kind + ': ' + r.resume).join(', ')})`,
+    refusals.every((r) => r.resume === 'refused' && r.playing && r.meta === null && r.save === null));
 
   // Discard needs two clicks
   await p1.evaluate(() => localStorage.setItem('hf-save-meta', JSON.stringify({ v: 1, basin: 'atlantic', name: 'Atlantic', year: 2026, hour: 100, date: 'Jun 5', dep: 1, named: 0, hurr: 0, major: 0, ace: 0, savedAt: Date.now() })));
@@ -2658,6 +2676,14 @@ async function checkSave() {
   await p1.click('#rs-del');
   const afterTwo = { hidden: await p1.evaluate(() => document.getElementById('continue').hidden), meta: await meta(p1) };
   check(`[save] Discard asks for a second click ("${afterOne.label}") and then removes the saved season`, !afterOne.hidden && /again/.test(afterOne.label) && afterTwo.hidden && afterTwo.meta === null);
+
+  // storage that refuses every access (blocked site data): the page still starts and runs, saves nothing and says nothing
+  const blocked = await ctx.newPage(), blockedErrors = []; blocked.on('pageerror', (e) => blockedErrors.push(e.message));
+  await blocked.addInitScript(() => { const boom = () => { throw new DOMException('blocked', 'SecurityError'); }; Storage.prototype.getItem = boom; Storage.prototype.setItem = boom; Storage.prototype.removeItem = boom; });
+  await blocked.goto(SIM, { waitUntil: 'load' }); await blocked.waitForFunction(() => window.__ready === true, { timeout: 30000 });
+  const run = await blocked.evaluate(() => { const S = window.SSTSIM, h0 = S.state().simHour; S.setPlaying(false); S.tick(24 * 3); S.set('moisture', 2); return { h0, h1: S.state().simHour, saved: S.saveNow() }; });
+  check(`[save] with storage that refuses every access the simulator still starts and runs (hour ${run.h0} to ${run.h1}), saves nothing (${run.saved}) and raises no error (${blockedErrors.length})`, run.h1 > run.h0 && run.saved === false && blockedErrors.length === 0);
+  await blocked.close();
 
   check(`[save] no page errors on the way (${errors.length})`, errors.length === 0);
   if (errors.length) console.log('  ' + errors.join('\n  '));

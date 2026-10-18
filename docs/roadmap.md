@@ -1,6 +1,33 @@
 # Roadmap
 
 ## Just landed
+- **Storms, milestone 7: mutation checks of the storm work, and the end of step 1 (the core system, Atlantic).** *What step 1 is now:* every kind of system (waves, disturbances, lows, tropical and
+  subtropical cyclones, extratropical and post-tropical cyclones) born by the simulator's own weather or put on the map with `Place` and a seven-day preview; names, six-hourly advisory dots, hover and
+  click cards, the season bar, the season summary with the ACE graph over the real seasons and a card that opens by itself when the year turns, paths that disappear at the end of the season, and a
+  season that waits behind a `Continue` card on the main menu. It was calibrated against the real 1991-2020 Atlantic and checked on seeds the calibration never saw (milestone 3's entry has the numbers and
+  the known misses). Not in it, as planned: impacts, invests, the cone, wind fields, the other eight basins.
+  *Mutation checks.* `tools/storm_mutants.mjs` breaks the code one edit at a time, builds the page, and runs the checks that should notice (the node tests, or `checkStorms`, `checkPlace`, `checkSummary`
+  or `checkSave` of `tests/run.mjs`, cut out of it into a driver and run against the broken build; unmodified, every driver passes). It has 51 edits: the season record and the summary card (E, U),
+  Place mode and its look-ahead (P), the calibrated engine and the page's layers (X), save / resume and the menu (S). The first pass over the 38 edits of milestones 4-6 killed 33; the five that lived
+  each showed a check that did not look at what its name said, and the checks were changed until their edits died: *the DEP / NAMED totals of the card swapped* lived because the test season had
+  2 depressions and 2 named storms (it now has four systems whose five totals are 4 / 3 / 2 / 1 / 0, so a total in the wrong box is seen); *the real bands not drawn* lived because the probe pixel sat on the
+  median line, which is drawn over them (the probes are now inside the middle-50 % band, inside the 10th-90th band beyond it and above both: darker, lighter, empty); *a save of another engine
+  version accepted* (and, added with it, of another grid and of an old format) lived because the test's bad save was `{v: 999}`, which every guard refuses (it is now a real save changed in one way
+  each); *nothing saved as the page goes away* lived because the 1.2-s autosave covered for the missing handlers (the test now saves, changes something and leaves inside that second); and
+  *the rollover not clearing the finished season's paths itself* lived because the six-hourly clean-up does it six hours later (a node check now looks at 01Z on Jan 1). A second pass over ten edits of
+  milestone 3 (selecting a storm not hiding the rest, lows off by default, a local disturbance drawn as a wave, no extratropical transition, no age profile of the post-tropical speed, lows drawn over land
+  and everywhere, no rapid intensification, no latitude cap on the potential wind, depressions declared that could not live, storms ignoring the anomaly of the page's steering) found five that lived:
+  the calibrated values had been validated by the offline lab and never pinned by a check. They are now: a browser check that a low is drawn only over water between 18 and 45N (`stormLowsSet` /
+  `stormLowsDrawn` are the hooks) and four node checks of the shipped values (a cyclone moves 0.75 of the steering anomaly; in a good synthetic environment the strongest 24-h gain of a week averages 57 kt
+  and is 30 kt or more in 36 of 40 seeds, 32 kt without rapid intensification; a 100-kt hurricane over 29 degC water is at 114 kt after three days at 15N and 74 kt at 32N, 115 kt at both without the cap; a
+  developing disturbance is declared a depression in 11 of 12 seeds in a good environment and in 2 of 12 in a marginal one, 11 of 12 without the margin). All 51 edits are now caught. That is the
+  limit of the claim: the edits are hand-made, not exhaustive, and the statistical checks (eight seasons of 214 days, 20 placed hurricanes at 41N) still let a physics error within their bands through;
+  the offline lab (96 held-out seasons, `tools/storm_mc.mjs`), not CI, is what measures the engine against the real record.
+  *A bug the exercise found in milestone 6:* the page read `localStorage` once, at start-up, without a guard, so in a browser that refuses site data (cookies blocked, some private modes: every access throws) the simulator
+  would not have started at all. Every other access was guarded. It is fixed (`hasSaveMeta()`), a browser check now loads the page with a storage whose every access throws and requires that it starts, runs and
+  saves nothing; the unguarded read is one of the 51 edits (S17).
+  *Tests:* 151 node checks and 1579 browser checks pass; the node-only tests take about 8 s.
+  *CI and Pages:* the pushes of milestones 3 to 6 each passed `Build & test` (about 15 minutes, runs 58-61) and deployed to Pages (the API's deployment status for the sha of milestone 6 is `success`).
 - **Save and resume: a season left in progress waits behind a Continue card on the main menu (step 1 of 7, milestone M6).** The Atlantic page keeps the season in the browser
   and the dock has a Menu button (a house, left of Restart) that goes back to `index.html`. The menu then shows a **Continue** card, beside the basin picker on a wide screen and above
   the basin grid on a phone (`Atlantic 2026 · Simulation · Sep 4 · 9 named, 4 hurricanes · ACE 65.3 · Saved just now`, a `Continue` button and `Discard this season`, which
@@ -2089,6 +2116,15 @@ again building EPAC):**
   pick even-degree domain edges.
 
 ## Later, not scoped yet
+- Storms, steps 2-7 of `docs/storms-plan.md`: areas of interest / invests, the cone, wind field 1, wind field 2 (eyewall replacement cycles, size), watches and
+  warnings, city damage and statistics (the cards already show `-` for what they will hold). Step 1, the core system, is the Atlantic only: the other eight basins
+  need their own real best-track maps, calibration (`tools/make_tc_*.py`, `tools/storm_fit.mjs`, `tools/storm_mc.mjs`) and a template that ports the storm hooks
+  (the build already inlines `src/storms.js` into any template that has the `/*__STORMS__*/` placeholder).
+- Storms, the known misses of milestone 3 to take first (numbers in its entry): East Coast, Mexico and Canada landfalls low and Greater Antilles / Bahamas and
+  South America high, a fifth of the numbered depressions never reaching storm strength (real 11 %), the heavy top of the season distribution (the highest of 96
+  simulated seasons has ACE 383, the real record 250), post-tropical systems about 20 % too slow and too few, subtropical storms 1.2 a year (real 1.7), the page's
+  pressure lows fewer and longer-lived than ERA5's, and the moisture slider's effect far stronger than the warming slider's.
+- Save / resume is one slot in one browser; several slots, a file to export and import, and the autosave switch and GIF export of the original plan are not built.
 - Forecaster mode (hurricane hunters, model guidance, cones/AOIs) — deliberately
   not started; Simulation mode across basins comes first.
 - Radar/satellite storm imagery (synthetic, generated from the sim's own storm
@@ -2106,8 +2142,10 @@ again building EPAC):**
   year-to-year spread of a month's mean varies a lot with the season).
 - Steering: a winter jet (in every basin the ribbon is its cyclone-season amplitude all year; in the Atlantic the
   real DJF along-axis wind is 47 kt against 31 in JJA), the real spread of the wind along the axis (wider than
-  simulated), lows as objects next to the highs, and dry air under a high feeding the humidity field. And the real test of all of it:
-  steering of real best-track storms, once the storm model exists (the sandbox cannot reach NHC/NCEI).
+  simulated), lows as objects next to the highs, and dry air under a high feeding the humidity field. The real test of all of it, the motion of real
+  best-track storms (IBTrACS through the `huracanpy` wheel: the sandbox cannot reach NHC/NCEI), was made with the storm engine in milestone 3: the page's
+  steering is not the flow a storm feels, so a storm there follows the real mean drift of its kind at its place and time of year plus the anomaly of the
+  page's steering from its own mean (see that entry for the numbers).
 - Steering: sharp seasonal minima of the year-to-year spread come out up to 30% too variable (the 1-2-1 smoothing of `eofAmp`
   over months lifts them; the residual flow cannot go negative to compensate): less smoothing, then the slow part, the weather
   calibration and the means re-run for every basin including the Atlantic (hours of compute, 13 GB each, and the committed Atlantic

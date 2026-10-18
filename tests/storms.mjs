@@ -292,6 +292,16 @@ const LAND = (la, lo) => (lo > -16.3 && lo < 38 && la > 4 && la < 30) || (lo < -
   check('once its last storm is gone the old season is closed, with the same counters (dep ' + R26b.dep + ') and the storm summarised', !R26b.open && R26b.dep === R26.dep && R26b.storms.length === 1 && R26b.storms[0].peakV >= 55 && R26b.storms[0].end > 0);
 }
 
+/* ---- the paths of a finished season go in the very hour the year turns ---------------------------------------------------------------- */
+{
+  const e2 = makeEnv({ sst: 20, shear: 25, rh: 40, steer: () => [0, 0, 0, 0, 0, 0] }), m2 = H.create({ seed: 8, startMs: Date.UTC(2026, 11, 20), auto: false });
+  m2.place({ kind: 'td', lat: 40, lon: -45, v: 40 }); m2.advanceTo(8 * 24, e2);                // Dec 28: the cold-water depression is long gone, but its track stays on the map until the year ends
+  const left = m2.systems.length, dead = m2.systems.filter((S) => !S.alive).length;
+  m2.advanceTo((Date.UTC(2027, 0, 1, 1) - Date.UTC(2026, 11, 20)) / 3600000, e2);              // 01Z on Jan 1, not a six-hourly clean-up hour
+  check(`the finished season's dead paths are gone in the hour the year turns, not at the next six-hourly clean-up (Dec 28: ${left} system(s), ${dead} dead; 01Z on Jan 1: ${m2.systems.length}), and the season is archived with that storm`,
+    dead >= 1 && m2.systems.length === 0 && m2.archive.length === 1 && m2.archive[0].storms.length >= 1);
+}
+
 /* ---- low tracker -------------------------------------------------------------------------------------------------------------- */
 {
   const t = new H.LowTracker();
@@ -535,6 +545,10 @@ const LAND = (la, lo) => (lo > -16.3 && lo < 38 && la > 4 && la < 30) || (lo < -
     const dE = (kmE(fresh, 45, -50) - kmE(old, 45, -50)) / 6 / 1.852, dN = (kmN(fresh, 45) - kmN(old, 45)) / 6 / 1.852;
     check(`a post-tropical cyclone just after its transition runs ${dE.toFixed(1)} kt faster east and ${dN.toFixed(1)} kt faster north than the same one four days later (the real best track: 3.3 + 8.1 and 7.2 + 5.2), and one of unknown age takes the map as it is (${((kmE(none, 45, -50)) / 6 / 1.852).toFixed(1)} kt east, maps say +15)`,
       near(dE, 11.4, 1.2) && near(dN, 12.4, 1.2) && near(kmE(none, 45, -50) / 6 / 1.852, 15, 2.5)); }
+  { const pd = H.mergeParams(H.defaultParams(), { shearK: 1, wobbleSd: 0 });                                   // the engine's own driftGain, not an override
+    const G1 = track(testMaps({ clim: [-3, 1, -3, 1, -3, 1] }), [7, 1, 7, 1, 7, 1], 72, 40, 15, -50, pd), G0 = track(testMaps({ clim: [-3, 1, -3, 1, -3, 1] }), [-3, 1, -3, 1, -3, 1], 72, 40, 15, -50, pd);
+    const gain = (kmE(G1, 15, -50) - kmE(G0, 15, -50)) / 72 / 1.852 / 10;
+    check(`with the engine's own gain a cyclone moves ${gain.toFixed(2)} times the anomaly of the steering (0.75 of it, not none and not all)`, near(gain, 0.75, 0.12)); }
   const hu = track(testMaps({ du: -8, dv: 3, su: -2, sv: 9 }), [0, 0, 0, 0, 0, 0], 48, 100, 15, -50, pm, [-2, 9]), td = track(testMaps({ du: -8, dv: 3, su: -2, sv: 9 }), [0, 0, 0, 0, 0, 0], 48, 30);
   check(`a hurricane follows the hurricane drift map and a depression the weak-storm one (${(kmN(hu, 15) / 48 / 1.852).toFixed(1)} against ${(kmN(td, 15) / 48 / 1.852).toFixed(1)} kt north)`, kmN(hu, 15) > kmN(td, 15) * 2 && near(kmN(td, 15) / 48 / 1.852, 3, 0.8));
 
@@ -639,6 +653,20 @@ const LAND = (la, lo) => (lo > -16.3 && lo < 38 && la > 4 && la < 30) || (lo < -
     good.filter((v) => v >= 64).length >= 10 && poor.filter((v) => v >= 64).length === 0 && mean(good) > mean(poor) + 25);
   const lowLat = system('tc', 3.2, -40, 40, 1), e0 = makeEnv({ sst: 28, shear: 10, steer: () => [0, 0, 0, 0, 0, 0] }); run(lowLat, e0, 72, 1, D);
   check(`a calibrated storm that drifts south of 4 N keeps a finite wind (the latitude-dependent shear scale has a floor): ${lowLat.v.toFixed(1)} kt`, Number.isFinite(lowLat.v) && Number.isFinite(lowLat.vr) && Number.isFinite(lowLat.p));
+  // what the shipped values do in a synthetic environment held fixed: rapid intensification in a good one, none in a hostile one, a cap on the wind poleward, depressions only where they could live
+  const zero = () => [0, 0, 0, 0, 0, 0], trace = (lat, v0, env, hours, seed) => { const S = system('tc', lat, -55, v0, seed), vs = [S.vr]; for (let h = 0; h < hours && S.alive; h++) { H.stepSystem(S, env, h, seed, D); vs.push(S.vr); } return vs; };
+  const gain24 = (vs) => { let g = -999; for (let i = 24; i < vs.length; i++) g = Math.max(g, vs[i] - vs[i - 24]); return g; };
+  const ideal = makeEnv({ sst: 29, shear: 5, rh: 62, steer: zero }), hostile = makeEnv({ sst: 27, shear: 30, rh: 45, steer: zero });
+  const gI = [], gH = []; for (let s = 1; s <= 40; s++) { gI.push(gain24(trace(18, 50, ideal, 168, s))); gH.push(gain24(trace(18, 50, hostile, 168, s))); }
+  check(`rapid intensification is in the calibrated values: in a good environment (29 degC, 5 kt of shear, moist) the strongest 24-hour gain of a week averages ${mean(gI).toFixed(0)} kt and is 30 kt or more in ${gI.filter((g) => g >= 30).length} of 40 seeds, in a hostile one in ${gH.filter((g) => g >= 30).length} of 40`,
+    mean(gI) > 45 && gI.filter((g) => g >= 30).length >= 30 && gH.filter((g) => g >= 30).length === 0);
+  const fin = (lat) => mean(Array.from({ length: 20 }, (_, i) => { const vs = trace(lat, 100, ideal, 72, i + 1); return vs[vs.length - 1]; })), f15 = fin(15), f32 = fin(32);
+  check(`the calibrated potential wind falls poleward: a 100-kt hurricane over the same 29 degC water is at ${f15.toFixed(0)} kt after three days at 15N and ${f32.toFixed(0)} kt at 32N`, f15 > 100 && f15 - f32 > 25);
+  const GRc = { lon0: -105, lat0: 5, res: 5, nx: 21, ny: 13 }, flatc = (v) => Array.from({ length: 12 }, () => Array.from({ length: GRc.ny }, () => new Array(GRc.nx).fill(v)));
+  const mapsC = { grid: GRc, drift: { weak: { u: flatc(-8), v: flatc(3) }, strong: { u: flatc(-6), v: flatc(5) }, sub: { u: flatc(4), v: flatc(1) }, ex: { u: flatc(15), v: flatc(5) } }, steerClim: [0, 0, 0, 0, 0, 0].map((x) => flatc(x)), haz: { T: flatc(0), S: flatc(0) }, env0: { rh: flatc(54), shear: flatc(10), sst: flatc(27.5), sstRel: flatc(0) } };
+  const declared = (sst, shear, rh) => { let n = 0; for (let s = 1; s <= 12; s++) { const S = system('wv', 15, -50, 18, s, { dev: 0, q: 0 }), e = makeEnv({ sst, shear, rh, steer: zero }), c = { maps: H.prepareMaps(mapsC), tw: H.timeWeights(240), diag: null, act: 1 }; for (let h = 0; h < 72 && S.alive; h++) { H.stepSystem(S, e, h, s, D, 240, c); if (S.th !== 'wv') { n++; break; } } } return n; };
+  const dGood = declared(28.5, 8, 58), dMarg = declared(26.5, 14, 50);
+  check(`a disturbance that has begun to develop is declared a depression only while the growth law could keep one alive: in ${dGood} of 12 seeds in a good environment and in ${dMarg} of 12 in a marginal one (without the margin, 11 of 12 and a fifth of the numbered depressions were gone in a day)`, dGood >= 9 && dMarg <= 4);
   H.calibrated(false);
 }
 

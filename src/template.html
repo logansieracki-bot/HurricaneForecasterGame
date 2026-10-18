@@ -2405,7 +2405,7 @@ const stormEnv = {
 };
 /* Calibration lab (dev only, tools/storm_mc.mjs): extra engines with other parameters run on the SAME keyframes and the same seed, so
    a comparison of parameter sets sees identical weather and identical waves (common random numbers). They never touch the live engine. */
-let stormLab = null, stormMapsOverride = null, stormClim = null;
+let stormLab = null, stormMapsOverride = null, stormClim = null, lowsKept = null;
 const stormMapsNow = () => stormMapsOverride || (DATA.storms && DATA.storms.maps) || null;   // the climatology the engine is anchored to (data.json's `storms.maps`; the fitting tools hand in candidates)
 const stormSeed = () => ((P.seed * 2654435761) ^ 0x517171) >>> 0;
 /* the page's own mean steering and environment on the maps' grid, by month: what the engine's "anomaly" and "E" are measured against (tools/storm_fit.mjs) */
@@ -3229,6 +3229,7 @@ function saveNow() {
 function saveTick() { if (saveStamp !== savedStamp && performance.now() - saveLast >= SAVE_EVERY_MS[playing ? 0 : 1]) saveNow(); }
 function deleteSave() { try { localStorage.removeItem(SAVE_KEY); localStorage.removeItem(SAVE_META); } catch (e) { /* storage blocked */ } savedStamp = saveStamp; }
 function loadSave() { try { const t = localStorage.getItem(SAVE_KEY); return t ? JSON.parse(t) : null; } catch (e) { return null; } }
+function hasSaveMeta() { try { return !!localStorage.getItem(SAVE_META); } catch (e) { return false; } }          // storage that refuses access (blocked site data) is a page with nothing saved, not a page that cannot start
 function applySave(s) {
   if (!s || s.v !== SAVE_V || s.sv !== HFStorms.VERSION || s.n !== N || s.sn !== SN || s.basin !== 'atlantic') throw new Error('this save belongs to another version');
   START_MS = s.startMs; START_YEAR = new Date(START_MS).getUTCFullYear(); saveOwner = true;
@@ -3275,7 +3276,7 @@ const seed0 = 1 + Math.floor(Math.random() * 999999);
 $('seed').value = seed0; P.seed = seed0; setSliderValues(seedSliderValues(seed0)); initSim(seed0); updateClock();
 refresh();
 if (RESUME && !resumeFromSave()) setPlaying(true); else if (RESUME) setPlaying(false);
-else if (localStorage.getItem(SAVE_META)) { saveOwner = false; document.body.dataset.resume = 'beside'; toast('A saved season is waiting in the main menu. This new one is not being saved: press Restart to replace the saved season, or go back to the menu and press Continue.'); }
+else if (hasSaveMeta()) { saveOwner = false; document.body.dataset.resume = 'beside'; toast('A saved season is waiting in the main menu. This new one is not being saved: press Restart to replace the saved season, or go back to the menu and press Continue.'); }
 $('loading').style.display = 'none';
 lastNow = performance.now(); requestAnimationFrame(frame);
 
@@ -3313,6 +3314,13 @@ window.SSTSIM = {
   stormPx(id) { const S = stormMgr.get(id); if (!S) return null; const p = map.latLngToContainerPoint([S.lat, S.lon]); return { x: p.x, y: p.y }; },
   stormFixPx(id, i) { const S = stormMgr.get(id); const f = S && S.fixes[i < 0 ? S.fixes.length + i : i]; if (!f) return null; const p = map.latLngToContainerPoint([f.lat, f.lon]); return { x: p.x, y: p.y, h: f.h, th: f.th }; },
   stormDraw() { drawStorms(); }, stormDrawn() { return Array.from(new Set(stormHits.filter((h) => h.S).map((h) => h.S.id))); }, stormHover, stormClick,
+  stormLowsSet(list) {                                                // the tracked lows are replaced by synthetic ones, each [lat, lon, hPa]; null puts the real ones back
+    if (!stormMgr) return 0;
+    if (list === null) { if (lowsKept) stormMgr.lows.tracks = lowsKept; lowsKept = null; }
+    else { if (!lowsKept) lowsKept = stormMgr.lows.tracks; stormMgr.lows.tracks = list.map(([lat, lon, p], i) => ({ id: 'T' + i, born: simHour, lat, lon, p, dx: 0, dy: 0, miss: 0, alive: true, maxDepth: 1010 - p, n: 3, pmin: p, fixes: [[simHour - 12, lat, lon, p], [simHour - 6, lat, lon, p], [simHour, lat, lon, p]] })); }
+    stormsDirty = true; drawStorms(); return stormMgr.lows.tracks.length;
+  },
+  stormLowsDrawn() { return stormHits.filter((h) => h.low).map((h) => [h.low.lat, h.low.lon]); },
   stormEnvSample(lat, lon) { return { hour: kfFieldHour, land: isLand(lat, lon), sst: sampleField(kfSst, lat, lon), rh: sampleField(kfHumid, lat, lon), shear: sampleField(kfShear, lat, lon) }; },
   advance(h) { advanceHours(h); updateClock(); refresh(); },
   sample(lat, lon) { return { sst: sampleField(sst, lat, lon), normal: sampleField(normal, lat, lon), humid: sampleField(humid, lat, lon), shear: sampleField(shear, lat, lon) }; },

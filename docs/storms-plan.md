@@ -324,3 +324,22 @@ shear on the maps' grid by month (8 seasons of 365 days); `fit` measures the exp
 seeds and lows) in 24-season passes and sets `haz = G_real / X` (smoothed, damped, with the last two passes pooled), and sets the local seeds' supply so that they
 carry their prior share of the real genesis (0.55 over the Gulf and the western Caribbean, 0.5 off the south-eastern US, 0.3 in the subtropical Atlantic, 0.05
 elsewhere). The maps are therefore a calibration *of this simulator's weather*, committed as data and re-run when the weather changes.
+
+## Status: step 1 delivered (milestones 0-7)
+
+All eight milestones are on `main`: M0 the plan and the real Atlantic reference (4dae2a6), M1 the engine and its node checks (41647d3), M2 the storms in the page (4a0393b), M3 the
+calibration and the climatology-anchored model (6a6fcdd), M4 Place mode and the preview (708b4da), M5 the season summary and the turn of the year (91c29dc), M6 save / resume and the
+Continue card (9fc40aa) and M7 the mutation checks and this pass. `docs/roadmap.md` has an entry for each with the measured numbers and the caveats. Where what shipped differs from the plan above:
+
+- **The model** is the four-part climatology-anchored one of the revision above, not the first design (steering blend, genesis by gates): the trial of milestone 2 showed that design could not be
+  repaired by calibration.
+- **Persistence** is not "a midnight checkpoint plus a replay of the logged actions". A save is a *light capture* of the weather generators' states and clocks, the storms as plain JSON and what the
+  controls say, written at any hour (125-362 KB and 2-6 ms over a whole season), and a restore takes fresh keyframes of the fields and the steering at the restored hour. A season saved at 00Z
+  continues bit for bit like the uninterrupted one; saved at another hour the storms, fields and counters are identical at the moment of the resume and the continuation is statistical (the uninterrupted
+  run would be working from keyframes up to a day old). No action log and no replay were needed. The save is written every 8 s while the clock runs, 1.2 s after a change while paused, when the page is
+  hidden or closed and before the dock's Menu button navigates; the Menu "link" of the plan is a house button in the dock; the Continue card is a side column from 1100 px and sits above the basin grid below that.
+- **The season summary** always draws the real 1991-2020 bands (the plan: until three of the player's own seasons exist) and adds the run's other seasons as thin lines; the first season of a run is
+  counted from Jun 1. The Place line is solid for three days and fades after (the plan: about five).
+- **As planned, not built:** impacts (the cards show a dash for them), invests and areas of interest, the cone, wind fields, the other eight basins, the autosave switch and the GIF export.
+- **Mutation checks** (`tools/storm_mutants.mjs`): the 24 edits of milestone 1 on the node tests, and 51 edits over milestones 3-6 on the browser checks, all caught after the checks were tightened where
+  the first pass found a gap (`docs/roadmap.md`, milestone 7).
