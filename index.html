@@ -11,14 +11,35 @@
   --font:"Avenir Next","Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,Roboto,"Helvetica Neue",sans-serif;
 }
 *{box-sizing:border-box}
-html,body{height:100%;margin:0}
+html{height:100%}
 body{
+  margin:0; min-height:100%;
   background:var(--ink);
   color:var(--text); font-family:var(--font);
-  display:flex; align-items:center; justify-content:center; padding:24px;
+  display:flex; padding:24px;
 }
 button:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
-main{width:100%; max-width:760px}
+main{width:100%; max-width:760px; margin:auto}
+/* a saved season: a card beside the picker on a wide screen, above the basin grid on a narrow one */
+main.has-save{display:grid; grid-template-columns:minmax(0,1fr)}
+.resume{margin:0 0 30px; padding:16px 16px 14px; border:1px solid var(--line); border-radius:12px; background:rgba(255,255,255,.07)}
+.resume[hidden]{display:none}
+.resume h2{margin-bottom:10px}
+.resume .name{display:block; font-size:19px; font-weight:600}
+.resume .desc{display:block; font-size:12.5px; color:var(--dim); line-height:1.45; margin-top:3px}
+.resume .when{display:block; font-size:11.5px; color:var(--dim); margin-top:2px}
+#rs-go{
+  font:inherit; font-weight:600; font-size:14px; padding:11px 20px; border-radius:10px; border:0; width:100%; margin-top:14px;
+  background:var(--ice); color:#141414; cursor:pointer; transition:background .15s;
+}
+#rs-go:hover{background:#fff}
+#rs-del{font:inherit; font-size:12px; color:var(--dim); background:none; border:0; padding:8px 0 0; cursor:pointer; text-decoration:underline; text-underline-offset:2px}
+#rs-del:hover{color:var(--text)}
+@media (min-width:1100px){
+  main.has-save{max-width:1056px; grid-template-columns:minmax(0,760px) 264px; column-gap:32px}
+  main.has-save > header, main.has-save > .pick{grid-column:1}
+  main.has-save > .resume{grid-column:2; grid-row:1 / span 2; align-self:start; margin-top:92px}
+}
 h1{font-size:clamp(28px,5vw,42px); font-weight:600; letter-spacing:-.02em; margin:0 0 6px}
 .tagline{color:var(--dim); font-size:15px; margin:0 0 36px}
 h2{font-size:13px; font-weight:600; text-transform:uppercase; letter-spacing:.06em; color:var(--dim); margin:0 0 12px}
@@ -51,24 +72,37 @@ footer{display:flex; align-items:center; justify-content:space-between; margin-t
 </style>
 </head>
 <body>
-<main>
-  <h1>Hurricane Forecaster</h1>
-  <p class="tagline">Pick a basin and a mode to begin.</p>
+<main id="shell">
+  <header>
+    <h1>Hurricane Forecaster</h1>
+    <p class="tagline">Pick a basin and a mode to begin.</p>
+  </header>
 
-  <section>
-    <h2>Basin</h2>
-    <div class="grid" id="basins" role="group" aria-label="Basin"></div>
-  </section>
+  <aside class="resume" id="continue" hidden aria-label="Continue your saved season">
+    <h2>Continue</h2>
+    <span class="name" id="rs-name">Atlantic</span>
+    <span class="desc" id="rs-desc"></span>
+    <span class="when" id="rs-when"></span>
+    <button id="rs-go" type="button">Continue</button>
+    <button id="rs-del" type="button">Discard this season</button>
+  </aside>
 
-  <section>
-    <h2>Mode</h2>
-    <div class="grid" id="modes" role="group" aria-label="Mode"></div>
-  </section>
+  <div class="pick">
+    <section>
+      <h2>Basin</h2>
+      <div class="grid" id="basins" role="group" aria-label="Basin"></div>
+    </section>
 
-  <footer>
-    <span id="hint">Choose a basin and a mode.</span>
-    <button id="start" disabled>Start</button>
-  </footer>
+    <section>
+      <h2>Mode</h2>
+      <div class="grid" id="modes" role="group" aria-label="Mode"></div>
+    </section>
+
+    <footer>
+      <span id="hint">Choose a basin and a mode.</span>
+      <button id="start" disabled>Start</button>
+    </footer>
+  </div>
 </main>
 <script>
 const BASINS = [
@@ -87,7 +121,33 @@ const MODES = [
   { id: 'forecaster', name: 'Forecaster', desc: 'Coming soon', enabled: false },
 ];
 
-let basin = null, mode = null;
+let basin = null, mode = null, save = null;
+
+/* A season left in progress (written by the simulator page, see "save / resume" in src/template.html): a few bytes of metadata in localStorage say that
+   one exists, the season itself is the other key. Continue opens the simulator with ?resume=1; Start (a new game) and Discard delete it. */
+const SAVE_META = 'hf-save-meta', SAVE_KEY = 'hf-save';
+function readSave() {
+  try { const m = JSON.parse(localStorage.getItem(SAVE_META)); return m && m.v === 1 && BASINS.some((b) => b.id === m.basin && b.enabled) ? m : null; } catch (e) { return null; }
+}
+function deleteSave() { try { localStorage.removeItem(SAVE_META); localStorage.removeItem(SAVE_KEY); } catch (e) { /* storage blocked */ } }
+function ago(t) {
+  const s = Math.max(0, (Date.now() - t) / 1000);
+  if (s < 90) return 'just now';
+  if (s < 5400) return Math.round(s / 60) + ' minutes ago';
+  if (s < 129600) return Math.round(s / 3600) + ' hours ago';
+  return Math.round(s / 86400) + ' days ago';
+}
+function showSave() {
+  save = readSave();
+  $('shell').classList.toggle('has-save', !!save); $('continue').hidden = !save;
+  if (save) {
+    $('rs-name').textContent = save.name + ' ' + save.year;
+    $('rs-desc').textContent = 'Simulation · ' + save.date + ' · ' + save.named + ' named, ' + save.hurr + ' hurricane' + (save.hurr === 1 ? '' : 's') + ' · ACE ' + save.ace.toFixed(1);
+    $('rs-when').textContent = 'Saved ' + ago(save.savedAt);
+  }
+  $('rs-del').textContent = 'Discard this season';
+  if (typeof update === 'function') update();
+}
 
 function renderGrid(container, items, selected, onPick) {
   container.innerHTML = '';
@@ -110,15 +170,26 @@ function update() {
   renderGrid($('modes'), MODES, mode, (id) => { mode = id; update(); });
   const ready = basin && mode;
   $('start').disabled = !ready;
-  $('hint').textContent = ready ? 'Ready.' : 'Choose a basin and a mode.';
+  $('hint').textContent = ready ? (save ? 'Ready. Starting a new game replaces your saved ' + save.name + ' ' + save.year + ' season.' : 'Ready.') : 'Choose a basin and a mode.';
 }
 function $(id) { return document.getElementById(id); }
 
 $('start').onclick = () => {
   const b = BASINS.find((x) => x.id === basin);
-  if (b && b.href) location.href = b.href;
+  if (!b || !b.href) return;
+  if (save) deleteSave();                                                            // a new game replaces the saved season
+  location.href = b.href;
 };
+$('rs-go').onclick = () => { const b = save && BASINS.find((x) => x.id === save.basin); if (b) location.href = b.href + '?resume=1'; };
+let discardTimer = 0;
+$('rs-del').onclick = () => {                                                        // two clicks, so a season is not lost by accident
+  if (!discardTimer) { $('rs-del').textContent = 'Click again to discard it for good'; discardTimer = setTimeout(() => { discardTimer = 0; $('rs-del').textContent = 'Discard this season'; }, 4000); return; }
+  clearTimeout(discardTimer); discardTimer = 0;
+  deleteSave(); showSave();
+};
+window.addEventListener('pageshow', showSave);                                       // coming back with the browser's Back button
 
+showSave();
 update();
 </script>
 </body>

@@ -1,6 +1,32 @@
 # Roadmap
 
 ## Just landed
+- **Save and resume: a season left in progress waits behind a Continue card on the main menu (step 1 of 7, milestone M6).** The Atlantic page keeps the season in the browser
+  and the dock has a Menu button (a house, left of Restart) that goes back to `index.html`. The menu then shows a **Continue** card, beside the basin picker on a wide screen and above
+  the basin grid on a phone (`Atlantic 2026 · Simulation · Sep 4 · 9 named, 4 hurricanes · ACE 65.3 · Saved just now`, a `Continue` button and `Discard this season`, which
+  asks for a second click); `Continue` opens the simulator with `?resume=1`, **paused**, with a message (`Welcome back: Atlantic 2026, Sep 4, 09Z. The clock is paused; press play to go
+  on.`), and `Start` (a new game) deletes the saved season, which the hint under it says before you press it (`Starting a new game replaces your saved Atlantic 2026 season.`).
+  *When it is written:* at most every 8 s while the clock runs and every 1.2 s while it is paused and something has changed (a slider, a placement, a switch), and when the page is hidden or closed
+  (`visibilitychange`, `pagehide`) and before the Menu link navigates; nothing is saved until the season is a day old. It is `localStorage` and written synchronously, because
+  a write started while a page is closing has to land before it goes (an IndexedDB write started then was cut off: 0-2 of 8 arrived). *What is in it* (one JSON text, plus a few
+  bytes of metadata next to it that let the menu offer Continue without parsing the season): the weather as the generators' states and clocks (`simCaptureLight()`: the
+  principal components behind SST, humidity and shear, the day-to-day humidity and shear generators, the steering and pressure ones, ENSO, the jet history, the eddies, the random streams; the four fine daily snapshots of several MB are not
+  written, they are rebuilt from the coarse states, which are stored as the exact bytes of their float32 arrays), the storms as plain JSON (`serialize()`: every fix, ACE, the
+  season counters and the finished seasons) and what the controls say. *Cost:* measured on three seeds through a whole season (214 days, one of them hyperactive with 25
+  depressions and ACE 294) a save is 125-362 KB (94 KB of it the weather, which does not grow) and takes 2-6 ms, so a full season never gets near a browser's 5 MB.
+  *Does it come back as it was?* A season saved at 00Z continues **bit for bit** like the uninterrupted one (after four more days the storms, 62 KB of JSON, SST, humidity, shear
+  and Niño 3.4 are identical). One saved at another hour (21Z in the test) resumes with identical storms, clock, fields and counters, and twelve hours later the storms are within 0.00
+  degrees and 0.2 kt of the uninterrupted ones (8 systems): the engine takes fresh keyframes of the fields and the steering at the restored hour, where the uninterrupted run would be
+  working from keyframes up to a day old, so from there the two are statistically the same weather rather than the same numbers. *Safety:* a simulator page opened directly (a
+  bookmark, the built file) beside a saved season it did not resume leaves that season alone, says so (`A saved season is waiting in the main menu. This new one is not being
+  saved: press Restart to replace the saved season, or go back to the menu and press Continue.`) and starts saving its own only after `Restart`; `?resume=1` with nothing saved
+  says so and starts a new season; a save from another version of the engine or the grid is refused, said so and removed; blocked or full storage leaves the previous save in
+  place without an error. *Where it lives:* in this browser only (nothing leaves the machine), one slot, so starting a new game deletes the saved season along with the finished seasons archived inside it.
+  *Tests:* 16 browser checks (`checkSave` in `tests/run.mjs`, one browser context so the menu and the simulator share storage as they do in one browser): no card with nothing saved; nothing saved
+  before the first day, saved by itself within seconds after three days and a change; the Menu link, and the card it leads to (name, season, counts, ACE); the card's place on a wide and
+  a narrow screen; the hint under Start; Continue restores the same season, paused; the midnight and the 21Z continuations above; Start deletes the save and runs at once; a page left any other way
+  saves as it goes; the page beside a saved season; `?resume=1` with nothing saved; another version's save; Discard's second click; no page error on the way; 146 + 1577 checks pass.
+  *Caveat:* a resumed run continues on whatever build opens it, which is why a save carries the engine's version and the grid it was made on and is refused when either differs.
 - **The season summary and the turn of the year (step 1 of 7, milestone M5).** The season bar has a `Summary` button that opens a card for the season on the bar. It
   says how far the season has got (`Season so far, to Aug 19 · counted from Jun 1`: the first season of a run counts from the day the run started), shows the six totals of the bar with the real 1991-2020 average under each (16.3 depressions, 14.4 named storms, 7.2 hurricanes, 3.2 majors, 0.5
   Category 5, ACE 122.5), a graph of the accumulated cyclone energy through the year and a table of the season's cyclones. *The graph* draws the season's cumulative ACE

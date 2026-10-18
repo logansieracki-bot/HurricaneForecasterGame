@@ -44,6 +44,7 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--focus);outline-
 #dock{left:50%;transform:translateX(-50%);bottom:16px;display:flex;align-items:center;gap:4px;padding:8px 12px 8px 8px}
 .btn{width:40px;height:40px;border-radius:10px;border:0;background:transparent;display:grid;place-items:center;cursor:pointer}
 .btn:hover{background:rgba(255,255,255,.09)}
+a.btn{color:var(--text);text-decoration:none}
 .btn svg{width:20px;height:20px;fill:currentColor}
 #b-play{width:50px;height:50px;border-radius:50%;background:var(--ice);color:#141414;margin:0 4px}
 #b-play:hover{background:#fff}
@@ -407,6 +408,9 @@ canvas.overlay{position:absolute;left:0;top:0;width:100%;height:100%;pointer-eve
 <div id="attr"></div>
 
 <nav id="dock" class="card" aria-label="Playback">
+  <a class="btn" id="b-menu" href="../index.html" aria-label="Main menu" title="Main menu: your season is saved and waits under Continue">
+    <svg viewBox="0 0 24 24"><path d="M3 11.2 12 3.6l9 7.6V20a1 1 0 0 1-1 1h-5v-6.2H9V21H4a1 1 0 0 1-1-1z"/></svg>
+  </a>
   <button class="btn" id="b-restart" aria-label="Restart at June 1" title="Restart at June 1 (R)">
     <svg viewBox="0 0 24 24"><path d="M12 5V2L7 6.5 12 11V8c3.3 0 6 2.7 6 6s-2.7 6-6 6-6-2.7-6-6H4c0 4.4 3.6 8 8 8s8-3.6 8-8-3.6-8-8-8z"/></svg>
   </button>
@@ -791,8 +795,8 @@ const R_CAN = rect(-26, -6.5, 10, 45), R_BEN = rect(4, 22, -37, -10), R_VEN = re
 /* ------------------------------------------------------------------ *
  *  Simulation state (seeded)
  * ------------------------------------------------------------------ */
-const START_YEAR = new Date().getUTCFullYear();
-const START_MS = Date.UTC(START_YEAR, 5, 1, 0, 0, 0);
+let START_YEAR = new Date().getUTCFullYear();             // a resumed season brings its own (see applySave)
+let START_MS = Date.UTC(START_YEAR, 5, 1, 0, 0, 0);
 const P = { warming: 0, moisture: 0, shearShift: 0, variability: 1, seasonal: 1, features: 1, enso: 1, synoptic: 1, shearSynoptic: 1, jetSpeed: 1, seed: 1 };
 let rs = 1;
 function rand() { rs |= 0; rs = rs + 0x6D2B79F5 | 0; let t = Math.imul(rs ^ rs >>> 15, 1 | rs); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }
@@ -832,8 +836,10 @@ function forceEnso(target) {           // jump to a chosen state; the Atlantic t
 let simHour = 0, dayCount = 0, pc = new Float32Array(K), pcH = new Float32Array(KH), pcS = new Float32Array(KS), gsShift = 0, eddies = [], nextShed = 0, lcDip = 0;
 const humidSynC = new Float32Array(CN);   // per-cell AR(1) *generator* state, % RH directly -- no mode/pattern expansion, see decode comment above
 let lastSynDay = 0;
+const humidSynCd = new Float32Array(CN);  // the coarse state humidSynPrev was upsampled from (the generator on day synDay; humidSynC is the day after): a light save keeps these two instead of the fine snapshots
 const shearSynC = new Float32Array(CN);   // per-cell AR(1) *generator* state, kt directly -- same role as humidSynC above, local texture away from the jet axis
 let lastShearSynDay = 0;
+const shearSynCd = new Float32Array(CN);  // the same for shear
 // Jet axis state. The wave-mode amplitudes live in jetHist, one KJ-vector per whole jet-day, on
 // their own random stream (jrs) so a given seed always produces the same jet no matter how the
 // run is chunked into advance() calls or how fast it's played. jetClockH is the jet's own clock
@@ -936,7 +942,7 @@ function advanceSynTo(targetDay) {
 // days skipped).
 function ensureSynDay(d) {
   if (d === synDay) return;
-  advanceSynTo(d); upsample(humidSynC, humidSynPrev);
+  advanceSynTo(d); upsample(humidSynC, humidSynPrev); humidSynCd.set(humidSynC);
   advanceSynTo(d + 1); upsample(humidSynC, humidSynCur);
   synDay = d;
 }
@@ -993,7 +999,7 @@ function advanceShearSynTo(targetDay) {
 }
 function ensureShearSynDay(d) {
   if (d === shearSynDay) return;
-  advanceShearSynTo(d); upsample(shearSynC, shearSynPrev);
+  advanceShearSynTo(d); upsample(shearSynC, shearSynPrev); shearSynCd.set(shearSynC);
   advanceShearSynTo(d + 1); upsample(shearSynC, shearSynCur);
   shearSynDay = d;
 }
@@ -2345,6 +2351,8 @@ function steerReadout() {
    makes SST, humidity, shear and ENSO a pure function of the seed while storms are on. */
 const stormCanvas = makeCanvas(461); stormCanvas.id = 'storm-canvas';
 let sumOpen = false, sumYear = 0, sumArch = 0, sumAt = 0, sumGeo = null;
+let saveStamp = 0, savedStamp = 0, saveLast = 0, saveOwner = true;     // saveOwner: this page may write the save (false when it opened beside a season it did not resume: see the save / resume block)
+function markDirty() { saveStamp++; }                                // anything that changes the running season: the saver writes it out within seconds
 let stormMgr = null, stormsOn = true, stormFieldsDirty = true, stormsDirty = true, stormActivity = 1, stormAuto = true, stormSel = null, stormHot = null, stormHits = [], lastStormCardAt = 0;
 const STORM_KEY_H = 3;
 const kfU = [new Float32Array(SN), new Float32Array(SN), new Float32Array(SN)], kfV = [new Float32Array(SN), new Float32Array(SN), new Float32Array(SN)], kfP = new Float32Array(SN);
@@ -2442,7 +2450,7 @@ function stormsReset() {
   const card = $('storm-card'), tip = $('storm-tip'); if (card) card.hidden = true; if (tip) tip.style.display = 'none';
   updateSeasonBar();
 }
-function stormEnvChanged() { stormFieldsDirty = true; shadowStale(); }             // a slider / ENSO / seed change: the storms see the new fields at the next 3-hour keyframe
+function stormEnvChanged() { stormFieldsDirty = true; shadowStale(); markDirty(); }             // a slider / ENSO / seed change: the storms see the new fields at the next 3-hour keyframe
 function stormsAdvance(n) {
   if (!stormMgr) stormsReset();
   if (kfFieldHour < 0) stormKeyframe(true);                        // first use after a (re)start: keyframe at the current hour
@@ -2462,7 +2470,7 @@ function stormsAdvance(n) {
       stormKeyframe(midnight || stormFieldsDirty);
     }
   }
-  dirty = true; stormsDirty = true; updateSeasonBar();
+  dirty = true; stormsDirty = true; updateSeasonBar(); markDirty();
 }
 function stormsSwitch(on) {
   if (on === stormsOn) return stormsOn;
@@ -2487,6 +2495,28 @@ function simCapture() {
     humidSynPrev: c32(humidSynPrev), humidSynCur: c32(humidSynCur), shearSynPrev: c32(shearSynPrev), shearSynCur: c32(shearSynCur),
     eddies: eddies.map((e) => Object.assign({}, e)), jetHist: new Map(Array.from(jetHist, ([k, v]) => [k, c32(v)])),
   };
+}
+/* The light version, what a saved game keeps: everything simCapture() holds except the four fine daily snapshots (several MB). Each of those is the
+   upsampled coarse generator state of one day, and the generators keep that state (humidSynCd / humidSynC, shearSynCd / shearSynC), so only
+   the coarse states are written (as base64 of their float32 bytes: exact) and the snapshots are rebuilt on restore. */
+function f32b64(a) { const u = new Uint8Array(a.buffer, a.byteOffset, a.byteLength); let t = ''; for (let i = 0; i < u.length; i += 8192) t += String.fromCharCode.apply(null, u.subarray(i, i + 8192)); return btoa(t); }
+function b64f32(str, into) { const bin = atob(str), u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); const f = new Float32Array(u.buffer); if (into) { into.set(f); return into; } return f; }
+function lightArrays() { return [['pc', pc], ['pcH', pcH], ['pcS', pcS], ['ensoHist', ensoHist], ['humidSynC', humidSynC], ['humidSynCd', humidSynCd], ['shearSynC', shearSynC], ['shearSynCd', shearSynCd], ['pcStPrev', pcStPrev], ['pcStCur', pcStCur]]; }
+function simCaptureLight() {
+  return {
+    rs, jrs, strs, simHour, dayCount, jetClockH, jetNewest, gsShift, nextShed, lcDip, ensoZr, ensoZi, n34, ensoHi, ensoHold, ensoHeld, lastSynDay, lastShearSynDay, synDay, shearSynDay,
+    f32: Object.fromEntries(lightArrays().map(([k, a]) => [k, f32b64(a)])),
+    eddies: eddies.map((e) => Object.assign({}, e)), jetHist: Array.from(jetHist, ([k, v]) => [k, f32b64(v)]),
+  };
+}
+function simRestoreLight(s) {
+  rs = s.rs; jrs = s.jrs; strs = s.strs; simHour = s.simHour; dayCount = s.dayCount; jetClockH = s.jetClockH; jetNewest = s.jetNewest; gsShift = s.gsShift; nextShed = s.nextShed; lcDip = s.lcDip;
+  ensoZr = s.ensoZr; ensoZi = s.ensoZi; n34 = s.n34; ensoHi = s.ensoHi; ensoHold = s.ensoHold; ensoHeld = s.ensoHeld; lastSynDay = s.lastSynDay; lastShearSynDay = s.lastShearSynDay; synDay = s.synDay; shearSynDay = s.shearSynDay;
+  for (const [k, a] of lightArrays()) b64f32(s.f32[k], a);
+  eddies = s.eddies.map((e) => Object.assign({}, e)); jetHist.clear(); for (const [k, v] of s.jetHist) jetHist.set(k, b64f32(v));
+  if (synDay > -900) { upsample(humidSynCd, humidSynPrev); upsample(humidSynC, humidSynCur); }          // Prev is the generator on day synDay, Cur the day after
+  if (shearSynDay > -900) { upsample(shearSynCd, shearSynPrev); upsample(shearSynC, shearSynCur); }
+  anomDirty = true; stStamp = ''; dirty = true;
 }
 function simRestore(s) {
   rs = s.rs; jrs = s.jrs; strs = s.strs; simHour = s.simHour; dayCount = s.dayCount; jetClockH = s.jetClockH; jetNewest = s.jetNewest; gsShift = s.gsShift; nextShed = s.nextShed; lcDip = s.lcDip;
@@ -2573,7 +2603,7 @@ function placeCommit(ll) {
   if (!placeMode || !stormMgr) return;
   const S = stormMgr.place({ kind: placeKind, lat: ll.lat, lon: ll.lng });
   placeSet(false);
-  updateSeasonBar(); stormsDirty = true; drawStorms();
+  updateSeasonBar(); stormsDirty = true; drawStorms(); markDirty();
   return S;
 }
 function placeSummary(F) {                                                // one line for the label next to the dot
@@ -3093,9 +3123,10 @@ function frame(now) {
     if (steerOn()) steerFrame(now);                         // arrows and highs: a few ms, so every few frames, not every 3 simulated hours
   }
   if (stormsDirty && stormsOn) drawStorms();                // the storms move with every simulated hour; this is cheap
+  saveTick();
   requestAnimationFrame(frame);
 }
-function restart() { initSim(P.seed); acc = 0; lastClock = ''; updateClock(); refresh(); }
+function restart() { deleteSave(); saveOwner = true; initSim(P.seed); acc = 0; lastClock = ''; updateClock(); refresh(); }
 
 $('b-play').onclick = () => setPlaying(!playing);
 $('b-slower').onclick = () => { if (speedIdx > 0) { speedIdx--; updateSpeedUI(); } };
@@ -3144,8 +3175,8 @@ $('op').oninput = () => { $('op-o').textContent = $('op').value + '%'; scheduleR
 $('l265').onchange = scheduleRender; $('l2').onchange = scheduleRender; $('jetline').onchange = scheduleRender;
 $('steerarrows').onchange = steerChanged; $('highs').onchange = steerChanged;
 $('stwaves').onchange = $('stlows').onchange = $('stlabels').onchange = () => { stormsDirty = true; drawStorms(); };
-$('st-auto').onchange = () => { stormAuto = $('st-auto').checked; if (stormMgr) stormMgr.auto = stormAuto; };
-$('p-stact').oninput = () => { stormActivity = parseFloat($('p-stact').value); $('p-stact-o').textContent = stormActivity.toFixed(1) + '×'; if (stormMgr) stormMgr.autoRate = stormActivity; };
+$('st-auto').onchange = () => { stormAuto = $('st-auto').checked; if (stormMgr) stormMgr.auto = stormAuto; markDirty(); };
+$('p-stact').oninput = () => { stormActivity = parseFloat($('p-stact').value); $('p-stact-o').textContent = stormActivity.toFixed(1) + '×'; if (stormMgr) stormMgr.autoRate = stormActivity; markDirty(); };
 $('sc-close').onclick = closeStormCard;
 document.querySelectorAll('#seg-depth button').forEach((b) => b.onclick = () => { steerLayer = b.dataset.d; document.querySelectorAll('#seg-depth button').forEach((x) => x.setAttribute('aria-pressed', x === b)); drawSteerLegend(); drawSteer(); updateReadout(); });
 const sliders = [['p-warm', 'warming', (v) => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(1) + ' °C'], ['p-moist', 'moisture', (v) => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(0) + ' %'], ['p-shear', 'shearShift', (v) => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(0) + ' kt'], ['p-var', 'variability', (v) => v.toFixed(1) + '×'], ['p-wx', 'synoptic', (v) => v.toFixed(1) + '×'], ['p-wxs', 'shearSynoptic', (v) => v.toFixed(1) + '×'], ['p-jets', 'jetSpeed', (v) => v.toFixed(1) + '×'], ['p-sea', 'seasonal', (v) => v.toFixed(2).replace(/0$/, '') + '×'], ['p-feat', 'features', (v) => v.toFixed(2).replace(/0$/, '') + '×'], ['p-enso', 'enso', (v) => v.toFixed(2).replace(/0$/, '') + '×']];
@@ -3161,6 +3192,79 @@ $('seed-vary').onchange = () => { setSliderValues($('seed-vary').checked ? seedS
 $('seed').onchange = () => applySeed(parseFloat($('seed').value));
 $('b-newseed').onclick = () => applySeed(1 + Math.floor(Math.random() * 999999));
 
+/* ---- save / resume -------------------------------------------------------------------------------------------------------------------------
+   A season in progress is kept in localStorage as one JSON text (a few hundred KB): the weather (simCaptureLight(): the generators' states and the
+   clocks), the storms as plain JSON (positions, intensities, every fix, ACE, the season counters and the finished seasons) and what the controls say.
+   It is written synchronously, so it also lands while the page is being closed (an IndexedDB write started then is cut off: measured, 0-2 of 8
+   arrived), every few seconds while the clock runs, a moment after a change while it is paused, when the page is hidden and before the Menu link
+   navigates. A few bytes of metadata next to it let the main menu offer "Continue" without parsing the season. `?resume=1` restores it, paused. The
+   engine takes fresh keyframes of the fields and the steering at the restored hour, so the storms are exactly where they were and the weather around
+   them goes on from the same generators; the one thing a resume does not reproduce is the age of the keyframes the next hours would have used
+   (up to a day for the daily fields), which is why a season saved at midnight continues bit for bit and one saved at 17Z only statistically.
+   A page opened directly (a bookmark of the simulator, the built file) beside a saved season it did not resume leaves that season alone: it does not
+   save its own new one until Restart (an explicit new start) or Start in the menu has replaced the old save. Same browser only (nothing leaves the machine). */
+const SAVE_V = 1, SAVE_KEY = 'hf-save', SAVE_META = 'hf-save-meta', SAVE_EVERY_MS = [8000, 1200];   // while the clock runs, and while it is paused (after a change)
+const RESUME = /[?&]resume=1(?:&|$)/.test(location.search);
+function captureSave() {
+  return {
+    v: SAVE_V, sv: HFStorms.VERSION, basin: 'atlantic', savedAt: Date.now(), startMs: START_MS, n: N, sn: SN,
+    weather: simCaptureLight(), storms: JSON.stringify(stormMgr.serialize()),
+    ui: { seed: P.seed, P: Object.assign({}, P), sliders: Object.fromEntries(sliders.map(([id]) => [id, $(id).value])), seedVary: $('seed-vary').checked,
+      ensoHold, ensoHeld, ensoNow: $('p-ensonow').value, activity: stormActivity, auto: stormAuto, speedIdx },
+  };
+}
+function saveMeta(s) {
+  const st = stormMgr.stats(), d = simDate(simHour);
+  return { v: SAVE_V, basin: 'atlantic', name: 'Atlantic', year: st.year, hour: simHour, date: MON[d.getUTCMonth()] + ' ' + d.getUTCDate(), dep: st.dep, named: st.named, hurr: st.hurr, major: st.major, ace: st.ace, savedAt: s.savedAt };
+}
+function saveNow() {
+  if (!saveOwner || !stormsOn || !stormMgr || simHour < 24) return false;        // a season nobody has played for a day is not worth a Continue card
+  const stamp = saveStamp;
+  try {
+    const s = captureSave();
+    localStorage.setItem(SAVE_KEY, JSON.stringify(s)); localStorage.setItem(SAVE_META, JSON.stringify(saveMeta(s)));
+    savedStamp = stamp; saveLast = performance.now(); return true;
+  } catch (e) { return false; }                                                    // storage full or blocked: the previous save stays
+}
+function saveTick() { if (saveStamp !== savedStamp && performance.now() - saveLast >= SAVE_EVERY_MS[playing ? 0 : 1]) saveNow(); }
+function deleteSave() { try { localStorage.removeItem(SAVE_KEY); localStorage.removeItem(SAVE_META); } catch (e) { /* storage blocked */ } savedStamp = saveStamp; }
+function loadSave() { try { const t = localStorage.getItem(SAVE_KEY); return t ? JSON.parse(t) : null; } catch (e) { return null; } }
+function applySave(s) {
+  if (!s || s.v !== SAVE_V || s.sv !== HFStorms.VERSION || s.n !== N || s.sn !== SN || s.basin !== 'atlantic') throw new Error('this save belongs to another version');
+  START_MS = s.startMs; START_YEAR = new Date(START_MS).getUTCFullYear(); saveOwner = true;
+  const u = s.ui;
+  Object.assign(P, u.P); sliders.forEach(([id, key, fmt]) => { $(id).value = P[key]; $(id + '-o').textContent = fmt(P[key]); });   // the model's values are the truth, the controls follow
+  $('seed').value = u.seed; $('seed-vary').checked = u.seedVary;
+  ensoHold = u.ensoHold; ensoHeld = u.ensoHeld; $('enso-hold').checked = ensoHold; $('p-ensonow').value = u.ensoNow;
+  stormActivity = u.activity; stormAuto = u.auto; $('st-auto').checked = stormAuto; $('p-stact').value = stormActivity; $('p-stact-o').textContent = stormActivity.toFixed(1) + '×';
+  speedIdx = u.speedIdx; updateSpeedUI();
+  initSim(P.seed);                                                                // the static structure of this seed (waves, jet modes ...) and a throw-away new season
+  simRestoreLight(s.weather);
+  stormMgr = HFStorms.restore(JSON.parse(s.storms), { maps: stormMapsNow() });
+  stormLab = null; shadow = null; stormSel = null; stormHot = null; stormHits = []; stormsDirty = true; sumArch = stormMgr.archive.length; if (sumOpen) closeSummary();
+  lowsStamp = -1; stormKeyframe(true); stormFieldsDirty = false;                  // fresh keyframes of the steering and the fields at the restored hour
+  seasonText = ''; acc = 0; lastClock = ''; updateClock(); updateSeasonBar(); refresh();
+  savedStamp = saveStamp;                                                          // what was just loaded is what is on disk
+}
+function resumeFromSave() {
+  try {
+    const s = loadSave();
+    if (!s) { document.body.dataset.resume = 'none'; toast('There is no saved season to continue, so a new one has started.'); return false; }
+    applySave(s);
+    const d = simDate(simHour); document.body.dataset.resume = 'ok';
+    toast('Welcome back: Atlantic ' + stormMgr.season.year + ', ' + MON[d.getUTCMonth()] + ' ' + d.getUTCDate() + ', ' + String(d.getUTCHours()).padStart(2, '0') + 'Z. The clock is paused; press play to go on.');
+    return true;
+  } catch (e) {
+    document.body.dataset.resume = 'refused';
+    toast('The saved season could not be resumed (it may come from another version), so a new one has started.');
+    applySeed(1 + Math.floor(Math.random() * 999999));                             // a clean start (this also removes the unusable save)
+    return false;
+  }
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && saveStamp !== savedStamp) saveNow(); });
+window.addEventListener('pagehide', () => { if (saveStamp !== savedStamp) saveNow(); });
+$('b-menu').addEventListener('click', () => { if (saveStamp !== savedStamp) saveNow(); });   // the link itself does the navigating
+
 /* ------------------------------------------------------------------ *
  *  Start
  * ------------------------------------------------------------------ */
@@ -3170,6 +3274,8 @@ if (window.innerWidth < 700) $('panel').classList.add('collapsed');
 const seed0 = 1 + Math.floor(Math.random() * 999999);
 $('seed').value = seed0; P.seed = seed0; setSliderValues(seedSliderValues(seed0)); initSim(seed0); updateClock();
 refresh();
+if (RESUME && !resumeFromSave()) setPlaying(true); else if (RESUME) setPlaying(false);
+else if (localStorage.getItem(SAVE_META)) { saveOwner = false; document.body.dataset.resume = 'beside'; toast('A saved season is waiting in the main menu. This new one is not being saved: press Restart to replace the saved season, or go back to the menu and press Continue.'); }
 $('loading').style.display = 'none';
 lastNow = performance.now(); requestAnimationFrame(frame);
 
@@ -3186,6 +3292,9 @@ window.SSTSIM = {
     return n;
   },
   stormClimGet() { const C = stormClim; stormClim = null; return C ? { n: C.n, steer: Array.from(C.steer), ns: Array.from(C.ns), sst: Array.from(C.sst), rh: Array.from(C.rh), shear: Array.from(C.shear), rel: Array.from(C.rel), ne: Array.from(C.ne) } : null; },
+  saveNow, deleteSave, loadSave() { const t = localStorage.getItem(SAVE_KEY), s = t && JSON.parse(t); return s ? { v: s.v, startMs: s.startMs, bytes: t.length, weatherBytes: JSON.stringify(s.weather).length, stormBytes: s.storms.length } : null; },
+  saveInfo() { return { stamp: saveStamp, saved: savedStamp, owner: saveOwner, meta: localStorage.getItem(SAVE_META) }; },
+  snapSave() { window.__save = JSON.stringify(captureSave()); return window.__save.length; }, snapLoad() { applySave(JSON.parse(window.__save)); return true; }, saveTick() { saveLast = -1e9; saveTick(); },
   stormRecord(year) { return stormMgr ? stormMgr.seasonRecord(year == null ? stormMgr.season.year : year) : null; },
   summary(on, year) { if (on === undefined) return { open: sumOpen, year: sumYear, geo: sumGeo }; if (on) openSummary(year); else closeSummary(); return sumOpen; },
   place(on, kind) { if (kind) { placeKind = kind; document.querySelectorAll('#place-menu button').forEach((x) => x.setAttribute('aria-checked', x.dataset.kind === kind ? 'true' : 'false')); } return on === undefined ? placeMode : placeSet(on); },
@@ -3198,7 +3307,7 @@ window.SSTSIM = {
   simRestore() { const s = window.__snap; simRestore(s.weather); if (s.storms) { stormMgr = HFStorms.restore(JSON.parse(s.storms), { maps: stormMapsNow() }); stormFieldsDirty = true; kfFieldHour = -1; } return true; },
   stormLabRecord() { return stormLab ? stormLab.map(labRecord) : []; },
   stormLabStop() { stormLab = null; },
-  stormPlace(spec) { const S = stormMgr.place(spec); stormsDirty = true; drawStorms(); return S.id; },
+  stormPlace(spec) { const S = stormMgr.place(spec); stormsDirty = true; drawStorms(); markDirty(); return S.id; },
   stormForce(id, patch) { const S = stormMgr.get(id); Object.assign(S, patch); stormsDirty = true; drawStorms(); return !!S; },
   stormAuto(on) { stormAuto = !!on; if (stormMgr) stormMgr.auto = stormAuto; },
   stormPx(id) { const S = stormMgr.get(id); if (!S) return null; const p = map.latLngToContainerPoint([S.lat, S.lon]); return { x: p.x, y: p.y }; },

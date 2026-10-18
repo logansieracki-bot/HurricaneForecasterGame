@@ -40,7 +40,8 @@ nothing to run by hand.
 
 ## Layout
 - `index.html` main menu: basin select + mode select. All nine basins run in
-  Simulation mode; the Forecaster card is present but disabled ("Coming soon").
+  Simulation mode; the Forecaster card is present but disabled ("Coming soon"). With an Atlantic season
+  saved in the browser it also has a Continue card (beside the picker on a wide screen, above it on a phone).
 - `src/template.html` the Atlantic simulator app: vanilla JS in one IIFE, four
   build placeholders (`/*__LEAFLET_CSS__*/`, `/*__LEAFLET_JS__*/`, `/*__DATA__*/`,
   `/*__STORMS__*/`).
@@ -317,7 +318,13 @@ nothing to run by hand.
   from the six-hourly fixes with HURDAT2's own definitions. **Season summary:** the bar's `Summary` button opens a card with the totals and the real 1991-2020 average
   beneath each, a graph of the season's accumulated cyclone energy through the year over the real seasons (the middle 50 % and 80 % as bands, the median dashed; the
   other seasons of the run as thin lines) and one row per cyclone (a click flies to it and opens its stat card); at Jan 1 the finished season's paths disappear, the bar
-  starts the new year from zero, a cyclone still alive finishes under its own year, and the card opens by itself on the season that has just ended. **Place:** the dock's `Place` button (key `P`) holds the clock and opens a picker (tropical wave,
+  starts the new year from zero, a cyclone still alive finishes under its own year, and the card opens by itself on the season that has just ended. **Save / resume:**
+  the season is kept in the browser (`localStorage`, 125-360 KB over a whole season, written in 2-6 ms: the weather generators' states and clocks, the storms as plain JSON, the
+  controls) every few seconds while the clock runs, a moment after a change while it is paused, and when the page is hidden, closed or left by the dock's Menu button; the
+  main menu then shows a `Continue` card (season, date, named storms and hurricanes, ACE) that reopens the simulator paused with `?resume=1`, and `Start` (a new game) or
+  `Discard this season` deletes it. A season saved at 00Z continues bit for bit like the uninterrupted one; saved at another hour the storms, fields and counters are
+  identical at the moment of the resume and the continuation is statistical (the engine takes fresh keyframes there). A simulator page opened directly beside a saved season
+  it did not resume leaves that season alone until `Restart`, and a save from another version is refused and removed. **Place:** the dock's `Place` button (key `P`) holds the clock and opens a picker (tropical wave,
   tropical depression, subtropical depression, low); a white dot follows the pointer with a line of the next seven days of a system put right there (the engine run through a *shadow
   environment*: the simulator's own weather looked up seven days ahead from a copy of its state, which is put back), labelled e.g. `Cat 1 hurricane · peak 85 mph · by day 6.0` or
   `Does not develop`; a click places it exactly there (it then does what the preview said) and `Esc` cancels. **How a storm lives (climatology-anchored):** a *disturbance*
@@ -349,8 +356,8 @@ nothing to run by hand.
   the midnight keyframe. With storms off (`SSTSIM.storms(false)`, which the existing environment checks use, and the other
   eight basins which have no engine yet) nothing changes. Every random
   draw in the engine is a pure function of (seed, system id, hour, stream), so a checkpoint is plain JSON and a hand-placed
-  system never changes an automatic one. **Not yet:** save / resume with the menu's Continue
-  card, impacts (watches, warnings, cities), invests, the cone and the wind fields are later milestones/steps.
+  system never changes an automatic one. **Not yet:** impacts (watches, warnings, cities),
+  invests, the cone and the wind fields are later milestones/steps.
 
 ## Imagery
 The "Blue Marble" theme is a crop **embedded in the build** (`data.bm`, drawn on
@@ -389,7 +396,7 @@ check that Satellite still resolves to something usable.
   0.03) high; a fifth of numbered depressions never reach storm strength (real 11 %); post-tropical systems are about 20 % too slow after
   their transition and there are fewer of them than in the data; subtropical storms are 1.2 a year (1.7); the page's own pressure lows are
   fewer and longer-lived than ERA5's; the moisture slider's effect is far stronger than the warming slider's. The lows thresholds, the
-  2027+ name lists and the performance at 64× are also open. No save / resume, impacts or invests yet.
+  2027+ name lists and the performance at 64× are also open. No impacts or invests yet.
 - All nine basins run in Simulation mode; Forecaster mode hasn't been started (its
   menu card is disabled). Steering arrows and highs are in all nine basins; the
   Mediterranean and the North Indian Ocean have hardly any highs to show (about one day in ten in winter).

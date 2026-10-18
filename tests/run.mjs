@@ -2511,6 +2511,159 @@ async function checkMenu(basinCardText, expectedDistSuffix) {
   check(`[menu -> ${basinCardText}] Start navigates to the simulator, which loads clean`, menuPage.url().endsWith(expectedDistSuffix) && menuErrors.length === 0);
   await menuBrowser.close();
 }
+// Save / resume: a season left in progress waits behind the menu's Continue card and comes back as it was; a new game deletes it.
+// One browser context shares localStorage between the pages, as one browser does between the menu and the simulator.
+async function checkSave() {
+  const browser = await chromium.launch(launchOpts);
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+  await ctx.route('**://**/*', (r) => (r.request().url().startsWith('file://') ? r.continue() : r.abort()));
+  const errors = [], MENU = pathToFileURL(join(ROOT, 'index.html')).href, SIM = pathToFileURL(ATLANTIC_DIST).href;
+  const open = async (url, ready) => { const pg = await ctx.newPage(); pg.on('pageerror', (e) => errors.push(e.message)); await pg.goto(url, { waitUntil: 'load', timeout: 30000 }); if (ready) await pg.waitForFunction(() => window.__ready === true, { timeout: 30000 }); return pg; };
+  const meta = (pg) => pg.evaluate(() => { try { return JSON.parse(localStorage.getItem('hf-save-meta')); } catch (e) { return null; } });
+  // one fixed history, run on any page: 38 days of a season with its own storms, a warming slider, a depression placed in July; `extra` more hours at the end
+  const history = (pg, extra) => pg.evaluate((extra) => {
+    const S = window.SSTSIM; S.storms(true); S.setPlaying(false); S.applySeed(31); S.setPlaying(false); S.stormAuto(true);
+    S.tick(24 * 38 + 5); S.set('warming', 0.5); S.tick(7); S.stormPlace({ kind: 'td', lat: 17, lon: -52, v: 45 }); S.tick(extra); S.advance(0);
+  }, extra);
+  const snap = (pg) => pg.evaluate(() => {
+    const S = window.SSTSIM, v = S.sliderVals();
+    return { hour: S.state().simHour, stats: S.stormState().stats, json: S.stormJSON(), systems: S.stormState().systems.filter((x) => x.alive || x.depNum > 0).map((x) => ({ id: x.id, lat: x.lat, lon: x.lon, v: x.v })), a: S.sample(15, -50), b: S.sample(27, -78), n34: S.enso().n34, warming: v.warming, seed: v.seed,
+      bar: document.getElementById('season').innerText.replace(/\s+/g, ' '), playing: document.getElementById('ic-pause').style.display !== 'none', loading: getComputedStyle(document.getElementById('loading')).display,
+      resume: document.body.dataset.resume || '', slider: document.getElementById('p-warm').value };
+  });
+  const same = (x, y) => x.json === y.json && x.hour === y.hour && ['sst', 'humid', 'shear'].every((f) => x.a[f] === y.a[f] && x.b[f] === y.b[f]) && x.n34 === y.n34;
+  const clean = () => ctx.pages().length;
+  void clean;
+
+  // the menu with nothing saved
+  const m0 = await open(MENU);
+  const none = await m0.evaluate(() => ({ hidden: document.getElementById('continue').hidden, cls: document.getElementById('shell').classList.contains('has-save') }));
+  check('[save] the menu has no Continue card while nothing is saved', none.hidden && !none.cls);
+  await m0.close();
+
+  // a season that has not run for a day is not worth saving; one that has is saved a moment after it changes, while the clock is paused
+  const p0 = await open(SIM, true);
+  await p0.evaluate(() => { const S = window.SSTSIM; S.setPlaying(false); S.deleteSave(); S.applySeed(5); S.setPlaying(false); S.tick(5); S.set('moisture', 3); });
+  await p0.waitForTimeout(2200);
+  const young = await meta(p0);
+  await p0.evaluate(() => { const S = window.SSTSIM; S.tick(24 * 3); S.set('moisture', 4); });
+  await p0.waitForFunction(() => localStorage.getItem('hf-save-meta') !== null, { timeout: 8000 }).catch(() => {});
+  const autosaved = await meta(p0), size = await p0.evaluate(() => window.SSTSIM.loadSave());
+  check(`[save] nothing is saved before the season is a day old (${young ? 'saved' : 'none'}); after three days and a change it is saved by itself within seconds (hour ${autosaved && autosaved.hour}, ${autosaved && autosaved.date}; ${size && (size.bytes / 1024).toFixed(0)} KB, of which weather ${size && (size.weatherBytes / 1024).toFixed(0)} KB and storms ${size && (size.stormBytes / 1024).toFixed(0)} KB)`,
+    young === null && !!autosaved && autosaved.hour >= 72 && autosaved.basin === 'atlantic' && autosaved.year >= 2026 && size.bytes < 1.5e6);
+  await p0.close();
+
+  // leave through the Menu link: the season waits behind the Continue card
+  const p1 = await open(SIM, true);
+  await history(p1, 12);                                                       // ends at midnight (hour 936)
+  const before = await snap(p1);
+  await Promise.all([p1.waitForNavigation({ waitUntil: 'load', timeout: 20000 }), p1.click('#b-menu')]);
+  const left = { url: p1.url(), meta: await meta(p1), card: await p1.evaluate(() => ({ hidden: document.getElementById('continue').hidden, text: document.getElementById('continue').innerText.replace(/\s+/g, ' '), hint: document.getElementById('hint').textContent })) };
+  check(`[save] the Menu link in the dock goes to the main menu (${left.url.split('/').pop()}), which offers "${left.card.text}"`,
+    /index\.html$/.test(left.url) && !left.card.hidden && new RegExp('Atlantic ' + before.stats.year).test(left.card.text) && left.card.text.includes(before.stats.named + ' named') && left.card.text.includes('ACE ' + before.stats.ace.toFixed(1)) && left.meta && left.meta.hour === before.hour);
+  const geom = [];
+  for (const [w, h] of [[1280, 800], [390, 844]]) {
+    await p1.setViewportSize({ width: w, height: h }); await p1.waitForTimeout(150);
+    geom.push(await p1.evaluate(() => { const r = (id) => document.getElementById(id).getBoundingClientRect(), c = r('continue'), b = r('basins'); return { w: innerWidth, side: c.left >= b.right - 1 && c.top < b.bottom, above: c.bottom <= b.top + 1, inside: c.left >= 0 && c.right <= innerWidth + 1 }; }));
+  }
+  await p1.setViewportSize({ width: 1280, height: 800 });
+  check(`[save] the Continue card sits beside the picker on a wide screen (${geom[0].side}) and above the basin grid on a phone (${geom[1].above}), inside the screen in both`, geom[0].side && geom[0].inside && geom[1].above && geom[1].inside);
+  check('[save] with a season saved, the hint under Start says that a new game replaces it', await (async () => {
+    await p1.click('button.card:has-text("Atlantic")'); await p1.click('button.card:has-text("Simulation")');
+    return /replaces your saved Atlantic \d{4} season/.test(await p1.textContent('#hint'));
+  })());
+
+  // Continue: the page comes back paused, on exactly the season that was left
+  await p1.click('button.card:has-text("Atlantic")');                       // (a toggle: nothing is picked now)
+  await Promise.all([p1.waitForNavigation({ waitUntil: 'load', timeout: 20000 }), p1.click('#rs-go')]);
+  await p1.waitForFunction(() => window.__ready === true, { timeout: 30000 });
+  const back = await snap(p1);
+  check(`[save] Continue opens the simulator with ?resume=1 on the season that was left: hour ${back.hour}, "${back.bar}", the same ${(back.json.length / 1024).toFixed(0)} KB of storms, warming ${back.warming}, paused`,
+    /resume=1/.test(p1.url()) && same(before, back) && back.bar === before.bar && back.warming === 0.5 && Number(back.slider) === 0.5 && !back.playing && back.loading === 'none' && back.resume === 'ok');
+
+  // and it goes on exactly as the uninterrupted season does (saved at midnight, where the engine's keyframes are the ones a restore takes): a fresh page repeats the same history without any save, both run four more days
+  const fresh = await open(SIM, true);
+  await history(fresh, 12);
+  const adv = (pg, h) => pg.evaluate((h) => { const S = window.SSTSIM; S.tick(h); S.advance(0); }, h);
+  await adv(p1, 24 * 4 + 3); await adv(fresh, 24 * 4 + 3);
+  const [x, y] = [await snap(p1), await snap(fresh)];
+  check(`[save] a season saved at midnight continues exactly like the uninterrupted one: after four more days (hour ${x.hour}) the storms (${(x.json.length / 1024).toFixed(0)} KB), SST, humidity, shear and Nino 3.4 are identical`, same(x, y) && x.hour === before.hour + 99);
+  await fresh.close();
+
+  // saved at 21Z the storms are exactly where they were and the weather goes on from the same generators; only the age of the engine's keyframes differs, so the continuation is statistical: close, not equal
+  const odd = await open(SIM, true);
+  await history(odd, 9);                                                       // 21Z
+  const oddBefore = await snap(odd);
+  await odd.evaluate(() => window.SSTSIM.saveNow());
+  const oddBack = await open(SIM + '?resume=1', true);
+  const oddNow = await snap(oddBack);
+  check(`[save] a season saved at 21Z (hour ${oddBefore.hour}) resumes with the identical storms, clock, fields and season counters (${oddNow.bar})`, same(oddBefore, oddNow) && oddNow.bar === oddBefore.bar && !oddNow.playing);
+  await adv(odd, 12); await adv(oddBack, 12);
+  const [ox, oy] = [await snap(odd), await snap(oddBack)];
+  const gap = ox.systems.map((a) => { const b = oy.systems.find((q) => q.id === a.id); return b ? [Math.hypot(a.lat - b.lat, (a.lon - b.lon) * Math.cos(a.lat * Math.PI / 180)), Math.abs(a.v - b.v)] : [99, 99]; });
+  check(`[save] twelve hours later the resumed storms are within ${Math.max(...gap.map((g) => g[0])).toFixed(2)} degrees and ${Math.max(...gap.map((g) => g[1])).toFixed(1)} kt of where the uninterrupted ones are (${gap.length} systems, same list: ${ox.systems.length === oy.systems.length})`,
+    ox.hour === oy.hour && ox.systems.length === oy.systems.length && gap.every((g) => g[0] < 1.0 && g[1] < 15));
+  await odd.close(); await oddBack.close();
+
+  // a new game deletes the save
+  await Promise.all([p1.waitForNavigation({ waitUntil: 'load', timeout: 20000 }), p1.click('#b-menu')]);
+  const had = await meta(p1);
+  await p1.click('button.card:has-text("Atlantic")'); await p1.click('button.card:has-text("Simulation")');
+  await Promise.all([p1.waitForNavigation({ waitUntil: 'load', timeout: 20000 }), p1.click('#start')]);
+  await p1.waitForFunction(() => window.__ready === true, { timeout: 30000 });
+  const gone = await p1.evaluate(() => ({ meta: localStorage.getItem('hf-save-meta'), save: localStorage.getItem('hf-save'), playing: document.getElementById('ic-pause').style.display !== 'none', url: location.href }));
+  check(`[save] Start on the menu begins a new game and deletes the saved season (before: hour ${had && had.hour}; after: meta ${gone.meta}, season ${gone.save}), the simulator runs at once (${gone.playing}) and the URL has no resume flag`,
+    !!had && gone.meta === null && gone.save === null && gone.playing && !/resume/.test(gone.url));
+
+  await p1.evaluate(() => { window.SSTSIM.setPlaying(false); window.SSTSIM.deleteSave(); });        // this page is done: paused, nothing of it left on disk (two tabs would take turns at one save)
+  // leaving without the Menu link (a closed tab, a typed address): the page saves as it goes away
+  const q = await open(SIM, true);
+  const qHour = await q.evaluate(() => { const S = window.SSTSIM; S.setPlaying(false); S.deleteSave(); S.applySeed(8); S.setPlaying(false); S.stormAuto(true); S.tick(24 * 12 + 7); S.set('moisture', 6); return S.state().simHour; });
+  await q.goto(MENU, { waitUntil: 'load' });
+  const qMeta = await meta(q);
+  check(`[save] a page that is left any other way saves as it goes (hour ${qHour}, saved ${qMeta && qMeta.hour})`, !!qMeta && qMeta.hour === qHour);
+  await q.close();
+
+  // a simulator page opened directly beside a saved season does not overwrite it; Restart takes over
+  const savedHour = qMeta.hour;                                                    // the season the last page left behind
+  const other = await open(SIM, true);                                           // a bookmark of the simulator, with that season saved
+  const beside = await other.evaluate(() => ({ resume: document.body.dataset.resume, owner: window.SSTSIM.saveInfo().owner }));
+  await other.evaluate(() => { const S = window.SSTSIM; S.setPlaying(false); S.stormAuto(true); S.tick(24 * 6); S.set('moisture', 4); });
+  await other.waitForTimeout(1800);
+  const kept = (await meta(other)).hour;
+  await other.evaluate(() => { const S = window.SSTSIM; S.applySeed(12); S.setPlaying(false); S.tick(24 * 3); S.set('moisture', 2); });
+  await other.waitForTimeout(1800);
+  const taken = (await meta(other)).hour;
+  check(`[save] a simulator page opened directly beside a saved season leaves it alone (hour ${savedHour} before, ${kept} after six more days on the new page; it said so: ${beside.resume}) and Restart takes over (the save is now hour ${taken})`,
+    beside.resume === 'beside' && beside.owner === false && kept === savedHour && taken === 72 && (await other.evaluate(() => window.SSTSIM.saveInfo().owner)) === true);
+  await other.close();
+
+  // ?resume=1 with nothing saved starts a new season; a save from another version is refused, said so, and removed
+  await p1.evaluate(() => { window.SSTSIM.setPlaying(false); window.SSTSIM.deleteSave(); });                  // paused, so that it does not write the season again as it goes
+  await p1.goto(SIM + '?resume=1'); await p1.waitForFunction(() => window.__ready === true, { timeout: 30000 });
+  const nothing = await p1.evaluate(() => ({ resume: document.body.dataset.resume, playing: document.getElementById('ic-pause').style.display !== 'none' }));
+  check(`[save] ?resume=1 with nothing saved says so (${nothing.resume}) and starts a new season that runs (${nothing.playing})`, nothing.resume === 'none' && nothing.playing);
+  await p1.evaluate(() => {
+    localStorage.setItem('hf-save-meta', JSON.stringify({ v: 1, basin: 'atlantic', name: 'Atlantic', year: 2026, hour: 100, date: 'Jun 5', dep: 0, named: 0, hurr: 0, major: 0, ace: 0, savedAt: Date.now() }));
+    localStorage.setItem('hf-save', JSON.stringify({ v: 999 }));
+  });
+  await p1.goto(SIM + '?resume=1'); await p1.waitForFunction(() => window.__ready === true, { timeout: 30000 });
+  const bad = await p1.evaluate(() => ({ resume: document.body.dataset.resume, playing: document.getElementById('ic-pause').style.display !== 'none', meta: localStorage.getItem('hf-save-meta'), save: localStorage.getItem('hf-save') }));
+  check(`[save] a save from another version is refused (${bad.resume}), a new season runs and the unusable save is removed`, bad.resume === 'refused' && bad.playing && bad.meta === null && bad.save === null);
+
+  // Discard needs two clicks
+  await p1.evaluate(() => localStorage.setItem('hf-save-meta', JSON.stringify({ v: 1, basin: 'atlantic', name: 'Atlantic', year: 2026, hour: 100, date: 'Jun 5', dep: 1, named: 0, hurr: 0, major: 0, ace: 0, savedAt: Date.now() })));
+  await p1.goto(MENU);
+  await p1.click('#rs-del'); const afterOne = { hidden: await p1.evaluate(() => document.getElementById('continue').hidden), label: await p1.textContent('#rs-del') };
+  await p1.click('#rs-del');
+  const afterTwo = { hidden: await p1.evaluate(() => document.getElementById('continue').hidden), meta: await meta(p1) };
+  check(`[save] Discard asks for a second click ("${afterOne.label}") and then removes the saved season`, !afterOne.hidden && /again/.test(afterOne.label) && afterTwo.hidden && afterTwo.meta === null);
+
+  check(`[save] no page errors on the way (${errors.length})`, errors.length === 0);
+  if (errors.length) console.log('  ' + errors.join('\n  '));
+  await browser.close();
+}
+await checkSave();
 await checkMenu('Atlantic', 'atlantic-sst-simulator.html');
 await checkMenu('Eastern Pacific', 'eastpacific-sst-simulator.html');
 await checkMenu('Western Pacific', 'westpacific-sst-simulator.html');
