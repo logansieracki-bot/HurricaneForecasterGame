@@ -22,6 +22,18 @@ export function merge(basin) {
   return out;
 }
 
+// Layers the storm engine's climatology maps (real mean drift, the page's own mean steering and environment, the fitted development rates and local-seed supply: tools/storm_fit.mjs,
+// assembled into <basin>-tc-storm-maps.json) onto an already-merged data file, under storms.maps. Whatever else is under `storms` stays.
+export function mergeStormMaps(basin, dataFileName) {
+  const dataPath = join(GEN, dataFileName);
+  const existing = JSON.parse(readFileSync(dataPath, 'utf8'));
+  const maps = JSON.parse(readFileSync(join(GEN, `${basin}-tc-storm-maps.json`), 'utf8'));
+  const out = { ...existing, storms: { ...(existing.storms || {}), maps } };
+  writeFileSync(dataPath, JSON.stringify(out));
+  console.log(`wrote ${dataPath} (added storms.maps: ${JSON.stringify(maps).length} bytes)`);
+  return out;
+}
+
 // Layers a basin's own <basin>-humidity.json onto an *already-merged* data file, rather than
 // rebuilding from scratch via merge() above. Atlantic has no split <basin>-geo/-climate/
 // -imagery>.json files to feed merge() -- its merged output is the legacy, checked-in
@@ -134,7 +146,7 @@ export function mergeSteer(basin, dataFileName) {
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   const [basin, mode, dataFileName] = process.argv.slice(2);
-  if (!basin) { console.error('usage: node tools/merge_data.mjs <basin>\n       node tools/merge_data.mjs <basin> --humidity <data-file-name>\n       node tools/merge_data.mjs <basin> --humidity-synoptic <data-file-name>\n       node tools/merge_data.mjs <basin> --shear <data-file-name>\n       node tools/merge_data.mjs <basin> --shear-synoptic <data-file-name>\n       node tools/merge_data.mjs <basin> --shear-jet <data-file-name>\n       node tools/merge_data.mjs <basin> --steer <data-file-name>'); process.exit(1); }
+  if (!basin) { console.error('usage: node tools/merge_data.mjs <basin>\n       node tools/merge_data.mjs <basin> --humidity <data-file-name>\n       node tools/merge_data.mjs <basin> --humidity-synoptic <data-file-name>\n       node tools/merge_data.mjs <basin> --shear <data-file-name>\n       node tools/merge_data.mjs <basin> --shear-synoptic <data-file-name>\n       node tools/merge_data.mjs <basin> --shear-jet <data-file-name>\n       node tools/merge_data.mjs <basin> --steer <data-file-name>\n       node tools/merge_data.mjs <basin> --storm-maps <data-file-name>'); process.exit(1); }
   if (mode === '--humidity') {
     if (!dataFileName) { console.error('usage: node tools/merge_data.mjs <basin> --humidity <data-file-name>'); process.exit(1); }
     mergeHumidity(basin, dataFileName);
@@ -153,6 +165,9 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   } else if (mode === '--steer') {
     if (!dataFileName) { console.error('usage: node tools/merge_data.mjs <basin> --steer <data-file-name>'); process.exit(1); }
     mergeSteer(basin, dataFileName);
+  } else if (mode === '--storm-maps') {
+    if (!dataFileName) { console.error('usage: node tools/merge_data.mjs <basin> --storm-maps <data-file-name>'); process.exit(1); }
+    mergeStormMaps(basin, dataFileName);
   } else {
     merge(basin);
   }

@@ -110,6 +110,8 @@ are **not** reachable; PyPI, npm, `raw/media.githubusercontent.com` and `storage
 
 ## Meteorology
 
+> **Superseded in part:** motion, genesis and the way the seeds work are the *climatology-anchored model* described in the revision at the end of this document (milestone 3). The intensity law below is still the one in use, recalibrated.
+
 State per system: lat, lon, Vmax (kt, 1-min), Pmin (hPa), status, age, motion vector, SST under storm (with cold wake),
 OU-noise states, ACE, 6-hourly best-track fixes; latent `rmw`/`r34`/structure defaults reserved for the wind-field steps.
 
@@ -273,3 +275,52 @@ coarser keyframes; the best-track copy is an unchecksummed third-party mirror of
 `npm run build && PLAYWRIGHT_CHROMIUM_PATH=/opt/pw-browsers/chromium npm test`; Monte-Carlo table in the roadmap entry;
 screenshots of the Place preview, tracks with every marker type, stat card, season summary; save → reload → Continue round trip;
 CI + Pages deploy check after each push to `main`.
+
+## Revision after the first trial (milestone 3): a climatology-anchored model
+
+**What the first trial showed.** The first visible version (M2) drew storms from a physical model of seeds growing under the simulator's own SST, humidity,
+shear and steering. Played for a few seasons it had: far too little activity (ACE about 50 every time, one or two majors), paths that no real storm takes
+(subtropical systems running south-west to Florida, nearly every main-development-region storm ending in South America), a Gulf of Mexico and an East Coast
+with almost nothing, waves that had nothing to do with the depressions, and too many subtropical storms. Two findings explain most of it:
+  * **The page's steering is not the flow a storm feels.** It is a point value of an unconditional field that contains the circulation of every low (a storm
+    that formed in one orbited it), and a real storm's motion is *conditioned* on where and when it is: the real mean drift of a tropical storm at 10N 40W in
+    August differs from the unconditional mean flow there by several knots. A calibration of the intensity law cannot repair a track.
+  * **Selection by gates is degenerate.** Genesis happened wherever the growth gates (SST, humidity, shear) opened for a seed, which concentrates it in the one
+    corner of the basin where all three are best, however the gates were tuned; the calibration found that and put the sources where the gates allowed.
+
+**The model now.** Four things are anchored to the real Atlantic (IBTrACS 1991-2020 / 1980-2024) and what the simulator's weather decides is *which of the
+real possibilities happens this time*.
+  1. *Motion.* A system moves with the **real mean translation of its kind** (weak tropical, hurricane, subtropical, extratropical) at its place and time of year
+     (`data/generated/atlantic-tc-maps.json`, 5-degree nodes, Gaussian-smoothed in space and time), plus `driftGain` times the **anomaly of the page's own
+     steering** (the layers the storm follows, averaged over a ring of 3 degrees so that the circulation of a low it sits in drops out, minus the page's own
+     mean steering at that place and month, measured on the same ring). The real mean gives the mean tracks, landfalls and recurvature rate; the weather gives
+     the spread (a high that builds, a trough that arrives) and the response to ENSO. The remaining unsteered wobble is the same smooth noise as before.
+  2. *Genesis.* A **disturbance** (an African easterly wave from a seasonal schedule of about 60 a year; a *local seed* born where the real Atlantic forms
+     storms from troughs and gyres that the waves and the pressure lows do not supply; a tracked pressure low) develops into a depression at an **hourly rate**
+     `haz(place, month) x E`: `haz` is the real genesis density divided by the exposure the disturbances provide (fitted through the page, below), and
+     `E = exp(c_rh dRH - c_shear dShear + c_sst d(SST - main development region mean) + c_sstabs dSST)` is how much better the environment is than its own mean
+     there and then, with soft gates (open sea, warm water, not extreme shear, not on the equator) and the **intensity law's own growth gate** (a depression is
+     not formed where it could not live: without that gate a third of the depressions formed in air they could not survive and died within a day and a half,
+     which no best track contains), times the seed's own quality and a **large-scale activity factor** (a draw per season and a few pulses of 14-60 days, mean 1)
+     that stands for the climate the simulated environment does not carry (Atlantic meridional mode, the African monsoon, intraseasonal pulses): it is what lets
+     some seasons be hyperactive and others quiet. So the genesis map, the monthly shape and the share of waves
+     that develop (about 16 %) are the real ones by construction, and what varies from year to year is the environment: ENSO acts through shear and humidity,
+     warming through the absolute SST term. A low develops into a tropical *or* a subtropical depression, whichever draw it wins, which is what keeps the
+     subtropical share at its real 10 %. Waves, local seeds (an X in a dashed ring) and lows (an L) are drawn, and the path of the disturbance leads into the
+     depression's.
+  3. *Intensity.* The same form (logistic growth to an environment-limited potential, stochastic rapid intensification, cold wake, Kaplan-DeMaria decay),
+     recalibrated for the new structure on the real aggregates *and* on where depressions of each latitude become named storms and hurricanes and where the
+     named storms spend their time, with four additions the trials asked for: a cap on the potential wind poleward of 14N (the real share of tropical rows of 96 kt
+     or more falls from 13-16 % at 15-25N to 10 % at 25-30N and 4 % at 30-35N), a cap on how fast a tropical cyclone can lose wind, an established storm that sees
+     5 points more humidity than the page's 2-degree field says (it moistens its own environment), and a disturbance that is declared a depression only while the
+     growth law could keep one alive (otherwise a fifth of the numbered depressions were depressions for a day and gone, real one in nine).
+  4. *The transition.* A tropical or subtropical cyclone leaves the tropics by one of two competing random exits at the real best track's rates (logit of the six-hour
+     probability = b0 + latitude + SST + shear + wind: it becomes extratropical, keeping its wind, or it dissipates), a post-tropical cyclone relaxes toward the wind the
+     baroclinic zone supports, may re-intensify in a strong jet, follows the real age profile of the post-tropical speed, lasts a lognormal 30 h and ends absorbed; a remnant
+     low lasts about 24 h. Details and the held-out numbers are in `docs/roadmap.md` (milestone 3).
+
+**Fitting the maps to the page.** `tools/storm_fit.mjs` runs the built page: `clim` measures the page's own mean steering (ring-averaged) and mean SST, humidity and
+shear on the maps' grid by month (8 seasons of 365 days); `fit` measures the exposure of the disturbances (hours weighted by E, per node and month, from waves,
+seeds and lows) in 24-season passes and sets `haz = G_real / X` (smoothed, damped, with the last two passes pooled), and sets the local seeds' supply so that they
+carry their prior share of the real genesis (0.55 over the Gulf and the western Caribbean, 0.5 off the south-eastern US, 0.3 in the subtropical Atlantic, 0.05
+elsewhere). The maps are therefore a calibration *of this simulator's weather*, committed as data and re-run when the weather changes.
