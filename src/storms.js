@@ -736,7 +736,7 @@ LowTracker.prototype.update = function (hour, dets) {
 function newSeason(year) { return { year, dep: 0, named: 0, hurr: 0, major: 0, cat5: 0, ace: 0, aceDaily: new Array(366).fill(0), storms: [], namedIdx: 0 }; }
 function summarize(S) {
   return { id: S.id, name: S.name, depNum: S.depNum, origin: S.origin, tdHour: S.tdHour, namedHour: S.namedHour, peakV: S.peakV, peakP: S.peakP, peakHour: S.peakHour,
-    ace: Math.round(S.ace * 100) / 100, end: S.end, endReason: S.endReason, season: S.season, th: S.th };
+    ace: S.ace, end: S.end, endReason: S.endReason, season: S.season, th: S.th };       // unrounded: the page rounds once, to a tenth (rounding here too turned 10.5475 into 10.55 and then 10.6)
 }
 
 /* ---- the manager ----------------------------------------------------------------------------------------------------------
@@ -754,7 +754,7 @@ function Manager(o) {
   this.maps = prepareMaps(o.maps);                                             // the climatology the host supplied (null: the plain steering model)
   this.ctx = { maps: this.maps, tw: null, diag: null };                          // what a step needs besides the system: maps, the time weights of the hour, the calibration lab's accumulators
   const d0 = new Date(this.startMs + this.hour * HOUR_MS);
-  this.season = newSeason(d0.getUTCFullYear()); this.prev = null; this.archive = [];
+  this.season = newSeason(d0.getUTCFullYear()); this.season.from = this.doyAt(this.hour); this.prev = null; this.archive = [];
   this.yearEndH = this._hourOfYearStart(this.season.year + 1);
   this.prevEntry = null;
 }
@@ -762,6 +762,10 @@ Manager.prototype._hourOfYearStart = function (y) { return (Date.UTC(y, 0, 1) - 
 Manager.prototype.dateAt = function (h) { return new Date(this.startMs + h * HOUR_MS); };
 Manager.prototype.doyAt = function (h) { const d = this.dateAt(h), y = d.getUTCFullYear(); return Math.floor((d.getTime() - Date.UTC(y, 0, 1)) / 86400000); };
 
+Manager.prototype._aceDay = function (year, h) {                        // the day index of the ACE curve of `year` that hour h falls on (the last day for a fix after the turn of the year)
+  const d = this.dateAt(h);
+  return d.getUTCFullYear() === year ? clamp(this.doyAt(h), 0, 365) : Math.round((Date.UTC(year + 1, 0, 1) - Date.UTC(year, 0, 1)) / 86400000) - 1;
+};
 Manager.prototype._add = function (S) { S.season = this.season.year; this.systems.push(S); this.byId[S.id] = S; return S; };
 Manager.prototype._seedSystem = function (ns, th, lat, lon, v, h, origin, sub) {
   const k = ++this.n[ns];
@@ -891,7 +895,7 @@ Manager.prototype._record = function (h, env) {                             // s
       S.name = nameFor(rec.year, rec.namedIdx++); S.namedHour = h; rec.named++;
     }
     let add = 0;
-    if (isTC && rv >= 34) { add = aceOf(rv); S.ace += add; rec.ace += add; rec.aceDaily[clamp(this.doyAt(h), 0, 365)] += add; }
+    if (isTC && rv >= 34) { add = aceOf(rv); S.ace += add; rec.ace += add; rec.aceDaily[this._aceDay(rec.year, h)] += add; }
     if (isTC && st === 'HU' && !S.hurr) { S.hurr = true; rec.hurr++; }
     if (isTC && st === 'HU' && rv >= 96 && !S.major) { S.major = true; rec.major++; }
     if (isTC && st === 'HU' && rv >= 137 && !S.c5) { S.c5 = true; rec.cat5++; }
@@ -906,7 +910,7 @@ Manager.prototype._rollover = function (h) {
   // calendar-year seasons: archive the finished season and clear its paths; a system still alive on Jan 1 finishes under its formation year
   const old = this.season, y = old.year;
   const dead = this.systems.filter((S) => !S.alive && S.season === y && S.depNum > 0);
-  const entry = { year: y, open: false, dep: old.dep, named: old.named, hurr: old.hurr, major: old.major, cat5: old.cat5, ace: Math.round(old.ace * 10) / 10,
+  const entry = { year: y, open: false, from: old.from || 0, dep: old.dep, named: old.named, hurr: old.hurr, major: old.major, cat5: old.cat5, ace: Math.round(old.ace * 10) / 10,
     aceDaily: old.aceDaily.map((x) => Math.round(x * 100) / 100), storms: dead.map(summarize) };
   const stillAlive = this.systems.some((S) => S.alive && S.season === y && S.th !== 'wv');
   if (stillAlive) { entry.open = true; this.prev = old; this.prevEntry = entry; }
@@ -969,6 +973,21 @@ Manager.prototype.forecast = function (spec, envSrc, horizonH) {
     }
   }
   return { id: S.id, fixes, peak, developed: td, named, ace: Math.round(ace * 100) / 100, alive: S.alive, endReason: S.endReason, endHour: S.end };
+};
+
+/* The season summary: one uniform record for any season of this run -- the current one, one that has ended but still has a storm alive
+   (its counters keep running in `prev`), or an archived one. Cyclones only (those that got a depression number), in order of formation. */
+Manager.prototype.seasonYears = function () { return this.archive.map((e) => e.year).concat([this.season.year]); };
+Manager.prototype.seasonRecord = function (year) {
+  const byDep = (a, b) => a.depNum - b.depNum, r1 = (x) => Math.round(x * 10) / 10;
+  const live = (y) => this.systems.filter((S) => S.season === y && S.depNum > 0).map(summarize);
+  const rec = (q, o) => Object.assign({ year: q.year, from: q.from || 0, dep: q.dep, named: q.named, hurr: q.hurr, major: q.major, cat5: q.cat5, ace: r1(q.ace), aceDaily: q.aceDaily.slice() }, o);
+  const cur = this.season;
+  if (year === cur.year) return rec(cur, { current: true, open: true, day: this.doyAt(this.hour), storms: live(year).sort(byDep) });
+  const e = this.archive.find((x) => x.year === year);
+  if (!e) return null;
+  if (e.open && this.prev && this.prev.year === year) return rec(this.prev, { current: false, open: true, day: 365, storms: e.storms.concat(live(year)).sort(byDep) });
+  return rec(e, { current: false, open: false, day: 365, storms: e.storms.slice().sort(byDep) });
 };
 
 Manager.prototype.get = function (id) { return this.byId[id] || null; };

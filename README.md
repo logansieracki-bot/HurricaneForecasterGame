@@ -69,7 +69,8 @@ nothing to run by hand.
   function of latitude, sea temperature, shear and the storm's own wind, the wind kept through the change, the length of the post-tropical track, the remnant lows) with
   `tools/storm_et.mjs` computing the same statistics for the simulated storms; `tools/make_tc_env.py`, `make_tc_motion.py`, `check_lows.py`: the environment, motion
   and pressure-low references. `tools/storm_fit.mjs` fits the engine's maps to the page's own weather (`clim`, `wet`, `fit`, `rescale`, `refine`, `motion`, `maps`;
-  result `atlantic-tc-storm-maps.json`, merged into `data.json` under `storms.maps` by `merge_data.mjs --storm-maps`),
+  result `atlantic-tc-storm-maps.json`, merged into `data.json` under `storms.maps` by `merge_data.mjs --storm-maps`; the real normals and daily ACE
+  percentiles the season summary draws against go in beside them as `storms.ace` / `storms.normals` with `merge_data.mjs --storms`),
   `tools/storm_mc.mjs` runs whole seasons through the built page (any number of parameter sets at once, same weather),
   `tools/storm_opt.mjs` calibrates the intensity law and the environmental coupling with CMA-ES, `tools/storm_validate.mjs`
   checks tracks, landfalls and genesis against the real best track.
@@ -313,7 +314,10 @@ nothing to run by hand.
   Advanced tab has `Storms form on their own` and `Storm activity (seeds)`. Hover a dot for name, category, wind in mph
   (kt) and gusts; click a live storm or a finished track for the stat card (category, wind, pressure, Peak, ACE, shear,
   gusts, movement, SST, formed). The top bar is the season: `Atlantic 2026 | DEP | NAMED | HURR | MAJOR | CAT 5 | ACE`
-  from the six-hourly fixes with HURDAT2's own definitions. **Place:** the dock's `Place` button (key `P`) holds the clock and opens a picker (tropical wave,
+  from the six-hourly fixes with HURDAT2's own definitions. **Season summary:** the bar's `Summary` button opens a card with the totals and the real 1991-2020 average
+  beneath each, a graph of the season's accumulated cyclone energy through the year over the real seasons (the middle 50 % and 80 % as bands, the median dashed; the
+  other seasons of the run as thin lines) and one row per cyclone (a click flies to it and opens its stat card); at Jan 1 the finished season's paths disappear, the bar
+  starts the new year from zero, a cyclone still alive finishes under its own year, and the card opens by itself on the season that has just ended. **Place:** the dock's `Place` button (key `P`) holds the clock and opens a picker (tropical wave,
   tropical depression, subtropical depression, low); a white dot follows the pointer with a line of the next seven days of a system put right there (the engine run through a *shadow
   environment*: the simulator's own weather looked up seven days ahead from a copy of its state, which is put back), labelled e.g. `Cat 1 hurricane · peak 85 mph · by day 6.0` or
   `Does not develop`; a click places it exactly there (it then does what the preview said) and `Esc` cancels. **How a storm lives (climatology-anchored):** a *disturbance*
@@ -345,7 +349,7 @@ nothing to run by hand.
   the midnight keyframe. With storms off (`SSTSIM.storms(false)`, which the existing environment checks use, and the other
   eight basins which have no engine yet) nothing changes. Every random
   draw in the engine is a pure function of (seed, system id, hour, stream), so a checkpoint is plain JSON and a hand-placed
-  system never changes an automatic one. **Not yet:** the season summary and ACE graph, save / resume with the menu's Continue
+  system never changes an automatic one. **Not yet:** save / resume with the menu's Continue
   card, impacts (watches, warnings, cities), invests, the cone and the wind fields are later milestones/steps.
 
 ## Imagery
@@ -385,7 +389,7 @@ check that Satellite still resolves to something usable.
   0.03) high; a fifth of numbered depressions never reach storm strength (real 11 %); post-tropical systems are about 20 % too slow after
   their transition and there are fewer of them than in the data; subtropical storms are 1.2 a year (1.7); the page's own pressure lows are
   fewer and longer-lived than ERA5's; the moisture slider's effect is far stronger than the warming slider's. The lows thresholds, the
-  2027+ name lists and the performance at 64× are also open. No season summary, save / resume, impacts or invests yet.
+  2027+ name lists and the performance at 64× are also open. No save / resume, impacts or invests yet.
 - All nine basins run in Simulation mode; Forecaster mode hasn't been started (its
   menu card is disabled). Steering arrows and highs are in all nine basins; the
   Mediterranean and the North Indian Ocean have hardly any highs to show (about one day in ten in winter).

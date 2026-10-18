@@ -440,7 +440,7 @@ async function checkStorms(page, label) {
   });
   const mk = await ev(() => window.SSTSIM.stormMapsKeys());
   check(`[${label}] the page carries the climatology maps the engine is anchored to (${(mk || []).join(', ')})`, !!mk && ['drift', 'steerClim', 'haz', 'spawn', 'env0'].every((k) => mk.includes(k)));
-  check(`[${label}] the season bar shows "${a.text}" before anything has formed, the storm canvas and controls exist`, a.on === true && a.shown && /^Atlantic \d{4} 0 ?DEP 0 ?NAMED 0 ?HURR 0 ?MAJOR 0 ?CAT 5 0\.0 ?ACE$/.test(a.text) && a.canvas && a.controls && a.cardHidden && a.state.systems.length === 0);
+  check(`[${label}] the season bar shows "${a.text}" before anything has formed, the storm canvas and controls exist`, a.on === true && a.shown && /^Atlantic \d{4} 0 ?DEP 0 ?NAMED 0 ?HURR 0 ?MAJOR 0 ?CAT 5 0\.0 ?ACE ?Summary$/.test(a.text) && a.canvas && a.controls && a.cardHidden && a.state.systems.length === 0);
 
   // hand-placed systems: a strong tropical depression, a subtropical one, a non-tropical low, on a warm August day
   const b = await ev(() => {
@@ -679,6 +679,108 @@ async function checkPlace(page, label) {
   });
   check(`[${label}] the preview moves smoothly with the pointer: over ${sm.n} pairs of placements within half a degree, the 72-hour points are ${sm.median.toFixed(1)}x (median) and ${sm.p95.toFixed(1)}x (95th percentile) as far apart as the placements, ${(100 * sm.share8).toFixed(0)} % within 8x, none beyond ${sm.max.toFixed(1)}x`, sm.n > 150 && sm.share8 >= 0.95 && sm.max < 20);
   await ev(() => { window.SSTSIM.storms(false); window.SSTSIM.restart(); });
+}
+
+// The season summary: the Summary button in the season bar opens a card with the totals against the real normals, the accumulated cyclone
+// energy through the year (the real 1991-2020 seasons as bands behind it) and one row per storm; at the turn of the year the finished
+// season's paths are gone, the bar starts the new year, and the card opens by itself on the season that has just ended.
+async function checkSummary(page, label) {
+  const ev = (fn, arg) => page.evaluate(fn, arg);
+  const a = await ev(() => {
+    const S = window.SSTSIM; S.storms(true); S.setPlaying(false); S.applySeed(11); S.setPlaying(false); S.stormAuto(false); S.tick(24 * 70);
+    S.stormPlace({ kind: 'td', lat: 16, lon: -48, v: 60 }); S.stormPlace({ kind: 'td', lat: 12, lon: -35, v: 40 }); S.tick(24 * 9); S.advance(0);
+    document.getElementById('detail').checked = false;
+    const btn = document.getElementById('se-sum');
+    return { exists: !!btn && document.getElementById('season').contains(btn), expanded: btn && btn.getAttribute('aria-expanded'), hidden: document.getElementById('sum-card').hidden };
+  });
+  check(`[${label}] the season bar has a Summary button (not pressed) and the summary card stays closed until it is pressed`, a.exists && a.expanded === 'false' && a.hidden);
+
+  await page.click('#se-sum'); await page.waitForTimeout(250);
+  const b = await ev(() => {
+    const S = window.SSTSIM, num = (id) => document.getElementById(id).textContent, st = S.stormState();
+    const cy = st.systems.filter((x) => x.depNum > 0).sort((p, q) => p.depNum - q.depNum);
+    const rows = [...document.querySelectorAll('#sum-table tbody tr')].map((tr) => [...tr.children].map((td) => td.textContent.trim()));
+    const cv = document.getElementById('sum-graph'), g = cv.getContext('2d'), geo = S.summary().geo, d = cv.width / cv.clientWidth;
+    const px = (x, y) => Array.from(g.getImageData(Math.round(x * d), Math.round(y * d), 1, 1).data);
+    const X = (day) => geo.L + geo.pw * day / (geo.nd - 1), Y = (v) => geo.T + geo.ph * (1 - v / geo.top);
+    return { hidden: document.getElementById('sum-card').hidden, expanded: document.getElementById('se-sum').getAttribute('aria-expanded'), title: num('sum-title'), sub: num('sum-sub'), cap: num('sum-cap'),
+      cells: [...document.querySelectorAll('#sum-tot div')].map((x) => x.querySelector('b').textContent), avgs: [...document.querySelectorAll('#sum-tot small')].map((x) => x.textContent),
+      bar: ['se-dep', 'se-named', 'se-hurr', 'se-major', 'se-c5', 'se-ace'].map(num), stats: st.stats, year: num('se-year'), rows, cy: cy.map((x) => ({ name: x.name, depNum: x.depNum, ace: x.ace })), geo,
+      end: px(geo.endX, geo.endY), after: px(Math.min(geo.endX + 40, geo.w - 12), geo.endY - 6), band: px(X(250), Y(45.5)), above: px(X(250), Y(175)), jan: px(X(20), Y(120)) };
+  });
+  check(`[${label}] the Summary button opens the card: "${b.title}", ${b.sub}`, !b.hidden && b.expanded === 'true' && b.title === b.year && /^Season so far, to [A-Z][a-z]{2} \d+ · counted from Jun 1$/.test(b.sub));
+  check(`[${label}] its totals are the season bar's (${b.cells.join(' / ')}), each with the real 1991-2020 average beneath (${b.avgs.join(' / ')})`,
+    b.cells.join() === b.bar.join() && b.cells.join() === [b.stats.dep, b.stats.named, b.stats.hurr, b.stats.major, b.stats.cat5, b.stats.ace.toFixed(1)].join() && b.avgs.join() === 'avg 16.3,avg 14.4,avg 7.2,avg 3.2,avg 0.5,avg 122.5');
+  const rowAce = b.rows.reduce((t, r) => t + parseFloat(r[4]), 0);
+  check(`[${label}] the table has one row per cyclone of the season, in order of formation (${b.rows.map((r) => r[0]).join(', ')}), each with the ACE the storm itself holds (rows add up to ${rowAce.toFixed(1)} of ${b.stats.ace})`,
+    b.rows.length === b.cy.length && b.rows.length >= 1 && b.rows.every((r, i) => (b.cy[i].name ? r[0] === b.cy[i].name : /^TD \d+$/.test(r[0])) && Math.abs(parseFloat(r[4]) - b.cy[i].ace) <= 0.0501) && Math.abs(rowAce - b.stats.ace) <= 0.06 * b.rows.length);
+  check(`[${label}] the ACE graph: the season's line ends in a white dot at ${b.geo.value.toFixed(1)} (pixel ${b.end}), nothing is drawn after today (${b.after}), the real middle-50 % band is lighter than the empty plot above it (${b.band} vs ${b.above}) and nothing precedes the season in January (${b.jan})`,
+    b.end[3] > 200 && b.end[0] > 200 && b.end[1] > 200 && b.end[2] > 200 && !(b.after[3] > 200 && b.after[0] > 200 && b.after[1] > 200) && b.band[3] > 30 && b.above[3] === 0 && b.jan[3] === 0);
+  check(`[${label}] the graph's caption says what the bands are and where the season stands against the median: ${b.cap}`, /1991–2020/.test(b.cap) && /median/.test(b.cap) && /By [A-Z][a-z]{2} \d+ the median season had \d+ ACE/.test(b.cap));
+
+  // opening a storm from its row; Escape, the cross and the button close the card
+  await page.click('#sum-table tbody tr:first-child'); await page.waitForTimeout(250);
+  const c = await ev(() => ({ card: document.getElementById('storm-card').hidden, name: document.getElementById('sc-name').textContent, row: document.querySelector('#sum-table tbody tr td b').textContent, still: !document.getElementById('sum-card').hidden }));
+  check(`[${label}] clicking a row opens that storm's stat card (${c.name}) and leaves the summary open`, !c.card && c.name === c.row && c.still);
+  await page.keyboard.press('Escape'); await page.waitForTimeout(100);
+  const d1 = await ev(() => ({ sum: !document.getElementById('sum-card').hidden, card: !document.getElementById('storm-card').hidden }));
+  await page.keyboard.press('Escape'); await page.waitForTimeout(100);
+  const d2 = await ev(() => ({ sum: !document.getElementById('sum-card').hidden, expanded: document.getElementById('se-sum').getAttribute('aria-expanded') }));
+  await page.click('#se-sum'); await page.waitForTimeout(100);
+  const d3 = await ev(() => !document.getElementById('sum-card').hidden);
+  await page.click('#sum-close'); await page.waitForTimeout(100);
+  const d4 = await ev(() => document.getElementById('sum-card').hidden);
+  check(`[${label}] Escape closes the stat card first and then the summary, the Summary button toggles it and the cross closes it`, d1.sum && !d1.card && !d2.sum && d2.expanded === 'false' && d3 && d4);
+
+  // layout: the card stays on screen and clear of the dock at desktop, tablet and phone widths (and below the season bar at desktop, so its button stays reachable)
+  await page.click('#se-sum'); await page.waitForTimeout(100);
+  const lay = [];
+  for (const [w, h] of [[1280, 800], [900, 700], [390, 844]]) {
+    await page.setViewportSize({ width: w, height: h }); await page.waitForTimeout(250);
+    lay.push(await ev(({ w, h }) => {
+      const rect = (id) => { const r = document.getElementById(id).getBoundingClientRect(); return { l: r.left, t: r.top, r: r.right, b: r.bottom }; };
+      const hit = (p, q) => p.l < q.r - 0.5 && q.l < p.r - 0.5 && p.t < q.b - 0.5 && q.t < p.b - 0.5;
+      const c = rect('sum-card'), dock = rect('dock'), bar = rect('season'), table = document.getElementById('sum-scroll');
+      return { w, h, c, inside: c.l >= 0 && c.r <= w && c.t >= 0 && c.b <= h, dock: hit(c, dock), bar: hit(c, bar), scrolls: table.scrollWidth <= table.clientWidth + 1 };
+    }, { w, h }));
+  }
+  await page.setViewportSize({ width: 1280, height: 800 }); await page.waitForTimeout(200);
+  check(`[${label}] the summary card fits on screen and clears the dock at 1280, 900 and 390 px wide (${lay.map((x) => x.w + ': ' + Math.round(x.c.l) + '-' + Math.round(x.c.r) + ' x ' + Math.round(x.c.t) + '-' + Math.round(x.c.b) + (x.dock ? ' over dock' : '')).join('; ')}), clears the season bar at 1280 and its table needs no sideways scroll at 390 (${lay[2].scrolls})`,
+    lay.every((x) => x.inside && !x.dock) && !lay[0].bar && lay[2].scrolls);
+  await page.click('#sum-close');
+
+  // the turn of the year: a late-season storm, Jan 1 passes; its paths disappear, the bar starts the next year, the card opens on the season just ended
+  const r = await ev(() => {
+    const S = window.SSTSIM; S.applySeed(12); S.setPlaying(false); S.stormAuto(false); S.tick(24 * 200);
+    const layers = (on) => { for (const id of ['stwaves', 'stlows']) { const c = document.getElementById(id); c.checked = on; c.dispatchEvent(new Event('change')); } };
+    layers(false);                                                              // waves, disturbances and lows are drawn by default and are not season paths: count the cyclones' own ink
+    const year = S.stormState().stats.year;
+    S.stormPlace({ kind: 'td', lat: 24, lon: -70, v: 65 }); S.tick(24 * 8); S.advance(0);       // a late-December hurricane in the western subtropics: it earns some ACE and is gone well before Jan 1
+    const before = S.stormState(), cv = document.getElementById('storm-canvas'), g = cv.getContext('2d');
+    const painted = () => { const a = g.getImageData(0, 0, cv.width, cv.height).data; let n = 0; for (let i = 3; i < a.length; i += 16) if (a[i] > 0) n++; return n; };
+    const paintedBefore = painted(), barBefore = document.getElementById('season').innerText.replace(/\s+/g, ' ');
+    S.tick(24 * 8); S.advance(0);                                               // Dec 28 -> Jan 5
+    const after = S.stormState(), rec = S.stormRecord(year), now = S.stormRecord();
+    return { year, before: before.stats, systemsBefore: before.systems.length, paintedBefore, barBefore, after: after.stats, systemsAfter: after.systems.length, alive: after.systems.filter((x) => x.alive).length, paintedAfter: painted(),
+      bar: document.getElementById('season').innerText.replace(/\s+/g, ' '),
+      open: !document.getElementById('sum-card').hidden, title: document.getElementById('sum-title').textContent, sub: document.getElementById('sum-sub').textContent,
+      cells: [...document.querySelectorAll('#sum-tot div')].map((x) => x.querySelector('b').textContent), rows: document.querySelectorAll('#sum-table tbody tr').length,
+      rec: { dep: rec.dep, named: rec.named, ace: rec.ace, open: rec.open, n: rec.storms.length, daily: rec.aceDaily.reduce((t, x) => t + x, 0), early: rec.aceDaily.slice(0, 340).every((x) => x === 0) }, now: { year: now.year, dep: now.dep, ace: now.ace }, geo: S.summary().geo };
+  });
+  check(`[${label}] at Jan 1 the finished season's paths are gone (${r.systemsBefore} systems and ${r.paintedBefore} painted samples before, ${r.systemsAfter} and ${r.paintedAfter} after) and the bar starts ${r.year + 1} from zero ("${r.bar}")`,
+    r.before.year === r.year && r.after.year === r.year + 1 && r.systemsBefore >= 1 && r.paintedBefore > 0 && r.alive === 0 && r.systemsAfter === 0 && r.paintedAfter === 0 && new RegExp('^Atlantic ' + (r.year + 1) + ' 0 ?DEP 0 ?NAMED 0 ?HURR 0 ?MAJOR 0 ?CAT 5 0\\.0 ?ACE ?Summary$').test(r.bar) && r.now.dep === 0 && r.now.ace === 0);
+  check(`[${label}] the summary opens by itself on the season that has just ended: "${r.title}", ${r.sub}, totals ${r.cells.join(' / ')}, ${r.rows} storm row(s)`,
+    r.open && r.title === 'Atlantic ' + r.year && r.sub === 'Season complete · counted from Jun 1' && r.cells[0] === String(r.rec.dep) && r.cells[5] === r.rec.ace.toFixed(1) && r.rows === r.rec.n && r.rec.n >= 1 && r.rec.dep >= r.before.dep);
+  check(`[${label}] the archived season keeps its counters and its ACE curve (dep ${r.rec.dep}, named ${r.rec.named}, ACE ${r.rec.ace}; the daily values add up to ${r.rec.daily.toFixed(1)} and stay zero before December), closed (${!r.rec.open})`,
+    !r.rec.open && r.rec.dep >= 1 && r.rec.named >= 1 && r.rec.ace > 0.3 && Math.abs(r.rec.daily - r.rec.ace) < 0.2 && r.rec.early && Math.abs(r.geo.value - r.rec.ace) < 0.2 && r.geo.last === r.geo.nd - 1 && r.rec.ace >= r.before.ace);
+  await page.click('#sum-next'); await page.waitForTimeout(150);
+  const n1 = await ev(() => ({ title: document.getElementById('sum-title').textContent, sub: document.getElementById('sum-sub').textContent, cells: [...document.querySelectorAll('#sum-tot div')].map((x) => x.querySelector('b').textContent).join(), empty: !document.getElementById('sum-empty').hidden, next: document.getElementById('sum-next').disabled, prev: document.getElementById('sum-prev').disabled }));
+  await page.click('#sum-prev'); await page.waitForTimeout(150);
+  const n2 = await ev(() => ({ title: document.getElementById('sum-title').textContent, prev: document.getElementById('sum-prev').disabled, next: document.getElementById('sum-next').disabled }));
+  check(`[${label}] the arrows step between seasons: ${n1.title} (${n1.sub}, nothing yet: ${n1.cells}) and back to ${n2.title}, each arrow disabled at its end`,
+    n1.title === 'Atlantic ' + (r.year + 1) && /^Season so far, to Jan \d+$/.test(n1.sub) && n1.cells === '0,0,0,0,0,0.0' && n1.empty && n1.next && !n1.prev && n2.title === 'Atlantic ' + r.year && n2.prev && !n2.next);
+  await page.click('#sum-close');
+  await ev(() => { for (const id of ['stwaves', 'stlows']) { const c = document.getElementById(id); c.checked = true; c.dispatchEvent(new Event('change')); } window.SSTSIM.storms(false); window.SSTSIM.restart(); });
 }
 
 async function checkEnsoHold(page, label) {
@@ -1888,6 +1990,7 @@ await checkBasin('Atlantic', ATLANTIC_DIST, async (page, label) => {
   await checkEnsoHold(page, label);
   await checkStorms(page, label);
   await checkPlace(page, label);
+  await checkSummary(page, label);
   await checkCityMarkers(page, label, 25.76, -80.19, 'Miami');
 });
 

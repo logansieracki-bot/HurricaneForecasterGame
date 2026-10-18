@@ -159,13 +159,44 @@ canvas.overlay{position:absolute;left:0;top:0;width:100%;height:100%;pointer-eve
 .sc-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px 14px;border-top:1px solid var(--line);padding-top:9px}
 .sc-grid span{display:block;font-size:11px;color:var(--dim)}
 .sc-grid b{font-size:13px;font-weight:600;font-variant-numeric:tabular-nums}
+#season button{margin:0 5px 0 4px;border:1px solid var(--line);background:rgba(255,255,255,.07);color:var(--text);font:inherit;font-size:12px;padding:3px 11px;border-radius:8px;cursor:pointer}
+#season button:hover{background:rgba(255,255,255,.14)}
+#season button[aria-expanded=true]{background:rgba(255,255,255,.2);border-color:var(--ice)}
+#sum-card{left:50%;bottom:92px;transform:translateX(-50%);width:492px;max-height:calc(100% - 170px);display:flex;flex-direction:column;padding:12px 14px 10px;z-index:930}
+#sum-card[hidden]{display:none}
+#sum-close{position:absolute;right:8px;top:8px;width:26px;height:26px;border:0;background:transparent;color:var(--dim);border-radius:6px;cursor:pointer;font-size:17px;line-height:1}
+#sum-close:hover,#sum-head button:hover:not(:disabled){background:rgba(255,255,255,.09);color:var(--text)}
+#sum-head{display:flex;align-items:center;gap:6px;padding-right:30px;flex:none}
+#sum-head button{width:26px;height:26px;border:0;background:transparent;color:var(--dim);border-radius:6px;cursor:pointer;font-size:19px;line-height:1;flex:none}
+#sum-head button:disabled{opacity:.3;cursor:default}
+#sum-head div{min-width:0}
+#sum-title{font-size:17px;font-weight:600;display:block}
+#sum-sub{font-size:12px;color:var(--dim);display:block}
+#sum-tot{display:grid;grid-template-columns:repeat(6,1fr);gap:4px;margin:10px 0 6px;text-align:center;flex:none}
+#sum-tot div{padding:5px 0 4px;border-radius:8px;background:rgba(255,255,255,.045)}
+#sum-tot b{display:block;font-size:19px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1.15}
+#sum-tot span{display:block;font-size:10.5px;color:var(--dim);letter-spacing:.03em}
+#sum-tot small{display:block;font-size:10.5px;color:var(--dim);margin-top:2px;font-variant-numeric:tabular-nums;white-space:nowrap}
+#sum-graph{display:block;width:100%;height:172px;flex:none}
+#sum-cap{font-size:11px;color:var(--dim);line-height:1.45;margin:2px 0 8px;flex:none}
+#sum-scroll{overflow:auto;min-height:0;flex:1 1 auto}
+#sum-table{width:100%;border-collapse:collapse;font-size:12px;font-variant-numeric:tabular-nums}
+#sum-table th{position:sticky;top:0;background:var(--panel);text-align:left;font-weight:500;font-size:11px;color:var(--dim);padding:2px 8px 4px 0}
+#sum-table td{padding:5px 8px 5px 0;border-top:1px solid var(--line);white-space:nowrap}
+#sum-table tbody tr{cursor:pointer}
+#sum-table tbody tr:hover td{background:rgba(255,255,255,.05)}
+#sum-table tr.live td:first-child b::after{content:" \25CF";color:#6ee7a8;font-size:9px;font-weight:400}
+#sum-table i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px}
+#sum-empty{color:var(--dim);font-size:12px;padding:8px 0}
 
 @media (max-width:1040px){
   #season{left:14px;top:209px;transform:none;display:grid;grid-template-columns:repeat(3,1fr);width:max-content;min-width:236px;row-gap:5px;padding:8px 2px;font-size:12px}
   #season span{padding:0 8px}
-  #season span:first-child{grid-column:1/-1;padding:0 12px 6px;border-bottom:1px solid var(--line)}
+  #season span:first-child{grid-column:1/3;padding:0 12px 4px}
+  #season button{grid-column:3;grid-row:1;justify-self:end;margin:0 8px 4px 0}
   #season span:nth-child(2),#season span:nth-child(5){border-left:0}
   #storm-card{right:14px;top:auto;bottom:130px;transform:none}
+  #sum-card{top:14px;max-height:none;width:min(492px,calc(100% - 28px))}
   #readout{bottom:84px}
   #legend{bottom:112px}
   #steer-legend{bottom:200px}
@@ -176,6 +207,13 @@ canvas.overlay{position:absolute;left:0;top:0;width:100%;height:100%;pointer-eve
 @media (max-width:640px){
   #season{top:192px;font-size:11.5px}
   #storm-card{left:14px;right:14px;width:auto;bottom:120px}
+  #sum-card{left:14px;right:14px;width:auto;transform:none;padding:12px 12px 8px}
+  #sum-tot b{font-size:16px}
+  #sum-tot small{font-size:9.5px}
+  #sum-table{font-size:11.5px}
+  #sum-table td,#sum-table th{padding-right:6px}
+  #sum-table .u{display:none}
+  #sum-table th:nth-child(2)::after{content:" (mph)"}
   #clock{min-width:0;padding:9px 12px}
   #c-time{font-size:34px}
   #panel{width:calc(100% - 28px);top:auto;bottom:196px;max-height:38%}
@@ -344,7 +382,7 @@ canvas.overlay{position:absolute;left:0;top:0;width:100%;height:100%;pointer-eve
 
 <div id="toast" class="card" role="status"></div>
 <div id="city-tip" class="card" role="tooltip"><b></b><div></div></div>
-<div id="season" class="card" role="status" aria-label="Season totals"><span id="se-year">Atlantic</span><span><b id="se-dep">0</b>DEP</span><span><b id="se-named">0</b>NAMED</span><span><b id="se-hurr">0</b>HURR</span><span><b id="se-major">0</b>MAJOR</span><span><b id="se-c5">0</b>CAT 5</span><span><b id="se-ace">0.0</b>ACE</span></div>
+<div id="season" class="card" role="status" aria-label="Season totals"><span id="se-year">Atlantic</span><span><b id="se-dep">0</b>DEP</span><span><b id="se-named">0</b>NAMED</span><span><b id="se-hurr">0</b>HURR</span><span><b id="se-major">0</b>MAJOR</span><span><b id="se-c5">0</b>CAT 5</span><span><b id="se-ace">0.0</b>ACE</span><button id="se-sum" type="button" aria-expanded="false" aria-controls="sum-card" title="Season summary: totals against the real normals, the ACE graph and every storm of the season">Summary</button></div>
 <div id="storm-tip" class="card" role="tooltip"><b></b><div></div></div>
 <aside id="storm-card" class="card" hidden aria-label="Storm details">
   <button id="sc-close" aria-label="Close storm details" title="Close (Esc)">&times;</button>
@@ -357,6 +395,14 @@ canvas.overlay{position:absolute;left:0;top:0;width:100%;height:100%;pointer-eve
     <div><span>Damage</span><b>—</b></div><div><span>Formed</span><b id="sc-formed">–</b></div>
   </div>
   <p id="sc-note">Showing only this system. Click the empty map or press Esc to show all.</p>
+</aside>
+<aside id="sum-card" class="card" hidden role="dialog" aria-label="Season summary">
+  <button id="sum-close" aria-label="Close season summary" title="Close (Esc)">&times;</button>
+  <div id="sum-head"><button id="sum-prev" aria-label="Previous season" title="Previous season">&#8249;</button><div><b id="sum-title">Atlantic</b><span id="sum-sub"></span></div><button id="sum-next" aria-label="Next season" title="Next season">&#8250;</button></div>
+  <div id="sum-tot"></div>
+  <canvas id="sum-graph" role="img" aria-label="Accumulated cyclone energy through the year against the real seasons"></canvas>
+  <div id="sum-cap"></div>
+  <div id="sum-scroll"><table id="sum-table"><thead><tr><th>Storm</th><th>Peak</th><th>hPa</th><th>Dates</th><th>ACE</th></tr></thead><tbody></tbody></table><div id="sum-empty" hidden>No depression has formed this season yet.</div></div>
 </aside>
 <div id="attr"></div>
 
@@ -2298,6 +2344,7 @@ function steerReadout() {
    computeField() would otherwise make at render time (ensureSynDay / ensureShearSynDay) are pinned to the midnight keyframe, which
    makes SST, humidity, shear and ENSO a pure function of the seed while storms are on. */
 const stormCanvas = makeCanvas(461); stormCanvas.id = 'storm-canvas';
+let sumOpen = false, sumYear = 0, sumArch = 0, sumAt = 0, sumGeo = null;
 let stormMgr = null, stormsOn = true, stormFieldsDirty = true, stormsDirty = true, stormActivity = 1, stormAuto = true, stormSel = null, stormHot = null, stormHits = [], lastStormCardAt = 0;
 const STORM_KEY_H = 3;
 const kfU = [new Float32Array(SN), new Float32Array(SN), new Float32Array(SN)], kfV = [new Float32Array(SN), new Float32Array(SN), new Float32Array(SN)], kfP = new Float32Array(SN);
@@ -2391,6 +2438,7 @@ function labRecord(m) {
 function stormsReset() {
   stormMgr = HFStorms.create({ seed: stormSeed(), startMs: START_MS, hour0: simHour, auto: stormAuto, autoRate: stormActivity, maps: stormMapsNow() });
   stormLab = null; shadow = null; stormFieldsDirty = true; kfFieldHour = -1; stormSel = null; stormHot = null; stormHits = []; stormsDirty = true;
+  sumArch = 0; if (sumOpen) closeSummary();
   const card = $('storm-card'), tip = $('storm-tip'); if (card) card.hidden = true; if (tip) tip.style.display = 'none';
   updateSeasonBar();
 }
@@ -2406,6 +2454,7 @@ function stormsAdvance(n) {
     jetClockH += k * P.jetSpeed;
     left -= k;
     stormMgr.advanceTo(simHour, stormEnv);                           // every hour runs on the keyframe taken at or before its start
+    if (stormMgr.archive.length !== sumArch) seasonEnded();            // Jan 1: the finished season's paths are gone; show how it went
     if (stormLab) for (const m of stormLab) m.advanceTo(simHour, stormEnv);
     if (simHour % STORM_KEY_H === 0) {
       const midnight = simHour % 24 === 0;
@@ -2745,10 +2794,111 @@ function updateSeasonBar() {
   el.style.display = stormsOn && stormMgr ? '' : 'none';
   if (!stormsOn || !stormMgr) return;
   const s = stormMgr.stats(), t = String(s.year) + '|' + s.dep + '|' + s.named + '|' + s.hurr + '|' + s.major + '|' + s.cat5 + '|' + s.ace;
+  if (sumOpen && performance.now() - sumAt > 900) fillSummary();
   if (t === seasonText) return; seasonText = t;
   $('se-year').textContent = 'Atlantic ' + s.year; $('se-dep').textContent = s.dep; $('se-named').textContent = s.named; $('se-hurr').textContent = s.hurr;
   $('se-major').textContent = s.major; $('se-c5').textContent = s.cat5; $('se-ace').textContent = s.ace.toFixed(1);
 }
+
+/* ---- the season summary: the totals against the real normals, the accumulated cyclone energy through the year, one row per storm ------------------ */
+const SUM = DATA.storms || null;                                     // the real 1991-2020 normals and daily ACE percentiles (tools/merge_data.mjs --storms)
+const sumF1 = (x) => (Math.round(x * 10) / 10).toFixed(1);
+const sumDay = (y, d) => { const t = new Date(Date.UTC(y, 0, 1 + d)); return MON[t.getUTCMonth()] + ' ' + t.getUTCDate(); };
+const sumYearDays = (y) => Math.round((Date.UTC(y + 1, 0, 1) - Date.UTC(y, 0, 1)) / 86400000);
+function sumNiceTop(v) { for (const t of [30, 60, 100, 150, 200, 250, 300, 350, 400, 500, 650, 800, 1000]) if (v <= t) return t; return Math.ceil(v / 250) * 250; }
+function openSummary(year) {
+  if (!stormMgr) return;
+  sumYear = year == null ? stormMgr.season.year : year; sumOpen = true;
+  closeStormCard(); $('storm-tip').style.display = 'none';
+  $('sum-card').hidden = false; $('se-sum').setAttribute('aria-expanded', 'true'); fillSummary();
+}
+function closeSummary() { sumOpen = false; sumGeo = null; $('sum-card').hidden = true; $('se-sum').setAttribute('aria-expanded', 'false'); }
+function sumStep(dir) {
+  const ys = stormMgr.seasonYears(), i = ys.indexOf(sumYear), j = i + dir;
+  if (i >= 0 && j >= 0 && j < ys.length) { sumYear = ys[j]; fillSummary(); }
+}
+function seasonEnded() {
+  const n = stormMgr.archive.length, e = stormMgr.archive[n - 1]; sumArch = n;
+  stormSel = null; $('storm-card').hidden = true; stormHot = null; $('storm-tip').style.display = 'none'; stormsDirty = true;
+  openSummary(e.year);
+}
+function fillSummary() {
+  const rec = stormMgr && stormMgr.seasonRecord(sumYear); if (!rec) { closeSummary(); return; }
+  sumAt = performance.now();
+  const ys = stormMgr.seasonYears(), i = ys.indexOf(rec.year);
+  $('sum-prev').disabled = i <= 0; $('sum-next').disabled = i < 0 || i >= ys.length - 1;
+  $('sum-title').textContent = 'Atlantic ' + rec.year;
+  const n = SUM ? SUM.normals : null;
+  $('sum-sub').textContent = (rec.current ? 'Season so far, to ' + sumDay(rec.year, rec.day) : rec.open ? 'Season over, a storm is still active' : 'Season complete') + (rec.from > 0 ? ' · counted from ' + sumDay(rec.year, rec.from) : '');
+  const cells = [['DEP', rec.dep, n && n.dep], ['NAMED', rec.named, n && n.named], ['HURR', rec.hurr, n && n.hurr], ['MAJOR', rec.major, n && n.major], ['CAT 5', rec.cat5, n && n.cat5], ['ACE', sumF1(rec.ace), n && n.ace]];
+  $('sum-tot').innerHTML = cells.map(([k, v, a]) => '<div><b>' + v + '</b><span>' + k + '</span><small>' + (a == null ? '' : 'avg ' + sumF1(a)) + '</small></div>').join('');
+  drawSumGraph(rec);
+  const tb = $('sum-table').querySelector('tbody'); tb.innerHTML = '';
+  $('sum-empty').hidden = rec.storms.length > 0; $('sum-table').style.display = rec.storms.length ? '' : 'none';
+  for (const s of rec.storms) {
+    const c = HFStorms.category(s.peakV), col = STORM_COL[c.short] || STORM_COL.TD, live = s.end == null;
+    const tr = document.createElement('tr'); if (live) tr.className = 'live'; tr.dataset.id = s.id;
+    const d0 = s.tdHour >= 0 ? simDate(s.tdHour) : null, d1 = s.end != null ? simDate(s.end) : null;
+    const dates = d0 ? MON[d0.getUTCMonth()] + ' ' + d0.getUTCDate() + ' – ' + (d1 ? (d1.getUTCMonth() === d0.getUTCMonth() ? '' : MON[d1.getUTCMonth()] + ' ') + d1.getUTCDate() : 'now') : '–';
+    tr.innerHTML = '<td><i style="background:' + col + '"></i><b>' + (s.name || 'TD ' + s.depNum) + '</b></td><td>' + c.short + ' · ' + HFStorms.ktToMph(s.peakV) + '<span class="u"> mph</span></td><td>' + (s.peakV > 0 ? s.peakP : '–') + '</td><td>' + dates + '</td><td>' + sumF1(s.ace) + '</td>';
+    tr.onclick = () => sumPick(s.id);
+    tb.appendChild(tr);
+  }
+}
+function sumPick(id) {                                              // a row of the table: fly to that storm and open its stat card (only while its track still exists)
+  const S = stormMgr.get(id); if (!S) return;
+  const f = S.alive ? null : (S.fixes.find((q) => q.h === S.peakHour) || S.fixes[S.fixes.length - 1]), pos = f || { lat: S.lat, lon: S.lon };
+  map.panTo([pos.lat, pos.lon]); openStormCard(S, f || HFStorms.makeFix(S, stormMgr.hour, S.ace), !f);
+}
+function drawSumGraph(rec) {
+  const cv = $('sum-graph'), w = Math.max(240, Math.round(cv.clientWidth) || 460), h = 172;
+  if (cv.width !== Math.round(w * DPR) || cv.height !== Math.round(h * DPR)) { cv.width = Math.round(w * DPR); cv.height = Math.round(h * DPR); }
+  const g = cv.getContext('2d'); g.setTransform(DPR, 0, 0, DPR, 0, 0); g.clearRect(0, 0, w, h);
+  const L = 34, R = 10, T = 10, B = 20, pw = w - L - R, ph = h - T - B, nd = sumYearDays(rec.year);
+  const cum = (a) => { let t = 0; return a.map((x) => (t += x)); };
+  const mine = cum(rec.aceDaily), last = rec.current ? Math.min(nd - 1, rec.day) : nd - 1;
+  const others = stormMgr.seasonYears().filter((y) => y !== rec.year).map((y) => ({ y, c: cum(stormMgr.seasonRecord(y).aceDaily), nd: sumYearDays(y) }));
+  const A = SUM ? SUM.ace : null;
+  let top = Math.max(mine[last] * 1.08, A ? A.p90[365] * 1.04 : 0, 40);
+  for (const o of others) top = Math.max(top, o.c[o.nd - 1] * 1.08);
+  top = sumNiceTop(top);
+  const X = (d) => L + pw * d / (nd - 1), Y = (v) => T + ph * (1 - v / top);
+  g.font = '11px system-ui, sans-serif'; g.textBaseline = 'middle';
+  const step = [10, 20, 25, 50, 100, 200].find((q) => top / q <= 5.01) || 250;
+  g.lineWidth = 1; g.strokeStyle = 'rgba(255,255,255,.08)'; g.fillStyle = 'rgba(255,255,255,.5)'; g.textAlign = 'right';
+  for (let v = 0; v <= top + 1e-9; v += step) { const y = Math.round(Y(v)) + 0.5; g.beginPath(); g.moveTo(L, y); g.lineTo(w - R, y); g.stroke(); g.fillText(String(v), L - 5, y); }
+  g.textAlign = 'center'; g.textBaseline = 'alphabetic';
+  for (let m = 0; m < 12; m++) {
+    const d0 = Math.round((Date.UTC(rec.year, m, 1) - Date.UTC(rec.year, 0, 1)) / 86400000), d1 = m < 11 ? Math.round((Date.UTC(rec.year, m + 1, 1) - Date.UTC(rec.year, 0, 1)) / 86400000) : nd;
+    if (m) { g.strokeStyle = 'rgba(255,255,255,.06)'; g.beginPath(); g.moveTo(Math.round(X(d0)) + 0.5, T); g.lineTo(Math.round(X(d0)) + 0.5, T + ph); g.stroke(); }
+    g.fillStyle = 'rgba(255,255,255,.5)'; g.fillText('JFMAMJJASOND'[m], X((d0 + d1) / 2), h - 6);
+  }
+  const band = (lo, hi, fill) => {                                   // a band between two real percentile curves
+    g.beginPath(); for (let d = 0; d < nd; d++) { const x = X(d), y = Y(A[hi][Math.min(d, 365)]); if (d) g.lineTo(x, y); else g.moveTo(x, y); }
+    for (let d = nd - 1; d >= 0; d--) g.lineTo(X(d), Y(A[lo][Math.min(d, 365)]));
+    g.closePath(); g.fillStyle = fill; g.fill();
+  };
+  if (A) {
+    band('p10', 'p90', 'rgba(127,166,255,.13)'); band('p25', 'p75', 'rgba(127,166,255,.22)');
+    g.save(); g.setLineDash([4, 3]); g.lineWidth = 1.2; g.strokeStyle = 'rgba(190,210,255,.6)'; g.beginPath();
+    for (let d = 0; d < nd; d++) { const x = X(d), y = Y(A.p50[Math.min(d, 365)]); if (d) g.lineTo(x, y); else g.moveTo(x, y); } g.stroke(); g.restore();
+  }
+  g.lineJoin = 'round';
+  for (const o of others) { g.lineWidth = 1.2; g.strokeStyle = 'rgba(255,255,255,.3)'; g.beginPath(); for (let d = 0; d < o.nd; d++) { const x = X(Math.min(d, nd - 1) * (nd - 1) / (o.nd - 1)), y = Y(o.c[d]); if (d) g.lineTo(x, y); else g.moveTo(x, y); } g.stroke(); }
+  const from = Math.max(0, rec.from - 1);
+  g.lineWidth = 2.4; g.strokeStyle = '#f2f2f2'; g.beginPath(); for (let d = from; d <= last; d++) { const x = X(d), y = Y(mine[d]); if (d > from) g.lineTo(x, y); else g.moveTo(x, y); } g.stroke();
+  const ex = X(last), ey = Y(mine[last]);
+  g.beginPath(); g.arc(ex, ey, 3.6, 0, 7); g.fillStyle = '#f2f2f2'; g.fill(); g.lineWidth = 1.5; g.strokeStyle = 'rgba(18,18,18,.9)'; g.stroke();
+  if (rec.current) { g.save(); g.setLineDash([2, 3]); g.strokeStyle = 'rgba(255,255,255,.35)'; g.beginPath(); g.moveTo(Math.round(ex) + 0.5, T); g.lineTo(Math.round(ex) + 0.5, T + ph); g.stroke(); g.restore(); }
+  const lab = sumF1(mine[last]); g.font = '600 11.5px system-ui, sans-serif'; g.textAlign = ex > w - 46 ? 'right' : 'left'; g.textBaseline = 'middle';
+  g.lineWidth = 3; g.strokeStyle = 'rgba(26,26,28,.9)'; g.strokeText(lab, ex + (ex > w - 46 ? -7 : 7), ey - 8); g.fillStyle = '#f2f2f2'; g.fillText(lab, ex + (ex > w - 46 ? -7 : 7), ey - 8);
+  sumGeo = { w, h, L, T, pw, ph, top, nd, last, endX: ex, endY: ey, value: mine[last] };
+  const med = A ? A.p50[Math.min(last, 365)] : null;
+  $('sum-cap').textContent = A ? 'Real seasons ' + SUM.years[0] + '–' + SUM.years[1] + ': the middle 50 % and 80 % are shaded, the median dashed.' + (rec.current ? ' By ' + sumDay(rec.year, last) + ' the median season had ' + Math.round(med) + ' ACE (10th–90th percentile ' + Math.round(A.p10[Math.min(last, 365)]) + '–' + Math.round(A.p90[Math.min(last, 365)]) + ').' : ' The median season ends on ' + Math.round(A.p50[365]) + '.') : '';
+}
+$('se-sum').onclick = () => { if (sumOpen) closeSummary(); else openSummary(); };
+$('sum-close').onclick = closeSummary;
+$('sum-prev').onclick = () => sumStep(-1); $('sum-next').onclick = () => sumStep(1);
 /* ==== STORM HOOKS END ==== */
 
 
@@ -2964,7 +3114,7 @@ window.addEventListener('keydown', (e) => {
   if (e.code === 'Space') { e.preventDefault(); setPlaying(!playing); }
   else if (e.key === '[') $('b-slower').click(); else if (e.key === ']') $('b-faster').click();
   else if (e.key === 'r' || e.key === 'R') restart();
-  else if (e.key === 'Escape') { if (placeMode) placeSet(false); else closeStormCard(); }
+  else if (e.key === 'Escape') { if (placeMode) placeSet(false); else if (!$('storm-card').hidden) closeStormCard(); else if (sumOpen) closeSummary(); }
   else if (e.key === 'p' || e.key === 'P') placeSet(!placeMode);
 });
 $('b-place').onclick = () => placeSet(!placeMode);
@@ -3036,6 +3186,8 @@ window.SSTSIM = {
     return n;
   },
   stormClimGet() { const C = stormClim; stormClim = null; return C ? { n: C.n, steer: Array.from(C.steer), ns: Array.from(C.ns), sst: Array.from(C.sst), rh: Array.from(C.rh), shear: Array.from(C.shear), rel: Array.from(C.rel), ne: Array.from(C.ne) } : null; },
+  stormRecord(year) { return stormMgr ? stormMgr.seasonRecord(year == null ? stormMgr.season.year : year) : null; },
+  summary(on, year) { if (on === undefined) return { open: sumOpen, year: sumYear, geo: sumGeo }; if (on) openSummary(year); else closeSummary(); return sumOpen; },
   place(on, kind) { if (kind) { placeKind = kind; document.querySelectorAll('#place-menu button').forEach((x) => x.setAttribute('aria-checked', x.dataset.kind === kind ? 'true' : 'false')); } return on === undefined ? placeMode : placeSet(on); },
   placeAt(lat, lon) { placeAtLL = { lat, lng: lon }; if (!shadow) shadowBuild(); placePrev = stormMgr.forecast({ kind: placeKind, lat, lon }, { at: shadowEnv }, 7 * 24); stormsDirty = true; drawStorms(); return placePrev; },
   placePx(lat, lon) { const p = map.latLngToContainerPoint([lat, lon]); return { x: p.x, y: p.y }; },

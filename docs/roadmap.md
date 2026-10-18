@@ -1,6 +1,30 @@
 # Roadmap
 
 ## Just landed
+- **The season summary and the turn of the year (step 1 of 7, milestone M5).** The season bar has a `Summary` button that opens a card for the season on the bar. It
+  says how far the season has got (`Season so far, to Aug 19 · counted from Jun 1`: the first season of a run counts from the day the run started), shows the six totals of the bar with the real 1991-2020 average under each (16.3 depressions, 14.4 named storms, 7.2 hurricanes, 3.2 majors, 0.5
+  Category 5, ACE 122.5), a graph of the accumulated cyclone energy through the year and a table of the season's cyclones. *The graph* draws the season's cumulative ACE
+  day by day from Jan 1 to Dec 31, ending in a white dot at today's value, over the real seasons: the middle 50 % and the 10th-90th percentile of the 30 seasons 1991-2020
+  (the daily cumulative ACE of the IBTrACS best track, computed by `tools/make_tc_ref.py` and shipped as `storms` in `data.json` by `node tools/merge_data.mjs atlantic
+  --storms data.json`, 11 KB) as two shades of one band with their median dashed, the other seasons of the run as thin lines, and a caption that says where this one stands
+  (`By Aug 19 the median season had 12 ACE (10th-90th percentile 4-37)`); the axis grows to the largest of them, so a hyperactive season is never cut off. *The table* has one
+  row per numbered cyclone in order of formation (its name, or `TD 7` for a depression that never became a storm; peak category and wind in mph; lowest pressure; the dates
+  from depression to end, `now` while it lives; the ACE the storm itself holds), and a click on a row flies to the storm and opens its stat card while its track still exists.
+  The two arrows step between the seasons of the run, `Esc` closes the stat card first and then the summary, and the card stays on screen clear of the dock at 1280, 900 and
+  390 px wide (on a phone it spans the width of the screen and its table needs no sideways scroll). *At Jan 1* the finished season is archived: its dead paths disappear from the map, the bar starts the new year from zero (and the next list of
+  names), a cyclone still alive on that day finishes under its formation year (its name, its counters and its ACE stay in the old season, on the old curve's Dec 31, and the old
+  season is marked `Season over, a storm is still active` until it ends), and the card opens by itself on the season that has just ended. *How:* the engine gained
+  `seasonRecord(year)` and `seasonYears()` (one uniform record for the current season, one still being closed by a live storm, or an archived one: counters, the daily ACE
+  array, the cyclones summarised in order of formation, the day the count started), the season keeps a daily ACE array (each six-hourly fix adds to the day it falls on), and
+  the page only draws it.
+  *Tests:* 6 more node checks (146 in all: the record of the current season, both seasons after the turn of the year, a live storm keeping the old season open, the old curve
+  empty before the storm and its overnight ACE on Dec 31, the new season empty, the season closing with the same counters once the storm is gone) and 13 more browser checks
+  per run of the Atlantic (the button and the closed card, the opened card, totals equal to the bar and the real averages under them, one row per cyclone with the ACE the
+  storm holds, the graph by pixel probes (white dot at the season's total, nothing after today, the band lighter than the empty plot above it, nothing before the season in
+  January), the caption, a row opening its stat card, `Esc` / button / cross, the card fitting on screen clear of the dock at 1280, 900 and 390 px, the turn of the year,
+  the card opening by itself, the archived curve and counters, the arrows); 146 + 1561 checks pass.
+  *Caveat:* a run counts its first season from Jun 1, so it lacks the storms of January-May that the real bands include (0.9 ACE in the mean real season, 0.7 %); the
+  seasons after the first start on Jan 1 and are whole.
 - **Place mode: put a wave, a depression or a low on the map and see where it would go (step 1 of 7, milestone M4).** The dock has a `Place` button
   (key `P`): pressing it holds the clock and opens a small picker (tropical wave, tropical depression, subtropical depression, low-pressure area);
   a white dot follows the pointer and a line from it shows the next seven days of a system put right there, coloured by category at every

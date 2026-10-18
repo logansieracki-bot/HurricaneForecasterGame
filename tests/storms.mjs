@@ -270,6 +270,28 @@ const LAND = (la, lo) => (lo > -16.3 && lo < 38 && la > 4 && la < 30) || (lo < -
   void B;
 }
 
+/* ---- the season summary record ------------------------------------------------------------------------------------------------ */
+{
+  const env = makeEnv({ sst: 29, shear: 5, rh: 66 });
+  const m = H.create({ seed: 8, startMs: Date.UTC(2026, 11, 28), auto: false });
+  const A = m.place({ kind: 'td', lat: 18, lon: -45, v: 55 });
+  m.advanceTo(3 * 24, env);                                                   // Dec 28 -> Dec 31: the storm is named and builds ACE under 2026
+  const before = m.seasonRecord(2026), sumDaily = (r) => r.aceDaily.reduce((a, b) => a + b, 0);
+  check('the current season has a record: counters, the cyclone in order of formation, the day of the year, a daily ACE that adds up (' + before.ace + ')',
+    before.current && before.open && before.year === 2026 && before.dep === 1 && before.named === 1 && before.storms.length === 1 && before.storms[0].name === A.name && before.day === 364 && before.from === 361 && Math.abs(sumDaily(before) - before.ace) < 0.2);
+  m.advanceTo(10 * 24, env);                                                  // past Jan 1 with the storm still going
+  const R26 = m.seasonRecord(2026), R27 = m.seasonRecord(2027);
+  check('after the turn of the year both seasons have a record and an unknown year has none: ' + JSON.stringify(m.seasonYears()), JSON.stringify(m.seasonYears()) === '[2026,2027]' && R26 && R27 && m.seasonRecord(1999) === null && R27.current && !R26.current);
+  check('a storm alive at the turn of the year keeps the old season open: its record holds the live storm and the counters that keep running (alive ' + A.alive + ', open ' + R26.open + ')',
+    A.alive ? R26.open && R26.storms.length === 1 && R26.storms[0].id === A.id && R27.storms.length === 0 : !R26.open);
+  check('the ACE a closing season keeps earning after midnight on Jan 1 goes onto its Dec 31, not onto January (the whole 2026 curve is empty before Dec 28: ' + R26.aceDaily.slice(0, 350).every((x) => x === 0) + ')',
+    R26.aceDaily.slice(0, 350).every((x) => x === 0) && R26.aceDaily[364] > before.aceDaily.slice(358, 365).reduce((a, b) => a + b, 0) - 1e-9 && Math.abs(sumDaily(R26) - R26.ace) < 0.2 && Math.abs(R26.ace - A.ace) < 0.2);
+  check('the new season starts empty on its own list and its own curve', R27.dep === 0 && R27.named === 0 && R27.ace === 0 && sumDaily(R27) === 0 && R27.from === 0);
+  const far = m.advanceTo(60 * 24, env), R26b = m.seasonRecord(2026);          // the storm dies: the season closes
+  void far;
+  check('once its last storm is gone the old season is closed, with the same counters (dep ' + R26b.dep + ') and the storm summarised', !R26b.open && R26b.dep === R26.dep && R26b.storms.length === 1 && R26b.storms[0].peakV >= 55 && R26b.storms[0].end > 0);
+}
+
 /* ---- low tracker -------------------------------------------------------------------------------------------------------------- */
 {
   const t = new H.LowTracker();
