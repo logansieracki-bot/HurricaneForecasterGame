@@ -43,7 +43,7 @@
   rapid intensification was 3 to 4 times the real one at 50 kt and above). Known misses: the episodes start earlier in a storm's life than the real record's (windows starting at 45-65 kt gain 30 kt in 14 % of cases against
   7.4 %, from 65-95 kt 5.8 % against 8.8 %, from 95 kt up 1.0 % against 3.8 %: the sea-temperature gate and the potential wind, which is fixed by the page's SST and has no ocean heat content, hold the late episodes back), the
   27-28 degC and 29 degC and up classes are 40 % and 22 % below the real share at 30 kt, and category 5 storms are 0.25 a season (0.47).
-  *Tests:* 159 node checks and 1584 browser checks pass: the node ones added for the lifecycle (a disturbance is a stage, not a kind; every depression passed through it in the lifecycle seasons), the three-hourly
+  *Tests:* 160 node checks and 1584 browser checks pass: the node ones added for the lifecycle (a disturbance is a stage, not a kind; every depression passed through it in the lifecycle seasons), the three-hourly
   record, and the ladder above; the browser ones for the three drawn stages, the dots and the hover on a small one, the storm grid, the clock at 16x for 3 s (the storms are exactly those of one call to the same hour) and on
   a processor throttled to a third. *Mutation checks:* `tools/storm_mutants.mjs` has 73 edits now (22 new ones for this milestone; the old X4, which turned a disturbance into a wave, is replaced by the pair Y1 / Y2). The first pass over the 22 and the changed X6 killed 19; the
   survivors each showed a check that did not look at what its name said: *the Disturbances box doing nothing* (no check ever unticked a box: each now hides its own stage), *the storm grid keeping the previous day's large-scale anomalies*
@@ -53,6 +53,7 @@
   The full run then left one survivor, E6 of milestone 5 (a storm summary that rounds its ACE twice): its check only fails when a storm's ACE sits within 0.005 of a rounding boundary, which the new weather did not give;
   a node check that the archived storms keep their ACE unrounded kills it. All 73 are caught. The limit of the claim is the one of milestone 7: the edits are hand-made, and the offline lab, not CI, measures the engine
   against the real record.
+  *CI and Pages:* the push (2ae0b8d) passed `Build & test` (run 39145988318: 13 min 43 s for the build and the tests) and deployed to Pages (the API's deployment status for that sha is `success`).
 - **Storms, milestone 7: mutation checks of the storm work, and the end of step 1 (the core system, Atlantic).** *What step 1 is now:* every kind of system (waves, disturbances, lows, tropical and
   subtropical cyclones, extratropical and post-tropical cyclones) born by the simulator's own weather or put on the map with `Place` and a seven-day preview; names, six-hourly advisory dots, hover and
   click cards, the season bar, the season summary with the ACE graph over the real seasons and a card that opens by itself when the year turns, paths that disappear at the end of the season, and a
