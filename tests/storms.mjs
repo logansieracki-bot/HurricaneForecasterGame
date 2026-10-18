@@ -265,9 +265,11 @@ const LAND = (la, lo) => (lo > -16.3 && lo < 38 && la > 4 && la < 30) || (lo < -
   check('on Jan 1 the finished season is archived (' + (m.archive[0] && m.archive[0].year) + ') and a new one starts with its own counters', m.archive.length === 1 && m.archive[0].year === 2026 && m.season.year === 2027 && m.season.named === 0);
   check('a storm alive at the turn of the year stays under its formation year (named from the 2026 list, counted in 2026)', A.season === 2026 && /^(Arthur|Bertha)$/.test(A.name || 'Arthur') && m.hour > hNewYear);
   const m2 = H.create({ seed: 8, startMs: Date.UTC(2026, 11, 28), auto: false }); const C = m2.place({ kind: 'td', lat: 18, lon: -40 });
+  const live2 = [C, m2.place({ kind: 'td', lat: 14, lon: -30 }), m2.place({ kind: 'td', lat: 20, lon: -50 }), m2.place({ kind: 'td', lat: 16, lon: -35 }), m2.place({ kind: 'td', lat: 12, lon: -45 })];
   m2.advanceTo(40 * 24, env);
   check('the finished season is closed once its last storm dies, and the new year starts again from the 2027 list', m2.archive.length === 1 && !m2.archive[0].open && m2.archive[0].storms.length >= 1 && H.nameFor(2027, 0) === 'Ana');
-  check('the archived storms keep their ACE unrounded (the page rounds once, to a tenth: rounding here too turned 10.5475 into 10.55 and then 10.6): ' + m2.archive[0].storms.map((x) => x.ace).join(', '), m2.archive[0].storms.some((x) => x.ace > 0 && Math.abs(x.ace * 100 - Math.round(x.ace * 100)) > 1e-6));
+  check('the archived storms keep their ACE unrounded (the page rounds once, to a tenth: rounding here too turned 10.5475 into 10.55 and then 10.6): ' + m2.archive[0].storms.map((x) => x.ace).join(', '),
+    m2.archive[0].storms.length >= 4 && m2.archive[0].storms.every((x) => x.ace === live2.find((q) => q.id === x.id).ace) && m2.archive[0].storms.some((x) => x.ace > 0 && Math.abs(x.ace * 100 - Math.round(x.ace * 100)) > 1e-6));
   void B;
 }
 
@@ -353,8 +355,8 @@ const LAND = (la, lo) => (lo > -16.3 && lo < 38 && la > 4 && la < 30) || (lo < -
 
   // the transition: a random event at the real best track's rate, the wind kept, the life and the odd re-intensification of an extratropical cyclone
   const hz = (la, sst, sh, v) => H.etHazard6(par, la, sst, sh, v);
-  check('the transition hazard rises with latitude and shear, falls with warm water and with the storm\'s own wind, and is zero in the tropics',
-    hz(40, 20, 40, 60) > hz(35, 20, 40, 60) && hz(40, 20, 50, 60) > hz(40, 20, 30, 60) && hz(40, 26, 40, 60) < hz(40, 20, 40, 60) && hz(40, 20, 40, 100) < hz(40, 20, 40, 40) && hz(15, 20, 40, 60) === 0);
+  check('the transition hazard rises with latitude and shear, falls with warm water and with the storm\'s own wind, and fades out in the tropics (a ramp from 12N, negligible at 15N, zero at 12N and south of it)',
+    hz(40, 20, 40, 60) > hz(35, 20, 40, 60) && hz(40, 20, 50, 60) > hz(40, 20, 30, 60) && hz(40, 26, 40, 60) < hz(40, 20, 40, 60) && hz(40, 20, 40, 100) < hz(40, 20, 40, 40) && hz(15, 20, 40, 60) < 0.003 && hz(12, 20, 40, 60) === 0 && hz(10, 20, 40, 60) === 0);
   check(`the real numbers: about a quarter of the tropical storms at 42N over 20 C water in strong shear become post-tropical within six hours (${hz(42, 20, 40, 50).toFixed(2)}), under a hundredth at 28N over 28 C water (${hz(28, 28, 25, 50).toFixed(3)})`, near(hz(42, 20, 40, 50), 0.25, 0.1) && hz(28, 28, 25, 50) < 0.02);
   const dz = (la, v) => H.disHazard6(par, la, 22, 30, v);
   check('dissipation poleward of the subtropics takes weak storms far more often than strong ones and is zero in the tropics', dz(38, 25) > 3 * dz(38, 60) && dz(38, 60) > 0 && dz(20, 25) === 0);
@@ -719,13 +721,110 @@ const LAND = (la, lo) => (lo > -16.3 && lo < 38 && la > 4 && la < 30) || (lo < -
     ['no room left (a 110-kt hurricane over 27.8 degC)', makeEnv({ sst: 27.8, shear: 5, rh: 62, steer: zero }), 18, 110, { room: [-5, -4] }, (a, b) => a.eps === 0 && b.eps >= 40],
   ].map(([name, env, lat, v0, patch, ok]) => { const a = started(D, env, lat, v0), b = started(blind(patch), env, lat, v0); return { name, a, b, ok: ok(a, b) }; });
   check(`an episode needs the conditions: episodes started in 40 week-long runs, as shipped / with that factor blind: ${gates.map((g) => g.name + ' ' + g.a.eps + ' / ' + g.b.eps).join('; ')}`, gates.every((g) => g.ok));
-  const fin = (lat) => mean(Array.from({ length: 20 }, (_, i) => { const vs = trace(lat, 100, ideal, 72, i + 1); return vs[vs.length - 1]; })), f15 = fin(15), f32 = fin(32);
-  check(`the calibrated potential wind falls poleward: a 100-kt hurricane over the same 29 degC water is at ${f15.toFixed(0)} kt after three days at 15N and ${f32.toFixed(0)} kt at 32N`, f15 > 100 && f15 - f32 > 25);
+  const ordinary = makeEnv({ sst: 29, shear: 20, rh: 56, steer: zero });
+  const fin = (lat, env = ordinary) => mean(Array.from({ length: 20 }, (_, i) => { const vs = trace(lat, 100, env, 72, i + 1); return vs[vs.length - 1]; })), f15 = fin(15), f32 = fin(32), p32 = fin(32, ideal);
+  check(`the calibrated potential wind falls poleward in an ordinary environment: a 100-kt hurricane over 29 degC water (20 kt of shear, 56 % humidity) is at ${f15.toFixed(0)} kt after three days at 15N and ${f32.toFixed(0)} kt at 32N; in a perfect one (5 kt of shear, 62 %) it falls less than half as far (${p32.toFixed(0)} kt at 32N)`, f15 > 100 && f15 - f32 > 25 && f15 - p32 < 0.5 * (f15 - f32));
   const GRc = { lon0: -105, lat0: 5, res: 5, nx: 21, ny: 13 }, flatc = (v) => Array.from({ length: 12 }, () => Array.from({ length: GRc.ny }, () => new Array(GRc.nx).fill(v)));
   const mapsC = { grid: GRc, drift: { weak: { u: flatc(-8), v: flatc(3) }, strong: { u: flatc(-6), v: flatc(5) }, sub: { u: flatc(4), v: flatc(1) }, ex: { u: flatc(15), v: flatc(5) } }, steerClim: [0, 0, 0, 0, 0, 0].map((x) => flatc(x)), haz: { T: flatc(0), S: flatc(0) }, env0: { rh: flatc(54), shear: flatc(10), sst: flatc(27.5), sstRel: flatc(0) } };
   const declared = (sst, shear, rh) => { let n = 0; for (let s = 1; s <= 12; s++) { const S = system('wv', 15, -50, 18, s, { dev: 0, q: 0 }), e = makeEnv({ sst, shear, rh, steer: zero }), c = { maps: H.prepareMaps(mapsC), tw: H.timeWeights(240), diag: null, act: 1 }; for (let h = 0; h < 72 && S.alive; h++) { H.stepSystem(S, e, h, s, D, 240, c); if (S.th !== 'wv') { n++; break; } } } return n; };
   const dGood = declared(28.5, 8, 58), dMarg = declared(26.5, 14, 50);
   check(`a disturbance that has begun to develop is declared a depression only while the growth law could keep one alive: in ${dGood} of 12 seeds in a good environment and in ${dMarg} of 12 in a marginal one (without the margin, 11 of 12 and a fifth of the numbered depressions were gone in a day)`, dGood >= 9 && dMarg <= 4);
+  H.calibrated(false);
+}
+
+/* ---- no walls: every limit is a ramp, a hazard or a soft cap ------------------------------------------------------------------------------------------------------ */
+{
+  H.calibrated(true);
+  const D = H.defaultParams(), zero = () => [0, 0, 0, 0, 0, 0], BOXW = { lat0: -80, lat1: 85, lon0: -170, lon1: 120 };
+  const xs = [0.01, 0.1, 0.5, 1, 2, 3, 5, 10, 100], ys = xs.map((x) => H.satur(x, 3));
+  check(`a soft cap bends over toward its cap without reaching it: satur(x, 3) = ${ys.map((y) => y.toFixed(3)).join(', ')} for x = ${xs.join(', ')}; the soft minimum of two numbers rounds the corner (62 and 62 give ${H.softMin(62, 62).toFixed(1)})`,
+    ys.every((y, i) => y < 3 && y <= xs[i] + 1e-12 && (i === 0 || y > ys[i - 1])) && near(ys[0], 0.01, 1e-6) && ys[8] > 2.99 && H.satur(-1, 3) === 0 && H.softMin(62, 62) < 62 && H.softMin(62, 1000) > 61.9 && H.softMin(62, 1000) < 62 && near(H.softMin(10, 1e6), 10, 1e-6));
+  // the post-tropical hazard has no wall at its latitude limit and a perfect tropical environment takes the latitude term away
+  const p = (lat, perf) => H.etHazard6(D, lat, 26, 20, 60, perf);
+  let maxStep = 0, mono = true; for (let la = 8; la < 50; la += 0.25) { maxStep = Math.max(maxStep, Math.abs(p(la + 0.25) - p(la))); if (p(la + 0.25) < p(la) - 1e-12) mono = false; }
+  check(`the post-tropical hazard has no wall at its latitude limit: ${p(14).toExponential(1)} at 14N, ${p(19.9).toExponential(2)} just under 20N and ${p(20.1).toExponential(2)} just over it, rising with latitude everywhere and never by more than ${(100 * maxStep).toFixed(1)} points in a quarter of a degree`,
+    p(14) > 0 && p(14) < p(20) && near(p(19.9), p(20.1), 3e-4) && mono && maxStep < 0.02);
+  check(`a perfect tropical environment takes most of the latitude term away: at 43.5N over 29 degC water the hazard is ${H.etHazard6(D, 43.5, 29, 3, 60, 0).toFixed(3)} and ${H.etHazard6(D, 43.5, 29, 3, 60, 1).toFixed(4)} with perf = 1`, H.etHazard6(D, 43.5, 29, 3, 60, 1) < 0.15 * H.etHazard6(D, 43.5, 29, 3, 60, 0));
+  // the sea-temperature gate: the more permissive of the relative and the absolute one
+  const rel = H.smooth01(22.8, D.sstGate[0], D.sstGate[1]), both = H.sstGateAt(D, D, 22.8, 27.5, 0), same = H.sstGateAt(D, D, 26.0, 26.0, 0), noAbs = H.sstGateAt(H.mergeParams(D, { sstAbsUp: 0 }), D, 22.8, 27.5, 0);
+  check(`in a warmed world the sea-temperature gate does not shut water that is warm in absolute terms: the relative gate alone is ${rel.toFixed(2)} for 22.8 degC against the warm tropics, with the sea at 27.5 degC it is ${both.toFixed(2)}; without the absolute gate ${noAbs.toFixed(2)}; where the two agree nothing changes (${same.toFixed(3)} against ${H.smooth01(26.0, D.sstGate[0], D.sstGate[1]).toFixed(3)})`,
+    rel < 0.01 && both > 0.9 && noAbs < 0.01 && near(same, H.smooth01(26.0, D.sstGate[0], D.sstGate[1]), 1e-12));
+
+  // a depression at the latitude of the Great Lakes: possible in a perfect environment, still hostile without one
+  const lakeLat = 43.5;
+  const trial = (pp, opts, lat = lakeLat, v0 = 35, seeds = 40, hours = 168) => {
+    const out = [];
+    for (let sd = 1; sd <= seeds; sd++) {
+      const S = system('tc', lat, -87, v0, sd), e = makeEnv(Object.assign({ steer: zero, box: BOXW }, opts));
+      let peak = S.vr, et24 = false; for (let h = 0; h < hours && S.alive; h++) { H.stepSystem(S, e, h, sd, pp); peak = Math.max(peak, S.vr); if (h === 23 && S.th === 'ex') et24 = true; }
+      out.push({ peak, et24, alive: S.alive && S.th === 'tc' });
+    }
+    return { mean: mean(out.map((o) => o.peak)), hur: out.filter((o) => o.peak >= 64).length, et24: out.filter((o) => o.et24).length, tc7: out.filter((o) => o.alive).length };
+  };
+  const perfect = trial(D, { sst: 27.5, shear: 1, rh: 72 }), thr = trial(D, { sst: 26.5, shear: 1, rh: 72 }), cold = trial(D, { sst: 22, shear: 25, rh: 55 }), warmShear = trial(D, { sst: 27.5, shear: 30, rh: 55 });
+  check(`a depression at 43.5N (the Great Lakes) over 27.5 degC water with next to no shear and moist air becomes a hurricane in ${perfect.hur} of 40 seeds (mean peak ${perfect.mean.toFixed(0)} kt), is post-tropical within a day in ${perfect.et24} and is still a tropical cyclone after a week in ${perfect.tc7}; over water at the hurricane threshold (26.5 degC) ${thr.hur} of 40 do (mean ${thr.mean.toFixed(0)} kt)`,
+    perfect.hur >= 32 && perfect.et24 <= 4 && perfect.tc7 >= 28 && thr.hur >= 8);
+  check(`... and without the tropical environment it is still hostile: over 22 degC water with 25 kt of shear no depression gets near hurricane strength (${cold.hur} of 40, mean peak ${cold.mean.toFixed(0)} kt), and warm water alone is not enough in 30 kt of shear (${warmShear.hur} of 40, mean ${warmShear.mean.toFixed(0)} kt)`, cold.hur === 0 && cold.mean < 50 && warmShear.hur <= 8);
+  const typ = (relief) => trial(H.mergeParams(D, { vpRelief: relief }), { sst: 28.5, shear: 14, rh: 54 }, 28, 60, 30, 120).mean;
+  check(`the relief is for perfect conditions only: in an ordinary environment (28.5 degC, 14 kt of shear, 54 % humidity) the mean peak at 28N is ${typ(0.9).toFixed(0)} kt with it and ${typ(0).toFixed(0)} kt without it`, Math.abs(typ(0.9) - typ(0)) < 4);
+  const sstRung = []; for (let s = 22; s <= 30; s += 0.5) sstRung.push(trial(D, { sst: s, shear: 1, rh: 72 }, lakeLat, 35, 24).mean);
+  const steps = sstRung.slice(1).map((x, i) => x - sstRung[i]);
+  check(`the mean peak of a week at 43.5N rises gradually with the sea temperature, with no step anywhere (every half degree from 22 to 30 degC: largest rise ${Math.max(...steps).toFixed(0)} kt, largest fall ${Math.min(...steps).toFixed(0)} kt; ${sstRung[0].toFixed(0)} kt at 22, ${sstRung[sstRung.length - 1].toFixed(0)} kt at 30)`, Math.max(...steps) < 22 && Math.min(...steps) > -8 && sstRung[sstRung.length - 1] > sstRung[0] + 60);
+  // a lake is water: the same depression on a patch of water 3 degrees across, amid land, strengthens; on land it does not
+  const lakeEnv = (wet) => makeEnv({ sst: 27.5, shear: 1, rh: 72, steer: zero, box: BOXW, land: (la, lo) => !(wet && Math.abs(la - 43.5) < 1.6 && Math.abs(lo + 87) < 2.2) });
+  const lakeRun = (wet) => { const peaks = []; for (let sd = 1; sd <= 20; sd++) { const S = system('tc', 43.5, -87, 35, sd), e = lakeEnv(wet); let pk = S.vr; for (let h = 0; h < 72 && S.alive; h++) { H.stepSystem(S, e, h, sd, D); pk = Math.max(pk, S.vr); } peaks.push(pk); } return mean(peaks); };
+  check(`a depression on a lake-sized patch of water (3 degrees across, land all round) strengthens, to a mean of ${lakeRun(true).toFixed(0)} kt in three days, where on land it would be ${lakeRun(false).toFixed(0)} kt`, lakeRun(true) > 60 && lakeRun(false) < 40);
+
+  // rapid intensification does not stop at a wall: an episode in progress tapers off as the wind comes up to the potential wind
+  { const e = makeEnv({ sst: 29.5, shear: 3, rh: 62, steer: () => [-10, 0, -10, 0, -10, 0] });
+    const run12 = (v0) => { const kept = [], after = [], without = []; for (let sd = 1; sd <= 12; sd++) {
+      const A = system('tc', 15, -55, v0, sd), B = system('tc', 15, -55, v0, sd); A.ri = { t0: 0, dur: 24, rate: 3, pn: 0 }; let alive = true;
+      for (let h = 0; h < 12; h++) { H.stepSystem(A, e, h, sd, D); H.stepSystem(B, e, h, sd, D); if (!A.ri) alive = false; }
+      kept.push(alive); after.push(A.v); without.push(B.v); } return { kept: kept.filter(Boolean).length, gain: mean(after) - mean(without) }; };
+    const r90 = run12(90), r110 = run12(110), r130 = run12(130);
+    check(`a rapid-intensification episode is not cut off at 93 % of the potential wind: it runs its course in ${r130.kept} of 12 hurricanes starting at 130 kt, and what it adds in half a day tapers as the room runs out (${r90.gain.toFixed(1)} kt from 90 kt, ${r110.gain.toFixed(1)} from 110, ${r130.gain.toFixed(1)} from 130)`,
+      r90.kept === 12 && r110.kept === 12 && r130.kept === 12 && r90.gain > r110.gain + 2 && r110.gain > r130.gain + 2 && r130.gain > 0.5); }
+
+  // disturbances end by a hazard, not by a wall: over water near the 22 degC limit about half of the waves are gone in half a day, over 20 degC all, over 24 degC none
+  { const gone = (sst) => { let n = 0; for (let sd = 1; sd <= 60; sd++) { const S = system('wv', 15, -50, 16, sd), e = makeEnv({ sst, shear: 12, rh: 62, steer: zero }); for (let h = 0; h < 12 && S.alive; h++) H.stepSystem(S, e, h, sd, D); if (!S.alive) n++; } return n / 60; };
+    const g = [24, 23, 22.5, 22, 21.5, 21, 20].map(gone);
+    check(`a wave over cold water does not die at a line: the share gone within twelve hours is ${g.map((x, i) => [24, 23, 22.5, 22, 21.5, 21, 20][i] + ' degC ' + x.toFixed(2)).join(', ')}`, g[0] === 0 && g[1] < 0.1 && g.every((x, i) => i === 0 || x >= g[i - 1] - 0.08) && g[3] > 0.3 && g[3] < 0.95 && g[6] >= 0.9); }
+
+  // the fastest loss of wind is a knee, not a clamp: it rises with the severity beyond the soft limit and never reaches it
+  { const cap = (V) => D.decayCap[0] + D.decayCap[1] * (V / 60) * (V / 60), lim = (x, V) => H.decayLimit(D, x, V), c100 = cap(100);
+    const xs2 = [0.1, 0.5, 1, 1.5, 2.5, 4, 8].map((k) => k * c100), ls = xs2.map((x) => lim(x, 100));
+    check(`the fastest loss of wind over water is a soft limit: for a 100-kt hurricane (limit ${c100.toFixed(2)} kt/h) a severity of ${[0.1, 0.5, 1, 1.5, 2.5, 4, 8].join(', ')} times the limit costs ${ls.map((l) => (l / c100).toFixed(3)).join(', ')} of it, rising all the way and never reaching it`,
+      ls.every((l, i) => l < c100 && (i === 0 || l > ls[i - 1])) && near(ls[0], xs2[0], 0.002 * c100) && ls[2] < 0.95 * c100 && ls[2] > 0.8 * c100 && ls[6] > 0.99 * c100 && lim(c100, 40) < cap(40)); }
+  // a land fraction takes the water hazard of dissipation away smoothly
+  { const dz = (lf) => H.disHazard6(D, 38, 22, 30, 30, null, lf);
+    check(`over land the water hazard of dissipation fades out with the share of land: ${[0, 0.2, 0.35, 0.5, 1].map((lf) => 'land ' + lf + ' ' + dz(lf).toFixed(4)).join(', ')}`, dz(0) > 0.01 && near(dz(0.2), dz(0), 1e-12) && dz(0.35) < 0.8 * dz(0) && dz(0.35) > 0.2 * dz(0) && dz(0.5) === 0 && dz(1) === 0); }
+  // a disturbance that is strong enough does not become a depression over land, on the equator or over cold water -- the doors close gradually, but they close
+  { const became = (lat, lon, env, hours = 18) => { let n = 0; for (let sd = 1; sd <= 20; sd++) { const S = system('wv', lat, lon, 40, sd), e = makeEnv(Object.assign({ steer: zero, box: BOXW }, env)); for (let h = 0; h < hours && S.alive; h++) H.stepSystem(S, e, h, sd, par); if (S.th === 'tc') n++; } return n; };
+    const open = became(12, -50, { sst: 29, shear: 3, rh: 70 }), onLand = became(12, -50, { sst: 29, shear: 3, rh: 70, land: () => true }), equator = became(1.5, -50, { sst: 29, shear: 3, rh: 70 }), cold = became(12, -50, { sst: 20, shear: 3, rh: 70 });
+    check(`a disturbance with 40 kt of wind becomes a depression within 18 hours in ${open} of 20 seeds over warm water at 12N, in ${onLand} over land, ${equator} at 1.5N and ${cold} over 20 degC water`, open >= 18 && onLand === 0 && equator === 0 && cold === 0); }
+  // a circulation that has all but gone is finished within hours
+  { let gone = 0; for (let sd = 1; sd <= 20; sd++) { const S = system('tc', 25, -60, 3, sd), e = makeEnv({ sst: 24, shear: 40, rh: 40, steer: zero, box: BOXW }); for (let h = 0; h < 6 && S.alive; h++) H.stepSystem(S, e, h, sd, par); if (!S.alive) gone++; }
+    check(`a cyclone whose wind has fallen to 3 kt is finished within six hours (${gone} of 20), not kept for the half day a remnant low would be`, gone >= 19); }
+
+  // the tracked lows' latitude weight is a ramp up and a ramp down
+  { const w = (la) => H.lowWeight(D, la);
+    check(`a tracked low counts as a precursor by a weight that ramps in from 14 to 18N and out from 45 to 50N: ${[10, 14, 16, 18, 30, 45, 47.5, 50, 60].map((la) => la + 'N ' + w(la).toFixed(2)).join(', ')}`, w(10) === 0 && w(14) === 0 && w(16) > 0.2 && w(16) < 0.8 && w(18) === 1 && w(30) === 1 && w(45) === 1 && w(47.5) > 0.2 && w(47.5) < 0.8 && w(50) === 0 && w(60) === 0); }
+
+  // no map is zero anywhere: the development rate has a floor, and there is a supply of disturbances over the whole box
+  { const GRf = { lon0: -105, lat0: 5, res: 5, nx: 21, ny: 13 }, flatf = (v) => Array.from({ length: 12 }, () => Array.from({ length: GRf.ny }, () => new Array(GRf.nx).fill(v)));
+    const mapsF = (o = {}) => ({ grid: GRf, drift: { weak: { u: flatf(-8), v: flatf(3) }, strong: { u: flatf(-6), v: flatf(5) }, sub: { u: flatf(4), v: flatf(1) }, ex: { u: flatf(15), v: flatf(5) } }, steerClim: [0, 0, 0, 0, 0, 0].map((x) => flatf(x)),
+      haz: { T: flatf(0), S: flatf(0) }, env0: { rh: flatf(54), shear: flatf(10), sst: flatf(28), sstRel: flatf(0) }, spawn: o.spawn ? Array.from({ length: 12 }, () => Array.from({ length: GRf.ny }, () => new Array(GRf.nx).fill(o.spawn))) : undefined });
+    const perfectEnv = () => makeEnv({ sst: 29.5, shear: 2, rh: 75, steer: zero, box: { lat0: 5, lat1: 65, lon0: -105, lon1: -5 } });
+    const developed = (floor) => { let n = 0; for (let sd = 1; sd <= 30; sd++) { const m = H.create({ seed: sd, startMs: Date.UTC(2026, 7, 1), auto: false, params: { hazFloor: floor, act: { seasSd: 0, intraSd: 0, K: 6, T: [14, 60] } }, maps: mapsF() }), W = m.place({ kind: 'wave', lat: 25, lon: -60 }); m.advanceTo(24 * 10, perfectEnv()); if (W.tdHour >= 0) n++; } return n; };
+    const dFloor = developed(0.02), dNone = developed(0);
+    check(`a map that is zero everywhere is not a wall: with a development-rate floor a wave in a perfect environment develops in ${dFloor} of 30 seeds, without one in ${dNone}; the shipped floor is ${D.hazFloor} an hour and the shipped supply of disturbances ${D.seedFloor} a year over the whole box`, dFloor >= 5 && dNone === 0 && D.hazFloor > 0 && D.hazFloor < 1e-4 && D.seedFloor > 0 && D.seedFloor < 20);
+    const land = (la, lo) => lo < -60, boxF = { lat0: 5, lat1: 65, lon0: -105, lon1: -5 };
+    const born = (fl, spawn) => { const m = H.create({ seed: 4, startMs: Date.UTC(2026, 7, 1), auto: true, params: { waveRate0: 0, seedFloor: fl }, maps: mapsF({ spawn }) }), ids = [], seen = new Set(), env = makeEnv({ sst: 24.4, shear: 30, rh: 40, steer: zero, box: boxF, land });
+      for (let h = 0; h < 24 * 60; h += 6) { m.advanceTo(h + 6, env); for (const S of m.systems) if (!seen.has(S.id)) { seen.add(S.id); ids.push([S.id, S.fixes.length ? S.fixes[0].lat : S.lat, S.fixes.length ? S.fixes[0].lon : S.lon, S.kind]); } }
+      return { ids, n: m.n }; };
+    const withF = born(600, 4), withoutF = born(0, 4), fl = withF.ids.filter((x) => x[0][0] === 'F'), locals = (r) => r.ids.filter((x) => x[0][0] === 'N');
+    check(`a supply of disturbances over the whole box (600 a year here): ${withF.n.F} born in 60 days (about 54 expected: 600 a year is 99 in 60 days and 45 % of the box is land here), all over water (the first fix east of 61W), all of the kind of a local seed, and no automatic system's id or place moves because they exist (${locals(withF).length} local seeds with them, ${locals(withoutF).length} without)`,
+      withF.n.F >= 35 && withF.n.F <= 80 && fl.length > 20 && fl.every((x) => x[2] > -61.5 && x[3] === 'N') && withoutF.n.F === 0 && JSON.stringify(locals(withF)) === JSON.stringify(locals(withoutF)) && locals(withoutF).length > 20); }
   H.calibrated(false);
 }
 

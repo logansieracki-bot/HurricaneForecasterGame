@@ -341,23 +341,29 @@ nothing to run by hand.
   a logistic growth law bounded by the environment's potential, with rapid-intensification episodes (they start at a rate that rises with
   warm water, little shear, moist air and room below the potential wind: none in a hostile environment, 30 kt or more in a day in about
   6 % of the 24-hour windows over the real record's warm water, and in a perfect one, water above 29.5 °C with next to no shear in very moist air, they run
-  up to 2.5 times faster and take a storm up by 80 to 100 kt in about a day), a cold wake, a cap on how fast wind can be lost, and land decay; a tropical cyclone ends by one of two competing random exits at the real best track's rate (it
+  up to 2.5 times faster and take a storm up by 80 to 100 kt in about a day), a cold wake, a soft limit on how fast wind can be lost, and land decay; a tropical cyclone ends by one of two competing random exits at the real best track's rate (it
   becomes extratropical, keeping its wind, at about 41N over 20 °C water in strong shear; or it dissipates, a weak storm far more often
   than a strong one), a post-tropical cyclone starts fast (25 kt in its first row) and slows with age, may re-intensify in a strong jet,
-  and a weak storm over land is finished in half a day. Selecting a storm (or one of its dots) hides every other path until it is
+  and a weak storm over land is finished in half a day. **No walls:** nothing in the engine is a threshold that switches a rule on or off or a clamp: every limit is a ramp, a
+  hazard or a soft cap (`satur(x, cap)` bends over toward its cap and never reaches it). Lakes are water for the storms (the 638 lake polygons of the map are rastered onto its fine grid and take
+  the temperature the page draws for them), the fall of the potential wind with latitude is lifted in a perfect tropical environment (warm water, next to no shear, moist air: a depression
+  over 27.5 degC water at the latitude of Lake Michigan becomes a hurricane in 37 of 40 seeds, it was 10), the post-tropical transition and the sea-temperature gate no longer shut a warm, calm
+  sea, a map that is zero is not a wall (a development-rate floor and a supply of disturbances over the whole box make the Great Lakes, the Mediterranean and the rest of the water possible,
+  and extremely rare), and the sliders have the only ranges the model has. `docs/roadmap.md` (milestone 9) lists every limit and what it became. Selecting a storm (or one of its dots) hides every other path until it is
   deselected. **Re-fitting:** the maps are a calibration of this simulator's weather, committed as data, so they are re-fitted when the
   weather changes (`npm run build`, then with `PLAYWRIGHT_CHROMIUM_PATH` set `node tools/storm_fit.mjs clim`, `wet`, `fit --ipf`,
   then `refine` and `motion` on `node tools/storm_mc.mjs --diag` runs of 70+ seasons until the regional totals stop moving, `maps`,
   `node tools/merge_data.mjs atlantic --storm-maps data.json`, rebuild, and check on seeds the fit never saw with
   `node tools/storm_mc.mjs --seeds 401-496 --out raw.json` and `node tools/storm_validate.mjs raw.json`; the intensity law and the
   transition's intercepts come from `tools/storm_opt.mjs` and `storm_mc.mjs --sets` scans; `docs/roadmap.md` has the whole procedure and
-  its numbers). **Speed:** the engine reads SST, humidity and shear from its own half-resolution grid (every second node of the map's, a quarter of the
-  work; the values are exactly the map's at those nodes, a browser check compares them), the clock's frame loop stops advancing after 12 ms of simulation and owes
+  its numbers). **Speed:** the engine reads SST, humidity and shear from its own one-degree grid (every fourth node of the map's, a sixteenth of the
+  work; the values are exactly the map's at those nodes, a browser check compares them) and the steering from keyframes every six hours with the hours between carried forward linearly in time,
+  the map's fine synoptic texture is built only when the map is drawn, the clock's frame loop stops advancing after 12 ms of simulation and owes
   the rest (at most 24 hours), so a slow machine falls behind instead of freezing, and the layers redraw less often the faster the clock runs; in headless Chromium
-  here the page keeps 37 / 35 / 27 / 17 / 18 frames a second at 4× / 8× / 16× / 32× / 64× (it was 21 / 14 / 4 / 2 / 1) and pressing `Place` at 16× blocks for 0.22 s (0.65 s);
+  here a simulated day costs 17-21 ms (it was 44), the clock runs 34 / 31 frames a second at 4× / 16× (it was 20 / 17), 412 simulated hours a second at 64× (190) and pressing `Place` at 16× blocks for 0.19 s (0.47 s);
   `docs/roadmap.md` has the table. **Time and weather:** `advanceHours()` walks in sub-chunks that end on every absolute 3-hour
   boundary; the engine runs hour by hour on the last *keyframe* (a copy of the three steering layers and sea-level pressure
-  every 3 h; of SST, humidity and shear once a day at 00Z and whenever a slider, ENSO or the seed changed). Storms are
+  every 6 h, the hours between carried forward in time; of SST, humidity and shear once a day at 00Z and whenever a slider, ENSO or the seed changed). Storms are
   therefore a pure function of the seed, the settings and the actions, however fast the clock runs or often the page
   redraws. That needed one change to the weather itself: SST / humidity / shear / ENSO used to draw their random numbers lazily
   whenever `computeField()` happened to run, so the same seed gave different weather at different render rates (measured
@@ -399,13 +405,13 @@ check that Satellite still resolves to something usable.
 - ERSST at 2° is warm-biased in coastal cells; several corrections are hand-tuned
   (see the shelf, Northeast shelf, Gulf Stream blocks in `src/template.html`).
 - Storms exist in the Atlantic only (the test basin). 240 seasons the calibration was not fitted on (seeds 1401-1448, 1501-1596, 1601-1696; the 214 days from Jun 1)
-  average 17.0 depressions, 14.1 named storms, 7.7 hurricanes, 3.6 majors and ACE 131 against the real 1991-2020 15.8 / 13.9 / 7.2 / 3.2 / 122 (the three blocks of
-  seeds differ more than chance explains: ACE 110, 144 and 129), with season-to-season SD of the named count 4.9 (real 5.5) and of ACE 77 (66, but a heavier top: the
+  average 16.7 depressions, 14.0 named storms, 7.9 hurricanes, 3.8 majors, 0.37 category 5 storms and ACE 137 against the real 1991-2020 15.8 / 13.9 / 7.2 / 3.2 / 0.47 / 122 (the three blocks of
+  seeds differ more than chance explains: ACE 129, 147 and 132), with season-to-season SD of the named count 4.9 (real 5.5) and of ACE 77 (66, but a heavier top: the
   highest simulated season is 440, the real record's 250), and 43 % of named storms becoming extratropical (45 %) at a median 41N (41N). Rapid intensification
   (24-hour gains of 30 / 50 / 65 / 80 kt in 6.6 / 0.90 / 0.17 / 0.03 % of the windows over water, real 6.3 / 0.73 / 0.16 / 0.03) follows the sea temperature, but starts earlier in a
   storm's life than the real record's (14 % of the windows that start at 45-65 kt gain 30 kt, real 7 %; 1 % from 95 kt up, real 4 %). Known misses (`docs/roadmap.md` has them all):
   East Coast landfalls 0.86 a season (real 1.13), Mexico 1.56 (2.17) and Canada 0.07 (0.23) are low and the Greater Antilles / Bahamas (1.94 against 1.23) and South America (0.53 against
-  0.03) high; category 5 storms 0.25 a season (0.47); a sixth of numbered depressions never reach storm strength (real 12 %); post-tropical systems are about 20 % too slow after
+  0.03) high; category 5 storms 0.37 a season (0.47) and ACE 12 % above the real normal (the perfect-environment relief adds a few majors); a sixth of numbered depressions never reach storm strength (real 12 %); post-tropical systems are about 20 % too slow after
   their transition and there are fewer of them than in the data; subtropical storms are 1.1 a year (1.7); the page's own pressure lows are
   fewer and longer-lived than ERA5's; the moisture slider's effect is far stronger than the warming slider's. The lows thresholds, the
   2027+ name lists and the clock at 32× and 64× (about a third of its nominal speed in headless Chromium) are also open. No impacts or invests yet.

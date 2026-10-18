@@ -456,7 +456,7 @@ const DM = DATA.domain;
 const NX = DM.nx, NY = DM.ny, RES = DM.res, LON0 = DM.lon0, LAT1 = DM.lat1;
 const CNX = DM.cnx, CNY = DM.cny, RATIO = DM.cres / DM.res;
 const N = NX * NY, CN = CNX * CNY, K = DATA.K;
-const SS = 2, NXS = ((NX - 1) >> 1) + 1, NYS = ((NY - 1) >> 1) + 1, NSF = NXS * NYS;     // the storm engine's environment lives on every SS-th node (0.5 degrees): see computeStormFields
+const SS = 4, NXS = Math.floor((NX - 1) / SS) + 1, NYS = Math.floor((NY - 1) / SS) + 1, NSF = NXS * NYS;     // the storm engine's environment lives on every SS-th node (one degree): see computeStormFields
 const DEG = Math.PI / 180;
 
 function b64bytes(s) { const b = atob(s), u = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); return u; }
@@ -893,13 +893,15 @@ function jetRandn() { let u = 0; while (u === 0) u = jetRand(); return Math.sqrt
 // there's no "which old slots can I still reuse" bookkeeping to get wrong when the sim skips
 // more than one day between renders, which it routinely does at high speed.
 const humidSynPrev = new Float32Array(N), humidSynCur = new Float32Array(N);
-let synDay = -999;   // which day humidSynPrev is pinned to (humidSynCur is always synDay+1); forces a build on first use
+let synDay = -999;   // which day the generator's pair (humidSynCd = that day, humidSynC = the day after) is pinned to; forces a build on first use
+let synFineDay = -999;   // which day the FINE pair humidSynPrev / humidSynCur was up-sampled for: the map asks for it, the storm engine does not (it reads the coarse pair on its own grid)
 const shearSynPrev = new Float32Array(N), shearSynCur = new Float32Array(N);
-let shearSynDay = -999;
+let shearSynDay = -999, shearSynFineDay = -999;
 // The jet axis is a COARSE-longitude path only (CNX, not N/fine-grid) -- a path has no upsample
 // step of its own. jetAxisC is the final axis (slider and band limit applied) at the coarse
 // columns; jetAxisF linearly interpolates it onto every fine column for the combine loop below.
 const jetAxisC = new Float32Array(CNX), jetAxisNow = new Float32Array(CNX), jetAnomTmp = new Float32Array(CNX);
+const jetAxisSt = new Float32Array(CNX), jetAxisFS = new Float32Array(NX);   // the storm grid's own copy of the two (computeStormFields), so that taking a storm keyframe or looking ahead leaves the map's arrays alone
 const jetAxisF = new Float32Array(NX);   // the axis latitude at every FINE longitude column, rebuilt each computeField() -- the combine loop and the SSTSIM.jetLat() test hook both read it
 function initSim(seed) {
   P.seed = seed; rs = (seed * 2654435761) >>> 0 || 1;
@@ -910,8 +912,8 @@ function initSim(seed) {
   initSteer(seed);
   for (let q = 0; q < CN; q++) humidSynC[q] = randn() * humidSynStdC[q];
   for (let q = 0; q < CN; q++) shearSynC[q] = randn() * shearSynStdC[q];
-  lastSynDay = 0; synDay = -999;
-  lastShearSynDay = 0; shearSynDay = -999;
+  lastSynDay = 0; synDay = -999; synFineDay = -999;
+  lastShearSynDay = 0; shearSynDay = -999; shearSynFineDay = -999;
   gsShift = randn() * 0.6; eddies = []; lcDip = 0; dayCount = 0; simHour = 0;
   nextShed = 40 + rand() * 200;
   ensoZr = randn(); ensoZi = randn(); n34 = 0; ensoHist.fill(0); ensoHi = 0;
@@ -971,12 +973,19 @@ function advanceSynTo(targetDay) {
 // lastSynDay whenever this needs to do anything. Cheap even on a huge fast-forward jump
 // (measured: well under 1ms for CN=4332) since it's two O(CN) closed-form steps, not O(CN *
 // days skipped).
-function ensureSynDay(d) {
+function advanceSynDraws(d) {                                            // the generator's pair for day d (Cd = day d, C = the day after): the random numbers ensureSynDay always took, and nothing else
   if (d === synDay) return;
-  if (d === synDay + 1) { advanceSynTo(d); humidSynPrev.set(humidSynCur); humidSynCd.set(humidSynC); }       // the next day: yesterday's Cur is exactly today's Prev (same coarse state, same upsample): a copy, not another upsample
-  else { advanceSynTo(d); upsample(humidSynC, humidSynPrev); humidSynCd.set(humidSynC); }
-  advanceSynTo(d + 1); upsample(humidSynC, humidSynCur);
+  advanceSynTo(d); humidSynCd.set(humidSynC);
+  advanceSynTo(d + 1);
   synDay = d;
+}
+function ensureSynDay(d) {                                               // ...and the fine pair the map blends between, built only when it is wanted
+  advanceSynDraws(d);
+  if (d === synFineDay) return;
+  if (d === synFineDay + 1) humidSynPrev.set(humidSynCur);              // the next day: yesterday's Cur is exactly today's Prev (same coarse state, same upsample): a copy, not another upsample
+  else upsample(humidSynCd, humidSynPrev);
+  upsample(humidSynC, humidSynCur);
+  synFineDay = d;
 }
 
 // Real shear anomalies correlate meaningfully between nearby cells (2-5 deg apart: +0.69 to
@@ -1029,12 +1038,19 @@ function advanceShearSynTo(targetDay) {
   }
   lastShearSynDay = targetDay;
 }
-function ensureShearSynDay(d) {
+function advanceShearSynDraws(d) {
   if (d === shearSynDay) return;
-  if (d === shearSynDay + 1) { advanceShearSynTo(d); shearSynPrev.set(shearSynCur); shearSynCd.set(shearSynC); }
-  else { advanceShearSynTo(d); upsample(shearSynC, shearSynPrev); shearSynCd.set(shearSynC); }
-  advanceShearSynTo(d + 1); upsample(shearSynC, shearSynCur);
+  advanceShearSynTo(d); shearSynCd.set(shearSynC);
+  advanceShearSynTo(d + 1);
   shearSynDay = d;
+}
+function ensureShearSynDay(d) {
+  advanceShearSynDraws(d);
+  if (d === shearSynFineDay) return;
+  if (d === shearSynFineDay + 1) shearSynPrev.set(shearSynCur);
+  else upsample(shearSynCd, shearSynPrev);
+  upsample(shearSynC, shearSynCur);
+  shearSynFineDay = d;
 }
 
 // Jet axis. The KJ wave-mode amplitudes are a unit-variance AR(1) per mode (jetPhiEff, see the
@@ -1538,7 +1554,8 @@ function computeField() {
    compares them), for a quarter of the cost: the engine samples a few dozen points an hour, it does not need every cell of the map. Every storm keyframe, the Place look-ahead and the
    calibration lab use it; the map's own fine fields are computed only when the map is drawn. sAnomDirty plays anomDirty's part for the storm grid's copies of the interannual terms. */
 const sAnomF = new Float32Array(NSF), sEnsoF = new Float32Array(NSF), sHAnomF = new Float32Array(NSF), sHEnsoF = new Float32Array(NSF), sSAnomF = new Float32Array(NSF), sSEnsoF = new Float32Array(NSF);
-function sampleFieldS(arr, lat, lon) {                                    // sampleField on the storm grid (bilinear between nodes 0.5 degrees apart)
+const sHumPrev = new Float32Array(NSF), sHumCur = new Float32Array(NSF), sShPrev = new Float32Array(NSF), sShCur = new Float32Array(NSF);      // the day's synoptic humidity and shear pairs at the storm nodes, up-sampled from the generators' coarse pair (what the fine pair holds there, bit for bit)
+function sampleFieldS(arr, lat, lon) {                                    // sampleField on the storm grid (bilinear between nodes one degree apart)
   const fx = (lon - LON0) / (RES * SS), fy = (LAT1 - lat) / (RES * SS);
   if (fx < 0 || fy < 0 || fx > NXS - 1 + 1e-6 || fy > NYS - 1 + 1e-6) return NaN;
   const i = Math.min(Math.floor(fx), NXS - 2), j = Math.min(Math.floor(fy), NYS - 2), ax = fx - i, ay = fy - j, p = j * NXS + i, q = p + NXS;
@@ -1552,7 +1569,8 @@ function computeStormFields(oS, oH, oSh) {
   const w0 = w[0], w1 = w[1], w2 = w[2], w3 = w[3];
   const wf = 0.5 + 0.5 * Math.cos(2 * Math.PI * (f - 45 / 365.25));
   const synD = Math.floor(simHour / 24), synT = simHour / 24 - synD;
-  ensureSynDay(synD); ensureShearSynDay(synD);
+  advanceSynDraws(synD); advanceShearSynDraws(synD);                       // the draws the map's own blend would make (pinned here), without the fine up-sampling it does not need
+  upsample.S(humidSynCd, sHumPrev); upsample.S(humidSynC, sHumCur); upsample.S(shearSynCd, sShPrev); upsample.S(shearSynC, sShCur);
   const sp0 = 1 - synT, sp1 = synT;
   if (sAnomDirty) {
     anomC.fill(0);
@@ -1599,7 +1617,7 @@ function computeStormFields(oS, oH, oSh) {
       for (let is = 0; is < NXS; is++) {
         const k = j * NX + is * SS, ks = js * NXS + is;
         if (outOfBasin[k]) { oH[ks] = NaN; continue; }
-        const mth = w0 * HA0[k] + w1 * HA1[k] + w2 * HA2[k] + w3 * HA3[k], syn = sp0 * humidSynPrev[k] + sp1 * humidSynCur[k];
+        const mth = w0 * HA0[k] + w1 * HA1[k] + w2 * HA2[k] + w3 * HA3[k], syn = sp0 * sHumPrev[ks] + sp1 * sHumCur[ks];
         let v = mth + hvs * sHAnomF[ks] + hes * sHEnsoF[ks] + hws * syn + hmo;
         if (v > 95) v = 95 + 5 * Math.tanh((v - 95) / 5); else if (v < 3) v = 3 * Math.exp((v - 3) / 3);
         oH[ks] = v;
@@ -1609,16 +1627,16 @@ function computeStormFields(oS, oH, oSh) {
   { // wind shear
     const svs = P.variability, ses = P.enso, sws = P.shearSynoptic, ssh = P.shearShift;
     const SA0 = shearClimF[M(m1 - 1)], SA1 = shearClimF[M(m1)], SA2 = shearClimF[M(m1 + 1)], SA3 = shearClimF[M(m1 + 2)];
-    jetAxisFinal(jetAxisC);
-    for (let i = 0; i < NX; i++) { const fc = i / RATIO, c0 = Math.min(CNX - 2, Math.floor(fc)), t = fc - c0; jetAxisF[i] = jetAxisC[c0] * (1 - t) + jetAxisC[c0 + 1] * t; }
+    jetAxisFinal(jetAxisSt);
+    for (let i = 0; i < NX; i++) { const fc = i / RATIO, c0 = Math.min(CNX - 2, Math.floor(fc)), t = fc - c0; jetAxisFS[i] = jetAxisSt[c0] * (1 - t) + jetAxisSt[c0 + 1] * t; }
     for (let js = 0; js < NYS; js++) {
       const j = js * SS, lat = LAT1 - j * RES;
       for (let is = 0; is < NXS; is++) {
         const i = is * SS, k = j * NX + i, ks = js * NXS + is;
         if (outOfBasin[k]) { oSh[ks] = NaN; continue; }
-        const mth = w0 * SA0[k] + w1 * SA1[k] + w2 * SA2[k] + w3 * SA3[k] - jetSmearF[k], syn = sp0 * shearSynPrev[k] + sp1 * shearSynCur[k];
+        const mth = w0 * SA0[k] + w1 * SA1[k] + w2 * SA2[k] + w3 * SA3[k] - jetSmearF[k], syn = sp0 * sShPrev[ks] + sp1 * sShCur[ks];
         let v = mth + svs * sSAnomF[ks] + ses * sSEnsoF[ks] + sws * SHEAR_TEXTURE_GAIN * syn + ssh;
-        const off = Math.abs(lat - jetAxisF[i]);
+        const off = Math.abs(lat - jetAxisFS[i]);
         if (off < JET_LUT_MAX) { const n = off / JET_LUT_STEP, n0 = n | 0; v += jetBumpLut[n0] + (n - n0) * (jetBumpLut[n0 + 1] - jetBumpLut[n0]); }
         if (v > 115) v = 115 + 10 * Math.tanh((v - 115) / 10); else if (v < 2) v = 2 * Math.exp((v - 2) / 2);
         oSh[ks] = v;
@@ -2482,14 +2500,70 @@ let sumOpen = false, sumYear = 0, sumArch = 0, sumAt = 0, sumGeo = null;
 let saveStamp = 0, savedStamp = 0, saveLast = 0, saveOwner = true;     // saveOwner: this page may write the save (false when it opened beside a season it did not resume: see the save / resume block)
 function markDirty() { saveStamp++; }                                // anything that changes the running season: the saver writes it out within seconds
 let stormMgr = null, stormsOn = true, stormFieldsDirty = true, stormsDirty = true, stormActivity = 1, stormAuto = true, stormSel = null, stormHot = null, stormHits = [], lastStormCardAt = 0;
-const STORM_KEY_H = 3;
-const kfU = [new Float32Array(SN), new Float32Array(SN), new Float32Array(SN)], kfV = [new Float32Array(SN), new Float32Array(SN), new Float32Array(SN)], kfP = new Float32Array(SN);
+const STORM_KEY_H = 6;                                                // the steering and the pressure are taken every 6 h (the wave sums are the cost of a simulated day), the fields of SST / humidity / shear once a day
+const mkU = () => [new Float32Array(SN), new Float32Array(SN), new Float32Array(SN)];
+const kfU = mkU(), kfV = mkU(), kfP = new Float32Array(SN);           // the latest steering keyframe (shallow / medium / deep winds, sea-level pressure) ...
+const kfU0 = mkU(), kfV0 = mkU(), kfP0 = new Float32Array(SN);        // ... and the one before it
+const wkU = mkU(), wkV = mkU();                                       // what the engine reads: the latest keyframe carried forward by the change since the one before it (linear, hour by hour: more exact than holding it for six hours)
+let kfHour = -1e9, kfHour0 = -1e9, kfBreak = true, wkHour = -1e9;     // when they were taken; kfBreak: the next keyframe has nothing to be carried from (the start, a slider moved)
+/* Lakes are water for a storm. The map draws every lake with a temperature of its own and the land mask under it says "land", so a storm put on the Great Lakes met cold made-up
+   sea and a coast on every side and died at once. Here the page's own lake polygons are rastered onto the fine grid (the first time a storm asks), a node inside a lake is not land for
+   the storms, and over it the sea temperature is the lake's (stormLakes: the same formula as updateLakes, taken at the keyframe from the storm grid's anomalies, so that storms
+   stay a function of the seed and not of when the map was last redrawn). What a lake does to a storm after that is the engine's own physics, nothing is forbidden: warm enough
+   water, little shear and moist air let it grow, the shore ring of the land test takes its share, a lake the size of a storm cannot feed one for long. */
+let lakeGrid = null;                                                  // per fine node: 0 = no lake, otherwise the lake's index + 1
+function buildLakeGrid() {
+  lakeGrid = new Uint16Array(N);
+  const inside = (rings, x, y) => { let c = false; for (let r = 0; r < rings.length; r++) { const xs = rings[r].xs, ys = rings[r].ys; for (let a = 0, b = xs.length - 1; a < xs.length; b = a++) if ((ys[a] > y) !== (ys[b] > y) && x < (xs[b] - xs[a]) * (y - ys[a]) / (ys[b] - ys[a]) + xs[a]) c = !c; } return c; };
+  for (let li = 0; li < LAKES.length; li++) {
+    const Lk = LAKES[li], g0 = stNormLon(Lk.x0 * 360 - 180), g1 = stNormLon(Lk.x1 * 360 - 180), latN = invMerc(Lk.y0), latS = invMerc(Lk.y1);
+    const i0 = Math.max(0, Math.ceil((g0 - LON0) / RES)), i1 = Math.min(NX - 1, Math.floor((g1 - LON0) / RES)), j0 = Math.max(0, Math.ceil((LAT1 - latN) / RES)), j1 = Math.min(NY - 1, Math.floor((LAT1 - latS) / RES));
+    for (let j = j0; j <= j1; j++) {
+      const y = mercN(LAT1 - j * RES);
+      for (let i = i0; i <= i1; i++) { let lon = LON0 + i * RES; if (lon > 180) lon -= 360; if (inside(Lk.rings, (lon + 180) / 360, y)) lakeGrid[j * NX + i] = li + 1; }
+    }
+  }
+}
+function lakeIdAt(lat, lon) {
+  const i = Math.round((lon - LON0) / RES), j = Math.round((LAT1 - lat) / RES);
+  if (i < 0 || j < 0 || i >= NX || j >= NY) return 0;
+  if (!lakeGrid) buildLakeGrid();
+  return lakeGrid[j * NX + i];
+}
+function stormLand(lat, lon) {                                       // land for a storm: the land mask, except where a lake lies
+  const i = Math.round((lon - LON0) / RES), j = Math.round((LAT1 - lat) / RES);
+  if (i < 0 || j < 0 || i >= NX || j >= NY) return false;
+  if (!lakeGrid) buildLakeGrid();
+  const k = j * NX + i; return land[k] === 1 && lakeGrid[k] === 0;
+}
+const kfLake = new Float32Array(LAKES.length);                        // the lakes' temperatures at the latest field keyframe
+function stormLakes(out) {                                           // updateLakes' formula, on the storm grid's anomalies and the keyframe's clock
+  const d = simDate(simHour), y = d.getUTCFullYear(), doy = (d.getTime() - Date.UTC(y, 0, 1)) / 86400000, ylen = ((y % 4 === 0 && y % 100 !== 0) || y % 400 === 0) ? 366 : 365, f = doy / ylen;
+  const sa = P.seasonal, saUp = 1 + (sa - 1) * 0.6, vs = P.variability, wm = P.warming;
+  for (let i = 0; i < LAKES.length; i++) {
+    const L = LAKE_META[i], c = lakeClim(L, f, doy), T = c[0], tm = c[1];
+    let an = vs * 1.2 * sampleFieldS(sAnomF, L.lat, L.lon); if (an !== an) an = 0; if (an > 3) an = 3 + 1.2 * Math.tanh((an - 3) / 1.2); else if (an < -3) an = -3 - 1.2 * Math.tanh((-an - 3) / 1.2);
+    let v = tm + (T >= tm ? saUp : sa) * (T - tm) + an + wm * 0.9;
+    const lc0 = seaCeil(L.lat) - 1 + Math.max(0, wm); if (v > lc0) v = lc0 + 1.2 * Math.tanh((v - lc0) / 1.2); if (T >= 0 && v < 0) v = 0;
+    out[i] = v;
+  }
+}
+function carrySteer(h, U, V, U0, V0, T, T0, oU, oV) {
+  const a = T0 > -1e8 && T > T0 ? (h - T) / (T - T0) : 0;
+  for (let i = 0; i < 3; i++) {
+    const u = U[i], v = V[i], u0 = U0[i], v0 = V0[i], ou = oU[i], ov = oV[i];
+    if (a > 0) for (let n = 0; n < SN; n++) { ou[n] = u[n] + a * (u[n] - u0[n]); ov[n] = v[n] + a * (v[n] - v0[n]); } else { ou.set(u); ov.set(v); }
+  }
+}
 const kfSst = new Float32Array(NSF), kfHumid = new Float32Array(NSF), kfShear = new Float32Array(NSF);          // the storm grid (computeStormFields)
 let kfFieldHour = -1, kfStamp = 0, lowsStamp = -1, lowsCache = [], kfSstRef = 28.2;
 function stormKeyframe(fields) {
   steerUpdate(); kfStamp++;
-  kfU[0].set(stU.shallow); kfV[0].set(stV.shallow); kfU[1].set(stU.medium); kfV[1].set(stV.medium); kfU[2].set(stU.deep); kfV[2].set(stV.deep); kfP.set(stPt);
-  if (fields) { computeStormFields(kfSst, kfHumid, kfShear); kfFieldHour = simHour; stormFieldsDirty = false; kfSstRef = mdrMeanSst(); }
+  for (let i = 0; i < 3; i++) { kfU0[i].set(kfU[i]); kfV0[i].set(kfV[i]); } kfP0.set(kfP); kfHour0 = kfHour;
+  kfU[0].set(stU.shallow); kfV[0].set(stV.shallow); kfU[1].set(stU.medium); kfV[1].set(stV.medium); kfU[2].set(stU.deep); kfV[2].set(stV.deep); kfP.set(stPt); kfHour = simHour;
+  if (kfBreak) { for (let i = 0; i < 3; i++) { kfU0[i].set(kfU[i]); kfV0[i].set(kfV[i]); } kfP0.set(kfP); kfHour0 = -1e9; kfBreak = false; }
+  wkHour = -1e9; stormEnv.beginHour(simHour);
+  if (fields) { computeStormFields(kfSst, kfHumid, kfShear); stormLakes(kfLake); kfFieldHour = simHour; stormFieldsDirty = false; kfSstRef = mdrMeanSst(); }
   if (stormClim) climAccumulate(fields);
 }
 /* the mean sea-surface temperature of the main development region (10-20N, 80-20W, water only) in the last field keyframe: the reference of "relative SST" */
@@ -2498,11 +2572,11 @@ function mdrMeanSst(arr = kfSst) {
   for (let la = 10; la <= 20; la += 2.5) for (let lo = -80; lo <= -20; lo += 2.5) { if (isLand(la, lo)) continue; const v = sampleFieldS(arr, la, lo); if (v === v) { t += v; n++; } }
   return n ? t / n : 28.2;
 }
-const envFrom = (U, V, Pk, SST, RH, SH, REF) => ({                                // the engine's environment over one set of keyframe arrays
+const envFrom = (U, V, Pk, SST, RH, SH, REF, LK) => ({                                // the engine's environment over one set of keyframe arrays
   box: { lat0: ST_LAT0, lat1: ST_LAT1, lon0: ST_LON0, lon1: ST_LON1 },
-  sst: (la, lo) => sampleFieldS(SST, la, lo), rh: (la, lo) => sampleFieldS(RH, la, lo), shear: (la, lo) => sampleFieldS(SH, la, lo),
+  sst: (la, lo) => { const id = lakeIdAt(la, lo); return id ? LK[id - 1] : sampleFieldS(SST, la, lo); }, rh: (la, lo) => sampleFieldS(RH, la, lo), shear: (la, lo) => sampleFieldS(SH, la, lo),
   steer(la, lo, o) { o[0] = stSample(U[0], la, lo); o[1] = stSample(V[0], la, lo); o[2] = stSample(U[1], la, lo); o[3] = stSample(V[1], la, lo); o[4] = stSample(U[2], la, lo); o[5] = stSample(V[2], la, lo); },
-  slp: (la, lo) => stSample(Pk, la, lo), isLand: (la, lo) => isLand(la, lo), sstRef: () => REF,                // REF: the main development region's mean SST of that keyframe (what relative SST is measured against)
+  slp: (la, lo) => (Pk ? stSample(Pk, la, lo) : NaN), isLand: stormLand, sstRef: () => REF,                // REF: the main development region's mean SST of that keyframe (what relative SST is measured against)
 });
 /* the sea-level-pressure minima (lows) of a node-grid pressure field: the mirror image of steerDetectHighs(), refined with a parabola */
 const ST_LOW_MAX = 1008, ST_LOW_PROM = 2.0, ST_LOW_LAT0 = 18, ST_LOW_LAT1 = 68;
@@ -2526,9 +2600,10 @@ function detectLowsOn(Pn) {
 }
 const stormEnv = {
   box: { lat0: ST_LAT0, lat1: ST_LAT1, lon0: ST_LON0, lon1: ST_LON1 },
-  sst: (la, lo) => sampleFieldS(kfSst, la, lo), rh: (la, lo) => sampleFieldS(kfHumid, la, lo), shear: (la, lo) => sampleFieldS(kfShear, la, lo),
-  steer(la, lo, o) { o[0] = stSample(kfU[0], la, lo); o[1] = stSample(kfV[0], la, lo); o[2] = stSample(kfU[1], la, lo); o[3] = stSample(kfV[1], la, lo); o[4] = stSample(kfU[2], la, lo); o[5] = stSample(kfV[2], la, lo); },
-  slp: (la, lo) => stSample(kfP, la, lo), isLand: (la, lo) => isLand(la, lo), sstRef: () => kfSstRef,
+  beginHour(h) { if (h !== wkHour) { wkHour = h; carrySteer(h, kfU, kfV, kfU0, kfV0, kfHour, kfHour0, wkU, wkV); } },          // the engine says which hour it is about to step: the steering of that hour
+  sst: (la, lo) => { const id = lakeIdAt(la, lo); return id ? kfLake[id - 1] : sampleFieldS(kfSst, la, lo); }, rh: (la, lo) => sampleFieldS(kfHumid, la, lo), shear: (la, lo) => sampleFieldS(kfShear, la, lo),
+  steer(la, lo, o) { o[0] = stSample(wkU[0], la, lo); o[1] = stSample(wkV[0], la, lo); o[2] = stSample(wkU[1], la, lo); o[3] = stSample(wkV[1], la, lo); o[4] = stSample(wkU[2], la, lo); o[5] = stSample(wkV[2], la, lo); },
+  slp: (la, lo) => stSample(kfP, la, lo), isLand: stormLand, sstRef: () => kfSstRef,
   lows: () => { if (lowsStamp !== kfStamp) { lowsCache = detectLowsOn(kfP); lowsStamp = kfStamp; } return lowsCache; },   // read-only for every engine that asks
 };
 /* Calibration lab (dev only, tools/storm_mc.mjs): extra engines with other parameters run on the SAME keyframes and the same seed, so
@@ -2573,12 +2648,12 @@ function labRecord(m) {
 }
 function stormsReset() {
   stormMgr = HFStorms.create({ seed: stormSeed(), startMs: START_MS, hour0: simHour, auto: stormAuto, autoRate: stormActivity, maps: stormMapsNow() });
-  stormLab = null; shadow = null; stormFieldsDirty = true; kfFieldHour = -1; stormSel = null; stormHot = null; stormHits = []; stormsDirty = true;
+  stormLab = null; shadow = null; stormFieldsDirty = true; kfBreak = true; kfFieldHour = -1; stormSel = null; stormHot = null; stormHits = []; stormsDirty = true;
   sumArch = 0; if (sumOpen) closeSummary();
   const card = $('storm-card'), tip = $('storm-tip'); if (card) card.hidden = true; if (tip) tip.style.display = 'none';
   updateSeasonBar();
 }
-function stormEnvChanged() { stormFieldsDirty = true; shadowStale(); markDirty(); }             // a slider / ENSO / seed change: the storms see the new fields at the next 3-hour keyframe
+function stormEnvChanged() { stormFieldsDirty = true; kfBreak = true; shadowStale(); markDirty(); }             // a slider / ENSO / seed change: the storms see the new weather at the next keyframe (the steering is not carried across the change)
 function stormsAdvance(n) {
   if (!stormMgr) stormsReset();
   if (kfFieldHour < 0) stormKeyframe(true);                        // first use after a (re)start: keyframe at the current hour
@@ -2594,7 +2669,7 @@ function stormsAdvance(n) {
     if (stormLab) for (const m of stormLab) m.advanceTo(simHour, stormEnv);
     if (simHour % STORM_KEY_H === 0) {
       const midnight = simHour % 24 === 0;
-      if (midnight) { const d = Math.floor(simHour / 24); ensureSynDay(d); ensureShearSynDay(d); }
+      if (midnight) { const d = Math.floor(simHour / 24); advanceSynDraws(d); advanceShearSynDraws(d); }
       stormKeyframe(midnight || stormFieldsDirty);
     }
   }
@@ -2618,8 +2693,8 @@ function stormsSwitch(on) {
 function simCapture() {
   const c32 = (a) => new Float32Array(a);
   return {
-    rs, jrs, strs, simHour, dayCount, jetClockH, jetNewest, gsShift, nextShed, lcDip, ensoZr, ensoZi, n34, ensoHi, ensoHold, ensoHeld, lastSynDay, lastShearSynDay, synDay, shearSynDay,
-    pc: c32(pc), pcH: c32(pcH), pcS: c32(pcS), ensoHist: c32(ensoHist), humidSynC: c32(humidSynC), shearSynC: c32(shearSynC), pcStPrev: c32(pcStPrev), pcStCur: c32(pcStCur),
+    rs, jrs, strs, simHour, dayCount, jetClockH, jetNewest, gsShift, nextShed, lcDip, ensoZr, ensoZi, n34, ensoHi, ensoHold, ensoHeld, lastSynDay, lastShearSynDay, synDay, shearSynDay, synFineDay, shearSynFineDay,
+    pc: c32(pc), pcH: c32(pcH), pcS: c32(pcS), ensoHist: c32(ensoHist), humidSynC: c32(humidSynC), shearSynC: c32(shearSynC), humidSynCd: c32(humidSynCd), shearSynCd: c32(shearSynCd), pcStPrev: c32(pcStPrev), pcStCur: c32(pcStCur),
     humidSynPrev: c32(humidSynPrev), humidSynCur: c32(humidSynCur), shearSynPrev: c32(shearSynPrev), shearSynCur: c32(shearSynCur),
     eddies: eddies.map((e) => Object.assign({}, e)), jetHist: new Map(Array.from(jetHist, ([k, v]) => [k, c32(v)])),
   };
@@ -2642,14 +2717,15 @@ function simRestoreLight(s) {
   ensoZr = s.ensoZr; ensoZi = s.ensoZi; n34 = s.n34; ensoHi = s.ensoHi; ensoHold = s.ensoHold; ensoHeld = s.ensoHeld; lastSynDay = s.lastSynDay; lastShearSynDay = s.lastShearSynDay; synDay = s.synDay; shearSynDay = s.shearSynDay;
   for (const [k, a] of lightArrays()) b64f32(s.f32[k], a);
   eddies = s.eddies.map((e) => Object.assign({}, e)); jetHist.clear(); for (const [k, v] of s.jetHist) jetHist.set(k, b64f32(v));
-  if (synDay > -900) { upsample(humidSynCd, humidSynPrev); upsample(humidSynC, humidSynCur); }          // Prev is the generator on day synDay, Cur the day after
-  if (shearSynDay > -900) { upsample(shearSynCd, shearSynPrev); upsample(shearSynC, shearSynCur); }
+  synFineDay = -999; shearSynFineDay = -999;
+  if (synDay > -900) { upsample(humidSynCd, humidSynPrev); upsample(humidSynC, humidSynCur); synFineDay = synDay; }          // Prev is the generator on day synDay, Cur the day after
+  if (shearSynDay > -900) { upsample(shearSynCd, shearSynPrev); upsample(shearSynC, shearSynCur); shearSynFineDay = shearSynDay; }
   anomDirty = true; sAnomDirty = true; stStamp = ''; dirty = true;
 }
 function simRestore(s) {
   rs = s.rs; jrs = s.jrs; strs = s.strs; simHour = s.simHour; dayCount = s.dayCount; jetClockH = s.jetClockH; jetNewest = s.jetNewest; gsShift = s.gsShift; nextShed = s.nextShed; lcDip = s.lcDip;
-  ensoZr = s.ensoZr; ensoZi = s.ensoZi; n34 = s.n34; ensoHi = s.ensoHi; ensoHold = s.ensoHold; ensoHeld = s.ensoHeld; lastSynDay = s.lastSynDay; lastShearSynDay = s.lastShearSynDay; synDay = s.synDay; shearSynDay = s.shearSynDay;
-  pc.set(s.pc); pcH.set(s.pcH); pcS.set(s.pcS); ensoHist.set(s.ensoHist); humidSynC.set(s.humidSynC); shearSynC.set(s.shearSynC); pcStPrev.set(s.pcStPrev); pcStCur.set(s.pcStCur);
+  ensoZr = s.ensoZr; ensoZi = s.ensoZi; n34 = s.n34; ensoHi = s.ensoHi; ensoHold = s.ensoHold; ensoHeld = s.ensoHeld; lastSynDay = s.lastSynDay; lastShearSynDay = s.lastShearSynDay; synDay = s.synDay; shearSynDay = s.shearSynDay; synFineDay = s.synFineDay; shearSynFineDay = s.shearSynFineDay;
+  pc.set(s.pc); pcH.set(s.pcH); pcS.set(s.pcS); ensoHist.set(s.ensoHist); humidSynC.set(s.humidSynC); shearSynC.set(s.shearSynC); humidSynCd.set(s.humidSynCd); shearSynCd.set(s.shearSynCd); pcStPrev.set(s.pcStPrev); pcStCur.set(s.pcStCur);
   humidSynPrev.set(s.humidSynPrev); humidSynCur.set(s.humidSynCur); shearSynPrev.set(s.shearSynPrev); shearSynCur.set(s.shearSynCur);
   eddies = s.eddies.map((e) => Object.assign({}, e)); jetHist.clear(); for (const [k, v] of s.jetHist) jetHist.set(k, new Float32Array(v));
   anomDirty = true; sAnomDirty = true; stStamp = ''; dirty = true;
@@ -2664,13 +2740,13 @@ const SHADOW_H = 7 * 24 + 6;
 let shadow = null, shadowPool = null;
 function shadowBuild() {
   if (kfFieldHour < 0) stormKeyframe(true);                               // the engine's own keyframes must exist before they are copied
-  if (!shadowPool) shadowPool = { kf: Array.from({ length: 74 }, () => ({ h: 0, u: [new Float32Array(SN), new Float32Array(SN), new Float32Array(SN)], v: [new Float32Array(SN), new Float32Array(SN), new Float32Array(SN)], p: new Float32Array(SN) })),
-    fd: Array.from({ length: 10 }, () => ({ h: 0, ref: 28.2, sst: new Float32Array(NSF), humid: new Float32Array(NSF), shear: new Float32Array(NSF) })) };
-  const Pl = shadowPool, t0 = simHour, snap = simCapture();
+  if (!shadowPool) shadowPool = { kf: Array.from({ length: 40 }, () => ({ h: 0, u: mkU(), v: mkU(), p: new Float32Array(SN) })),
+    fd: Array.from({ length: 10 }, () => ({ h: 0, ref: 28.2, sst: new Float32Array(NSF), humid: new Float32Array(NSF), shear: new Float32Array(NSF), lake: new Float32Array(LAKES.length) })), sU: mkU(), sV: mkU() };
+  const Pl = shadowPool, t0 = simHour, snap = simCapture(), wasDirty = dirty;
   let nk = 0, nf = 0;
   const putKf = (h, U, V, Pk) => { const k = Pl.kf[nk++]; k.h = h; for (let i = 0; i < 3; i++) { k.u[i].set(U[i]); k.v[i].set(V[i]); } k.p.set(Pk); };
-  putKf(Math.floor(t0 / STORM_KEY_H) * STORM_KEY_H, kfU, kfV, kfP);                        // what the live engine is on right now
-  { const f = Pl.fd[nf++]; f.h = kfFieldHour; f.ref = kfSstRef; f.sst.set(kfSst); f.humid.set(kfHumid); f.shear.set(kfShear); }
+  putKf(kfHour0, kfU0, kfV0, kfP0); putKf(kfHour, kfU, kfV, kfP);                          // what the live engine is on right now (and the keyframe before it, which its steering is carried forward from)
+  { const f = Pl.fd[nf++]; f.h = kfFieldHour; f.ref = kfSstRef; f.sst.set(kfSst); f.humid.set(kfHumid); f.shear.set(kfShear); f.lake.set(kfLake); }
   try {
     let left = SHADOW_H;
     while (left > 0) {
@@ -2680,21 +2756,23 @@ function shadowBuild() {
       jetClockH += k * P.jetSpeed; left -= k;
       if (simHour % STORM_KEY_H === 0) {
         const midnight = simHour % 24 === 0;
-        if (midnight) { const d = Math.floor(simHour / 24); ensureSynDay(d); ensureShearSynDay(d); }
+        if (midnight) { const d = Math.floor(simHour / 24); advanceSynDraws(d); advanceShearSynDraws(d); }
         steerUpdate();
         putKf(simHour, [stU.shallow, stU.medium, stU.deep], [stV.shallow, stV.medium, stV.deep], stPt);
-        if (midnight) { const f = Pl.fd[nf++]; f.h = simHour; computeStormFields(f.sst, f.humid, f.shear); f.ref = mdrMeanSst(f.sst); }
+        if (midnight) { const f = Pl.fd[nf++]; f.h = simHour; computeStormFields(f.sst, f.humid, f.shear); stormLakes(f.lake); f.ref = mdrMeanSst(f.sst); }
       }
     }
-  } finally { simRestore(snap); computeField(); steerUpdate(); }          // the live arrays go back to NOW (the maps and arrows redraw from them)
+  } finally { simRestore(snap); steerUpdate(); dirty = wasDirty; }        // the live state goes back to NOW; the map's own fields were never touched (the look-ahead works on the storm grid), so they are not recomputed
   shadow = { t0, nk, nf, pool: Pl, cache: new Map() };
 }
-function shadowEnv(h) {                                                   // the environment for hour h: the latest keyframes at or before it
-  const sh = shadow; let i = sh.nk - 1, j = sh.nf - 1;
-  while (i > 0 && sh.pool.kf[i].h > h) i--;
-  while (j > 0 && sh.pool.fd[j].h > h) j--;
-  const key = i * 100 + j; let e = sh.cache.get(key);
-  if (!e) { const k = sh.pool.kf[i], f = sh.pool.fd[j]; e = envFrom(k.u, k.v, k.p, f.sst, f.humid, f.shear, f.ref); sh.cache.set(key, e); }
+function shadowEnv(h) {                                                   // the environment for hour h: the latest keyframes at or before it, the steering carried forward to the hour exactly as the live engine does
+  const sh = shadow, Pl = sh.pool; let i = sh.nk - 1, j = sh.nf - 1;
+  while (i > 1 && Pl.kf[i].h > h) i--;
+  while (j > 0 && Pl.fd[j].h > h) j--;
+  const k = Pl.kf[i], k0 = Pl.kf[i - 1];
+  carrySteer(h, k.u, k.v, k0.u, k0.v, k.h, k0.h, Pl.sU, Pl.sV);
+  let e = sh.cache.get(j);
+  if (!e) { const f = Pl.fd[j]; e = envFrom(Pl.sU, Pl.sV, null, f.sst, f.humid, f.shear, f.ref, f.lake); sh.cache.set(j, e); }
   return e;
 }
 function shadowStale() { shadow = null; if (placeMode) placeRefresh(); }   // sliders, ENSO, a new seed: the look-ahead is of a different weather now
@@ -2710,7 +2788,7 @@ function placeSet(on) {
   $('b-place').setAttribute('aria-pressed', on ? 'true' : 'false');
   $('place-menu').hidden = !on;
   map.doubleClickZoom[on ? 'disable' : 'enable']();
-  if (on) { placeWasPlaying = playing; if (playing) setPlaying(false); closeStormCard(); $('storm-tip').style.display = 'none'; setTimeout(() => { if (placeMode && !shadow) { shadowBuild(); placeRefresh(); } }, 30); }
+  if (on) { placeWasPlaying = playing; if (playing) setPlaying(false); closeStormCard(); $('storm-tip').style.display = 'none'; setTimeout(() => { if (placeMode && (!shadow || simHour - shadow.t0 >= 24)) { shadowBuild(); placeRefresh(); } }, 30); }      // a look-ahead from an earlier session is rebuilt now, not at the first move of the pointer
   else { if (placeWasPlaying) setPlaying(true); placeAtLL = null; placePrev = null; }
   stormsDirty = true; drawStorms();
   return placeMode;
@@ -2835,7 +2913,7 @@ function drawStorms() {
     g.lineWidth = 2; g.strokeStyle = col; g.beginPath(); g.moveTo(p.x - 5, p.y - 5); g.lineTo(p.x + 5, p.y + 5); g.moveTo(p.x + 5, p.y - 5); g.lineTo(p.x - 5, p.y + 5); g.stroke(); g.restore();
   };
   if (showLows || showDist) for (const t of stormMgr.lows.tracks) {
-    if (!t.alive || t.fixes.length < 3 || t.lat < 18 || t.lat > 45 || isLand(t.lat, t.lon)) continue;      // only the lows over water where a depression could still form
+    if (!t.alive || t.fixes.length < 3 || HFStorms.lowWeight(stormMgr.par, t.lat) < 0.05 || isLand(t.lat, t.lon)) continue;      // only the lows over water where a depression could still form (the engine weighs a low by its latitude: a ramp, not a window)
     if (t.dist ? !showDist : !showLows) continue;
     const p = toPx(t.lat, t.lon); if (p.x < -20 || p.y < -20 || p.x > W + 20 || p.y > H + 20) continue;
     if (t.dist) {
@@ -3271,8 +3349,9 @@ function frame(now) {
   // Heavy layers (the field raster: ~50-70 ms) redraw every 3 simulated hours up to 2x and every 6 above it, but never more
   // often than the redraw itself can afford -- it used to be every 6 hours at 1x, about 3 redraws a second, which is what
   // made anything drifting across the map visibly step instead of glide.
-  const sp = SPEEDS[speedIdx], refreshGap = !playing || sp <= 2 ? 120 : sp >= 8 ? 350 : 220;   // the faster the clock, the less the map needs redrawing (and the more the simulation needs the time)
-  if (dirty && now - lastComputeAt >= Math.max(refreshGap, 2.5 * lastRefreshMs) && Math.abs(simHour - lastComputeHour) >= (sp <= 2 ? 3 : 6)) refresh();
+  const sp = SPEEDS[speedIdx], refreshGap = !playing || sp <= 1 ? 120 : sp <= 2 ? 160 : sp <= 4 ? 260 : sp <= 8 ? 420 : 650;   // the faster the clock, the less the map needs redrawing (and the more the simulation needs the time)
+  const duty = !playing || sp <= 2 ? 2.5 : sp <= 8 ? 4 : 6;                      // a redraw may cost about 1 / (duty + 1) of the time: 29 % up to 2x, 20 % to 8x, 14 % above
+  if (dirty && now - lastComputeAt >= Math.max(refreshGap, duty * lastRefreshMs) && Math.abs(simHour - lastComputeHour) >= (sp <= 2 ? 3 : 6)) refresh();
   else if (playing) {                                       // the line is cheap, so it moves every frame; the heavy layers wait for the check above
     if (jetLineOn.checked) drawJetLine();
     if (steerOn()) steerFrame(now);                         // arrows and highs: a few ms, so every few frames, not every 3 simulated hours
@@ -3364,6 +3443,7 @@ function captureSave() {
   return {
     v: SAVE_V, sv: HFStorms.VERSION, basin: 'atlantic', savedAt: Date.now(), startMs: START_MS, n: N, sn: SN,
     weather: simCaptureLight(), storms: JSON.stringify(stormMgr.serialize()),
+    kf0: simHour === kfHour && kfHour0 > -1e8 ? { h: kfHour0, u: kfU0.map((a) => f32b64(a)), v: kfV0.map((a) => f32b64(a)) } : null,        // saved on a keyframe hour: the keyframe before it too, so the steering the engine carries forward is the same one after the resume
     ui: { seed: P.seed, P: Object.assign({}, P), sliders: Object.fromEntries(sliders.map(([id]) => [id, $(id).value])), seedVary: $('seed-vary').checked,
       ensoHold, ensoHeld, ensoNow: $('p-ensonow').value, activity: stormActivity, auto: stormAuto, speedIdx },
   };
@@ -3398,7 +3478,8 @@ function applySave(s) {
   simRestoreLight(s.weather);
   stormMgr = HFStorms.restore(JSON.parse(s.storms), { maps: stormMapsNow() });
   stormLab = null; shadow = null; stormSel = null; stormHot = null; stormHits = []; stormsDirty = true; sumArch = stormMgr.archive.length; if (sumOpen) closeSummary();
-  lowsStamp = -1; stormKeyframe(true); stormFieldsDirty = false;                  // fresh keyframes of the steering and the fields at the restored hour
+  lowsStamp = -1; kfBreak = true; stormKeyframe(true); stormFieldsDirty = false;      // fresh keyframes of the steering and the fields at the restored hour
+  if (s.kf0 && simHour === kfHour) { for (let i = 0; i < 3; i++) { b64f32(s.kf0.u[i], kfU0[i]); b64f32(s.kf0.v[i], kfV0[i]); } kfHour0 = s.kf0.h; wkHour = -1e9; stormEnv.beginHour(simHour); }
   seasonText = ''; acc = 0; lastClock = ''; updateClock(); updateSeasonBar(); refresh();
   savedStamp = saveStamp;                                                          // what was just loaded is what is on disk
 }
@@ -3502,7 +3583,7 @@ window.SSTSIM = {
     }
     return { max: fresh.max, nanMismatch: fresh.nanMismatch, nodes: fresh.nodes, live, interp, pts };
   },
-  stormEnvSample(lat, lon) { return { hour: kfFieldHour, land: isLand(lat, lon), sst: sampleFieldS(kfSst, lat, lon), rh: sampleFieldS(kfHumid, lat, lon), shear: sampleFieldS(kfShear, lat, lon) }; },
+  stormEnvSample(lat, lon) { return { hour: kfFieldHour, land: stormLand(lat, lon), sst: stormEnv.sst(lat, lon), rh: sampleFieldS(kfHumid, lat, lon), shear: sampleFieldS(kfShear, lat, lon), lake: lakeIdAt(lat, lon) }; },
   advance(h) { advanceHours(h); updateClock(); refresh(); },
   sample(lat, lon) { return { sst: sampleField(sst, lat, lon), normal: sampleField(normal, lat, lon), humid: sampleField(humid, lat, lon), shear: sampleField(shear, lat, lon) }; },
   state() { return { simHour, seed: P.seed, date: simDate(simHour).toISOString(), eddies: eddies.length, gsShift }; },

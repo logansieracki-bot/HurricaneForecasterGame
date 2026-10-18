@@ -549,11 +549,11 @@ async function checkStorms(page, label) {
 
   // a slider reaches the storms: the same hour of the same seed with Wind shear at 0 and at +25 kt (identical time path, only the slider differs)
   const sl = await ev(() => {
-    const S = window.SSTSIM, at = (shift) => { S.applySeed(500); S.setPlaying(false); S.stormAuto(false); S.tick(24 * 75); S.set('shearShift', shift); S.tick(3); const e = S.stormEnvSample(15, -55); S.set('shearShift', 0); return e; };
+    const S = window.SSTSIM, at = (shift) => { S.applySeed(500); S.setPlaying(false); S.stormAuto(false); S.tick(24 * 75); S.set('shearShift', shift); S.tick(6); const e = S.stormEnvSample(15, -55); S.set('shearShift', 0); return e; };
     const a = at(0), b = at(25);
     return { a: a.shear, b: b.shear, ha: a.hour, hb: b.hour };
   });
-  check(`[${label}] the Wind shear slider reaches the storms at the next 3-hour keyframe: the same hour of the same seed sees ${sl.a.toFixed(1)} kt of shear at 0 and ${sl.b.toFixed(1)} kt at +25`, sl.ha === sl.hb && sl.b - sl.a > 12 && sl.b - sl.a < 27);
+  check(`[${label}] the Wind shear slider reaches the storms at the next keyframe (within six hours): the same hour of the same seed sees ${sl.a.toFixed(1)} kt of shear at 0 and ${sl.b.toFixed(1)} kt at +25`, sl.ha === sl.hb && sl.b - sl.a > 12 && sl.b - sl.a < 27);
 
   // automatic seeding: off by default in this test, on with the box ticked
   const auto = await ev(() => {
@@ -604,7 +604,7 @@ async function checkStorms(page, label) {
   check(`[${label}] eight whole seasons through the page look like the real Atlantic: ${mn('dep').toFixed(1)} depressions, ${mn('named').toFixed(1)} named storms, ${mn('hurr').toFixed(1)} hurricanes, ${mn('major').toFixed(1)} majors, ACE ${mn('ace').toFixed(0)} on average (real 15.8 / 14.4 / 7.2 / 3.2 / 122; seasons: ${seas.map((x) => x.named + '/' + x.hurr + '/' + x.major + '/' + Math.round(x.ace)).join(', ')} named/hurricanes/majors/ACE)`,
     mn('dep') >= SEASON_BANDS.dep[0] && mn('dep') <= SEASON_BANDS.dep[1] && mn('named') >= SEASON_BANDS.named[0] && mn('named') <= SEASON_BANDS.named[1] && mn('hurr') >= SEASON_BANDS.hurr[0] && mn('hurr') <= SEASON_BANDS.hurr[1]
     && mn('major') >= SEASON_BANDS.major[0] && mn('major') <= SEASON_BANDS.major[1] && mn('ace') >= SEASON_BANDS.ace[0] && mn('ace') <= SEASON_BANDS.ace[1] && seas.every((x) => x.named >= 3));
-  // the storm engine reads SST, humidity and shear from its own half-resolution grid (a quarter of the work); at its nodes the values must be exactly the map's full-resolution fields, also with the sliders moved
+  // the storm engine reads SST, humidity and shear from its own one-degree grid (a sixteenth of the work); at its nodes the values must be exactly the map's full-resolution fields, also with the sliders moved
   const grid = await ev(() => {
     const S = window.SSTSIM, out = [];
     S.applySeed(4242); S.setPlaying(false); S.stormAuto(false);
@@ -616,8 +616,27 @@ async function checkStorms(page, label) {
     S.set('warming', 0); S.set('shearShift', 0); S.set('moisture', 0);
     return out;
   });
-  check(`[${label}] the storm engine's half-resolution environment is exactly the map's fields at its nodes and interpolates between them as written (${grid.map((g) => g.name + ': ' + g.nodes + ' nodes, largest difference ' + g.max.join('/') + ' (SST/humidity/shear)' + (g.live ? ', the engine\'s own keyframe ' + g.live.max.join('/') : '') + ', ' + g.pts + ' lookups off by ' + g.interp.toExponential(1)).join('; ')})`,
-    grid.every((g) => g.max.every((m) => m === 0) && g.nan === 0 && g.nodes > 50000 && g.pts > 600 && g.interp < 1e-6) && grid.filter((g) => g.live).length >= 2 && grid.every((g) => !g.live || (g.live.max.every((m) => m === 0) && g.live.nanMismatch === 0)));
+  check(`[${label}] the storm engine's one-degree environment is exactly the map's fields at its nodes and interpolates between them as written (${grid.map((g) => g.name + ': ' + g.nodes + ' nodes, largest difference ' + g.max.join('/') + ' (SST/humidity/shear)' + (g.live ? ', the engine\'s own keyframe ' + g.live.max.join('/') : '') + ', ' + g.pts + ' lookups off by ' + g.interp.toExponential(1)).join('; ')})`,
+    grid.every((g) => g.max.every((m) => m === 0) && g.nan === 0 && g.nodes > 15000 && g.pts > 600 && g.interp < 1e-6) && grid.filter((g) => g.live).length >= 2 && grid.every((g) => !g.live || (g.live.max.every((m) => m === 0) && g.live.nanMismatch === 0)));
+
+  // lakes are water for the storms: a lake takes the temperature the page draws for it (not the land's), and a depression put on one on a calm day is not called land, killed or made post-tropical at once; the other inland seas count too
+  const lk = await ev(() => {
+    const S = window.SSTSIM, near = (la, lo) => S.stormEnvSample(la, lo);
+    S.applySeed(11); S.setPlaying(false); S.stormAuto(false); S.set('warming', 4); S.set('moisture', 20); S.set('shearShift', -20);
+    S.tick(24 * 60); S.advance(0);
+    let calm = null;
+    for (let d = 0; d < 40 && !calm; d++) { const e = near(43.5, -87); if (e.sst >= 24.5 && e.shear <= 6 && e.rh >= 55) calm = { day: 60 + d, sst: e.sst, rh: e.rh, shear: e.shear }; else S.tick(24); }
+    if (!calm) return { calm };
+    S.advance(0);                                                                // the map is redrawn from the same hour (its lake temperatures are the ones to compare)
+    const mich = near(43.5, -87), kansas = near(40, -95), erie = near(42.2, -81.2), hudson = near(60, -85), med = near(38, 3);
+    const lakeV = (S.lakes().find((l) => l.name === 'Lake Michigan') || {}).v;
+    const id = S.stormPlace({ kind: 'td', lat: 43.5, lon: -87, v: 30 });
+    S.tick(6); const x = JSON.parse(S.stormJSON()).systems.find((q) => q.id === id);
+    S.set('warming', 0); S.set('moisture', 0); S.set('shearShift', 0);
+    return { calm, mich: { land: mich.land, lake: mich.lake, sst: mich.sst }, lakeV, kansas: { land: kansas.land }, erie: { land: erie.land, sst: erie.sst }, hudson: { land: hudson.land, sst: hudson.sst }, med: { land: med.land, sst: med.sst }, th: x && x.th, alive: x && x.alive, v: x && x.v };
+  });
+  check(`[${label}] lakes are water for the storms: on day ${lk.calm && lk.calm.day} (Lake Michigan at ${lk.mich && lk.mich.sst.toFixed(1)} degC, the page draws ${lk.lakeV && lk.lakeV.toFixed(1)}, ${lk.calm && lk.calm.shear.toFixed(0)} kt of shear, ${lk.calm && lk.calm.rh.toFixed(0)} % humidity) it is not land (lake ${lk.mich && lk.mich.lake}), Kansas is, Lake Erie (${lk.erie && lk.erie.sst.toFixed(1)}), Hudson Bay (${lk.hudson && lk.hudson.sst.toFixed(1)}) and the Mediterranean (${lk.med && lk.med.sst.toFixed(1)}) are; a depression put on Lake Michigan is still a ${lk.th} of ${lk.v && lk.v.toFixed(0)} kt six hours later`,
+    !!lk.calm && lk.mich.land === false && lk.mich.lake > 0 && Math.abs(lk.mich.sst - lk.lakeV) < 0.06 && lk.kansas.land === true && lk.erie.land === false && lk.hudson.land === false && lk.med.land === false && lk.alive === true && lk.th === 'tc');
 
   // the live loop at 16x: the clock runs in slices that leave the page time to draw (no frame is blocked for long and the page keeps moving), and whatever the machine manages, the storms are the ones a single call to the same hour gives
   const live = await ev(async () => {

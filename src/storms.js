@@ -46,6 +46,10 @@ const DEG = Math.PI / 180, KM_DEG = 111.195, KT_KMH = 1.852, KT_MPH = 1.150779, 
 /* ---- helpers ------------------------------------------------------------------------------------------------------- */
 const clamp = (x, a, b) => (x < a ? a : x > b ? b : x);
 function smooth01(x, a, b) { if (!(x === x)) return 0; const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); }
+/* soft limits. A limit in this engine is a knee, never a clamp: satur(x, cap) is x for x well under cap and bends over toward cap without ever reaching it (p: how sharp the knee is);
+   softMin(a, b) is the smaller of two positive numbers with the corner rounded off. Where a rule used to switch on at a threshold it is a ramp (smooth01) or a hazard now */
+function satur(x, cap, p) { if (!(x > 0)) return 0; const q = p || 6; return x / Math.pow(1 + Math.pow(x / cap, q), 1 / q); }
+function softMin(a, b) { return Math.pow(Math.pow(a, -8) + Math.pow(b, -8), -0.125); }
 const round5 = (v) => Math.round(v / 5) * 5;
 const r1 = (x) => Math.round(x * 10) / 10;
 
@@ -63,8 +67,8 @@ function rndn(seed, a, b, c) {                                                  
   return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
 }
 // streams (the `c` argument): one per purpose, so adding a draw somewhere never shifts another
-const ST = { VOL: 1, WX: 2, WY: 3, PRES: 4, RIT: 5, RID: 6, RIR: 7, SPAWN: 8, POS: 9, V0: 10, SUBC: 11, ETC: 12, LIFE: 13, WAVE: 14, LOWSEED: 15, PLACE: 16, Q: 17, Q0: 18, GEN: 19, LIFEN: 20, SEEDPOS: 21, ACT: 22, ETL: 23, ETD: 24, ETS: 25 };
-const NS = { W: 1, N: 2, M: 3, L: 4 };                                                          // id namespaces
+const ST = { VOL: 1, WX: 2, WY: 3, PRES: 4, RIT: 5, RID: 6, RIR: 7, SPAWN: 8, POS: 9, V0: 10, SUBC: 11, ETC: 12, LIFE: 13, WAVE: 14, LOWSEED: 15, PLACE: 16, Q: 17, Q0: 18, GEN: 19, LIFEN: 20, SEEDPOS: 21, ACT: 22, ETL: 23, ETD: 24, ETS: 25, GENC: 26, ENDH: 27, FLOOR: 28, CONV: 29 };
+const NS = { W: 1, N: 2, M: 3, L: 4, F: 5 };                                                          // id namespaces
 const idNum = (ns, k) => NS[ns] * 1000000 + k;
 
 /* ---- Saffir-Simpson, ACE, wind-pressure, gusts ---------------------------------------------------------------------- */
@@ -146,6 +150,7 @@ const CALIBRATED = {
   etaMin: 0.3009,
   etaLo: 18.01,
   etaHi: 27.7,
+  seedFloor: 3,                                                                // disturbances over the whole box, a year (see structureParams): the Great Lakes, the Mediterranean and the rest of the water the maps know nothing about stay possible
 };
 let useCalibrated = true;                                                      // the node tests switch it off to check the structure of the physics against its own plain defaults
 function defaultParams() {
@@ -200,7 +205,7 @@ function structureParams() {
     // data/generated/atlantic-tc-et.json): the logit of the six-hour probability is b0 + lat |lat| + sst SST + shear shear + wind V, a regression on 8,636 six-hourly rows and 184
     // transitions of the 432 named storms of 1991-2020. It is the latitude, the cold water and the strong shear of the westerlies that do it, and a strong storm resists; the cyclone
     // keeps its wind through the transition (hurricanes are about 65 kt at their first post-tropical row, tropical storms 45 kt), it does not spin down first
-    etHaz: { b0: -6.444, lat: 0.18744, sst: -0.14069, shear: 0.0461, wind: -0.0273, latMin: 20 },
+    etHaz: { b0: -6.444, lat: 0.18744, sst: -0.14069, shear: 0.0461, wind: -0.0273, latMin: 20, relief: 0.85 },       // latMin: the top of a ramp that starts 8 degrees below it; relief: how much of the latitude term a perfect tropical environment (perf, below) takes away -- latitude stands in for the baroclinic zone, and where the page says there is none (warm water, no shear, moist air) there is nothing for a storm to be pulled into
     // the other way a tropical cyclone ends poleward of the subtropics: it dissipates (a remnant low or the end of the track, half and half), a weak one far more often than a strong one
     // (the same rows, over water: logit = b0 + lat |lat| + sst SST + shear shear + wind V, applied from 26N to full strength at 30N; the intensity law's own decay does the rest)
     disHaz: { b0: 3.422, lat: 0.07049, sst: -0.18551, shear: 0.01057, wind: -0.11618, lat0: 26, lat1: 30, lowShare: 0.49, age: [12, 36] },       // age: hours as a cyclone over which the exit comes in (a storm that has just formed up there almost never dissipates: 0.3 % per six hours in its first day, 2-3 % afterwards)
@@ -215,7 +220,12 @@ function structureParams() {
     exAge: { t: [0, 6, 12, 18, 24, 33, 48, 69, 90], du: [3.3, 3.8, 3.2, 2.3, 2.0, 0.7, -0.9, -2.5, -8.1], dv: [7.2, 5.0, 3.6, 2.7, 0.9, -1.6, -4.1, -5.7, -5.2] },
     exLandMul: 0.25,                              // a baroclinic low does not spin down over land the way a warm-core storm does
     vpLat: 0, vpLatB: [18, 38],                   // the wind a storm can reach falls poleward by up to this share between these latitudes (the real share of tropical rows of 96 kt or more: 13-16 % at 15-25N, 10 % at 25-30N, 4 % at 30-35N, 1.5 % at 35-40N)
-    decayCap: [0.25, 0.6],                        // kt/h: the fastest a tropical cyclone loses wind over water, c0 + c1 (V/60)^2 (real, 24 h north of 33N: -5 kt for 50-80 kt storms, -20 kt for 80 kt and more, -40 kt at the 10th percentile)
+    perfEnv: { sst: [25.5, 27.5], shear: 2.2, rh: [52, 64] }, vpRelief: 0.9,  // ... but that fall is the stand-in for everything the page's fields do not carry poleward (upper-level cold air, a trough nearby, the heat content of the sea): where
+                                                  // the page says the environment is perfectly tropical -- warm water, next to no shear, moist air: perf = the product of the three ramps, shear in storm-centred kt -- a storm takes most (vpRelief) of
+                                                  // it back, and the same index relieves the latitude term of the post-tropical hazard. In the climate of today that is a rare moment in the Caribbean and almost never farther north
+    sstAbsUp: 1.3,                                // the growth gate sees the sea relative to the main development region's mean (sstRelW); in a warmed world that would shut every sea that is not as warm as the tropics, so the gate is the more permissive
+                                                  // of the relative one and the absolute one (the same ramp, this many degrees warmer): up to about +2 degC of warming the relative gate is the looser, and nothing changes
+    decayCap: [0.25, 0.6],                        // kt/h: the soft limit on how fast a tropical cyclone loses wind over water (satur: the rate bends toward it, it is not clamped to it), c0 + c1 (V/60)^2 (real, 24 h north of 33N: -5 kt for 50-80 kt storms, -20 kt for 80 kt and more, -40 kt at the 10th percentile)
     // seeds
     waveRate0: 0.46, waveLat0: 10.5, waveV0: [12, 20], waveLife: 21 * 24, regional: true, regionMul: 1,
     lateW: 1, earlyW: 1,                          // multipliers of every source's activity from mid-October on and before the start of July (the real season is broader than the sea-surface temperature alone makes it)
@@ -226,6 +236,10 @@ function structureParams() {
       { key: 'SUBT', th: 'sc', box: [24, 38, -60, -35], perYear: 8, w: [0.1, 0, 0.1, 0.2, 0.4, 0.6, 0.8, 0.9, 1.2, 1.4, 1.0, 0.4], v0: [18, 26] },
     ],
     lowSeedHaz: 0.012,
+    lowLat: [14, 18, 45, 50],                     // a tracked low develops like any disturbance, weighted by a ramp up between the first two latitudes and down between the last two (the tropics' own lows are the waves' business; far poleward the sea is cold)
+    hazFloor: 2e-6, seedFloor: 0,                 // a development rate no map is zero under (per hour, before E: with a perfect environment a disturbance anywhere over water can develop, at odds of one in a few thousand per disturbance-week), and a
+                                                  // supply of disturbances over the whole box (per year, uniform over the water, ids 'F<k>'): together what makes the Great Lakes, the Mediterranean or the South Atlantic possible without making them likely
+    seedLatMax: 42, endH: 4,                      // a disturbance that is not developing is carried off poleward of this latitude (waveLatMax for a wave), a cold sea does the same: both are hazards with this mean life in hours, not walls
     // ---- the climatology-anchored model (used when the host supplies maps, see prepareMaps) ----------------------------------------------------------------
     // motion: a system moves with the real mean drift of its kind at its place and time of year (maps.drift, from the best track) plus driftGain times the anomaly of
     // the page's steering (averaged over a ring of steerRing degrees round the centre, vortex-free like the annulus the real fit used) from the page's own mean steering
@@ -309,7 +323,9 @@ function bil(a, off, M, lat, lon) {
   const i = fx | 0, j = fy | 0, tx = fx - i, ty = fy - j, k = off + j * M.nx + i;
   return (a[k] * (1 - tx) + a[k + 1] * tx) * (1 - ty) + (a[k + M.nx] * (1 - tx) + a[k + M.nx + 1] * tx) * ty;
 }
+function lowWeight(par, lat) { const L = par.lowLat; return smooth01(lat, L[0], L[1]) * (1 - smooth01(lat, L[2], L[3])); }          // how much a tracked low at this latitude counts as a precursor (a ramp up and a ramp down, no window)
 function mapAt(M, arr, tw, lat, lon) { return bil(arr, tw.m0 * M.n, M, lat, lon) * (1 - tw.t) + bil(arr, tw.m1 * M.n, M, lat, lon) * tw.t; }
+function hazAt(par, M, arr, tw, lat, lon) { return Math.max(mapAt(M, arr, tw, lat, lon), par.hazFloor || 0); }           // the development rate of the map, and never less than the floor: no place is impossible, only unlikely
 const DV = new Float64Array(2), CV = new Float64Array(6), DACC = new Float64Array(2);
 function driftAt(M, cls, tw, lat, lon, out) { const d = M.drift[cls]; out[0] = mapAt(M, d.u, tw, lat, lon); out[1] = mapAt(M, d.v, tw, lat, lon); }
 function addDrift(M, cls, w, tw, lat, lon, acc) { if (w > 0) { driftAt(M, cls, tw, lat, lon, DV); acc[0] += w * DV[0]; acc[1] += w * DV[1]; } }
@@ -346,7 +362,7 @@ function devGrowth(par, env, sub, lat, sst, rh, shear, doy, dSst) {
   const G = sub ? par.sub : par, alat = Math.abs(lat), latD = sub ? 0 : (alat - 15) / 10;
   const sShift = (!sub && par.sstSeas && doy != null ? par.sstSeas * (1 - Math.cos(2 * Math.PI * (doy - 255) / 365)) / 2 : 0) + par.sstLat * latD;
   const sstG = par.sstRelW ? sst + par.sstRelW * (par.sstRef0 - (env.sstRef ? env.sstRef() + dSst : par.sstRef0)) : sst;
-  return growthG(par, G, sub, par.devV, sstG, rh, shear / par.shearK, alat, sShift, latD);
+  return growthG(par, G, sub, par.devV, sstG, rh, shear / par.shearK, alat, sShift, latD, sst);
 }
 function devGateAt(par, env, sub, lat, sst, rh, shear, doy, dSst) {
   const G = sub ? par.sub : par;
@@ -398,10 +414,15 @@ function vPot(sstE, par) {                                  // kt: the DeMaria-K
 
 /* the growth gate of the intensity law: how well the environment supports a system of wind V, 0..1 (before the seed's own quality and the mature-storm boost). The same function the
    law uses every hour and the genesis rule uses to refuse a depression an environment it could not live in. shT is the storm-centred shear (page shear / shearK). */
-function growthG(par, G, sub, V, sstG, rh, shT, alat, sShift, latD) {
+function sstGateAt(par, G, sstG, sstA, sShift) {                    // the sea-temperature gate: the more permissive of the one relative to the main development region (sstG) and the absolute one (sstA, shifted warmer by sstAbsUp)
+  const rel = smooth01(sstG, G.sstGate[0] - sShift, G.sstGate[1] - sShift);
+  if (sstA == null || !par.sstAbsUp) return rel;
+  return Math.max(rel, smooth01(sstA, G.sstGate[0] - sShift + par.sstAbsUp, G.sstGate[1] - sShift + par.sstAbsUp));
+}
+function growthG(par, G, sub, V, sstG, rh, shT, alat, sShift, latD, sstA) {
   const sEff = shT / (1 + par.shearVMod * smooth01(V, 30, 100));
   const gSh = 1 / (1 + Math.pow(sEff / (G.shearScale * Math.max(0.15, 1 + par.shLat * latD)), par.shearPow));          // (the floor: a storm that drifts south of 4 N would otherwise get a negative scale and a NaN)
-  const gS = smooth01(sstG, G.sstGate[0] - sShift, G.sstGate[1] - sShift), gR = smooth01(rh, G.rhGate[0] + par.rhLat * latD, G.rhGate[1] + par.rhLat * latD), gL = sub ? 1 : smooth01(alat, par.latGate[0], par.latGate[1]);
+  const gS = sstGateAt(par, G, sstG, sstA, sShift), gR = smooth01(rh, G.rhGate[0] + par.rhLat * latD, G.rhGate[1] + par.rhLat * latD), gL = sub ? 1 : smooth01(alat, par.latGate[0], par.latGate[1]);
   return gS * gR * gSh * gL;
 }
 
@@ -438,16 +459,19 @@ function baroclinicV(par, shear, alat) {
   const B = par.bc;
   return smooth01(alat, B.lat[0], B.lat[1]) * (B.v[0] + (B.v[1] - B.v[0]) * smooth01(shear, B.shear[0], B.shear[1]));
 }
-/* the probability that a tropical or subtropical cyclone at |lat| over sea of temperature sst, in page shear `shear` and with wind v, becomes post-tropical within six hours */
-function etHazard6(par, alat, sst, shear, v) {
-  const E = par.etHaz;
-  return alat < E.latMin ? 0 : 1 / (1 + Math.exp(-(E.b0 + E.lat * alat + E.sst * sst + E.shear * shear + E.wind * v)));
+/* the probability that a tropical or subtropical cyclone at |lat| over sea of temperature sst, in page shear `shear` and with wind v, becomes post-tropical within six hours; perf (0-1) is how perfectly
+   tropical its environment is (see perfEnv): the latitude term is the stand-in for the baroclinic zone and a perfect environment takes etHaz.relief of it away. The hazard is a ramp from latMin - 8 degrees up, not a wall at latMin */
+function etHazard6(par, alat, sst, shear, v, perf) {
+  const E = par.etHaz, ramp = smooth01(alat, E.latMin - 8, E.latMin);
+  return ramp <= 0 ? 0 : ramp / (1 + Math.exp(-(E.b0 + E.lat * alat * (1 - (E.relief || 0) * (perf || 0)) + E.sst * sst + E.shear * shear + E.wind * v)));
 }
 /* the probability of the other exit, dissipation over water (a remnant low, or the track simply ends), within six hours */
-function disHazard6(par, alat, sst, shear, v, age) {
-  const D = par.disHaz, f = smooth01(alat, D.lat0, D.lat1) * smooth01(age == null ? 1e9 : age, D.age[0], D.age[1]);
+function disHazard6(par, alat, sst, shear, v, age, lf) {
+  const D = par.disHaz, f = smooth01(alat, D.lat0, D.lat1) * smooth01(age == null ? 1e9 : age, D.age[0], D.age[1]) * (1 - smooth01(lf || 0, 0.2, 0.5));          // (over land the intensity law's decay and the weak-storm rule end a cyclone: the water hazard fades out with the share of land)
   return f <= 0 ? 0 : f / (1 + Math.exp(-(D.b0 + D.lat * alat + D.sst * sst + D.shear * shear + D.wind * v)));
 }
+/* the fastest a tropical cyclone of wind V loses wind over water, kt per hour: a soft limit (the rate bends toward c0 + c1 (V/60)^2 and never reaches it; real, 24 h north of 33N: -5 kt for 50-80 kt storms, -20 kt for 80 kt and more) */
+function decayLimit(par, x, V) { return satur(x, par.decayCap[0] + par.decayCap[1] * (V / 60) * (V / 60)); }
 /* piecewise-linear table lookup, held at the ends */
 function tableAt(xs, ys, x) {
   if (x <= xs[0]) return ys[0];
@@ -455,7 +479,7 @@ function tableAt(xs, ys, x) {
   return ys[ys.length - 1];
 }
 /* lifetimes are lognormal (median, log-sd, minimum, maximum); the draw is a pure function of the system and the hour */
-function lifetimeH(L, seed, id, h, stream) { return clamp(L[0] * Math.exp(L[1] * rndn(seed, id, h, stream)), L[2], L[3]); }
+function lifetimeH(L, seed, id, h, stream) { return Math.max(L[2], satur(L[0] * Math.exp(L[1] * rndn(seed, id, h, stream)), L[3], 4)); }       // (the long end bends toward L[3], the short end is the least a system lasts)
 /* a tropical or subtropical cyclone becomes post-tropical at the end of hour h: it keeps its wind and position, and gets the life (and, in a strong jet, the chance of a
    re-intensification episode) of an extratropical cyclone */
 function becomePostTropical(S, h, seed, par, shear) {
@@ -495,6 +519,7 @@ function stepSystem(S, env, h, seed, par, doy, ctx) {
   const us = BUF[0], vs = BUF[1], um = BUF[2], vm = BUF[3], ud = BUF[4], vd = BUF[5];
   const V = S.v, th = S.th, alat = Math.abs(lat);
   const spd0 = Math.hypot(S.cx, S.cy);
+  let perf = 0;                                                                  // how perfectly tropical the environment is, 0-1 (set from the growth gate below): relieves the latitude terms
 
   // ---- cold wake (tropical and subtropical cyclones only)
   let sstE = sst;
@@ -570,13 +595,13 @@ function stepSystem(S, env, h, seed, par, doy, ctx) {
     // map rate (what the real Atlantic does there at this time of year) times E (how much better the environment is than its own mean) times the seed's own quality
     const rq = Math.exp(-1 / par.qTau); S.q = rq * S.q + Math.sqrt(1 - rq * rq) * rndn(seed, id, h, ST.Q);
     const Q = Math.exp(par.qSd * S.q - 0.5 * par.qSd * par.qSd), sstRef = env.sstRef ? env.sstRef() + dSst : null;
-    const water = lf < 0.3 && alat >= 4;
+    const water = (1 - smooth01(lf, 0.2, 0.5)) * smooth01(alat, 2, 4);              // how much of a development a place that is partly land and close to the equator can host (a ramp, not a wall)
     const act = ctx.act || 1;
-    const eT = water ? envFactor(par, M, tw, lat, lon, sst, rh, shear, sstRef, false) * devGateAt(par, env, false, lat, sst, rh, shear, doy, dSst) * Q * act : 0;
-    const eS = water && S.kind !== 'W' && S.kind !== 'M' ? envFactor(par, M, tw, lat, lon, sst, rh, shear, sstRef, true) * devGateAt(par, env, true, lat, sst, rh, shear, doy, dSst) * Q * act : 0;
+    const eT = water > 0 ? water * envFactor(par, M, tw, lat, lon, sst, rh, shear, sstRef, false) * devGateAt(par, env, false, lat, sst, rh, shear, doy, dSst) * Q * act : 0;
+    const eS = water > 0 && S.kind !== 'W' && S.kind !== 'M' ? water * envFactor(par, M, tw, lat, lon, sst, rh, shear, sstRef, true) * devGateAt(par, env, true, lat, sst, rh, shear, doy, dSst) * Q * act : 0;
     S.eq = eT;
     if (S.dev < 0) {
-      const hT = Math.min(par.hazMax, par.hazMul * mapAt(M, M.haz.T, tw, lat, lon) * eT), hS = eS > 0 ? Math.min(par.hazMax, par.hazMul * mapAt(M, M.haz.S, tw, lat, lon) * eS) : 0;
+      const hT = satur(par.hazMul * hazAt(par, M, M.haz.T, tw, lat, lon) * eT, par.hazMax), hS = eS > 0 ? satur(par.hazMul * hazAt(par, M, M.haz.S, tw, lat, lon) * eS, par.hazMax) : 0;
       if (ctx.diag) diagExposure(ctx, S.kind, tw, lat, lon, eT, eS);
       const u = rnd(seed, id, h, ST.GEN);
       if (u < hT + hS) {
@@ -595,8 +620,8 @@ function stepSystem(S, env, h, seed, par, doy, ctx) {
     const latD = sub ? 0 : (alat - 15) / 10;                                   // the gates' empirical latitude dependence (0 at 15 degrees; see rhLat, sstLat, shLat)
     const sShift = (!sub && par.sstSeas && doy != null ? par.sstSeas * (1 - Math.cos(2 * Math.PI * (doy - 255) / 365)) / 2 : 0) + par.sstLat * latD;
     const sstG = par.sstRelW ? sstE + par.sstRelW * (par.sstRef0 - (env.sstRef ? env.sstRef() + dSst : par.sstRef0)) : sstE;      // the sea the genesis gate sees (see sstRelW)
-    const gL = sub ? 1 : smooth01(alat, par.latGate[0], par.latGate[1]), gS = smooth01(sstG, G.sstGate[0] - sShift, G.sstGate[1] - sShift);
-    let g = growthG(par, G, sub, V, sstG, rh + par.rhSelf * smooth01(V, par.rhSelfV[0], par.rhSelfV[1]), shT, alat, sShift, latD);
+    const gL = sub ? 1 : smooth01(alat, par.latGate[0], par.latGate[1]), gS = sstGateAt(par, G, sstG, sstE, sShift);
+    let g = growthG(par, G, sub, V, sstG, rh + par.rhSelf * smooth01(V, par.rhSelfV[0], par.rhSelfV[1]), shT, alat, sShift, latD, sstE);
     if (par.qSd > 0) {                                                           // the seed's own quality (persistent random organisation), fading once it is a storm
       const rq = Math.exp(-1 / par.qTau); S.q = rq * S.q + Math.sqrt(1 - rq * rq) * rndn(seed, id, h, ST.Q);
       g = Math.min(1, g * Math.exp(par.qSd * S.q * (1 - smooth01(V, par.qFade[0], par.qFade[1]))));
@@ -604,21 +629,23 @@ function stepSystem(S, env, h, seed, par, doy, ctx) {
     g += (1 - g) * par.matureBoost * smooth01(V, 45, 95) * gL * gS;
     const gc = G.gCrit, ku = G.kUp;
     const kappa = g >= gc ? ku * (g - gc) / (1 - gc) : -par.kDn * (gc - g) / gc;
-    const vcap = (sub ? Math.min(G.vCap, vPot(sstE, par)) : vPot(sstE, par)) * (1 - par.vpLat * smooth01(alat, par.vpLatB[0], par.vpLatB[1]));
+    const PE = par.perfEnv;
+    perf = smooth01(sstE, PE.sst[0], PE.sst[1]) / (1 + Math.pow(shT / PE.shear, 3)) * smooth01(rh, PE.rh[0], PE.rh[1]);
+    const vp = vPot(sstE, par), vcap = (sub ? softMin(G.vCap, vp) : vp) * (1 - par.vpLat * (1 - par.vpRelief * perf) * smooth01(alat, par.vpLatB[0], par.vpLatB[1]));
     const veq = vcap * (par.vEqLo + (1 - par.vEqLo) * g);
     if (kappa > 0) dV = V < veq ? kappa * V * (1 - V / veq) : -par.rRelax * (V - veq);
-    else dV = Math.max(kappa * (V - par.vFloor), -(par.decayCap[0] + par.decayCap[1] * (V / 60) * (V / 60)));
+    else { const d = kappa * (V - par.vFloor); dV = d >= 0 ? d : -decayLimit(par, -d, V); }
     // rapid intensification: episodes that trigger only in a good environment, while there is room to grow
     if (th === 'tc') {
       const R = par.ri;
       if (S.ri && h >= S.ri.t0 + S.ri.dur) { S.ri = null; S.riCoolUntil = h + R.cool; }
+      const landF = 1 - smooth01(lf, 0.1, 0.4);                                    // an episode fades as the coast comes in, and cannot start on one
       if (S.ri) {
-        if (V > 0.93 * vcap || lf > 0.3) { S.ri = null; S.riCoolUntil = h + R.cool; }
-        else dV += S.ri.rate * Math.sin(Math.PI * (h - S.ri.t0 + 0.5) / S.ri.dur);
-      } else if (h >= S.riCoolUntil && lf < 0.1) {
+        dV += S.ri.rate * Math.sin(Math.PI * (h - S.ri.t0 + 0.5) / S.ri.dur) * landF * smooth01(1 - V / Math.max(vcap, 1), 0.02, 0.10);       // ... and tapers off as the wind comes up to the potential wind
+      } else if (h >= S.riCoolUntil && landF > 0) {
         const cond = smooth01(sstE, R.sst[0], R.sst[1]) / (1 + Math.pow(shT / R.shear, 3)) * smooth01(rh, R.rh[0], R.rh[1])
-          * smooth01(V, R.vLow[0], R.vLow[1]) * (1 - smooth01(V, R.vHigh[0], R.vHigh[1])) * smooth01(1 - V / Math.max(vcap, 1), R.room[0], R.room[1]) * gL;
-        if (cond > 0.01 && rnd(seed, id, h, ST.RIT) < R.haz * Math.pow(cond, R.hp)) {
+          * smooth01(V, R.vLow[0], R.vLow[1]) * (1 - smooth01(V, R.vHigh[0], R.vHigh[1])) * smooth01(1 - V / Math.max(vcap, 1), R.room[0], R.room[1]) * gL * landF;
+        if (rnd(seed, id, h, ST.RIT) < R.haz * Math.pow(cond, R.hp) * smooth01(cond, 0.005, 0.015)) {
           // how perfect the environment is (0-1): very warm water, next to no shear, moist air, far from the potential wind; in a perfect one an episode can be much faster
           const pn = R.xLo || R.xHi ? smooth01(sstE, R.pnSst[0], R.pnSst[1]) / (1 + Math.pow(shT / R.pnShear, 3)) * smooth01(rh, R.pnRh[0], R.pnRh[1]) * smooth01(1 - V / Math.max(vcap, 1), R.pnRoom[0], R.pnRoom[1]) * gL : 0;
           const r0 = R.rate[0] + R.xLo * pn, r1 = R.rate[1] + R.xHi * pn;
@@ -638,16 +665,18 @@ function stepSystem(S, env, h, seed, par, doy, ctx) {
       dV = -(V - baroclinicV(par, shear, alat) - lift) / par.bc.exTau;
       S.exLift = lift * (1 - 1 / (2 * par.bc.exTau));
       const ep = S.exEp; if (ep && h >= ep.t0 && h < ep.t0 + ep.dur) { const e = ep.rate * Math.sin(Math.PI * (h - ep.t0 + 0.5) / ep.dur); dV += e; S.exLift += e; }
-      S.exDeep = Math.min(40, S.exDeep + 0.15 * clamp(shear - 25, 0, 30) / 30);
+      S.exDeep += 0.15 * smooth01(shear, 25, 55) * (1 - S.exDeep / 40);                        // (the extra deepening saturates toward 40 hPa)
     } else dV = -(V - par.nlV) / 36;
   }
   if (lf > 0) {                                                                  // Kaplan-DeMaria decay V = Vb + (R V0 - Vb) exp(-alpha t), weighted by how much of the neighbourhood is land
     const ex = th === 'ex';
-    if (!S.onLand && lf > 0.5) { if (!ex) S.v *= par.landCut; S.onLand = true; }
+    if (!ex) { const cut = 1 - (1 - par.landCut) * smooth01(lf, 0.2, 0.7), had = S.landCut || 1; if (cut < had) { S.v *= cut / had; S.landCut = cut; } }          // the friction of the first contact comes in with the share of land (a ramp, not a step at one half)
+    if (lf > 0.5) S.onLand = true;
     S.v = Math.max(1, S.v + (1 - lf) * dV);
     S.v = S.v > par.landVb ? par.landVb + (S.v - par.landVb) * Math.exp(-par.landAlpha * (ex ? par.exLandMul : 1) * lf) : Math.max(1, S.v - lf * 0.03 * (ex ? par.exLandMul : 1) * Math.max(0, S.v - 8));
   } else {
     if (S.onLand) S.onLand = false;
+    S.landCut = 1;
     S.v = Math.max(1, S.v + dV);
   }
   const rhoV = Math.exp(-1 / par.noiseTau);
@@ -661,19 +690,26 @@ function stepSystem(S, env, h, seed, par, doy, ctx) {
   const lat2 = S.lat;
   if (th === 'wv') {
     if (S.dev >= 0 || S.v >= par.distOn) S.dist = true; else if (S.v < par.distOff) S.dist = false;      // the disturbance stage: development has begun, or the environment holds the wind up near what a depression needs (with some hysteresis)
-    if (S.vr >= (S.sub && M ? par.devVSub - 1 : par.genV) && lf < 0.5 && Math.abs(lat2) >= 6 && sstE > (S.sub && M ? 19 : 24) && (!M || (S.dev >= 0 && S.sust !== false))) S.genCount++; else S.genCount = 0;
+    const sstOK = S.sub && M ? 19 : 24, wGen = (1 - smooth01(lf, 0.4, 0.8)) * smooth01(Math.abs(lat2), 3, 6) * smooth01(sstE, sstOK - 1, sstOK);          // the land, the equator and the cold sea each close the door gradually
+    if (S.vr >= (S.sub && M ? par.devVSub - 1 : par.genV) && wGen > 0 && rnd(seed, id, h, ST.GENC) < wGen && (!M || (S.dev >= 0 && S.sust !== false))) S.genCount++; else S.genCount = 0;
     if (S.genCount >= par.genHold) { S.th = S.sub ? 'sc' : 'tc'; S.tdHour = h + 1; S.genCount = 0; }
     else {
       if (S.v < 9) S.v = 9;                                                      // a wave stays a wave: it fades toward a floor, it does not vanish
       if (lf > 0.7 && h - S.born > 12) S.lowCount++; else S.lowCount = 0;
       if (S.lowCount >= 12) { S.alive = false; S.endReason = 'moved over land'; S.end = h + 1; }
-      else if (sst < (S.sub && M ? 17 : 22) || (h + 1 - S.born) > par.waveLife || (M && S.dev < 0 && ((S.life > 0 && h + 1 - S.born > S.life) || S.lat > (S.kind === 'W' ? par.waveLatMax : 42)))) { S.alive = false; S.endReason = 'dissipated'; S.end = h + 1; }
+      else {
+        // a disturbance that is not developing is carried off by cold water, by too high a latitude and by old age: hazards with a mean life of par.endH hours where the rule is fully on, not walls
+        const age = h + 1 - S.born, cold = S.sub && M ? 17 : 22, latW = M && S.dev < 0 ? smooth01(S.lat - (S.kind === 'W' ? par.waveLatMax : par.seedLatMax), -2, 2) : 0;
+        const wend = 1 - (1 - smooth01(cold - sst, -1, 1)) * (1 - smooth01(age, par.waveLife - 96, par.waveLife + 96)) * (1 - latW);
+        const own = M && S.dev < 0 && S.life > 0 && age > S.life;                          // a seed's own drawn life, the end of a disturbance that never organised
+        if (own || rnd(seed, id, h, ST.ENDH) < wend / par.endH) { S.alive = false; S.endReason = 'dissipated'; S.end = h + 1; }
+      }
     }
   } else if (th === 'tc' || th === 'sc') {
     // the post-tropical transition: a random event at the real best track's rate (etHaz: latitude, cold water, the shear of the westerlies, a strong storm resists)
     const finished = () => { if (rnd(seed, id, h, ST.ETS) < par.disHaz.lowShare) becomeRemnantLow(S, h, seed, par); else { S.alive = false; S.endReason = lf > 0.5 ? 'dissipated over land' : 'dissipated'; S.end = h + 1; } };
     if (lf > 0.5 && S.v < par.landEnd[0]) { S.landLow = (S.landLow || 0) + 1; if (S.landLow >= par.landEnd[1]) finished(); } else S.landLow = 0;
-    const pE = S.alive && S.th === th ? etHazard6(par, alat, sst, shear, S.v) : 0, pD = S.alive && S.th === th && lf < 0.3 ? disHazard6(par, alat, sst, shear, S.v, S.tdHour >= 0 ? h - S.tdHour : null) : 0;
+    const pE = S.alive && S.th === th ? etHazard6(par, alat, sst, shear, S.v, perf) : 0, pD = S.alive && S.th === th ? disHazard6(par, alat, sst, shear, S.v, S.tdHour >= 0 ? h - S.tdHour : null, lf) : 0;
     if (pE > 0 || pD > 0) {                                                   // two exits that compete: the transition, or dissipation (a remnant low, or the track ends)
       const u = rnd(seed, id, h, ST.ETC), lE = pE > 0 ? -Math.log(1 - pE) / 6 : 0, lD = pD > 0 ? -Math.log(1 - pD) / 6 : 0;
       if (u < lE) becomePostTropical(S, h, seed, par, shear);
@@ -685,7 +721,8 @@ function stepSystem(S, env, h, seed, par, doy, ctx) {
         if (S.lowCount >= 12) becomeRemnantLow(S, h, seed, par);                    // a storm that has spun down is a remnant low (a baroclinic zone would have kept it up: see baroclinicV)
       } else S.lowCount = 0;
     } else if (S.th === 'sc') {
-      const conv = sstE >= 26 && shear / par.shearK <= 15 && S.vr >= 30 && lf < 0.3;           // a subtropical storm over warm water with little shear becomes tropical
+      const wConv = smooth01(sstE, 25, 26) * (1 - smooth01(shear / par.shearK, 15, 20)) * smooth01(S.vr, 26, 30) * (1 - smooth01(lf, 0.2, 0.5));
+      const conv = wConv > 0 && rnd(seed, id, h, ST.CONV) < wConv;                                // a subtropical storm over warm water with little shear becomes tropical (each hour counts with the probability the conditions are met)
       S.convCount = conv ? S.convCount + 1 : 0;
       if (S.convCount >= 18) { S.th = 'tc'; S.convCount = 0; }
       else if (S.vr < 20) { S.lowCount++; if (S.lowCount >= 12) becomeRemnantLow(S, h, seed, par); }
@@ -694,9 +731,9 @@ function stepSystem(S, env, h, seed, par, doy, ctx) {
   } else if (th === 'ex' || th === 'nl') {
     if (h + 1 >= S.nlTill || S.v < 12) { S.alive = false; S.endReason = th === 'ex' ? 'absorbed' : 'dissipated'; S.end = h + 1; }
   }
-  if (S.alive && S.th === 'tc' && lf > 0.5 && S.v < 18) { S.alive = false; S.endReason = 'dissipated over land'; S.end = h + 1; }
-  if (S.alive && S.th === 'tc' && S.v < 8) { S.alive = false; S.endReason = 'dissipated'; S.end = h + 1; }
-  if (S.alive && S.th === 'sc' && S.v < 8) { S.alive = false; S.endReason = 'dissipated'; S.end = h + 1; }
+  // a circulation that is nearly gone is finished: a hazard that grows as the wind falls (over land from 22 kt on, over water from 10 kt), not a threshold
+  if (S.alive && S.th === 'tc' && lf > 0) { const w = smooth01(lf, 0.3, 0.6) * (1 - smooth01(S.v, 12, 22)); if (w > 0 && rnd(seed, id, h, ST.ENDH + 100) < 0.5 * w) { S.alive = false; S.endReason = 'dissipated over land'; S.end = h + 1; } }
+  if (S.alive && (S.th === 'tc' || S.th === 'sc')) { const w = 1 - smooth01(S.v, 4, 10); if (w > 0 && rnd(seed, id, h, ST.ENDH + 200) < 0.5 * w) { S.alive = false; S.endReason = 'dissipated'; S.end = h + 1; } }
 }
 
 /* ---- best-track fixes -------------------------------------------------------------------------------------------------- */
@@ -755,7 +792,7 @@ function Manager(o) {
   this.par = mergeParams(defaultParams(), o.params);
   this.hour = o.hour0 || 0;
   this.systems = []; this.byId = {};
-  this.n = { W: 0, N: 0, M: 0 };
+  this.n = { W: 0, N: 0, M: 0, F: 0 };
   this.auto = o.auto !== false; this.autoRate = o.autoRate == null ? 1 : o.autoRate;
   this.sched = { waveT: null, waveK: 0, waveSpawn: false };
   this.lows = new LowTracker();
@@ -775,9 +812,9 @@ Manager.prototype._aceDay = function (year, h) {                        // the d
   return d.getUTCFullYear() === year ? clamp(this.doyAt(h), 0, 365) : Math.round((Date.UTC(year + 1, 0, 1) - Date.UTC(year, 0, 1)) / 86400000) - 1;
 };
 Manager.prototype._add = function (S) { S.season = this.season.year; this.systems.push(S); this.byId[S.id] = S; return S; };
-Manager.prototype._seedSystem = function (ns, th, lat, lon, v, h, origin, sub) {
-  const k = ++this.n[ns];
-  return this._add(newSystem({ id: ns + k, num: idNum(ns, k), th, lat, lon, v, hour: h, origin, sub, kind: ns, q: rndn(this.seed, idNum(ns, k), 0, ST.Q0) }));
+Manager.prototype._seedSystem = function (ns, th, lat, lon, v, h, origin, sub, kind) {
+  const k = this.n[ns] = (this.n[ns] || 0) + 1;
+  return this._add(newSystem({ id: ns + k, num: idNum(ns, k), th, lat, lon, v, hour: h, origin, sub, kind: kind || ns, q: rndn(this.seed, idNum(ns, k), 0, ST.Q0) }));
 };
 
 /* hand-placed systems: kind 'wave' | 'td' | 'sd' | 'low' */
@@ -832,6 +869,15 @@ Manager.prototype._spawn = function (h, env) {
       S.life = par.lifeN[0] + (par.lifeN[1] - par.lifeN[0]) * rnd(seed, 1000 + k, h, ST.LIFEN);
       if (diag) diag['spawn.N'][(tw.t < 0.5 ? tw.m0 : tw.m1) * M.n + k] += 1;
     }
+    // the floor supply: a disturbance now and then anywhere in the box (par.seedFloor a year, uniform over the water, ids F<k> so no other system's id moves). Whether it comes to anything is the environment's business: over the Great
+    // Lakes in the climate of today it never does, with the page's Warming, Moisture and Wind shear sliders pushed to the end it very rarely can
+    if (par.seedFloor > 0 && env && env.box && rnd(seed, 90001, h, ST.FLOOR) < par.seedFloor * this.autoRate / (365.25 * 24)) {
+      const B = env.box, lat = B.lat0 + 1 + (B.lat1 - B.lat0 - 2) * rnd(seed, 90002, h, ST.FLOOR), lon = B.lon0 + 1 + (B.lon1 - B.lon0 - 2) * rnd(seed, 90003, h, ST.FLOOR);
+      if (!(env.isLand && env.isLand(lat, lon))) {
+        const S = this._seedSystem('F', 'wv', lat, lon, par.seedV[0] + (par.seedV[1] - par.seedV[0]) * rnd(seed, 90004, h, ST.FLOOR), h, 'seed', false, 'N');
+        S.life = par.lifeN[0] + (par.lifeN[1] - par.lifeN[0]) * rnd(seed, 90005, h, ST.FLOOR);
+      }
+    }
     return;
   }
   // regional sources
@@ -860,13 +906,14 @@ Manager.prototype._updateLows = function (h, env) {
     // a tracked low develops like any other disturbance: at the map's rate for its place and month times E; a tropical or a subtropical depression, whichever draw it wins
     const M = this.maps, tw = this.ctx.tw, ctx = this.ctx, sstRef = env.sstRef ? env.sstRef() + par.sstOffset : null;
     for (const t of this.lows.tracks) {
-      if (!t.alive || h - t.born < 6 || t.lat < 18 || t.lat > 45 || env.isLand(t.lat, t.lon)) continue;
+      if (!t.alive || h - t.born < 6 || env.isLand(t.lat, t.lon)) continue;
+      const lw = lowWeight(par, t.lat); if (lw <= 0) continue;
       const sst = env.sst(t.lat, t.lon) + par.sstOffset, sh = env.shear(t.lat, t.lon) + par.shearOffset, rh = env.rh(t.lat, t.lon) + par.rhOffset;
       if (!(sst === sst) || !(sh === sh) || !(rh === rh)) continue;
       const act = ctx.act || 1, doy = this.doyAt(h);
-      const eT = envFactor(par, M, tw, t.lat, t.lon, sst, rh, sh, sstRef, false) * devGateAt(par, env, false, t.lat, sst, rh, sh, doy, par.sstOffset) * act;
-      const eS = envFactor(par, M, tw, t.lat, t.lon, sst, rh, sh, sstRef, true) * devGateAt(par, env, true, t.lat, sst, rh, sh, doy, par.sstOffset) * act;
-      const hT = Math.min(par.hazMax, 6 * par.hazMul * mapAt(M, M.haz.T, tw, t.lat, t.lon) * eT * this.autoRate), hS = Math.min(par.hazMax, 6 * par.hazMul * mapAt(M, M.haz.S, tw, t.lat, t.lon) * eS * this.autoRate);
+      const eT = lw * envFactor(par, M, tw, t.lat, t.lon, sst, rh, sh, sstRef, false) * devGateAt(par, env, false, t.lat, sst, rh, sh, doy, par.sstOffset) * act;
+      const eS = lw * envFactor(par, M, tw, t.lat, t.lon, sst, rh, sh, sstRef, true) * devGateAt(par, env, true, t.lat, sst, rh, sh, doy, par.sstOffset) * act;
+      const hT = satur(6 * par.hazMul * hazAt(par, M, M.haz.T, tw, t.lat, t.lon) * eT * this.autoRate, par.hazMax), hS = satur(6 * par.hazMul * hazAt(par, M, M.haz.S, tw, t.lat, t.lon) * eS * this.autoRate, par.hazMax);
       if (ctx.diag) diagExposure(ctx, 'L', tw, t.lat, t.lon, eT, eS, 6);
       const pot = Math.max(eT, eS); if (pot >= par.distOnE) t.dist = true; else if (pot < par.distOffE) t.dist = false;           // a low with the potential to become a cyclone is a disturbance too
       const u = rnd(this.seed, idNum('L', +t.id.slice(1)), h, ST.LOWSEED);
@@ -951,6 +998,7 @@ Manager.prototype._cleanup = function (h) {
 Manager.prototype.advanceTo = function (target, envSrc) {
   while (this.hour < target) {
     const h = this.hour, env = envSrc && typeof envSrc.at === 'function' ? envSrc.at(h) : envSrc;
+    if (env && env.beginHour) env.beginHour(h);                                // an environment that carries its keyframes forward in time is told the hour it is about to be asked about
     if (h >= this.yearEndH) this._rollover(h);
     const doy = this.doyAt(h);
     if (this.maps) { this.ctx.tw = timeWeights(doy + (((h % 24) + 24) % 24) / 24); this.ctx.act = activityFactor(this.par, this.seed, this.dateAt(h).getUTCFullYear(), h); }
@@ -1015,7 +1063,7 @@ Manager.prototype.diagPacked = function () {                              // the
 };
 Manager.restore = function (o, extra) {                                  // a parameter added since the save is filled in with its default
   const m = new Manager({ seed: o.seed, startMs: o.startMs, params: {}, hour0: o.hour, auto: o.auto, autoRate: o.autoRate, maps: extra && extra.maps });
-  m.par = mergeParams(defaultParams(), o.par); m.n = o.n; m.sched = o.sched; m.season = o.season; m.prev = o.prev; m.prevEntry = o.prevEntry || null; m.archive = o.archive; m.yearEndH = o.yearEndH;
+  m.par = mergeParams(defaultParams(), o.par); m.n = Object.assign({ W: 0, N: 0, M: 0, F: 0 }, o.n); m.sched = o.sched; m.season = o.season; m.prev = o.prev; m.prevEntry = o.prevEntry || null; m.archive = o.archive; m.yearEndH = o.yearEndH;
   m.systems = o.systems; m.byId = {}; for (const S of m.systems) m.byId[S.id] = S;
   m.lows.tracks = o.lows.tracks; m.lows.next = o.lows.next; m.lows.done = o.lows.done || [];
   return m;
@@ -1032,7 +1080,7 @@ root.HFStorms = {
   VERSION, create: (o) => new Manager(o), restore: (o, extra) => Manager.restore(o, extra), defaultParams, mergeParams,
   prepareMaps, timeWeights, mapAt, driftAt, climAt, steerRing, envFactor, activityFactor, structureParams, CALIBRATED, calibrated: (on) => { const was = useCalibrated; if (on != null) useCalibrated = !!on; return was; },
   category, ktToMph, aceOf, round5, gustKt, compass, pressureFromWind, windFromPressure, WP, vPot, statusOf, describe, nameFor, NAME_SETS, NAME_SUPPLEMENTAL,
-  smooth01, rnd, rndn, hash5, idNum, stepSystem, newSystem, makeFix, seasonalWeight, WAVE_SEASON, LowTracker, etHazard6, disHazard6, baroclinicV,
+  smooth01, rnd, rndn, hash5, idNum, stepSystem, newSystem, makeFix, seasonalWeight, WAVE_SEASON, LowTracker, etHazard6, disHazard6, baroclinicV, satur, softMin, lowWeight, sstGateAt, growthG, decayLimit,
 };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
 /* ==== STORMS ENGINE END ==== */

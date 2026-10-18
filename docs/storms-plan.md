@@ -325,11 +325,11 @@ seeds and lows) in 24-season passes and sets `haz = G_real / X` (smoothed, dampe
 carry their prior share of the real genesis (0.55 over the Gulf and the western Caribbean, 0.5 off the south-eastern US, 0.3 in the subtropical Atlantic, 0.05
 elsewhere). The maps are therefore a calibration *of this simulator's weather*, committed as data and re-run when the weather changes.
 
-## Status: step 1 delivered (milestones 0-8)
+## Status: step 1 delivered (milestones 0-9)
 
-All nine milestones are on `main`: M0 the plan and the real Atlantic reference (4dae2a6), M1 the engine and its node checks (41647d3), M2 the storms in the page (4a0393b), M3 the
+All ten milestones are on `main`: M0 the plan and the real Atlantic reference (4dae2a6), M1 the engine and its node checks (41647d3), M2 the storms in the page (4a0393b), M3 the
 calibration and the climatology-anchored model (6a6fcdd), M4 Place mode and the preview (708b4da), M5 the season summary and the turn of the year (91c29dc), M6 save / resume and the
-Continue card (9fc40aa), M7 the mutation checks and this pass (130923b) and M8 the lifecycle, the rapid intensification, the three-hourly dots and the lighter engine (after the next trial). `docs/roadmap.md` has an entry for each with the measured numbers and the caveats. Where what shipped differs from the plan above:
+Continue card (9fc40aa), M7 the mutation checks and this pass (130923b) M8 the lifecycle, the rapid intensification, the three-hourly dots and the lighter engine, and M9 no walls (lakes are water, every limit a ramp, a hazard or a soft cap) and the clock at 4x to 64x with `Place`. `docs/roadmap.md` has an entry for each with the measured numbers and the caveats. Where what shipped differs from the plan above:
 
 - **The model** is the four-part climatology-anchored one of the revision above, not the first design (steering blend, genesis by gates): the trial of milestone 2 showed that design could not be
   repaired by calibration.
@@ -342,7 +342,7 @@ Continue card (9fc40aa), M7 the mutation checks and this pass (130923b) and M8 t
   counted from Jun 1. The Place line is solid for three days and fades after (the plan: about five).
 - **After the first trials (milestones 3 and 8):** waves and lows are the first stages of one lifecycle (wave or low, then a disturbance once it has the potential to be a cyclone, then a depression),
   fixes and dots come every three hours (the ACE keeps to the synoptic 00 / 06 / 12 / 18Z ones), rapid intensification follows the conditions (calibrated to the real record, with a pinnacle index for the
-  perfect environment), and the engine and the frame loop are lighter at 4x to 16x (the engine's own half-resolution environment grid, a time budget per frame): `docs/roadmap.md`, milestone 8, has the numbers.
+  perfect environment), and the engine and the frame loop are lighter at 4x to 64x (milestone 8: a time budget per frame; milestone 9: the engine's own one-degree environment grid, six-hourly steering keyframes carried forward in time, the map's fine texture built only when drawn): `docs/roadmap.md`, milestones 8 and 9, have the numbers. Milestone 9 also removed the walls: `src/storms.js` has no threshold that switches a rule on or off and no clamp, each is a ramp, a hazard or a soft cap, lakes are water, and a perfect tropical environment lifts the fall of the potential wind with latitude.
 - **As planned, not built:** impacts (the cards show a dash for them), invests and areas of interest, the cone, wind fields, the other eight basins, the autosave switch and the GIF export.
-- **Mutation checks** (`tools/storm_mutants.mjs`): the 24 edits of milestone 1 on the node tests, and 73 edits over milestones 3-8 on the node and browser checks, all caught after the checks were tightened where
-  the first pass found a gap (`docs/roadmap.md`, milestones 7 and 8).
+- **Mutation checks** (`tools/storm_mutants.mjs`): the 24 edits of milestone 1 on the node tests, and 89 edits over milestones 3-9 on the node and browser checks, all caught after the checks were tightened where
+  the first pass found a gap (`docs/roadmap.md`, milestones 7 to 9).
