@@ -313,7 +313,10 @@ nothing to run by hand.
   Advanced tab has `Storms form on their own` and `Storm activity (seeds)`. Hover a dot for name, category, wind in mph
   (kt) and gusts; click a live storm or a finished track for the stat card (category, wind, pressure, Peak, ACE, shear,
   gusts, movement, SST, formed). The top bar is the season: `Atlantic 2026 | DEP | NAMED | HURR | MAJOR | CAT 5 | ACE`
-  from the six-hourly fixes with HURDAT2's own definitions. **How a storm lives (climatology-anchored):** a *disturbance*
+  from the six-hourly fixes with HURDAT2's own definitions. **Place:** the dock's `Place` button (key `P`) holds the clock and opens a picker (tropical wave,
+  tropical depression, subtropical depression, low); a white dot follows the pointer with a line of the next seven days of a system put right there (the engine run through a *shadow
+  environment*: the simulator's own weather looked up seven days ahead from a copy of its state, which is put back), labelled e.g. `Cat 1 hurricane · peak 85 mph · by day 6.0` or
+  `Does not develop`; a click places it exactly there (it then does what the preview said) and `Esc` cancels. **How a storm lives (climatology-anchored):** a *disturbance*
   (an African easterly wave, a local seed where the real Atlantic forms storms from troughs and gyres, or a tracked pressure
   low) develops at the hourly rate of the real genesis map for that place and month, times how much better the simulated
   humidity, shear and SST are than their own mean there and a large-scale random activity factor (a draw per season and a few
@@ -342,9 +345,8 @@ nothing to run by hand.
   the midnight keyframe. With storms off (`SSTSIM.storms(false)`, which the existing environment checks use, and the other
   eight basins which have no engine yet) nothing changes. Every random
   draw in the engine is a pure function of (seed, system id, hour, stream), so a checkpoint is plain JSON and a hand-placed
-  system never changes an automatic one. **Not yet:** Place mode with its forecast preview, the season summary and ACE graph,
-  save / resume with the menu's Continue card, impacts (watches, warnings, cities), invests, the cone and the wind fields are
-  later milestones/steps.
+  system never changes an automatic one. **Not yet:** the season summary and ACE graph, save / resume with the menu's Continue
+  card, impacts (watches, warnings, cities), invests, the cone and the wind fields are later milestones/steps.
 
 ## Imagery
 The "Blue Marble" theme is a crop **embedded in the build** (`data.bm`, drawn on
@@ -383,7 +385,7 @@ check that Satellite still resolves to something usable.
   0.03) high; a fifth of numbered depressions never reach storm strength (real 11 %); post-tropical systems are about 20 % too slow after
   their transition and there are fewer of them than in the data; subtropical storms are 1.2 a year (1.7); the page's own pressure lows are
   fewer and longer-lived than ERA5's; the moisture slider's effect is far stronger than the warming slider's. The lows thresholds, the
-  2027+ name lists and the performance at 64× are also open. No Place mode, season summary, save / resume, impacts or invests yet.
+  2027+ name lists and the performance at 64× are also open. No season summary, save / resume, impacts or invests yet.
 - All nine basins run in Simulation mode; Forecaster mode hasn't been started (its
   menu card is disabled). Steering arrows and highs are in all nine basins; the
   Mediterranean and the North Indian Ocean have hardly any highs to show (about one day in ten in winter).

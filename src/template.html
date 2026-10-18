@@ -48,6 +48,18 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--focus);outline-
 #b-play{width:50px;height:50px;border-radius:50%;background:var(--ice);color:#141414;margin:0 4px}
 #b-play:hover{background:#fff}
 #b-play svg{width:22px;height:22px}
+#b-place{width:auto;padding:0 13px 0 11px;gap:7px;font-size:13px;font-weight:600;color:var(--text);margin-left:6px;border:1px solid var(--line);border-radius:12px}
+#b-place svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
+#b-place[aria-pressed="true"]{background:var(--ice);color:#141414;border-color:var(--ice)}
+#place-menu{left:50%;transform:translateX(-50%);bottom:88px;width:236px;padding:8px;display:grid;gap:2px;z-index:950}
+#place-menu[hidden]{display:none}
+#place-menu button{display:flex;align-items:center;gap:9px;text-align:left;border:0;background:transparent;color:var(--text);font:inherit;font-size:13px;padding:8px 10px;border-radius:8px;cursor:pointer}
+#place-menu button:hover{background:rgba(255,255,255,.09)}
+#place-menu button[aria-checked="true"]{background:rgba(255,255,255,.14);font-weight:600}
+#place-menu button i{width:11px;height:11px;border:2px solid var(--dim);border-radius:50%;flex:none}
+#place-menu button[aria-checked="true"] i{border-color:var(--ice);background:var(--ice)}
+#place-menu p{margin:4px 10px 2px;font-size:11.5px;color:var(--dim);line-height:1.4}
+body.placing .leaflet-container, body.placing #storm-canvas{cursor:crosshair}
 #speed{min-width:132px;padding-left:8px;line-height:1.15}
 #speed b{display:block;font-size:21px;font-weight:600;font-variant-numeric:tabular-nums}
 #speed span{font-size:11.5px;color:var(--dim)}
@@ -175,6 +187,9 @@ canvas.overlay{position:absolute;left:0;top:0;width:100%;height:100%;pointer-eve
   #dock{width:calc(100% - 28px);justify-content:space-between}
   #speed{min-width:0}
   #speed span{display:none}
+  #b-place{margin-left:0;padding:0 10px}
+  #b-place span{display:none}
+  #place-menu{bottom:96px}
 }
 </style>
 </head>
@@ -360,7 +375,17 @@ canvas.overlay{position:absolute;left:0;top:0;width:100%;height:100%;pointer-eve
     <svg viewBox="0 0 24 24"><path d="M13 6v12l8.5-6zM3 6v12l8.5-6z"/></svg>
   </button>
   <div id="speed"><b id="speed-x">1×</b><span id="speed-sub">+1 h every 60 ms</span></div>
+  <button class="btn" id="b-place" aria-label="Place a system" aria-pressed="false" aria-haspopup="true" title="Place a tropical wave, depression or low and see where it would go (P)">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.4"/><path d="M12 2.5v4.5M12 17v4.5M2.5 12H7M17 12h4.5"/></svg><span>Place</span>
+  </button>
 </nav>
+<div id="place-menu" class="card" role="radiogroup" aria-label="What to place" hidden>
+  <button role="radio" aria-checked="true" data-kind="wave"><i></i>Tropical wave</button>
+  <button role="radio" aria-checked="false" data-kind="td"><i></i>Tropical depression</button>
+  <button role="radio" aria-checked="false" data-kind="sd"><i></i>Subtropical depression</button>
+  <button role="radio" aria-checked="false" data-kind="low"><i></i>Low-pressure area</button>
+  <p>Click the map to place it. The line shows where it goes and how strong it gets; Esc cancels.</p>
+</div>
 
 <div id="loading">Building the ocean grid…</div>
 
@@ -2285,11 +2310,17 @@ function stormKeyframe(fields) {
   if (stormClim) climAccumulate(fields);
 }
 /* the mean sea-surface temperature of the main development region (10-20N, 80-20W, water only) in the last field keyframe: the reference of "relative SST" */
-function mdrMeanSst() {
+function mdrMeanSst(arr = kfSst) {
   let t = 0, n = 0;
-  for (let la = 10; la <= 20; la += 2.5) for (let lo = -80; lo <= -20; lo += 2.5) { if (isLand(la, lo)) continue; const v = sampleField(kfSst, la, lo); if (v === v) { t += v; n++; } }
+  for (let la = 10; la <= 20; la += 2.5) for (let lo = -80; lo <= -20; lo += 2.5) { if (isLand(la, lo)) continue; const v = sampleField(arr, la, lo); if (v === v) { t += v; n++; } }
   return n ? t / n : 28.2;
 }
+const envFrom = (U, V, Pk, SST, RH, SH, REF) => ({                                // the engine's environment over one set of keyframe arrays
+  box: { lat0: ST_LAT0, lat1: ST_LAT1, lon0: ST_LON0, lon1: ST_LON1 },
+  sst: (la, lo) => sampleField(SST, la, lo), rh: (la, lo) => sampleField(RH, la, lo), shear: (la, lo) => sampleField(SH, la, lo),
+  steer(la, lo, o) { o[0] = stSample(U[0], la, lo); o[1] = stSample(V[0], la, lo); o[2] = stSample(U[1], la, lo); o[3] = stSample(V[1], la, lo); o[4] = stSample(U[2], la, lo); o[5] = stSample(V[2], la, lo); },
+  slp: (la, lo) => stSample(Pk, la, lo), isLand: (la, lo) => isLand(la, lo), sstRef: () => REF,                // REF: the main development region's mean SST of that keyframe (what relative SST is measured against)
+});
 /* the sea-level-pressure minima (lows) of a node-grid pressure field: the mirror image of steerDetectHighs(), refined with a parabola */
 const ST_LOW_MAX = 1008, ST_LOW_PROM = 2.0, ST_LOW_LAT0 = 18, ST_LOW_LAT1 = 68;
 function detectLowsOn(Pn) {
@@ -2359,11 +2390,11 @@ function labRecord(m) {
 }
 function stormsReset() {
   stormMgr = HFStorms.create({ seed: stormSeed(), startMs: START_MS, hour0: simHour, auto: stormAuto, autoRate: stormActivity, maps: stormMapsNow() });
-  stormLab = null; stormFieldsDirty = true; kfFieldHour = -1; stormSel = null; stormHot = null; stormHits = []; stormsDirty = true;
+  stormLab = null; shadow = null; stormFieldsDirty = true; kfFieldHour = -1; stormSel = null; stormHot = null; stormHits = []; stormsDirty = true;
   const card = $('storm-card'), tip = $('storm-tip'); if (card) card.hidden = true; if (tip) tip.style.display = 'none';
   updateSeasonBar();
 }
-function stormEnvChanged() { stormFieldsDirty = true; }             // a slider / ENSO / seed change: the storms see the new fields at the next 3-hour keyframe
+function stormEnvChanged() { stormFieldsDirty = true; shadowStale(); }             // a slider / ENSO / seed change: the storms see the new fields at the next 3-hour keyframe
 function stormsAdvance(n) {
   if (!stormMgr) stormsReset();
   if (kfFieldHour < 0) stormKeyframe(true);                        // first use after a (re)start: keyframe at the current hour
@@ -2387,9 +2418,156 @@ function stormsAdvance(n) {
 function stormsSwitch(on) {
   if (on === stormsOn) return stormsOn;
   stormsOn = !!on;
+  if (!stormsOn && typeof placeSet === 'function') placeSet(false);
   if (stormsOn) stormsReset();                                     // storms resume from the current hour with a fresh season
   stormsDirty = true; drawStorms(); updateSeasonBar();
   return stormsOn;
+}
+
+/* ---- the whole weather as data: capture / restore ---------------------------------------------------------------------------------------
+   Everything that makes the next hour of weather what it is: the three random streams, every generator state (the daily weather modes,
+   the synoptic humidity and shear fields with their fine day-before / day-after caches, the jet's history, the steering modes, ENSO
+   and its history, the eddies) and the clocks. Taking it, running the weather forward, and putting it back leaves the live sim exactly
+   where it was -- that is how the Place preview looks ahead (shadow environment) -- and writing it to disk is what a saved game is.
+   `computeField()` etc. recompute every derived array on the next call (anomDirty / stStamp).                                          */
+function simCapture() {
+  const c32 = (a) => new Float32Array(a);
+  return {
+    rs, jrs, strs, simHour, dayCount, jetClockH, jetNewest, gsShift, nextShed, lcDip, ensoZr, ensoZi, n34, ensoHi, ensoHold, ensoHeld, lastSynDay, lastShearSynDay, synDay, shearSynDay,
+    pc: c32(pc), pcH: c32(pcH), pcS: c32(pcS), ensoHist: c32(ensoHist), humidSynC: c32(humidSynC), shearSynC: c32(shearSynC), pcStPrev: c32(pcStPrev), pcStCur: c32(pcStCur),
+    humidSynPrev: c32(humidSynPrev), humidSynCur: c32(humidSynCur), shearSynPrev: c32(shearSynPrev), shearSynCur: c32(shearSynCur),
+    eddies: eddies.map((e) => Object.assign({}, e)), jetHist: new Map(Array.from(jetHist, ([k, v]) => [k, c32(v)])),
+  };
+}
+function simRestore(s) {
+  rs = s.rs; jrs = s.jrs; strs = s.strs; simHour = s.simHour; dayCount = s.dayCount; jetClockH = s.jetClockH; jetNewest = s.jetNewest; gsShift = s.gsShift; nextShed = s.nextShed; lcDip = s.lcDip;
+  ensoZr = s.ensoZr; ensoZi = s.ensoZi; n34 = s.n34; ensoHi = s.ensoHi; ensoHold = s.ensoHold; ensoHeld = s.ensoHeld; lastSynDay = s.lastSynDay; lastShearSynDay = s.lastShearSynDay; synDay = s.synDay; shearSynDay = s.shearSynDay;
+  pc.set(s.pc); pcH.set(s.pcH); pcS.set(s.pcS); ensoHist.set(s.ensoHist); humidSynC.set(s.humidSynC); shearSynC.set(s.shearSynC); pcStPrev.set(s.pcStPrev); pcStCur.set(s.pcStCur);
+  humidSynPrev.set(s.humidSynPrev); humidSynCur.set(s.humidSynCur); shearSynPrev.set(s.shearSynPrev); shearSynCur.set(s.shearSynCur);
+  eddies = s.eddies.map((e) => Object.assign({}, e)); jetHist.clear(); for (const [k, v] of s.jetHist) jetHist.set(k, new Float32Array(v));
+  anomDirty = true; stStamp = ''; dirty = true;
+}
+
+/* ---- shadow environment: the weather of the next days, for the Place preview ----------------------------------------------------------------
+   The weather is a pure function of the seed, the settings and the clock, so "what will the steering / SST / humidity / shear be in 5 days" is
+   answered by running the weather itself forward from a captured copy of its state and putting the state back (simCapture / simRestore): the
+   keyframes it takes on the way (steering every 3 h, the fields every 00Z) are exactly the ones the live engine will take when the clock gets there,
+   so a system placed now follows its preview. Nothing here touches the live engine or its keyframes. ~0.4 s for 7 days; the arrays are pooled.     */
+const SHADOW_H = 7 * 24 + 6;
+let shadow = null, shadowPool = null;
+function shadowBuild() {
+  if (kfFieldHour < 0) stormKeyframe(true);                               // the engine's own keyframes must exist before they are copied
+  if (!shadowPool) shadowPool = { kf: Array.from({ length: 74 }, () => ({ h: 0, u: [new Float32Array(SN), new Float32Array(SN), new Float32Array(SN)], v: [new Float32Array(SN), new Float32Array(SN), new Float32Array(SN)], p: new Float32Array(SN) })),
+    fd: Array.from({ length: 10 }, () => ({ h: 0, ref: 28.2, sst: new Float32Array(N), humid: new Float32Array(N), shear: new Float32Array(N) })) };
+  const Pl = shadowPool, t0 = simHour, snap = simCapture();
+  let nk = 0, nf = 0;
+  const putKf = (h, U, V, Pk) => { const k = Pl.kf[nk++]; k.h = h; for (let i = 0; i < 3; i++) { k.u[i].set(U[i]); k.v[i].set(V[i]); } k.p.set(Pk); };
+  putKf(Math.floor(t0 / STORM_KEY_H) * STORM_KEY_H, kfU, kfV, kfP);                        // what the live engine is on right now
+  { const f = Pl.fd[nf++]; f.h = kfFieldHour; f.ref = kfSstRef; f.sst.set(kfSst); f.humid.set(kfHumid); f.shear.set(kfShear); }
+  try {
+    let left = SHADOW_H;
+    while (left > 0) {
+      const k = Math.min(left, STORM_KEY_H - (((simHour % STORM_KEY_H) + STORM_KEY_H) % STORM_KEY_H));
+      simHour += k;
+      if (simHour % 24 === 0) stepDay();
+      jetClockH += k * P.jetSpeed; left -= k;
+      if (simHour % STORM_KEY_H === 0) {
+        const midnight = simHour % 24 === 0;
+        if (midnight) { const d = Math.floor(simHour / 24); ensureSynDay(d); ensureShearSynDay(d); }
+        steerUpdate();
+        putKf(simHour, [stU.shallow, stU.medium, stU.deep], [stV.shallow, stV.medium, stV.deep], stPt);
+        if (midnight) { computeField(); const f = Pl.fd[nf++]; f.h = simHour; f.sst.set(sst); f.humid.set(humid); f.shear.set(shear); f.ref = mdrMeanSst(sst); }
+      }
+    }
+  } finally { simRestore(snap); computeField(); steerUpdate(); }          // the live arrays go back to NOW (the maps and arrows redraw from them)
+  shadow = { t0, nk, nf, pool: Pl, cache: new Map() };
+}
+function shadowEnv(h) {                                                   // the environment for hour h: the latest keyframes at or before it
+  const sh = shadow; let i = sh.nk - 1, j = sh.nf - 1;
+  while (i > 0 && sh.pool.kf[i].h > h) i--;
+  while (j > 0 && sh.pool.fd[j].h > h) j--;
+  const key = i * 100 + j; let e = sh.cache.get(key);
+  if (!e) { const k = sh.pool.kf[i], f = sh.pool.fd[j]; e = envFrom(k.u, k.v, k.p, f.sst, f.humid, f.shear, f.ref); sh.cache.set(key, e); }
+  return e;
+}
+function shadowStale() { shadow = null; if (placeMode) placeRefresh(); }   // sliders, ENSO, a new seed: the look-ahead is of a different weather now
+
+/* ---- Place mode: a white dot at the pointer, the forecast of what would happen to a system put there ---------------------------------------- */
+const PLACE_NAMES = { wave: 'tropical wave', td: 'tropical depression', sd: 'subtropical depression', low: 'low-pressure area' };
+let placeMode = false, placeKind = 'wave', placeAtLL = null, placePrev = null, placeWasPlaying = false, placeQueued = false;
+function placeSet(on) {
+  if (!stormsOn || !stormMgr) on = false;
+  if (on === placeMode) return placeMode;
+  placeMode = on;
+  document.body.classList.toggle('placing', on);
+  $('b-place').setAttribute('aria-pressed', on ? 'true' : 'false');
+  $('place-menu').hidden = !on;
+  map.doubleClickZoom[on ? 'disable' : 'enable']();
+  if (on) { placeWasPlaying = playing; if (playing) setPlaying(false); closeStormCard(); $('storm-tip').style.display = 'none'; setTimeout(() => { if (placeMode && !shadow) { shadowBuild(); placeRefresh(); } }, 30); }
+  else { if (placeWasPlaying) setPlaying(true); placeAtLL = null; placePrev = null; }
+  stormsDirty = true; drawStorms();
+  return placeMode;
+}
+function placeRefresh() {                                                 // recompute the forecast for the pointer and redraw (one per frame at most)
+  if (placeQueued) return; placeQueued = true;
+  requestAnimationFrame(() => {
+    placeQueued = false;
+    if (!placeMode) return;
+    if (placeAtLL && stormMgr) {
+      if (!shadow || simHour - shadow.t0 >= 24) shadowBuild();
+      placePrev = stormMgr.forecast({ kind: placeKind, lat: placeAtLL.lat, lon: placeAtLL.lng }, { at: shadowEnv }, 7 * 24);
+    } else placePrev = null;
+    stormsDirty = true; drawStorms();
+  });
+}
+function placeCommit(ll) {
+  if (!placeMode || !stormMgr) return;
+  const S = stormMgr.place({ kind: placeKind, lat: ll.lat, lon: ll.lng });
+  placeSet(false);
+  updateSeasonBar(); stormsDirty = true; drawStorms();
+  return S;
+}
+function placeSummary(F) {                                                // one line for the label next to the dot
+  if (!F || !F.fixes.length) return '';
+  const fx = F.fixes, t0 = fx[0].h, day = (h) => (h - t0) / 24, when = (d) => (d < 1 ? 'within a day' : 'by day ' + (d < 10 ? d.toFixed(1) : Math.round(d)));
+  if (placeKind === 'low') {
+    const vmax = fx.reduce((a, f) => Math.max(a, f.v), 0), last = fx[fx.length - 1];
+    return 'Low-pressure area' + (vmax >= 25 ? ' · up to ' + HFStorms.ktToMph(vmax) + ' mph' : '') + (F.alive ? ' · still there on day 7' : ' · gone ' + when(day(last.h)));
+  }
+  if (!F.developed) return placeKind === 'wave' ? 'Does not develop' : 'Fizzles';
+  const pk = F.peak, pf = fx.find((f) => f.h === pk.h) || fx[0], c = HFStorms.category(pk.v), mph = HFStorms.ktToMph(pk.v);
+  const kind = pf.th === 'sc' ? (pk.v >= 34 ? 'Subtropical storm' : 'Subtropical depression') : c.cat >= 1 ? 'Cat ' + c.cat + ' hurricane' : pk.v >= 34 ? 'Tropical storm' : 'Tropical depression';
+  return kind + ' · peak ' + mph + ' mph · ' + when(day(pk.h));
+}
+function drawPlacePreview(g, toPx) {
+  if (!placeAtLL) return;
+  const p0 = toPx(placeAtLL.lat, placeAtLL.lng), F = placePrev;
+  if (F && F.fixes.length > 1) {
+    const pts = F.fixes.map((f) => { const p = toPx(f.lat, f.lon); return { x: p.x, y: p.y, f }; }), n = pts.length;
+    g.save(); g.lineJoin = 'round'; g.lineCap = 'round';
+    for (let i = 1; i < n; i++) {                                         // fades with lead time: solid for three days, then thinning out
+      const lead = (pts[i].f.h - pts[0].f.h) / 24, a = lead < 3 ? 0.95 : Math.max(0.28, 0.95 - (lead - 3) * 0.17);
+      g.globalAlpha = a; g.setLineDash(lead > 5 ? [4, 5] : []);
+      g.lineWidth = 5; g.strokeStyle = 'rgba(8,10,16,.55)'; g.beginPath(); g.moveTo(pts[i - 1].x, pts[i - 1].y); g.lineTo(pts[i].x, pts[i].y); g.stroke();
+      g.lineWidth = 2.6; g.strokeStyle = pts[i].f.th === 'wv' ? 'rgba(255,255,255,.6)' : stormColor(pts[i].f); g.beginPath(); g.moveTo(pts[i - 1].x, pts[i - 1].y); g.lineTo(pts[i].x, pts[i].y); g.stroke();
+    }
+    g.setLineDash([]);
+    for (let i = 1; i < n; i++) {
+      const f = pts[i].f, lead = (f.h - pts[0].f.h) / 24; if (f.th === 'wv') continue;
+      g.globalAlpha = lead < 3 ? 0.95 : Math.max(0.28, 0.95 - (lead - 3) * 0.17);
+      stormShape(g, shapeOf(f.th), pts[i].x, pts[i].y, 3.6, stormColor(f), 'rgba(8,10,16,.85)', 1.1);
+    }
+    g.restore();
+    const txt = placeSummary(F);
+    if (txt) {
+      g.save(); g.font = '600 12px system-ui, sans-serif'; g.textAlign = 'left'; g.textBaseline = 'middle';
+      const pr = $('panel'), limitX = pr.classList.contains('collapsed') ? W : Math.min(W, pr.getBoundingClientRect().left);        // keep the label on the free part of the map
+      const w = g.measureText(txt).width + 14, x = Math.max(8, Math.min(p0.x + 14, limitX - w - 8)), y = Math.min(Math.max(18, p0.y - 22), H - 96);
+      g.fillStyle = 'rgba(10,14,24,.88)'; g.beginPath(); g.roundRect(x, y - 11, w, 22, 8); g.fill(); g.fillStyle = '#fff'; g.fillText(txt, x + 7, y + 0.5);
+      g.restore();
+    }
+  }
+  g.beginPath(); g.arc(p0.x, p0.y, 6.5, 0, Math.PI * 2); g.fillStyle = '#ffffff'; g.fill(); g.lineWidth = 2; g.strokeStyle = 'rgba(8,10,16,.9)'; g.stroke();
 }
 
 /* ---- labels, colours, shapes ---------------------------------------------------------------------------------------- */
@@ -2503,6 +2681,7 @@ function drawStorms() {
       g.lineWidth = 3.5; g.strokeStyle = 'rgba(8,10,16,.85)'; g.strokeText(lab.text, lab.x + lab.dx, lab.y); g.fillStyle = '#fff'; g.fillText(lab.text, lab.x + lab.dx, lab.y);
     }
   }
+  if (placeMode) drawPlacePreview(g, toPx);
   // the selected fix / storm gets a ring
   if (stormSel) {
     const S = stormMgr.get(stormSel.id); const hit = stormHits.find((hh) => hh.S === S && (stormSel.h < 0 ? hh.live : hh.f && hh.f.h === stormSel.h));
@@ -2656,9 +2835,20 @@ window.addEventListener('resize', () => { map.invalidateSize(); syncMinZoom(); s
  *  Readout + legend
  * ------------------------------------------------------------------ */
 let pointer = null;
-map.on('mousemove', (e) => { pointer = e.latlng; updateReadout(); if (stormHover(e.containerPoint.x, e.containerPoint.y)) updateCityTip(-1e4, -1e4); else updateCityTip(e.containerPoint.x, e.containerPoint.y); });
-map.on('click', (e) => stormClick(e.containerPoint.x, e.containerPoint.y));
-map.on('mouseout', () => { pointer = null; updateReadout(); hoveredCity = -1; $('city-tip').style.display = 'none'; stormHover(-1e4, -1e4); });
+map.on('mousemove', (e) => {
+  pointer = e.latlng; updateReadout();
+  if (placeMode) { placeAtLL = e.latlng; placeRefresh(); updateCityTip(-1e4, -1e4); return; }
+  if (stormHover(e.containerPoint.x, e.containerPoint.y)) updateCityTip(-1e4, -1e4); else updateCityTip(e.containerPoint.x, e.containerPoint.y);
+});
+map.on('click', (e) => {
+  if (!placeMode) { stormClick(e.containerPoint.x, e.containerPoint.y); return; }
+  if (e.originalEvent && e.originalEvent.pointerType === 'touch') {                  // no hover on a touch screen: the first tap shows the forecast, a second tap on the same spot places it
+    const cur = placeAtLL && map.latLngToContainerPoint(placeAtLL);
+    if (!cur || Math.hypot(cur.x - e.containerPoint.x, cur.y - e.containerPoint.y) > 28) { placeAtLL = e.latlng; placeRefresh(); return; }
+  }
+  placeCommit(e.latlng);
+});
+map.on('mouseout', () => { pointer = null; updateReadout(); hoveredCity = -1; $('city-tip').style.display = 'none'; stormHover(-1e4, -1e4); if (placeMode) { placeAtLL = null; placePrev = null; stormsDirty = true; drawStorms(); } });
 $('cities').onchange = () => { hoveredCity = -1; $('city-tip').style.display = 'none'; scheduleRender(); };
 const fmtLL = (lat, lon) => Math.abs(lat).toFixed(1) + '°' + (lat >= 0 ? 'N' : 'S') + ' ' + Math.abs(lon).toFixed(1) + '°' + (lon >= 0 ? 'E' : 'W');
 function updateReadout() { updateReadoutBase(); steerReadout(); }
@@ -2774,8 +2964,11 @@ window.addEventListener('keydown', (e) => {
   if (e.code === 'Space') { e.preventDefault(); setPlaying(!playing); }
   else if (e.key === '[') $('b-slower').click(); else if (e.key === ']') $('b-faster').click();
   else if (e.key === 'r' || e.key === 'R') restart();
-  else if (e.key === 'Escape') closeStormCard();
+  else if (e.key === 'Escape') { if (placeMode) placeSet(false); else closeStormCard(); }
+  else if (e.key === 'p' || e.key === 'P') placeSet(!placeMode);
 });
+$('b-place').onclick = () => placeSet(!placeMode);
+document.querySelectorAll('#place-menu button').forEach((b) => { b.onclick = () => { placeKind = b.dataset.kind; document.querySelectorAll('#place-menu button').forEach((x) => x.setAttribute('aria-checked', x === b ? 'true' : 'false')); placeRefresh(); }; });
 
 /* panel */
 $('collapse').onclick = () => { const p = $('panel'); p.classList.toggle('collapsed'); $('collapse').innerHTML = p.classList.contains('collapsed') ? '&#9656;' : '&#9662;'; };
@@ -2843,6 +3036,14 @@ window.SSTSIM = {
     return n;
   },
   stormClimGet() { const C = stormClim; stormClim = null; return C ? { n: C.n, steer: Array.from(C.steer), ns: Array.from(C.ns), sst: Array.from(C.sst), rh: Array.from(C.rh), shear: Array.from(C.shear), rel: Array.from(C.rel), ne: Array.from(C.ne) } : null; },
+  place(on, kind) { if (kind) { placeKind = kind; document.querySelectorAll('#place-menu button').forEach((x) => x.setAttribute('aria-checked', x.dataset.kind === kind ? 'true' : 'false')); } return on === undefined ? placeMode : placeSet(on); },
+  placeAt(lat, lon) { placeAtLL = { lat, lng: lon }; if (!shadow) shadowBuild(); placePrev = stormMgr.forecast({ kind: placeKind, lat, lon }, { at: shadowEnv }, 7 * 24); stormsDirty = true; drawStorms(); return placePrev; },
+  placePx(lat, lon) { const p = map.latLngToContainerPoint([lat, lon]); return { x: p.x, y: p.y }; },
+  shadowBuild() { const t = performance.now(); shadowBuild(); return { ms: performance.now() - t, t0: shadow.t0, nk: shadow.nk, nf: shadow.nf }; },
+  placePreview() { return placePrev; }, placeLabel() { return placeSummary(placePrev); },
+  shadowInfo() { return shadow ? { t0: shadow.t0, nk: shadow.nk, nf: shadow.nf } : null; },
+  simCapture() { window.__snap = { weather: simCapture(), storms: stormMgr ? JSON.stringify(stormMgr.serialize()) : null }; return true; },
+  simRestore() { const s = window.__snap; simRestore(s.weather); if (s.storms) { stormMgr = HFStorms.restore(JSON.parse(s.storms), { maps: stormMapsNow() }); stormFieldsDirty = true; kfFieldHour = -1; } return true; },
   stormLabRecord() { return stormLab ? stormLab.map(labRecord) : []; },
   stormLabStop() { stormLab = null; },
   stormPlace(spec) { const S = stormMgr.place(spec); stormsDirty = true; drawStorms(); return S.id; },

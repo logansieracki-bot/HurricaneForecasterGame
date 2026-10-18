@@ -245,6 +245,12 @@ const LAND = (la, lo) => (lo > -16.3 && lo < 38 && la > 4 && la < 30) || (lo < -
   check('hand-placing a storm does not change any automatic wave or seed', key(p1) === key(p2));
   const dev = H.create({ seed: 3, startMs: START, auto: false }), far = dev.forecast({ kind: 'td', lat: 15, lon: -50 }, makeEnv({ sst: 29, shear: 5 }), 240);
   check('a forecast reports peak, development, ACE and fixes every six hours from the start', far.fixes[0].h === 0 && far.fixes[1].h === 6 && far.peak.v >= 100 && far.developed && far.ace > 5 && far.fixes.length >= 40);
+  // a cyclone put on the map is a numbered depression even if it has changed class before its first six-hourly fix (a 70-kt storm at 41N does so one time in three)
+  { const q = H.create({ seed: 9, startMs: START, auto: false, params: { etHaz: { b0: 12 } } }), P = q.place({ kind: 'td', lat: 41, lon: -50, v: 70 });
+    q.advanceTo(12, makeEnv({ sst: 18, shear: 40 }));
+    check(`a placed cyclone that turns post-tropical before its first six-hourly fix is still a numbered depression (dep ${q.stats().dep}, class ${P.th}, ${P.fixes.length} fixes) and stays on the map when it ends`, P.th === 'ex' && P.depNum === 1 && q.stats().dep === 1 && P.fixes.length >= 2 && P.fixes[0].st === 'EX');
+    const w = H.create({ seed: 9, startMs: START, auto: false }); w.place({ kind: 'wave', lat: 41, lon: -50 }); w.advanceTo(12, makeEnv({ sst: 18, shear: 40 }));
+    check('a placed wave that never develops is not a depression', w.stats().dep === 0); }
   const fiz = H.create({ seed: 3, startMs: START, auto: false }).forecast({ kind: 'wave', lat: 12, lon: -40 }, makeEnv({ sst: 24, shear: 35 }), 240);
   check('a wave placed over cool water in strong shear is forecast to fizzle (no depression)', !fiz.developed && fiz.peak.v === 0);
 }

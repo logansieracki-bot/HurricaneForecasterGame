@@ -587,6 +587,100 @@ async function checkStorms(page, label) {
   await ev(() => { window.SSTSIM.storms(false); window.SSTSIM.restart(); });   // leave the page without storms for anything after this
 }
 
+// Place mode: the button and picker, the white dot and the forecast line that follow the pointer, Esc, a click that places, the preview being exactly what the
+// placed system then does (the weather of the next days is run forward from a copy of the live state, which must leave the live sim untouched), and that the
+// preview moves smoothly as the pointer does.
+async function checkPlace(page, label) {
+  const ev = (fn, arg) => page.evaluate(fn, arg);
+  await ev(() => { const S = window.SSTSIM; S.storms(true); S.setPlaying(false); S.applySeed(11); S.setPlaying(false); S.stormAuto(false); S.tick(24 * 70); S.advance(0); document.getElementById('detail').checked = false; });
+  const ui = await ev(() => { const b = document.getElementById('b-place'); return { exists: !!b, inDock: !!b && document.getElementById('dock').contains(b), pressed: b && b.getAttribute('aria-pressed'), menuHidden: document.getElementById('place-menu').hidden, kinds: [...document.querySelectorAll('#place-menu button')].map((x) => x.dataset.kind).join() }; });
+  check(`[${label}] the dock has a Place button (not pressed) and its picker (wave, td, sd, low) is closed until it is pressed`, ui.exists && ui.inDock && ui.pressed === 'false' && ui.menuHidden && ui.kinds === 'wave,td,sd,low');
+
+  // pressing it while the clock runs: the clock holds, the picker opens, the cursor is a crosshair
+  await ev(() => window.SSTSIM.setPlaying(true));
+  await page.click('#b-place');
+  const on = await ev(() => ({ pressed: document.getElementById('b-place').getAttribute('aria-pressed'), menu: !document.getElementById('place-menu').hidden, cls: document.body.classList.contains('placing'), hour: window.SSTSIM.state().simHour, playing: document.getElementById('ic-pause').style.display !== 'none' }));
+  await page.waitForTimeout(300);
+  const hour2 = await ev(() => window.SSTSIM.state().simHour);
+  check(`[${label}] pressing Place opens the picker, switches to the crosshair and holds the clock (hour ${on.hour}, still ${hour2} 0.3 s later)`, on.pressed === 'true' && on.menu && on.cls && !on.playing && hour2 === on.hour);
+
+  // the white dot and the forecast line follow the pointer (a tropical depression put over warm water in August)
+  await page.click('#place-menu button[data-kind="td"]');
+  const at = await ev(() => window.SSTSIM.placePx(15, -45));
+  await page.mouse.move(at.x - 40, at.y - 25); await page.mouse.move(at.x, at.y, { steps: 6 }); await page.waitForTimeout(350);
+  const probe = await ev(({ x, y }) => {
+    const S = window.SSTSIM, cv = document.getElementById('storm-canvas'), g = cv.getContext('2d'), d = cv.width / cv.clientWidth, px = (x, y) => g.getImageData(Math.round(x * d), Math.round(y * d), 1, 1).data;
+    const F = S.placePreview(), c = px(x, y), line = [];
+    if (F) for (const f of F.fixes.slice(4, 14)) { const q = S.placePx(f.lat, f.lon); let n = 0; for (let dx = -4; dx <= 4; dx++) for (let dy = -4; dy <= 4; dy++) if (px(q.x + dx, q.y + dy)[3] > 60) n++; line.push(n); }
+    return { white: c[0] > 235 && c[1] > 235 && c[2] > 235 && c[3] > 200, line, fixes: F ? F.fixes.length : 0, label: S.placeLabel() };
+  }, at);
+  check(`[${label}] a white dot sits at the pointer and the forecast line is drawn along the predicted fixes (${probe.fixes} fixes, "${probe.label}")`, probe.white && probe.fixes >= 20 && probe.line.length === 10 && probe.line.every((n) => n > 0) && probe.label.length > 5);
+  const kinds = await ev(async () => {
+    const out = {};
+    for (const k of ['wave', 'td', 'sd', 'low']) { document.querySelector(`#place-menu button[data-kind="${k}"]`).click(); await new Promise((r) => setTimeout(r, 120)); out[k] = [document.querySelector(`#place-menu button[data-kind="${k}"]`).getAttribute('aria-checked'), window.SSTSIM.placeLabel(), document.querySelectorAll('#place-menu button[aria-checked="true"]').length]; }
+    return out;
+  });
+  check(`[${label}] the picker switches what is previewed: ${Object.entries(kinds).map(([k, v]) => k + ' -> "' + v[1] + '"').join('; ')}`, Object.values(kinds).every((v) => v[0] === 'true' && v[2] === 1 && v[1].length > 3) && new Set(Object.values(kinds).map((v) => v[1])).size >= 3);
+  await page.click('#place-menu button[data-kind="td"]');
+
+  // Esc cancels: nothing placed, the dot is gone, the clock runs again
+  await page.keyboard.press('Escape'); await page.waitForTimeout(150);
+  const esc = await ev(({ x, y }) => { const cv = document.getElementById('storm-canvas'), g = cv.getContext('2d'), d = cv.width / cv.clientWidth, a = g.getImageData(Math.round(x * d), Math.round(y * d), 1, 1).data; return { pressed: document.getElementById('b-place').getAttribute('aria-pressed'), menu: document.getElementById('place-menu').hidden, systems: window.SSTSIM.stormState().systems.length, alpha: a[3], playing: document.getElementById('ic-pause').style.display !== 'none' }; }, at);
+  check(`[${label}] Esc cancels placing: nothing was placed, the dot and line are gone, the clock that was running runs again`, esc.pressed === 'false' && esc.menu && esc.systems === 0 && esc.alpha < 10 && esc.playing);
+  await ev(() => window.SSTSIM.setPlaying(false));
+
+  // a click places it (press P, pick, move, click); the system is the one previewed, and it then does exactly what the preview said
+  await page.keyboard.press('p'); await page.click('#place-menu button[data-kind="td"]');
+  await page.mouse.move(at.x - 20, at.y - 10); await page.mouse.move(at.x, at.y, { steps: 4 }); await page.waitForTimeout(300);
+  const pre = await ev(() => JSON.parse(JSON.stringify(window.SSTSIM.placePreview())));
+  await page.mouse.click(at.x, at.y); await page.waitForTimeout(150);
+  const placed = await ev(() => ({ pressed: document.getElementById('b-place').getAttribute('aria-pressed'), systems: window.SSTSIM.stormState().systems.map((s) => [s.id, s.th, s.lat, s.lon]) }));
+  check(`[${label}] a click puts the system exactly there and leaves Place mode (${placed.systems.map((s) => s[0] + ' ' + s[1] + ' ' + s[2].toFixed(2) + ', ' + s[3].toFixed(2)).join('; ')})`, placed.pressed === 'false' && placed.systems.length === 1 && placed.systems[0][0] === 'M1' && placed.systems[0][1] === 'tc' && Math.abs(placed.systems[0][2] - 15) < 0.4 && Math.abs(placed.systems[0][3] + 45) < 0.4);
+  const follow = await ev((pre) => {
+    const S = window.SSTSIM; S.tick(24 * 7);
+    const live = JSON.parse(S.stormJSON()).systems.find((x) => x.id === 'M1'), byH = new Map(live.fixes.map((f) => [f.h, f]));
+    let n = 0, worst = 0, vmax = 0;
+    for (const a of pre.fixes) { const c = byH.get(a.h); if (!c) continue; n++; worst = Math.max(worst, Math.abs(a.lat - c.lat), Math.abs(a.lon - c.lon)); vmax = Math.max(vmax, Math.abs(a.v - c.v)); }
+    return { n, worst, vmax, peak: pre.peak.v };
+  }, pre);
+  check(`[${label}] the system then does exactly what the preview said: ${follow.n} six-hourly fixes over 7 days, largest position difference ${follow.worst.toFixed(2)} degrees, wind ${follow.vmax} kt (peak ${follow.peak} kt)`, follow.n >= 20 && follow.worst === 0 && follow.vmax === 0);
+
+  // looking ahead leaves the live simulation exactly as it was: the same 40 days with and without a preview every 5 days
+  const inter = await ev(() => {
+    const S = window.SSTSIM;
+    const run = (look) => {
+      S.setPlaying(false); S.applySeed(21); S.setPlaying(false); S.storms(true); S.stormAuto(true);
+      for (let d = 0; d < 40; d += 5) { S.tick(24 * 5); if (look) { S.shadowBuild(); S.place(true, 'td'); S.placeAt(15 + (d % 7), -40 - (d % 13)); S.place(false); } }
+      S.advance(0);
+      const nodes = S.steerNodes('deep'), sum = (a) => a.reduce((x, y) => x + y, 0), pts = [[15, -50], [25, -80], [32, -40]].map(([la, lo]) => { const v = S.sample(la, lo); return [v.sst, v.humid, v.shear]; });
+      return JSON.stringify({ pts, steer: [sum(nodes.u), sum(nodes.v), sum(nodes.p)], jet: [-80, -60, -40].map((lo) => S.jetLatLive(lo)), enso: S.enso().n34, storms: S.stormJSON() });
+    };
+    const A = run(true), B = run(false);
+    return { same: A === B, len: A.length };
+  });
+  check(`[${label}] eight previews during 40 days of weather change nothing: SST, humidity, shear, steering, jet, ENSO and every storm come out identical (${(inter.len / 1024).toFixed(0)} KB compared)`, inter.same);
+
+  // smoothness: placements within half a degree of each other have 72-hour points that are a bounded multiple apart
+  const sm = await ev(() => {
+    const S = window.SSTSIM; S.applySeed(11); S.setPlaying(false); S.stormAuto(false); S.tick(24 * 70); S.shadowBuild();
+    let rs = 12345; const rnd = () => { rs = (Math.imul(rs, 1664525) + 1013904223) >>> 0; return rs / 4294967296; };
+    const km = (a, b) => Math.hypot((a[0] - b[0]) * 111.2, (a[1] - b[1]) * 111.2 * Math.cos((a[0] + b[0]) / 2 * Math.PI / 180)), ratios = [];
+    for (const kind of ['td', 'wave', 'sd']) {
+      S.place(true, kind);
+      for (const [la, lo] of [[14, -40], [18, -60], [25, -75], [30, -55]]) {
+        const pts = [];
+        for (let k = 0; k < 7; k++) { const lat = la + rnd() - 0.5, lon = lo + rnd() - 0.5, F = S.placeAt(lat, lon), f = F.fixes.find((x) => x.h - F.fixes[0].h >= 72); if (f) pts.push([lat, lon, f.lat, f.lon]); }
+        for (let i = 0; i < pts.length; i++) for (let j = i + 1; j < pts.length; j++) { const d = km(pts[i], pts[j]); if (d > 5) ratios.push(km(pts[i].slice(2), pts[j].slice(2)) / d); }
+      }
+      S.place(false);
+    }
+    ratios.sort((a, b) => a - b);
+    return { n: ratios.length, median: ratios[Math.floor(ratios.length / 2)], p95: ratios[Math.floor(ratios.length * 0.95)], max: ratios[ratios.length - 1], share8: ratios.filter((r) => r <= 8).length / ratios.length };
+  });
+  check(`[${label}] the preview moves smoothly with the pointer: over ${sm.n} pairs of placements within half a degree, the 72-hour points are ${sm.median.toFixed(1)}x (median) and ${sm.p95.toFixed(1)}x (95th percentile) as far apart as the placements, ${(100 * sm.share8).toFixed(0)} % within 8x, none beyond ${sm.max.toFixed(1)}x`, sm.n > 150 && sm.share8 >= 0.95 && sm.max < 20);
+  await ev(() => { window.SSTSIM.storms(false); window.SSTSIM.restart(); });
+}
+
 async function checkEnsoHold(page, label) {
   const ev = (fn, arg) => page.evaluate(fn, arg);
   const r = await ev(() => {
@@ -1793,6 +1887,7 @@ await checkBasin('Atlantic', ATLANTIC_DIST, async (page, label) => {
   await checkSteering(page, label, STEER_SPECS.atlantic);
   await checkEnsoHold(page, label);
   await checkStorms(page, label);
+  await checkPlace(page, label);
   await checkCityMarkers(page, label, 25.76, -80.19, 'Miami');
 });
 

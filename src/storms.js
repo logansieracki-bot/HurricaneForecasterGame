@@ -885,7 +885,8 @@ Manager.prototype._record = function (h, env) {                             // s
     if (S.th === 'wv' && !S.alive) continue;                                   // a wave that never developed leaves no record
     const st = statusOf(S), isTC = S.th === 'tc' || S.th === 'sc', rv = round5(S.vr);
     const rec = S.season === season.year ? season : (this.prev && this.prev.year === S.season ? this.prev : season);
-    if (isTC && S.depNum === 0) { S.depNum = ++rec.dep; if (S.tdHour < 0) S.tdHour = h; rec.storms.push(S.id); }
+    // a system put on the map as a cyclone is a numbered depression even if it changes class before its first six-hourly fix (a 70-kt storm placed at 41N is post-tropical within six hours one time in three)
+    if ((isTC || S.origin === 'placed:td' || S.origin === 'placed:sd') && S.depNum === 0) { S.depNum = ++rec.dep; if (S.tdHour < 0) S.tdHour = h; rec.storms.push(S.id); }
     if (isTC && S.name === '' && rv >= par.namedV) {
       S.name = nameFor(rec.year, rec.namedIdx++); S.namedHour = h; rec.named++;
     }
