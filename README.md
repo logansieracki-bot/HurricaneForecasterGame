@@ -82,8 +82,8 @@ nothing to run by hand.
   percentiles the season summary draws against go in beside them as `storms.ace` / `storms.normals` with `merge_data.mjs --storms`),
   `tools/storm_mc.mjs` runs whole seasons through the built page (any number of parameter sets at once, same weather),
   `tools/storm_opt.mjs` calibrates the intensity law and the environmental coupling with CMA-ES, `tools/storm_validate.mjs`
-  checks tracks, landfalls and genesis against the real best track, and `tools/storm_mutants.mjs` breaks the storm code in 111 ways, one at a time, and runs the
-  checks that should notice (all 111 are caught; `docs/roadmap.md` has what the passes found and how the checks were changed).
+  checks tracks, landfalls and genesis against the real best track, and `tools/storm_mutants.mjs` breaks the storm code in 116 ways, one at a time, and runs the
+  checks that should notice (all 116 are caught; `docs/roadmap.md` has what the passes found and how the checks were changed).
   The other eight basins' storm climatology is made by the same chain with a basin name: `tools/tc_basins.json` (the table: page, season, grid, hemisphere ...), `tools/storm_region.mjs`
   (which cells of a page are inside its basin and land for a storm), `tools/make_tc_basin.py` (the real targets and maps of the storms that form inside a page, by wind), `tools/storm_fit.mjs --basin`,
   `tools/storm_basin.mjs` (whole seasons of any basin against its reference) and `HF_DIST=<dir> npm run build` for a lab build beside a test run. The storm engine reads the page's humidity and shear, so the year-to-year
@@ -320,8 +320,8 @@ nothing to run by hand.
   Ocean, see the caveat in `docs/roadmap.md`), highs a day within a few tenths of the real count month by month,
   the El Niño response in the sign the real data have. The ribbon and the per-latitude statistics are measured on an
   analysis box wider than the displayed one (most boxes do not contain the jet), like the shear jet.
-- Storms (step 1 of the 7-step storm roadmap in `docs/storms-plan.md`; the Atlantic was the test basin and is switched on, the
-  other eight pages carry the same code and switch on, basin by basin, when their data file holds the climatology the engine is
+- Storms (step 1 of the 7-step storm roadmap in `docs/storms-plan.md`; the Atlantic was the test basin; with the East Pacific, the West Pacific and the North Indian Ocean it is switched on, the
+  other five pages carry the same code and switch on, basin by basin, when their data file holds the climatology the engine is
   anchored to (`storms.maps`, `STORMS_READY` in `src/storm-hooks.js`): until then they show none of the storm controls and run the
   plain simulation). `src/storms.js` is the engine (pure JS, no DOM) and `src/storm-hooks.js` / `src/storm-late.js` (see Layout)
   are everything that connects it to the page. **Systems:** the precursors are one lifecycle: a tropical wave (dashed line) or a
@@ -421,7 +421,7 @@ check that Satellite still resolves to something usable.
   and SST is unchanged) — see `docs/roadmap.md` for the numbers.
 - ERSST at 2° is warm-biased in coastal cells; several corrections are hand-tuned
   (see the shelf, Northeast shelf, Gulf Stream blocks in `src/template.html`).
-- Storms exist in the Atlantic only (the test basin). 240 seasons the calibration was not fitted on (seeds 1401-1448, 1501-1596, 1601-1696; the 214 days from Jun 1)
+- The numbers that follow are the Atlantic's (the test basin; the other basins' are in `docs/roadmap.md`, milestone 10). 240 seasons the calibration was not fitted on (seeds 1401-1448, 1501-1596, 1601-1696; the 214 days from Jun 1)
   average 16.7 depressions, 14.0 named storms, 7.9 hurricanes, 3.8 majors, 0.37 category 5 storms and ACE 137 against the real 1991-2020 15.8 / 13.9 / 7.2 / 3.2 / 0.47 / 122 (the three blocks of
   seeds differ more than chance explains: ACE 129, 147 and 132), with season-to-season SD of the named count 4.9 (real 5.5) and of ACE 77 (66, but a heavier top: the
   highest simulated season is 440, the real record's 250), and 43 % of named storms becoming extratropical (45 %) at a median 41N (41N). Rapid intensification

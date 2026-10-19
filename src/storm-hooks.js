@@ -628,7 +628,7 @@ function openStormCard(S, f, live) { stormSel = { id: S.id, h: live ? -1 : f.h }
 function closeStormCard() { stormSel = null; $('storm-card').hidden = true; stormsDirty = true; drawStorms(); }
 function stormPick(cx, cy) {
   let best = null, bd = 1e9;
-  for (const h of stormHits) { const d = Math.hypot(cx - h.x, cy - h.y); if (d <= h.r && d < bd) { bd = d; best = h; } }
+  for (const h of stormHits) { const d = Math.hypot(cx - h.x, cy - h.y); if (d <= h.r && d - (h.live ? 0.75 : 0) < bd) { bd = d - (h.live ? 0.75 : 0); best = h; } }       // (the live head wins over the advisory dot under it: the last fix is where the storm is, to a fraction of a pixel)
   return best;
 }
 function stormHover(cx, cy) {

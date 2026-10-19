@@ -156,6 +156,16 @@ const BASIN_PARAMS = {
     vpScale: 1.025, kUp: 0.02206, kDn: 0.2593, sstGate: [24.51, 27.04], rhGate: [53.21, 63.31], shearK: 1.822, etaLo: 16.47, etaHi: 24.07, vpLat: 0.5855, gCrit: 0.0176,
     ri: { haz: 0.09609 }, etHaz: { b0: -6.68 }, genGate: { lat: [6.9, 10.8] }, latGate: [6.189, 13.19],
   },
+  westpacific: {
+    vpScale: 1.105, kUp: 0.02619, kDn: 0.03, sstGate: [25.61, 28.14], rhGate: [53.84, 63.94], shearK: 3.772, etaLo: 21.85, etaHi: 30, vpLat: 0.8, gCrit: 0.01516,
+    ri: { haz: 0.02389 }, etHaz: { b0: -5.753 }, latGate: [2, 9], act: { seasSd: 0 }, envB: { rh: 0.36, shear: 0.4263, sst: 0.5145, sstAbs: 0.1088 },
+    enso: { act: 0.5407, lon: 5.271, lat: -2.139 }, genGate: { lat: [3.4, 7.9] },
+  },
+  nio: {
+    vpScale: 1.05, kUp: 0.03258, kDn: 0.5, sstGate: [22, 24.53], rhGate: [42, 52.1], shearK: 3.514, etaLo: 15.67, etaHi: 29.84, vpLat: 0.3532, gCrit: 0.02434,
+    ri: { haz: 0.01 }, etHaz: { b0: -4.5 }, latGate: [2.609, 9.609], tdMargin: 0.4463, act: { seasSd: 0.02545 },
+    envB: { rh: 0.018, shear: 0.02132, sst: 0.02573, sstAbs: 0.005439 }, enso: { act: 0.5833, lon: -4.373, lat: -1.458 }, genGate: { lat: [2, 6.5] },
+  },
 };
 /* ==== BASIN PARAMS END ==== */
 const BASINS = {
@@ -332,6 +342,8 @@ function structureParams() {
                                                   // little shear over 28 C water dies of it, 11 % of the simulated named phases ended south of 15 N, real 4.6 %); it comes in between these winds
     tdMargin: 0,                                  // an organising disturbance is only declared a depression while its growth gate (with its own quality) exceeds gCrit by this much: the event pushes the wind to the depression threshold whatever the
                                                   // environment does next, and without this one declared in a place that can not keep it (the humidity it was picked for fades) is a depression for a day and gone (21 % of the numbered ones, real 11 %)
+    subSstOK: 19, subCold: 17, seedCold: 22,      // a subtropical disturbance is declared a depression only over water warmer than the first (a ramp of a degree below it); water colder than subCold carries off one that has begun to develop as a subtropical system, and water colder than seedCold
+                                                  // one that has not begun to (the Mediterranean's hybrid cyclones form over 15-22 degC: a basin like it lowers all three)
     genGate: { sst: [24.5, 26.5], sstSub: [20.0, 23.5], shear: 28, lat: [8.5, 11.5] }, hazMax: 0.3, devRate: 0.8, devV: 26, devVSub: 36,          // lat: no tropical development close to the equator (the real first-depression latitude has its 5th percentile at 10 N)
     // the large-scale climate the simulated environment does not carry (Atlantic meridional mode, the West African monsoon, the stratosphere, intraseasonal pulses of convection): a random
     // activity factor on every development rate, exp(seasSd z_year + intraSd z(t)) with unit mean: z_year a draw per calendar year, z(t) six sinusoids of 14-60 day periods with random
@@ -777,7 +789,7 @@ function stepSystem(S, env, h, seed, par, doy, ctx) {
   const lat2 = S.lat;
   if (th === 'wv') {
     if (S.dev >= 0 || S.v >= par.distOn) S.dist = true; else if (S.v < par.distOff) S.dist = false;      // the disturbance stage: development has begun, or the environment holds the wind up near what a depression needs (with some hysteresis)
-    const sstOK = S.sub && M ? 19 : 24, wGen = (1 - smooth01(lf, 0.4, 0.8)) * smooth01(Math.abs(lat2), 3, 6) * smooth01(sstE, sstOK - 1, sstOK);          // the land, the equator and the cold sea each close the door gradually
+    const sstOK = S.sub && M ? par.subSstOK : 24, wGen = (1 - smooth01(lf, 0.4, 0.8)) * smooth01(Math.abs(lat2), 3, 6) * smooth01(sstE, sstOK - 1, sstOK);          // the land, the equator and the cold sea each close the door gradually
     if (S.vr >= (S.sub && M ? par.devVSub - 1 : par.genV) && wGen > 0 && rnd(seed, id, h, ST.GENC) < wGen && (!M || (S.dev >= 0 && S.sust !== false))) S.genCount++; else S.genCount = 0;
     if (S.genCount >= par.genHold) { S.th = S.sub ? 'sc' : 'tc'; S.tdHour = h + 1; S.genCount = 0; }
     else {
@@ -786,7 +798,7 @@ function stepSystem(S, env, h, seed, par, doy, ctx) {
       if (S.lowCount >= 12) { S.alive = false; S.endReason = 'moved over land'; S.end = h + 1; }
       else {
         // a disturbance that is not developing is carried off by cold water, by too high a latitude and by old age: hazards with a mean life of par.endH hours where the rule is fully on, not walls
-        const age = h + 1 - S.born, cold = S.sub && M ? 17 : 22, latW = M && S.dev < 0 ? smooth01(Math.abs(S.lat) - (S.kind === 'W' ? par.waveLatMax : par.seedLatMax), -2, 2) : 0;
+        const age = h + 1 - S.born, cold = S.sub && M ? par.subCold : par.seedCold, latW = M && S.dev < 0 ? smooth01(Math.abs(S.lat) - (S.kind === 'W' ? par.waveLatMax : par.seedLatMax), -2, 2) : 0;
         const wend = 1 - (1 - smooth01(cold - sst, -1, 1)) * (1 - smooth01(age, par.waveLife - 96, par.waveLife + 96)) * (1 - latW);
         const own = M && S.dev < 0 && S.life > 0 && age > S.life;                          // a seed's own drawn life, the end of a disturbance that never organised
         if (own || rnd(seed, id, h, ST.ENDH) < wend / par.endH) { S.alive = false; S.endReason = 'dissipated'; S.end = h + 1; }

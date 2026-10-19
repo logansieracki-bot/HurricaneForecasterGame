@@ -157,6 +157,7 @@ const STORM_API = {
     }
     return { max: fresh.max, nanMismatch: fresh.nanMismatch, nodes: fresh.nodes, live, interp, pts };
   },
-  stormEnvSample(lat, lon) { return { hour: kfFieldHour, land: stormLand(lat, lon), sst: stormEnv.sst(lat, lon), rh: sampleFieldS(kfHumid, lat, lon), shear: sampleFieldS(kfShear, lat, lon), lake: lakeIdAt(lat, lon) }; }
+  shadowEnso() { if (!shadow) shadowBuild(); return shadowEnv(simHour + 24).enso(); },                 // the Nino 3.4 index the Place preview's environment hands the engine (tests)
+  stormEnvSample(lat, lon) { return { hour: kfFieldHour, enso: stormEnv.enso(), land: stormLand(lat, lon), sst: stormEnv.sst(lat, lon), rh: sampleFieldS(kfHumid, lat, lon), shear: sampleFieldS(kfShear, lat, lon), lake: lakeIdAt(lat, lon) }; }
 };
 /* ==== STORM LATE END ==== */

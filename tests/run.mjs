@@ -792,6 +792,7 @@ async function checkPlace(page, label) {
   });
   check(`[${label}] the preview moves smoothly with the pointer: over ${sm.n} pairs of placements within half a degree, the 72-hour points are ${sm.median.toFixed(1)}x (median) and ${sm.p95.toFixed(1)}x (95th percentile) as far apart as the placements, ${(100 * sm.share8).toFixed(0)} % within 8x, none beyond ${sm.max.toFixed(1)}x`, sm.n > 150 && sm.share8 >= 0.95 && sm.max < 20);
   await ev(() => { window.SSTSIM.storms(false); window.SSTSIM.restart(); });
+  await checkStormEnso(page, label);
 }
 
 // The season summary: the Summary button in the season bar opens a card with the totals against the real normals, the accumulated cyclone
@@ -902,8 +903,8 @@ async function checkSummary(page, label) {
 // (STORM_SPECS) gives the spot of its three placed systems (a strong depression, a subtropical one, a low), the day of its season they go in on, the month and day its template starts on, and three seeds whose whole seasons are typical of the basin (from the lab's held-out run: tools/storm_basin.mjs, the mean of dep / named / hurricanes / ACE closest).
 const STORM_SPECS = {
   eastpacific: { td: [13, -108], sd: [25, -125], low: [32, -135], day: 213, start: [4, 15], seeds: [1295, 1248, 1274] },
-  westpacific: { td: [15, 135], sd: [28, 150], low: [38, 160], day: 212, start: [5, 1] },
-  nio: { td: [13, 88], sd: [22, 66], low: [18, 72], day: 275, start: [3, 1] },
+  westpacific: { td: [15, 135], sd: [28, 150], low: [38, 160], day: 212, start: [5, 1], seeds: [926, 902, 909] },
+  nio: { td: [14, 70], sd: [22, 66], low: [18, 72], day: 200, start: [3, 1], seeds: [913, 954, 943] },
   aus: { td: [-14, 125], sd: [-26, 112], low: [-34, 108], day: 215, start: [10, 1] },
   swio: { td: [-14, 70], sd: [-27, 62], low: [-34, 70], day: 215, start: [10, 1] },
   spac: { td: [-14, 185], sd: [-27, 195], low: [-34, 200], day: 215, start: [10, 1] },
@@ -961,6 +962,8 @@ async function checkStormsBasin(page, label, prefix) {
   check(`[${label}] Place: the clock is held, the picker is open (${pl.pressed}), the forecast at the pointer is ${pl.fixes} fixes ${pl.h1 - pl.h0} hours apart (it can fizzle early), and a click places a system (${pl.before} systems before, ${pl2.n} after)`,
     pl.pressed === 'true' && pl.menu && !pl.playing && pl.fixes >= 8 && pl.h1 - pl.h0 === 3 && pl2.n === pl.before + 1 && pl2.origin >= 1);
 
+  await checkStormEnso(page, label);
+
   // the stages: this basin's precursors (a basin without a wave train has local lows only), and the Tropical waves row
   const stage = await ev(() => { const S = window.SSTSIM; S.stormAuto(true); S.tick(24 * 10); S.advance(0); const st = S.stormState(); S.stormAuto(false); return { waves: st.seeds.W || 0, local: st.seeds.N || 0 }; });
   check(`[${label}] ${BI.waves ? 'it has easterly waves' : 'it has no easterly waves'} (${stage.waves} in ten more days) and local seeds supply its disturbances (${stage.local})`, BI.waves ? stage.waves > 0 : stage.waves === 0);
@@ -993,6 +996,15 @@ async function checkStormsBasin(page, label, prefix) {
   const seasonText = sc.year.replace(BI.label + ' ', ''), hw = BI.hurricane + (sc.stats.hurr === 1 ? '' : 's');
   check(`[${label}] the main menu's Continue card for a season saved here reads "${cardText.text.slice(0, 120)}": the basin, the season (${seasonText}), the named storms and the ${hw}`,
     !cardText.hidden && sc.meta.basin === BI.menu && cardText.text.includes(BI.label + ' ' + seasonText) && cardText.text.includes(sc.stats.named + ' named') && cardText.text.includes(sc.stats.hurr + ' ' + hw));
+}
+
+// El Nino reaches the storm engine through the page: the live environment hands it the Nino 3.4 index (the lab's engines and the live one read it there) and so does the shadow environment of the Place preview.
+async function checkStormEnso(page, label) {
+  const ev = (fn, arg) => page.evaluate(fn, arg);
+  const en = await ev(() => { const S = window.SSTSIM, chk = document.getElementById('enso-hold'), was = S.storms(); S.storms(true); chk.checked = true; chk.dispatchEvent(new Event('change')); const out = [];
+    for (const z of [1.7, -0.9]) { S.forceEnso(z); S.advance(1); out.push([S.enso().n34, S.stormEnvSample(0, 0).enso, S.shadowEnso()]); }
+    chk.checked = false; chk.dispatchEvent(new Event('change')); S.storms(was); return out; });
+  check(`[${label}] the storm environment and the Place preview's carry the Nino 3.4 index the page shows (${en.map((r) => r.map((x) => x.toFixed(2)).join(' / ')).join(', ')})`, en.every((r) => Math.abs(r[0] - r[1]) < 1e-9 && Math.abs(r[0] - r[2]) < 1e-9) && en[0][0] > 1.5 && en[1][0] < -0.5);
 }
 
 // The humidity and the wind shear answer El Nino, and carry their year-to-year (EOF) modes, with a gain that depends on the calendar month in the pages whose data have `seas` (tools/make_env_seasonality.py): the
@@ -2371,6 +2383,7 @@ await checkBasin('West Pacific', WPAC_DIST, async (page, label) => {
   await checkEnsoHold(page, label);
   await checkEnvSeasons(page, label, WPAC_DIST);
   await checkCityMarkers(page, label, 14.60, 120.98, 'Manila');
+  await checkStormsBasin(page, label, 'westpacific');
 });
 
 await checkBasin('North Indian Ocean', NIO_DIST, async (page, label) => {
@@ -2421,6 +2434,7 @@ await checkBasin('North Indian Ocean', NIO_DIST, async (page, label) => {
   await checkEnsoHold(page, label);
   await checkEnvSeasons(page, label, NIO_DIST);
   await checkCityMarkers(page, label, 19.08, 72.88, 'Mumbai');
+  await checkStormsBasin(page, label, 'nio');
 });
 
 await checkBasin('Australian Region', AUS_DIST, async (page, label) => {

@@ -3,7 +3,7 @@
 // that say how much of the potential wind a storm reaches and how fast it gains and loses it, where the sea, the humidity and the shear stop it, how often it intensifies rapidly -- the
 // maps (where disturbances develop, how storms drift) are fixed first by tools/storm_fit.mjs, and are the real ones.
 //
-//   node tools/storm_basin_opt.mjs <basin> --maps maps.json --seeds 601-624 --gens 25 --out opt.json [--pop 12] [--resume] [--free a,b] [--start values.json] [--weight 'ACE=3']
+//   node tools/storm_basin_opt.mjs <basin> --maps maps.json --seeds 601-624 --gens 25 --out opt.json [--pop 12] [--resume] [--free a,b] [--start values.json] [--weight 'ACE=3'] [--sub]
 //   node tools/storm_basin_opt.mjs <basin> --maps maps.json --rescore opt.json --seeds 851-898 --out best.json [--top 8] [--last 3]
 //       the loss of 24 seasons is noisy (a candidate that is best of its generation is partly lucky): the best few candidates of a run and the last means of its search are scored again on fresh seasons, in one lab run (they share the weather), and
 //       the one with the lowest loss there is written in the shape of opt.json's `best`, which tools/storm_basin_patch.mjs --opt takes
@@ -19,20 +19,24 @@ import { summarize } from './storm_basin.mjs';
 const C = globalThis.HFStorms.CALIBRATED;
 /* name, low, high, initial (the Atlantic's calibrated value), scale, patch */
 export const SPEC = [
-  ['vpScale', 0.7, 1.12, 1, 'lin'], ['kUp', 0.012, 0.07, C.kUp, 'log'], ['kDn', 0.03, 0.5, C.kDn, 'log'], ['sstLo', 22, 27.5, C.sstGate[0], 'lin'], ['rhLo', 42, 62, C.rhGate[0], 'lin'],
-  ['shearK', 1.4, 6.5, C.shearK, 'lin'], ['etaLo', 6, 26, C.etaLo, 'lin'], ['etaHi', 24, 30, C.etaHi, 'lin'], ['vpLat', 0, 0.8, C.vpLat, 'lin'], ['gCrit', 0.0, 0.22, C.gCrit, 'lin'], ['riHaz', 0.01, 0.25, C.ri.haz, 'log'], ['etB0', -10, -4.5, -6.1, 'lin'], ['latLo', 2, 10, 4, 'lin'],
-  // the spread between seasons and the response to El Nino: the size of the random season factor, how strongly the development rates follow the page's own humidity / shear / sea (a multiple of the Atlantic's coupling), and par.enso
+  ['vpScale', 0.7, 1.12, 1, 'lin'], ['kUp', 0.012, 0.07, C.kUp, 'log'], ['kDn', 0.01, 0.8, C.kDn, 'log'], ['sstLo', 20, 27.5, C.sstGate[0], 'lin'], ['rhLo', 30, 62, C.rhGate[0], 'lin'],
+  ['shearK', 1.4, 6.5, C.shearK, 'lin'], ['etaLo', 6, 26, C.etaLo, 'lin'], ['etaHi', 24, 31, C.etaHi, 'lin'], ['vpLat', 0, 0.95, C.vpLat, 'lin'], ['gCrit', 0.0, 0.22, C.gCrit, 'lin'], ['riHaz', 0.003, 0.25, C.ri.haz, 'log'], ['etB0', -10, -3.5, -6.1, 'lin'], ['latLo', 1, 10, 4, 'lin'],
+  // the share of depressions that become storms (a system is only declared a depression while its growth gate exceeds gCrit by tdMargin), the spread between seasons and the response to El Nino: the size of the random season factor, how strongly the development rates follow the page's own humidity / shear / sea (a multiple of the Atlantic's coupling), and par.enso
   // (activity a degree of Nino 3.4, genesis region moved east and north a degree: the real slopes of the record, data/generated/<basin>-tc-ref.json, are the targets and the start)
-  ['seasSd', 0, 0.35, 0.12, 'lin'], ['envScale', 0.15, 3, 1, 'log'], ['ensoAct', -0.7, 0.7, 0, 'lin'], ['ensoLon', -14, 14, 0, 'lin'], ['ensoLat', -5, 5, 0, 'lin'],
+  ['tdMargin', 0, 0.7, C.tdMargin, 'lin'], ['seasSd', 0, 0.35, 0.12, 'lin'], ['envScale', 0.05, 6, 1, 'log'], ['ensoAct', -0.7, 0.7, 0, 'lin'], ['ensoLon', -14, 14, 0, 'lin'], ['ensoLat', -5, 5, 0, 'lin'],
 ];
 const ENSO_PARAMS = ['ensoAct', 'ensoLon', 'ensoLat'];
+// a basin whose storms are mostly subtropical (the South Atlantic, the Mediterranean) also fits the subtropical class's own law (--sub, or a synthetic reference): the soft cap on its wind, its growth rate, its gate level and the shear it stands
+SPEC.push(['subVcap', 40, 110, 62, 'lin'], ['subKup', 0.003, 0.06, 0.012, 'log'], ['subGcrit', 0.05, 0.6, 0.30, 'lin'], ['subShear', 8, 70, 26, 'lin']);
+const SUB_PARAMS = ['subVcap', 'subKup', 'subGcrit', 'subShear'];
+let SUB_ON = false;
 const unit = (v, [, lo, hi, , sc]) => (sc === 'log' ? (Math.log(v) - Math.log(lo)) / (Math.log(hi) - Math.log(lo)) : (v - lo) / (hi - lo));
 const phys = (u, [, lo, hi, , sc]) => { const c = Math.min(1, Math.max(0, u)); return sc === 'log' ? Math.exp(Math.log(lo) + c * (Math.log(hi) - Math.log(lo))) : lo + c * (hi - lo); };
 let FREE = SPEC.slice(), FIXED = {};
 const configure = (names, fixed) => { FREE = names ? SPEC.filter((s) => names.includes(s[0])) : SPEC.slice(); FIXED = Object.fromEntries(SPEC.map((s) => [s[0], fixed && fixed[s[0]] != null ? fixed[s[0]] : s[3]])); };
 const toValues = (x) => Object.assign({}, FIXED, Object.fromEntries(FREE.map((s, i) => [s[0], phys(x[i], s)])));
 export const toPatch = (v) => ({ vpScale: v.vpScale, kUp: v.kUp, kDn: v.kDn, sstGate: [v.sstLo, v.sstLo + (C.sstGate[1] - C.sstGate[0])], rhGate: [v.rhLo, v.rhLo + (C.rhGate[1] - C.rhGate[0])], shearK: v.shearK, etaLo: v.etaLo, etaHi: v.etaHi, vpLat: v.vpLat, gCrit: v.gCrit, ri: { haz: v.riHaz }, etHaz: { b0: v.etB0 }, latGate: [v.latLo, v.latLo + 7],
-  act: { seasSd: v.seasSd }, envB: { rh: C.envB.rh * v.envScale, shear: C.envB.shear * v.envScale, sst: C.envB.sst * v.envScale, sstAbs: C.envB.sstAbs * v.envScale }, enso: { act: v.ensoAct, lon: v.ensoLon, lat: v.ensoLat } });
+  tdMargin: v.tdMargin, ...(SUB_ON ? { sub: { vCap: v.subVcap, kUp: v.subKup, gCrit: v.subGcrit, shearScale: v.subShear } } : {}), act: { seasSd: v.seasSd }, envB: { rh: C.envB.rh * v.envScale, shear: C.envB.shear * v.envScale, sst: C.envB.sst * v.envScale, sstAbs: C.envB.sstAbs * v.envScale }, enso: { act: v.ensoAct, lon: v.ensoLon, lat: v.ensoLat } });
 
 /* [label, value from a summary, target, standard deviation of a miss, weight] */
 export function targets(ref) {
@@ -64,7 +68,8 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const ref = JSON.parse(readFileSync(new URL(`../data/generated/${basin}-tc-ref.json`, import.meta.url), 'utf8'));
   const hasEnso = ref.enso.slope_lon != null;
   if (hasEnso) { SPEC.find((s) => s[0] === 'ensoLon')[3] = 0.6 * ref.enso.slope_lon; SPEC.find((s) => s[0] === 'ensoLat')[3] = 0.6 * ref.enso.slope_lat; }
-  configure((get('free') ? get('free').split(',') : SPEC.map((s) => s[0])).filter((k) => hasEnso || !ENSO_PARAMS.includes(k)), start);
+  SUB_ON = a.includes('--sub') || !!(ref.meta && ref.meta.synthetic);
+  configure((get('free') ? get('free').split(',') : SPEC.map((s) => s[0])).filter((k) => (hasEnso || !ENSO_PARAMS.includes(k)) && (SUB_ON || !SUB_PARAMS.includes(k))), start);
   const WEIGHTS = Object.fromEntries((get('weight') || '').split(';').filter(Boolean).map((kv) => { const i = kv.lastIndexOf('='); return [kv.slice(0, i), +kv.slice(i + 1)]; }));
   const T = targets(ref).map((t) => (WEIGHTS[t[0]] != null ? [t[0], t[1], t[2], t[3], WEIGHTS[t[0]]] : t));
   if (get('rescore')) {

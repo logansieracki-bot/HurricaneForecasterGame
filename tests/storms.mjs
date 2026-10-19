@@ -649,6 +649,13 @@ const LAND = (la, lo) => (lo > -16.3 && lo < 38 && la > 4 && la < 30) || (lo < -
     // a seed born at the shifted node stays inside the page
     const m = run(5, mpB, { lon: 80, lat: 0 }, 1, 24 * 20), inside = m.systems.every((S) => S.fixes.length === 0 || (S.lon <= 40 && S.lon >= -110));
     check('a shift that would take a seed past the edge of the box puts it just inside', inside && m.n.N > 0); }
+  // ---- the sea a subtropical disturbance needs (subSstOK, subCold, seedCold): the Atlantic's 19, 17 and 22 degC by default, the Mediterranean's hybrid cyclones form over 15-22 degC
+  { const seas = (extra) => { let dep = 0; for (let sd = 1; sd <= 24; sd++) {
+        const m = H.create({ seed: sd, startMs: Date.UTC(2026, 10, 1), auto: true, params: Object.assign({ waveRate0: 0, act: { seasSd: 0, intraSd: 0, K: 6, T: [14, 60] }, genGate: { sstSub: [12, 14] }, sub: { sstGate: [12, 14] } }, extra), maps: testMaps({ haz: 0, hazS: 0.01, spawn: (mo) => (mo === 10 ? 2 : 0) }) });
+        m.advanceTo(24 * 12, makeEnv({ sst: 16, shear: 8, rh: 62, steer: () => [0, 0, 0, 0, 0, 0] })); dep += m.systems.filter((S) => S.depNum > 0).length; } return dep; };
+    const none = seas({}), all = seas({ subSstOK: 13, subCold: 12, seedCold: 12 }), noOK = seas({ subCold: 12, seedCold: 12 }), noSub = seas({ subSstOK: 13, seedCold: 12 }), noSeed = seas({ subSstOK: 13, subCold: 12 });
+    check(`over 16 degC water a subtropical disturbance is declared a depression only when all three sea thresholds are lowered (24 seasons: ${all} with them lowered; ${none} with the Atlantic's, ${noOK} without the declaration's, ${noSub} without the developing system's cold-water loss, ${noSeed} without the undeveloped disturbance's, which most die before they can)`,
+      all >= 200 && none <= 1 && noOK <= 1 && noSub <= 1 && noSeed * 4 < all); }
   // ---- the lab's diagnostics, determinism, restore
   { const mp = testMaps({ haz: 0.004 }), e = makeEnv({ sst: 28.5, shear: 8, rh: 60, steer: () => [-8, 1, -8, 1, -8, 1] });
     const m = H.create({ seed: 3, startMs: Date.UTC(2026, 7, 1), maps: mp, params: { shearK: 1 } }); m.enableDiag(); m.advanceTo(24 * 20, e);
