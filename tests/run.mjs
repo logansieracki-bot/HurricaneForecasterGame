@@ -898,6 +898,97 @@ async function checkSummary(page, label) {
   await ev(() => { for (const id of ['stwaves', 'stlows', 'stdist']) { const c = document.getElementById(id); c.checked = true; c.dispatchEvent(new Event('change')); } window.SSTSIM.storms(false); window.SSTSIM.restart(); });
 }
 
+// The storm layer on a basin page other than the Atlantic (whose long version is above): the same system with the basin's season, names, tag and word for hurricane strength. A basin's entry
+// (STORM_SPECS) gives the spot of its three placed systems (a strong depression, a subtropical one, a low), the day of its season they go in on, the month and day its template starts on, and three seeds whose whole seasons are typical of the basin (from the lab's held-out run: tools/storm_basin.mjs, the mean of dep / named / hurricanes / ACE closest).
+const STORM_SPECS = {
+  eastpacific: { td: [13, -108], sd: [25, -125], low: [32, -135], day: 213, start: [4, 15], seeds: [1295, 1248, 1274] },
+  westpacific: { td: [15, 135], sd: [28, 150], low: [38, 160], day: 212, start: [5, 1] },
+  nio: { td: [13, 88], sd: [22, 66], low: [18, 72], day: 275, start: [3, 1] },
+  aus: { td: [-14, 125], sd: [-26, 112], low: [-34, 108], day: 215, start: [10, 1] },
+  swio: { td: [-14, 70], sd: [-27, 62], low: [-34, 70], day: 215, start: [10, 1] },
+  spac: { td: [-14, 185], sd: [-27, 195], low: [-34, 200], day: 215, start: [10, 1] },
+  satl: { td: [-24, -40], sd: [-28, -45], low: [-34, -40], day: 215, start: [10, 1] },
+  med: { td: [36, 18], sd: [38, 10], low: [41, 6], day: 92, start: [8, 1] },
+};
+async function checkStormsBasin(page, label, prefix) {
+  const ev = (fn, arg) => page.evaluate(fn, arg);
+  const sp = STORM_SPECS[prefix];
+  await import('../src/storms.js');
+  const H = globalThis.HFStorms, BI = H.basinInfo(prefix), tag = { hurricane: 'HURR', typhoon: 'TYPH', cyclone: 'CYC', medicane: 'MEDI' }[BI.hurricane], word = BI.hurricane[0].toUpperCase() + BI.hurricane.slice(1);
+  const ref = JSON.parse(readFileSync(join(ROOT, 'data/generated', `${prefix}-tc-ref.json`), 'utf8')).normals;
+  const a = await ev(() => {
+    const S = window.SSTSIM; S.setPlaying(false); S.applySeed(4242); S.setPlaying(false); S.storms(true); S.stormAuto(false);
+    const bar = document.getElementById('season');
+    return { on: S.storms(), shown: getComputedStyle(bar).display !== 'none', text: bar.innerText.replace(/\s+/g, ' ').trim(), year: document.getElementById('se-year').textContent, state: S.stormState(), mk: S.stormMapsKeys(), canvas: !!document.getElementById('storm-canvas') };
+  });
+  check(`[${label}] the page carries the climatology maps the engine is anchored to (${(a.mk || []).join(', ')})`, !!a.mk && ['drift', 'steerClim', 'haz', 'spawn', 'env0'].every((k) => a.mk.includes(k)));
+  const barRe = new RegExp(`^${BI.label} (\\d{4}${BI.seasonMonth ? '–\\d{2}' : ''}) 0 ?DEP 0 ?NAMED 0 ?${tag} 0 ?MAJOR 0 ?CAT 5 0\\.0 ?ACE ?Summary$`), yr = (barRe.exec(a.text) || [])[1];
+  check(`[${label}] the season bar shows "${a.text}" before anything has formed (the ${BI.seasonMonth ? 'southern season is named for the year it starts in, 2026–27' : 'season is the calendar year'}; the count of ${BI.hurricane}s is tagged ${tag})`, a.on === true && a.shown && !!yr && a.canvas && a.state.systems.length === 0);
+  const seasonYear = yr ? +yr.slice(0, 4) : 0;
+
+  // hand-placed systems: a strong depression, a subtropical one, a low, in the middle of the basin's season
+  const b = await ev((q) => {
+    const S = window.SSTSIM; S.tick(24 * q.day);
+    const ids = [S.stormPlace({ kind: 'td', lat: q.td[0], lon: q.td[1], v: 60 }), S.stormPlace({ kind: 'sd', lat: q.sd[0], lon: q.sd[1], v: 40 }), S.stormPlace({ kind: 'low', lat: q.low[0], lon: q.low[1], v: 35 })];
+    S.tick(12); S.advance(0);
+    const st = S.stormState(), by = Object.fromEntries(st.systems.map((x) => [x.id, x]));
+    return { ids, st, by, bar: ['se-dep', 'se-named', 'se-hurr', 'se-major', 'se-c5', 'se-ace'].map((id) => document.getElementById(id).textContent) };
+  }, sp);
+  const [i1, , i3] = b.ids, s1 = b.by[i1], s3 = b.by[i3], first = H.stormName(prefix, seasonYear, 0, {}, sp.td[1] > 180 ? sp.td[1] - 360 : sp.td[1]);
+  check(`[${label}] a placed tropical depression gets a depression number and the first name of the season's list at its first advisory fix (${s1.name || '-'}, expected ${first}; dep ${s1.depNum}), a placed low stays a low (${s3.st})`, s1.depNum >= 1 && s1.name === first && s3.th === 'nl' && s3.depNum === 0);
+  check(`[${label}] the season bar follows the counters: DEP ${b.bar[0]}, NAMED ${b.bar[1]}, ACE ${b.bar[5]} (stats ${JSON.stringify(b.st.stats)})`, +b.bar[0] === b.st.stats.dep && +b.bar[1] === b.st.stats.named && +b.bar[5] === b.st.stats.ace && b.st.stats.dep >= 1 && b.st.stats.named >= 1);
+
+  // hover and click on a strong storm: the local word for hurricane strength in the tooltip and the stat card
+  await ev(([id, lat, lon]) => { const S = window.SSTSIM; S.map.setView([lat, lon], 4, { animate: false }); S.stormForce(id, { th: 'tc', v: 105, vr: 105, p: 946 }); S.stormDraw(); }, [i1, s1.lat, s1.lon]);
+  const px = await ev((id) => window.SSTSIM.stormPx(id), i1);
+  await page.mouse.move(px.x - 40, px.y - 40); await page.mouse.move(px.x, px.y, { steps: 4 });
+  await page.waitForTimeout(150);
+  const tip = await ev(() => { const t = document.getElementById('storm-tip'); return { shown: t.style.display === 'block', text: t.innerText.replace(/\n/g, ' | ') }; });
+  check(`[${label}] hovering a storm shows its card tooltip with the local word: ${tip.text}`, tip.shown && tip.text.includes(first) && new RegExp(`Major ${word} \\(Cat 3\\)`).test(tip.text) && /120 mph \(105 kt\)/.test(tip.text) && /946 hPa/.test(tip.text) && (word === 'Hurricane' || !/hurricane/i.test(tip.text)));
+  await page.mouse.click(px.x, px.y); await page.waitForTimeout(250);
+  const card = await ev(() => { const c = document.getElementById('storm-card'), g = (id) => document.getElementById(id).textContent; return { hidden: c.hidden, name: g('sc-name'), cat: g('sc-cat'), mph: g('sc-mph'), p: g('sc-p') }; });
+  check(`[${label}] clicking it opens the stat card (${card.name}, ${card.cat}, ${card.mph} mph, ${card.p} hPa)`, !card.hidden && card.name === first && new RegExp(`Major ${word}`).test(card.cat) && card.mph === '120' && card.p === '946');
+  await page.keyboard.press('Escape'); await page.waitForTimeout(100);
+
+  // Place mode in this basin: the button holds the clock and opens the picker, at the pointer the forecast is a line of three-hourly fixes (seven days), a click puts the system there and the clock goes on
+  const pl = await ev((q) => {
+    const S = window.SSTSIM; S.setPlaying(true); document.getElementById('b-place').click(); S.place(true, 'td');
+    const p = S.placeAt(q.td[0], q.td[1]), m = S.placePx(q.td[0], q.td[1]);
+    return { pressed: document.getElementById('b-place').getAttribute('aria-pressed'), menu: !document.getElementById('place-menu').hidden, playing: document.getElementById('ic-pause').style.display !== 'none', fixes: p.fixes.length, h0: p.fixes[0].h, h1: p.fixes[1].h, x: m.x, y: m.y, before: S.stormState().systems.length };
+  }, sp);
+  await page.mouse.move(pl.x - 20, pl.y - 20); await page.mouse.move(pl.x, pl.y, { steps: 3 }); await page.mouse.click(pl.x, pl.y); await page.waitForTimeout(250);
+  const pl2 = await ev(() => { const S = window.SSTSIM, st = S.stormState(); S.place(false); return { n: st.systems.length, origin: st.systems.map((x) => x.origin).filter((o) => /^placed/.test(o)).length }; });
+  check(`[${label}] Place: the clock is held, the picker is open (${pl.pressed}), the forecast at the pointer is ${pl.fixes} fixes ${pl.h1 - pl.h0} hours apart (it can fizzle early), and a click places a system (${pl.before} systems before, ${pl2.n} after)`,
+    pl.pressed === 'true' && pl.menu && !pl.playing && pl.fixes >= 8 && pl.h1 - pl.h0 === 3 && pl2.n === pl.before + 1 && pl2.origin >= 1);
+
+  // the stages: this basin's precursors (a basin without a wave train has local lows only), and the Tropical waves row
+  const stage = await ev(() => { const S = window.SSTSIM; S.stormAuto(true); S.tick(24 * 10); S.advance(0); const st = S.stormState(); S.stormAuto(false); return { waves: st.seeds.W || 0, local: st.seeds.N || 0 }; });
+  check(`[${label}] ${BI.waves ? 'it has easterly waves' : 'it has no easterly waves'} (${stage.waves} in ten more days) and local seeds supply its disturbances (${stage.local})`, BI.waves ? stage.waves > 0 : stage.waves === 0);
+
+  // whole seasons through the page, each from the first day of the basin's season (the lab calendar), against the real normals of the storms that form inside this page
+  const seas = await ev((q) => {
+    const S = window.SSTSIM, out = []; S.stormLabCalendar(q.sm, 1);
+    for (const seed of q.seeds) { S.applySeed(seed); S.setPlaying(false); S.stormAuto(true); S.tick(24 * 364); S.advance(0); out.push(S.stormState().stats); }
+    S.stormAuto(false); S.stormLabCalendar(q.start[0], q.start[1]); S.applySeed(4242); S.setPlaying(false);
+    return out;
+  }, { sm: BI.seasonMonth, start: sp.start, seeds: sp.seeds });
+  const mn = (k) => seas.reduce((x, y) => x + y[k], 0) / seas.length;
+  check(`[${label}] three whole seasons through the page look like the real ${BI.label}: ${mn('dep').toFixed(1)} depressions, ${mn('named').toFixed(1)} named storms, ${mn('hurr').toFixed(1)} ${BI.hurricane}s, ${mn('major').toFixed(1)} majors, ACE ${mn('ace').toFixed(0)} on average (real ${ref.tracks} / ${ref.named} / ${ref.hurricanes} / ${ref.majors} / ${Math.round(ref.ace_mean)}; seasons: ${seas.map((x) => x.named + '/' + x.hurr + '/' + x.major + '/' + Math.round(x.ace)).join(', ')} named/${BI.hurricane}s/majors/ACE)`,
+    mn('named') >= 0.55 * ref.named && mn('named') <= 1.6 * ref.named && mn('hurr') >= 0.45 * ref.hurricanes && mn('hurr') <= 1.9 * ref.hurricanes && mn('ace') >= 0.45 * ref.ace_mean && mn('ace') <= 1.9 * ref.ace_mean && seas.every((x) => x.named >= 1));
+
+  // save and resume in this basin: a season saved at a midnight continues bit for bit like the uninterrupted one
+  const sv = await ev((q) => {
+    const S = window.SSTSIM; S.stormLabCalendar(q.sm, 1); S.applySeed(31); S.setPlaying(false); S.stormAuto(true); S.tick(24 * q.day); S.advance(0);
+    S.stormPlace({ kind: 'td', lat: q.td[0], lon: q.td[1], v: 45 }); S.tick(24 * 3); S.advance(0);
+    S.snapSave(); S.tick(24 * 6); S.advance(0); const a = S.stormJSON(), ha = S.state().simHour;
+    S.snapLoad(); const mid = S.state().simHour; S.tick(24 * 6); S.advance(0); const b = S.stormJSON();
+    S.stormAuto(false); S.stormLabCalendar(q.start[0], q.start[1]); S.applySeed(4242); S.setPlaying(false);
+    return { same: a === b, ha, mid, kb: Math.round(a.length / 1024) };
+  }, { sm: BI.seasonMonth, start: sp.start, day: Math.min(sp.day, 120), td: sp.td });
+  check(`[${label}] a season saved at a midnight (hour ${sv.mid}) and resumed continues bit for bit like the uninterrupted one (${sv.kb} KB of storms)`, sv.same && sv.mid < sv.ha);
+  await ev(() => { window.SSTSIM.storms(false); window.SSTSIM.restart(); });
+}
+
 // A basin's storm system is switched on by its data (storms.maps in its data file, src/storm-hooks.js STORMS_READY): the page is then on by default and shows the storm controls; until then it runs
 // the plain simulation and shows none of them (the Menu button is there either way). Called on a freshly loaded page by checkBasin for every basin.
 async function checkStormGate(page, label, dist) {
@@ -2174,6 +2265,7 @@ await checkBasin('East Pacific', EPAC_DIST, async (page, label) => {
   await checkSteering(page, label, STEER_SPECS.eastpacific);
   await checkEnsoHold(page, label);
   await checkCityMarkers(page, label, 16.86, -99.88, 'Acapulco');
+  await checkStormsBasin(page, label, 'eastpacific');
 });
 
 await checkBasin('West Pacific', WPAC_DIST, async (page, label) => {

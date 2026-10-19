@@ -53,6 +53,7 @@ export function summarize(raw, basin) {
       depLat: [0.02, 0.05, 0.1, 0.25, 0.5, 0.75, 0.95].map((q) => quant(storms.filter((x) => x.gen).map((x) => x.gen[0]), q)),
       genLat: [0.05, 0.25, 0.5, 0.75, 0.95].map((q) => quant(named.filter((x) => x.genN).map((x) => x.genN[0]), q)), genLon: [0.05, 0.25, 0.5, 0.75, 0.95].map((q) => quant(named.filter((x) => x.genN).map((x) => x.genN[1]), q)),
       peakMean: mean(named.map((x) => x.peak)), maxLat: quant(named.map((x) => Math.abs(x.maxLat)), 0.9),
+      hurrLat: [0.01, 0.05, 0.25, 0.5, 0.75].map((q) => quant(storms.flatMap((x) => x.rows).filter((r) => r[2] >= 64 && r[8] % 6 === 0).map((r) => Math.abs(r[0])), q)),
     };
     const lw = S.flatMap((s) => s.r.lows || []).filter((x) => x[1] >= 3); o.lowsPerSeason = lw.length / n;
     const ends = {}; for (const x of named) { const k = (x.end || '').replace(/ .*/, '') || '?'; ends[k] = (ends[k] || 0) + 1; } o.ends = Object.fromEntries(Object.entries(ends).map(([k, v]) => [k, v / Math.max(1, named.length)]));
@@ -92,6 +93,7 @@ export function report(raw, basin, only) {
   row('cat 5 share of named', col((o) => o.cat5OfNamed, 3), f1(ref.peak.frac_ge137, 3));
   row('named share of depressions', col((o) => o.namedOfDep, 2), f1(g.named_of_depressions, 2));
   row('mean peak of named (kt)', col((o) => o.peakMean, 0), f1(ref.peak.mean, 0));
+  if (ref.hurr_rows) row('|lat| of 64-kt rows q1/5/25/50/75', names.map((k) => res[k].hurrLat.map((x) => f1(x, 0)).join('/')), ref.hurr_rows.abslat_quantiles.map((x) => f1(x, 0)).join('/'));
   row('RI share of 24-h windows', col((o) => o.riFrac, 3), f1(ref.intensity_change.ri_frac_all, 3));
   row('hurricanes with RI', col((o) => o.riOfHurr, 2), f1(ref.intensity_change.ri_track_fractions.HU.frac, 2));
   row('mean named days / <2 d share', names.map((k) => `${f1(res[k].namedDays, 1)}/${f1(res[k].short2d, 2)}`), `${ref.lifetime.mean_named_days}/${ref.lifetime.short_lived_lt_2d}`);

@@ -103,6 +103,8 @@ function computeStormFields(oS, oH, oSh) {
 }
 
 const BI = HFStorms.basinInfo(STORM_BASIN), SM = BI.seasonMonth;      // STORM_BASIN is this page's basin (the template says which); BI: its label, season, words, region (src/storms.js, BASINS); SM: the month its season starts (0 January, 6 July)
+const HURR_TAG = { hurricane: 'HURR', typhoon: 'TYPH', cyclone: 'CYC', medicane: 'MEDI' }[BI.hurricane] || 'HURR';      // the season bar's and the summary's short word for the hurricane-strength count
+{ const e = $('se-hurr'); if (e && e.nextSibling) e.nextSibling.textContent = HURR_TAG; }
 const hurrWord = (t) => (BI.hurricane === 'hurricane' ? t : t.replace(/Hurricane/g, BI.hurricane[0].toUpperCase() + BI.hurricane.slice(1)).replace(/hurricane/g, BI.hurricane));      // the local word for a hurricane-strength cyclone
 const seasonLabel = (y) => (SM ? y + '\u2013' + String((y + 1) % 100).padStart(2, '0') : String(y));      // 2026, or 2026-27 for a southern season
 const stormCanvas = makeCanvas(461); stormCanvas.id = 'storm-canvas';
@@ -695,7 +697,7 @@ function fillSummary() {
   $('sum-title').textContent = BI.label + ' ' + seasonLabel(rec.year);
   const n = SUM ? SUM.normals : null;
   $('sum-sub').textContent = (rec.current ? 'Season so far, to ' + sumDay(rec.year, rec.day) : rec.open ? 'Season over, a storm is still active' : 'Season complete') + (rec.from > 0 ? ' · counted from ' + sumDay(rec.year, rec.from) : '');
-  const cells = [['DEP', rec.dep, n && n.dep], ['NAMED', rec.named, n && n.named], ['HURR', rec.hurr, n && n.hurr], ['MAJOR', rec.major, n && n.major], ['CAT 5', rec.cat5, n && n.cat5], ['ACE', sumF1(rec.ace), n && n.ace]];
+  const cells = [['DEP', rec.dep, n && n.dep], ['NAMED', rec.named, n && n.named], [HURR_TAG, rec.hurr, n && n.hurr], ['MAJOR', rec.major, n && n.major], ['CAT 5', rec.cat5, n && n.cat5], ['ACE', sumF1(rec.ace), n && n.ace]];
   $('sum-tot').innerHTML = cells.map(([k, v, a]) => '<div><b>' + v + '</b><span>' + k + '</span><small>' + (a == null ? '' : 'avg ' + sumF1(a)) + '</small></div>').join('');
   drawSumGraph(rec);
   const tb = $('sum-table').querySelector('tbody'); tb.innerHTML = '';

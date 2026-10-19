@@ -142,7 +142,7 @@ function showSave() {
   $('shell').classList.toggle('has-save', !!save); $('continue').hidden = !save;
   if (save) {
     $('rs-name').textContent = save.name + ' ' + (save.season || save.year);
-    $('rs-desc').textContent = 'Simulation · ' + save.date + ' · ' + save.named + ' named, ' + save.hurr + ' hurricane' + (save.hurr === 1 ? '' : 's') + ' · ACE ' + save.ace.toFixed(1);
+    $('rs-desc').textContent = 'Simulation · ' + save.date + ' · ' + save.named + ' named, ' + save.hurr + ' ' + (save.word || 'hurricane') + (save.hurr === 1 ? '' : 's') + ' · ACE ' + save.ace.toFixed(1);
     $('rs-when').textContent = 'Saved ' + ago(save.savedAt);
   }
   $('rs-del').textContent = 'Discard this season';

@@ -183,7 +183,7 @@ def genesis_stats(tr, years):
     t = [q for q in tr if q["season"] in years]
     nm = [q for q in t if q["named"]]
     return dict(named_by_month=by_month([q["n_time"] for q in nm], ny), depression_by_month=by_month([q["t0"] for q in t], ny),
-                depression_lat_quantiles=quantiles([q["td_lat"] for q in t], (2, 5, 10, 25, 50, 75, 95), 1), depression_lon_quantiles=quantiles([q["td_lon"] for q in t], (5, 25, 50, 75, 95), 1),
+                depression_lat_quantiles=quantiles([q["td_lat"] for q in t], (2, 5, 10, 25, 50, 75, 95), 1), depression_abslat_quantiles=quantiles([abs(q["td_lat"]) for q in t], (2, 5, 10, 25, 50, 75, 95), 1), depression_lon_quantiles=quantiles([q["td_lon"] for q in t], (5, 25, 50, 75, 95), 1),
                 named_lat_quantiles=quantiles([q["n_lat"] for q in nm], (5, 25, 50, 75, 95), 1), named_lon_quantiles=quantiles([q["n_lon"] for q in nm], (5, 25, 50, 75, 95), 1),
                 depression_count=len(t), named_of_depressions=r(len(nm) / max(1, len(t)), 3),
                 td_to_ts_hours_quantiles=quantiles([float((q["n_i"]) * 6) for q in nm], (10, 25, 50, 75, 90), 0))
@@ -237,6 +237,12 @@ def motion_stats(tr, years):
         out[label] = bands
     out["all_tc_speed_quantiles"] = quantiles(d.spd, (5, 25, 50, 75, 95), 1)
     return out
+
+
+def hurr_lat_stats(tr, years):
+    """where the hurricane-strength rows are: |latitude| quantiles of the synoptic tropical rows of 64 kt or more (the equatorward edge of intense cyclones: the Coriolis limit the engine's growth gate stands in for)"""
+    la = np.array([abs(q["lat"][k]) for q in tr if q["season"] in years for k in range(len(q["t"])) if q["trop"][k] and q["w"][k] >= 64])
+    return dict(n=int(len(la)), abslat_quantiles=quantiles(la, (1, 5, 25, 50, 75), 1)) if len(la) else dict(n=0, abslat_quantiles=[None] * 5)
 
 
 def peak_stats(tr, years):
@@ -401,7 +407,7 @@ def main():
     refj = dict(meta=dict(source=f"PyPI huracanpy {ref.WHEEL_VERSION} (IBTrACS-derived tables, JTWC 1-minute winds, 00/06/12/18 UTC)", wheel_sha256=ref.WHEEL_SHA256, generator="tools/make_tc_basin.py", basin=basin,
                           normals=[years[0], years[-1]], seasonMonth=month, tracks=len(tr), tracks_outside_region=int(outside), definitions="by wind: named >= 34 kt, hurricane-strength >= 64, major >= 96, cat 5 >= 137; depression = first tropical row >= 25 kt; ACE over tropical rows >= 34 kt"),
                 normals=nrm, genesis=gen, ace_curve=ace_c, named_curve=named_c, intensity_change=intensity_change(tr, years), motion=motion_stats(tr, years), lifetime=lifetime_stats(tr, years),
-                peak=peak_stats(tr, years), status=status_stats(tr, years), enso=enso_composites(st_all, B))
+                peak=peak_stats(tr, years), hurr_rows=hurr_lat_stats(tr, years), status=status_stats(tr, years), enso=enso_composites(st_all, B))
     ev = []
     for q in tr:
         if gy0 <= q["season"] <= gy1:

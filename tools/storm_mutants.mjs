@@ -21,6 +21,7 @@ const only = args.includes('--only') ? args[args.indexOf('--only') + 1].split(',
 const jobs = args.includes('--jobs') ? +args[args.indexOf('--jobs') + 1] : 3;
 const drivers = args.includes('--drivers') ? args[args.indexOf('--drivers') + 1].split(',') : null;
 
+const GATE_BASIN = ['westpacific', 'nio', 'aus', 'swio', 'spac', 'satl', 'med', 'eastpacific'].find((b) => { const d = JSON.parse(readFileSync(join(REPO, 'data/generated', `${b}-data.json`), 'utf8')); return !(d.storms && d.storms.maps); }) || 'eastpacific';      // the page the 'gate' driver loads: one without storm climatology yet
 const M = (id, file, edits, drivers, what) => ({ id, file, edits, drivers, what });
 const E = (find, repl) => ({ find, repl }), R = (re, repl) => ({ re, repl });
 const T = 'src/template.html', S = 'src/storms.js', I = 'index.html';
@@ -33,7 +34,7 @@ const mutants = [
   M('E5', S, [E('const byDep = (a, b) => a.depNum - b.depNum', 'const byDep = (a, b) => b.depNum - a.depNum')], ['node', 'summary'], 'cyclones listed newest first'),
   M('E6', S, [E('ace: S.ace, end: S.end', 'ace: Math.round(S.ace * 100) / 100, end: S.end')], ['node', 'summary'], 'a storm summary rounds its ACE twice'),
   M('U1', T, [E("['DEP', rec.dep, n && n.dep], ['NAMED', rec.named, n && n.named]", "['DEP', rec.named, n && n.dep], ['NAMED', rec.dep, n && n.named]")], ['summary'], 'DEP and NAMED totals swapped on the card'),
-  M('U1b', T, [E("['HURR', rec.hurr, n && n.hurr], ['MAJOR', rec.major, n && n.major]", "['HURR', rec.major, n && n.hurr], ['MAJOR', rec.hurr, n && n.major]")], ['summary'], 'HURR and MAJOR totals swapped on the card'),
+  M('U1b', T, [E("[HURR_TAG, rec.hurr, n && n.hurr], ['MAJOR', rec.major, n && n.major]", "[HURR_TAG, rec.major, n && n.hurr], ['MAJOR', rec.hurr, n && n.major]")], ['summary'], 'HURR and MAJOR totals swapped on the card'),
   M('U1c', T, [E("['MAJOR', rec.major, n && n.major], ['CAT 5', rec.cat5, n && n.cat5]", "['MAJOR', rec.cat5, n && n.major], ['CAT 5', rec.major, n && n.cat5]")], ['summary'], 'MAJOR and CAT 5 totals swapped on the card'),
   M('U2', T, [E("band('p10', 'p90', 'rgba(127,166,255,.13)'); band('p25', 'p75', 'rgba(127,166,255,.22)');", '')], ['summary'], 'the real bands are not drawn'),
   M('U3', T, [E('  openSummary(e.year);\n}', '}')], ['summary'], 'the card does not open at the turn of the year'),
@@ -122,6 +123,7 @@ const mutants = [
   M('Z21', S, [E('ty = par.steerScale * ((1 - a) * vm + a * vd) + hs * (par.driftV[0]', 'ty = par.steerScale * ((1 - a) * vm + a * vd) + (par.driftV[0]')], ['node'], 'a southern cyclone drifts toward the equator'),
   M('Z22', S, [E("aus:         { label: 'Australian Region', menu: 'aus', seasonMonth: 6,", "aus:         { label: 'Australian Region', menu: 'aus', seasonMonth: 0,")], ['node'], 'a southern season turns over on Jan 1'),
   M('Z23', S, [E("const k = cursors.seq = (cursors.seq == null ? N.start : cursors.seq + 1); return N.list[k % N.list.length];", "const k = cursors.seq = N.start; return N.list[k % N.list.length];")], ['node'], 'a sequential name list starts again with every storm'),
+  M('Z25', S, [E('return useCalibrated && B && B.params ? mergeParams(base, B.params) : base;', 'return base;')], ['node'], 'a basin\'s fitted physics is not applied'),
   M('Z24', S, [E("if (N.west && lon != null && lon > -180 && lon < N.west.lon)", "if (false)")], ['node'], 'the East Pacific never takes a Central Pacific name'),
   M('Z11', T, [E('const k = j * NX + i; return land[k] === 1 && lakeGrid[k] === 0;', 'const k = j * NX + i; return land[k] === 1;')], ['storms'], 'a lake is land for a storm'),
   M('Z12', T, [E('sst: (la, lo) => { const id = lakeIdAt(la, lo); return id ? kfLake[id - 1] : sampleFieldS(kfSst, la, lo); },', 'sst: (la, lo) => sampleFieldS(kfSst, la, lo),')], ['storms'], 'a lake has the land\'s temperature for the storms'),
@@ -170,10 +172,11 @@ function makeDriver(which) {
     ? `const browser = await chromium.launch(launchOpts);
 const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
 await page.route('**://**/*', (route) => route.request().url().startsWith('file://') ? route.continue() : route.abort());
-await page.goto(pathToFileURL(EPAC_DIST).href, { waitUntil: 'load', timeout: 30000 });
+const GATE_DIST = join(ROOT, 'dist/${GATE_BASIN}-sst-simulator.html');
+await page.goto(pathToFileURL(GATE_DIST).href, { waitUntil: 'load', timeout: 30000 });
 await page.waitForFunction(() => window.__ready === true, { timeout: 30000 });
 await page.waitForTimeout(800);
-await checkStormGate(page, 'East Pacific', EPAC_DIST);
+await checkStormGate(page, '${GATE_BASIN}', GATE_DIST);
 await browser.close();
 `
     : `const browser = await chromium.launch(launchOpts);
@@ -194,7 +197,7 @@ await browser.close();
 function snapshot(id, mutatedIndexHtml) {
   const dir = join(OUT, id); rmSync(dir, { recursive: true, force: true });
   for (const d of ['dist', 'tests', 'src']) mkdirSync(join(dir, d), { recursive: true });
-  for (const f of ['atlantic', 'eastpacific']) copyFileSync(join(REPO, `dist/${f}-sst-simulator.html`), join(dir, `dist/${f}-sst-simulator.html`));
+  for (const f of new Set(['atlantic', GATE_BASIN])) copyFileSync(join(REPO, `dist/${f}-sst-simulator.html`), join(dir, `dist/${f}-sst-simulator.html`));
   if (!existsSync(join(dir, 'data'))) symlinkSync(join(REPO, 'data'), join(dir, 'data'));
   writeFileSync(join(dir, 'index.html'), mutatedIndexHtml);
   copyFileSync(join(REPO, 'package.json'), join(dir, 'package.json'));

@@ -36,7 +36,7 @@ function captureSave() {
 }
 function saveMeta(s) {
   const st = stormMgr.stats(), d = simDate(simHour);
-  return { v: SAVE_V, basin: BI.menu, name: BI.label, year: st.year, season: seasonLabel(st.year), hour: simHour, date: MON[d.getUTCMonth()] + ' ' + d.getUTCDate(), dep: st.dep, named: st.named, hurr: st.hurr, major: st.major, ace: st.ace, savedAt: s.savedAt };
+  return { v: SAVE_V, basin: BI.menu, name: BI.label, year: st.year, season: seasonLabel(st.year), hour: simHour, date: MON[d.getUTCMonth()] + ' ' + d.getUTCDate(), dep: st.dep, named: st.named, hurr: st.hurr, word: BI.hurricane, major: st.major, ace: st.ace, savedAt: s.savedAt };
 }
 function saveNow() {
   if (!saveOwner || !stormsOn || !stormMgr || simHour < 24) return false;        // a season nobody has played for a day is not worth a Continue card

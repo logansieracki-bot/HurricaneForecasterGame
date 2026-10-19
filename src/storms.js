@@ -147,16 +147,26 @@ const SW_SETS = [
 const SP_NAMES = ['Ana', 'Bina', 'Cody', 'Dovi', 'Eva', 'Fili', 'Gina', 'Hale', 'Irene', 'Judy', 'Kevin', 'Lola', 'Mal', 'Nat', 'Olo', 'Pita', 'Rae', 'Sera', 'Tam', 'Uesi', 'Vania', 'Wesi', 'Yani', 'Zita'];
 const SA_NAMES = ['Arani', 'Bapo', 'Cari', 'Deni', 'Ecai', 'Guara', 'Iba', 'Jaguar', 'Kurumi', 'Mani', 'Oquira', 'Potira', 'Raoni', 'Sepe', 'Tupa', 'Uba', 'Vitoria', 'Waima', 'Yara', 'Zeca'];
 const MED_NAMES = ['Zorbas', 'Ianos', 'Daniel', 'Apollo', 'Celeno', 'Numa', 'Leucosia', 'Rolf', 'Elaina', 'Quirinus', 'Trixie', 'Cassilda', 'Helios', 'Medea', 'Nostos', 'Oceanis', 'Pontos', 'Selene'];
+/* The fitted physics of each basin: the Atlantic's calibrated law (CALIBRATED) is the base, a basin's entry holds what its own best track asked to be different (tools/storm_basin_opt.mjs, CMA-ES on the
+   intensity law; the genesis latitude gates from the latitudes where its depressions really form; docs/roadmap.md, milestone 10). tools/storm_basin_patch.mjs writes this block. */
+/* ==== BASIN PARAMS BEGIN ==== */
+const BASIN_PARAMS = {
+  eastpacific: {
+    vpScale: 1.025, kUp: 0.02206, kDn: 0.2593, sstGate: [24.51, 27.04], rhGate: [53.21, 63.31], shearK: 1.822, etaLo: 16.47, etaHi: 24.07, vpLat: 0.5855, gCrit: 0.0176,
+    ri: { haz: 0.09609 }, etHaz: { b0: -6.68 }, genGate: { lat: [6.9, 10.8] }, latGate: [6.189, 13.19],
+  },
+};
+/* ==== BASIN PARAMS END ==== */
 const BASINS = {
-  atlantic:    { label: 'Atlantic', menu: 'atlantic', seasonMonth: 0, waves: true, hurricane: 'hurricane', lowLat0: 18, mdr: { lat: [10, 20], lon: [-80, -20] }, names: { type: 'yearly', base: 2021, lists: NAME_SETS, extra: NAME_SUPPLEMENTAL, verified: false }, params: {} },
-  eastpacific: { label: 'Eastern Pacific', menu: 'epac', seasonMonth: 0, waves: false, hurricane: 'hurricane', lowLat0: 8, mdr: { lat: [8, 18], lon: [-125, -95] }, names: { type: 'yearly', base: 2020, lists: EP_SETS, extra: EP_EXTRA, west: { lon: -140, seq: CP_NAMES, start: 5 }, verified: false }, params: {} },
-  westpacific: { label: 'Western Pacific', menu: 'wpac', seasonMonth: 0, waves: false, hurricane: 'typhoon', lowLat0: 5, mdr: { lat: [8, 20], lon: [130, 165] }, names: { type: 'seq', list: WP_NAMES, start: 61, verified: false }, params: {} },
-  nio:         { label: 'North Indian Ocean', menu: 'nio', seasonMonth: 0, waves: false, hurricane: 'cyclone', lowLat0: 5, mdr: { lat: [8, 18], lon: [60, 95] }, names: { type: 'seq', list: NI_NAMES, start: 26, verified: false }, params: {} },
-  aus:         { label: 'Australian Region', menu: 'aus', seasonMonth: 6, waves: false, hurricane: 'cyclone', lowLat0: 5, mdr: { lat: [-18, -8], lon: [105, 150] }, names: { type: 'seq', list: AU_NAMES, start: 0, verified: false }, params: {} },
-  swio:        { label: 'South-West Indian Ocean', menu: 'swio', seasonMonth: 6, waves: false, hurricane: 'cyclone', lowLat0: 5, mdr: { lat: [-20, -8], lon: [50, 90] }, names: { type: 'yearly', base: 2021, lists: SW_SETS, extra: NAME_SUPPLEMENTAL, verified: false }, params: {} },
-  spac:        { label: 'South Pacific', menu: 'spac', seasonMonth: 6, waves: false, hurricane: 'cyclone', lowLat0: 5, mdr: { lat: [-20, -8], lon: [160, 210] }, names: { type: 'seq', list: SP_NAMES, start: 0, verified: false }, params: {} },
-  satl:        { label: 'South Atlantic', menu: 'satl', seasonMonth: 6, waves: false, hurricane: 'cyclone', lowLat0: 15, mdr: { lat: [-32, -20], lon: [-50, -30] }, names: { type: 'seq', list: SA_NAMES, start: 12, verified: false }, params: {} },
-  med:         { label: 'Mediterranean', menu: 'med', seasonMonth: 6, waves: false, hurricane: 'medicane', lowLat0: 30, mdr: { lat: [34, 40], lon: [0, 25] }, names: { type: 'seq', list: MED_NAMES, start: 0, verified: false }, params: {} },
+  atlantic:    { label: 'Atlantic', menu: 'atlantic', seasonMonth: 0, waves: true, hurricane: 'hurricane', lowLat0: 18, mdr: { lat: [10, 20], lon: [-80, -20] }, names: { type: 'yearly', base: 2021, lists: NAME_SETS, extra: NAME_SUPPLEMENTAL, verified: false }, params: BASIN_PARAMS.atlantic },
+  eastpacific: { label: 'Eastern Pacific', menu: 'epac', seasonMonth: 0, waves: false, hurricane: 'hurricane', lowLat0: 8, mdr: { lat: [8, 18], lon: [-125, -95] }, names: { type: 'yearly', base: 2020, lists: EP_SETS, extra: EP_EXTRA, west: { lon: -140, seq: CP_NAMES, start: 5 }, verified: false }, params: BASIN_PARAMS.eastpacific },
+  westpacific: { label: 'Western Pacific', menu: 'wpac', seasonMonth: 0, waves: false, hurricane: 'typhoon', lowLat0: 5, mdr: { lat: [8, 20], lon: [130, 165] }, names: { type: 'seq', list: WP_NAMES, start: 61, verified: false }, params: BASIN_PARAMS.westpacific },
+  nio:         { label: 'North Indian Ocean', menu: 'nio', seasonMonth: 0, waves: false, hurricane: 'cyclone', lowLat0: 5, mdr: { lat: [8, 18], lon: [60, 95] }, names: { type: 'seq', list: NI_NAMES, start: 26, verified: false }, params: BASIN_PARAMS.nio },
+  aus:         { label: 'Australian Region', menu: 'aus', seasonMonth: 6, waves: false, hurricane: 'cyclone', lowLat0: 5, mdr: { lat: [-18, -8], lon: [105, 150] }, names: { type: 'seq', list: AU_NAMES, start: 0, verified: false }, params: BASIN_PARAMS.aus },
+  swio:        { label: 'South-West Indian Ocean', menu: 'swio', seasonMonth: 6, waves: false, hurricane: 'cyclone', lowLat0: 5, mdr: { lat: [-20, -8], lon: [50, 90] }, names: { type: 'yearly', base: 2021, lists: SW_SETS, extra: NAME_SUPPLEMENTAL, verified: false }, params: BASIN_PARAMS.swio },
+  spac:        { label: 'South Pacific', menu: 'spac', seasonMonth: 6, waves: false, hurricane: 'cyclone', lowLat0: 5, mdr: { lat: [-20, -8], lon: [160, 210] }, names: { type: 'seq', list: SP_NAMES, start: 0, verified: false }, params: BASIN_PARAMS.spac },
+  satl:        { label: 'South Atlantic', menu: 'satl', seasonMonth: 6, waves: false, hurricane: 'cyclone', lowLat0: 15, mdr: { lat: [-32, -20], lon: [-50, -30] }, names: { type: 'seq', list: SA_NAMES, start: 12, verified: false }, params: BASIN_PARAMS.satl },
+  med:         { label: 'Mediterranean', menu: 'med', seasonMonth: 6, waves: false, hurricane: 'medicane', lowLat0: 30, mdr: { lat: [34, 40], lon: [0, 25] }, names: { type: 'seq', list: MED_NAMES, start: 0, verified: false }, params: BASIN_PARAMS.med },
 };
 const basinOf = (id) => BASINS[id] || BASINS.atlantic;
 /* the next name for a storm that has just reached 34 kt: a yearly basin takes the index-th name of the season's list (a supplemental list after the last), a sequential one the next in a list that goes on

@@ -871,6 +871,11 @@ const LAND = (la, lo) => (lo > -16.3 && lo < 38 && la > 4 && la < 30) || (lo < -
     m.nameCur = { seq: 7, west: 2 }; const r = H.restore(JSON.parse(JSON.stringify(m.serialize())));
     check('a checkpoint keeps the basin, the day its season started and where its name list stands', r.basin === 'aus' && r.seasonMonth === 6 && r.season.year === 2027 && r.nameCur.seq === 7 && r.nameCur.west === 2 && r.seasonDay(r.hour) === m.seasonDay(m.hour)); }
 
+  // a basin's fitted physics (BASIN_PARAMS): the Atlantic's calibrated law is the base, a basin's entry replaces what its record asked to be different, merges into nested settings, and a basin without an entry has the base
+  { const was = H.calibrated(true), at = H.defaultParams('atlantic'), ep = H.defaultParams('eastpacific'), au = H.defaultParams('aus'), none = H.defaultParams(); H.calibrated(was);
+    check(`a basin's fitted physics is applied on top of the Atlantic's calibrated law: East Pacific growth rate ${ep.kUp} against ${at.kUp}, its genesis gate starts at ${ep.genGate.lat[0]} degrees against ${at.genGate.lat[0]} and keeps the rest of the gate (sea ${ep.genGate.sst}, shear ${ep.genGate.shear}); a basin with no entry (Australian region) and no basin at all have the Atlantic's law`,
+      ep.kUp !== at.kUp && ep.vpScale !== at.vpScale && ep.genGate.lat[0] < at.genGate.lat[0] && ep.genGate.sst[0] === at.genGate.sst[0] && ep.genGate.shear === at.genGate.shear && ep.ri.rate[0] === at.ri.rate[0] && au.kUp === at.kUp && au.vpScale === 1 && none.kUp === at.kUp && at.kUp === H.CALIBRATED.kUp && at.vpScale === 1); }
+
   // no waves outside the Atlantic
   { const waves = (k) => { const m = H.create({ seed: 3, startMs: Date.UTC(2026, 7, 1), basin: k, auto: true }); m.advanceTo(24 * 40, makeEnv({ sst: 28.5, shear: 8, rh: 62 })); return m.n.W; };
     const a = waves('atlantic'), e = waves('eastpacific'), s = waves('aus');

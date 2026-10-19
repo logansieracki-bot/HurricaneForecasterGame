@@ -201,7 +201,16 @@ export function assembleMaps(clim, fit) {
   // the real mean drift, less what the page's weather adds on average where storms of that kind are (fit.driftCorr, tools/storm_fit.mjs motion): the real map is the mean motion of storms that were
   // where they were BECAUSE of the flow they met, so a simulated storm at that place has already got that conditional anomaly from the page's flow, and adding the map on top counts it twice
   const drift = {};
-  for (const c of ['weak', 'strong', 'sub', 'ex']) {
+  if (REAL.drift === 'steer') {                                // a basin with no best track to take the mean motion from (tools/make_tc_synthetic.py): a storm is carried by the page's own mean steering, the engine's structural law
+    if (!clim) throw new Error('the drift of ' + BASIN + ' is made from the page\'s mean steering: assemble the maps with a clim');
+    const [, , um, vm, ud, vd] = clim.steerClim, hs = (q) => (latOf(q % N) < 0 ? -1 : 1), SC = 0.933;
+    const mk = (fu, fv) => { const u = new Float64Array(12 * N), v = new Float64Array(12 * N); for (let q = 0; q < u.length; q++) { u[q] = fu(q); v[q] = fv(q); } return { u: nest12(u, 2), v: nest12(v, 2) }; };
+    drift.weak = mk((q) => SC * um[q] - 0.84, (q) => SC * vm[q] + hs(q) * 0.33);
+    drift.strong = mk((q) => SC * ud[q] - 2.0, (q) => SC * vd[q] + hs(q) * 1.2);
+    drift.sub = mk((q) => 0.5 * (um[q] + ud[q]) - 0.7, (q) => 0.5 * (vm[q] + vd[q]) + hs(q) * 0.7);
+    drift.ex = mk((q) => 1.12 * (0.3 * um[q] + 0.7 * ud[q]), (q) => 1.12 * (0.3 * vm[q] + 0.7 * vd[q]));
+  }
+  else for (const c of ['weak', 'strong', 'sub', 'ex']) {
     const cu = fit && fit.driftCorr && fit.driftCorr[c];
     drift[c] = { u: REAL.drift[c].u.map((m, mi) => m.map((r, j) => r.map((x, i) => (cu ? +(x - cu.u[mi * N + j * NX + i]).toFixed(2) : x)))), v: REAL.drift[c].v.map((m, mi) => m.map((r, j) => r.map((x, i) => (cu ? +(x - cu.v[mi * N + j * NX + i]).toFixed(2) : x)))) };
   }
