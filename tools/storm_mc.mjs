@@ -34,8 +34,8 @@ export async function runLab({ seeds, days = 214, sets, pages = 4, sliders = {},
   const worker = async () => {
     const page = await browser.newPage({ viewport: { width: 800, height: 500 } });
     await page.route('**://**/*', (r) => (r.request().url().startsWith('file://') ? r.continue() : r.abort()));
-    await page.goto(pathToFileURL(pagePath).href, { waitUntil: 'load', timeout: 180000 });
-    await page.waitForFunction(() => window.__ready === true, { timeout: 60000 });
+    await page.goto(pathToFileURL(pagePath).href, { waitUntil: 'load', timeout: 900000 });          // (a long time: several searches share a machine)
+    await page.waitForFunction(() => window.__ready === true, { timeout: 600000 });
     while (queue.length) {
       const seed = queue.shift();
       const rec = await page.evaluate(({ seed, days, list, sliders, maps, diag, clim, extraDays, mdr, start, ensoMonths }) => {

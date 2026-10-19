@@ -23,7 +23,7 @@ export const SPEC = [
   ['shearK', 1.4, 6.5, C.shearK, 'lin'], ['etaLo', 6, 26, C.etaLo, 'lin'], ['etaHi', 24, 31, C.etaHi, 'lin'], ['vpLat', 0, 0.95, C.vpLat, 'lin'], ['gCrit', 0.0, 0.22, C.gCrit, 'lin'], ['riHaz', 0.003, 0.25, C.ri.haz, 'log'], ['etB0', -10, -3.5, -6.1, 'lin'], ['latLo', 1, 10, 4, 'lin'],
   // the share of depressions that become storms (a system is only declared a depression while its growth gate exceeds gCrit by tdMargin), the spread between seasons and the response to El Nino: the size of the random season factor, how strongly the development rates follow the page's own humidity / shear / sea (a multiple of the Atlantic's coupling), and par.enso
   // (activity a degree of Nino 3.4, genesis region moved east and north a degree: the real slopes of the record, data/generated/<basin>-tc-ref.json, are the targets and the start)
-  ['tdMargin', 0, 0.7, C.tdMargin, 'lin'], ['seasSd', 0, 0.35, 0.12, 'lin'], ['envScale', 0.05, 6, 1, 'log'], ['ensoAct', -0.7, 0.7, 0, 'lin'], ['ensoLon', -14, 14, 0, 'lin'], ['ensoLat', -5, 5, 0, 'lin'],
+  ['tdMargin', 0, 0.7, C.tdMargin, 'lin'], ['seasSd', 0, 0.35, 0.12, 'lin'], ['envScale', 0.05, 3, 1, 'log'], ['ensoAct', -0.7, 0.7, 0, 'lin'], ['ensoLon', -10, 10, 0, 'lin'], ['ensoLat', -4, 4, 0, 'lin'],
 ];
 const ENSO_PARAMS = ['ensoAct', 'ensoLon', 'ensoLat'];
 // a basin whose storms are mostly subtropical (the South Atlantic, the Mediterranean) also fits the subtropical class's own law (--sub, or a synthetic reference): the soft cap on its wind, its growth rate, its gate level and the shear it stands
@@ -35,17 +35,25 @@ const phys = (u, [, lo, hi, , sc]) => { const c = Math.min(1, Math.max(0, u)); r
 let FREE = SPEC.slice(), FIXED = {};
 const configure = (names, fixed) => { FREE = names ? SPEC.filter((s) => names.includes(s[0])) : SPEC.slice(); FIXED = Object.fromEntries(SPEC.map((s) => [s[0], fixed && fixed[s[0]] != null ? fixed[s[0]] : s[3]])); };
 const toValues = (x) => Object.assign({}, FIXED, Object.fromEntries(FREE.map((s, i) => [s[0], phys(x[i], s)])));
-export const toPatch = (v) => ({ vpScale: v.vpScale, kUp: v.kUp, kDn: v.kDn, sstGate: [v.sstLo, v.sstLo + (C.sstGate[1] - C.sstGate[0])], rhGate: [v.rhLo, v.rhLo + (C.rhGate[1] - C.rhGate[0])], shearK: v.shearK, etaLo: v.etaLo, etaHi: v.etaHi, vpLat: v.vpLat, gCrit: v.gCrit, ri: { haz: v.riHaz }, etHaz: { b0: v.etB0 }, latGate: [v.latLo, v.latLo + 7],
+// the genesis latitude gate of a basin (tools/storm_basin_patch.mjs --gate writes the same): from the 2nd percentile less 1.5 degrees to the 10th plus 0.5 of the latitudes where its depressions really form. The candidates run with it, as the shipped basin will:
+// without it the search tunes an intensity law for storms that only form poleward of the Atlantic's 8.5 to 11.5 degrees, and the law that ships (storms forming where the record says, 5 to 8 degrees) is a stronger one
+export const gateLat = (ref) => { const q = ref.genesis && ref.genesis.depression_abslat_quantiles; return q ? [Math.max(2, +(q[0] - 1.5).toFixed(1)), +(q[2] + 0.5).toFixed(1)] : null; };
+let GATE_LAT = null;
+export const setModes = ({ sub, gate }) => { if (sub != null) SUB_ON = sub; if (gate !== undefined) GATE_LAT = gate; };          // (for tools/storm_basin_scan.mjs, which is not the search's main)
+export const toPatch = (v) => ({ ...(GATE_LAT ? { genGate: { lat: GATE_LAT } } : {}), vpScale: v.vpScale, kUp: v.kUp, kDn: v.kDn, sstGate: [v.sstLo, v.sstLo + (C.sstGate[1] - C.sstGate[0])], rhGate: [v.rhLo, v.rhLo + (C.rhGate[1] - C.rhGate[0])], shearK: v.shearK, etaLo: v.etaLo, etaHi: v.etaHi, vpLat: v.vpLat, gCrit: v.gCrit, ri: { haz: v.riHaz }, etHaz: { b0: v.etB0 }, latGate: [v.latLo, v.latLo + 7],
   tdMargin: v.tdMargin, ...(SUB_ON ? { sub: { vCap: v.subVcap, kUp: v.subKup, gCrit: v.subGcrit, shearScale: v.subShear } } : {}), act: { seasSd: v.seasSd }, envB: { rh: C.envB.rh * v.envScale, shear: C.envB.shear * v.envScale, sst: C.envB.sst * v.envScale, sstAbs: C.envB.sstAbs * v.envScale }, enso: { act: v.ensoAct, lon: v.ensoLon, lat: v.ensoLat } });
 
 /* [label, value from a summary, target, standard deviation of a miss, weight] */
 export function targets(ref) {
   const n = ref.normals, pk = ref.peak, ic = ref.intensity_change, g = ref.genesis;
-  return [
-    ['named', (o) => o.named, n.named, Math.max(0.6, 0.06 * n.named), 1.5], ['hurr', (o) => o.hurr, n.hurricanes, Math.max(0.4, 0.07 * n.hurricanes), 2], ['major', (o) => o.major, n.majors, Math.max(0.3, 0.1 * n.majors), 2],
-    ['cat5', (o) => o.cat5, n.cat5, Math.max(0.1, 0.25 * n.cat5), 0.7], ['ace', (o) => o.ace, n.ace_mean, 0.06 * n.ace_mean, 3], ['named/dep', (o) => o.namedOfDep, g.named_of_depressions, 0.04, 1],
+  // the misses below are scaled for a basin with tens of storms a season; one with fewer than two named (the South Atlantic, the Mediterranean) is known to a tenth of a storm over 48 seasons and its counts, its ACE and the
+  // fraction of its few hurricanes that intensify rapidly get scales of that size, whatever the multiples of the larger basins would allow
+  const rare = n.named < 2, sdN = (k, base, rel) => (rare ? Math.max(0.05, Math.min(base, 0.2 * k + 0.05)) : Math.max(base, rel * k)), sdAce = rare ? Math.max(0.06 * n.ace_mean, 0.2 * n.ace_sd) : 0.06 * n.ace_mean;
+  const T = [
+    ['named', (o) => o.named, n.named, sdN(n.named, 0.6, 0.06), 1.5], ['hurr', (o) => o.hurr, n.hurricanes, sdN(n.hurricanes, 0.4, 0.07), 2], ['major', (o) => o.major, n.majors, sdN(n.majors, 0.3, 0.1), 2],
+    ['cat5', (o) => o.cat5, n.cat5, sdN(n.cat5, 0.1, 0.25), 0.7], ['ace', (o) => o.ace, n.ace_mean, sdAce, 3], ['named/dep', (o) => o.namedOfDep, g.named_of_depressions, rare ? 0.06 : 0.04, 1],
     ['hurr share', (o) => o.hurrOfNamed, pk.frac_ge64, 0.04, 2], ['major share', (o) => o.majorOfNamed, pk.frac_ge96, 0.035, 2], ['cat5 share', (o) => o.cat5OfNamed, pk.frac_ge137, Math.max(0.01, 0.3 * pk.frac_ge137), 0.7],
-    ['mean peak', (o) => o.peakMean, pk.mean, 3, 1.5], ['RI share', (o) => o.riFrac, ic.ri_frac_all, 0.01, 1.5], ['hurr RI', (o) => o.riOfHurr, ic.ri_track_fractions.HU.frac, 0.08, 1],
+    ['mean peak', (o) => o.peakMean, pk.mean, 3, 1.5], ['RI share', (o) => o.riFrac, ic.ri_frac_all, 0.01, 1.5], ['hurr RI', (o) => o.riOfHurr, ic.ri_track_fractions.HU.frac, rare ? 0.4 : 0.08, 1],
     ['named days', (o) => o.namedDays, ref.lifetime.mean_named_days, 0.4, 1.5], ['<2 d share', (o) => o.short2d, ref.lifetime.short_lived_lt_2d, 0.05, 0.7],
     ['ET share', (o) => o.etOfNamed, ref.status.et_fraction_of_named, 0.06, 1], ['named lat q50', (o) => o.genLat[2], g.named_lat_quantiles[2], 1.5, 0.5], ['named lon q50', (o) => o.genLon[2], g.named_lon_quantiles[2], 3, 0.4],
     ['ENSO slope', (o) => o.ensoSlope, ref.enso.slope_ln_ace10, 0.17, 1],
@@ -53,6 +61,16 @@ export function targets(ref) {
     ...(ref.enso.slope_lon != null ? [['ENSO named', (o) => o.ensoNamed, ref.enso.slope_ln_named, 0.08, 0.7], ['ENSO lon', (o) => o.ensoLon, ref.enso.slope_lon, Math.max(1.0, 0.25 * Math.abs(ref.enso.slope_lon)), 1], ['ENSO lat', (o) => o.ensoLat, ref.enso.slope_lat, Math.max(0.4, 0.3 * Math.abs(ref.enso.slope_lat)), 0.5]] : []),
     ...(ref.hurr_rows ? [['64-kt rows |lat| q5', (o) => o.hurrLat[1], ref.hurr_rows.abslat_quantiles[1], 1.0, 2], ['64-kt rows |lat| q25', (o) => o.hurrLat[2], ref.hurr_rows.abslat_quantiles[2], 1.5, 1], ['64-kt rows |lat| q50', (o) => o.hurrLat[3], ref.hurr_rows.abslat_quantiles[3], 1.5, 0.7]] : []),
   ];
+  return rare ? rareTargets(T, n, sdN) : T;
+}
+// A basin made from the literature (the South Atlantic, the Mediterranean) has numbers for what the papers give -- the season, the places, how many, how strong, how long -- and guesses for the rest: how often a storm intensifies rapidly,
+// how many become extratropical, how much the seasons differ. The guesses keep a small voice, and the count of depressions joins the targets (the rates fix it, but a law that kills most of them, for the other targets' sake, would
+// be fitted to a basin with no storms: the search is run on fixed maps).
+const RARE_WEIGHT = { 'RI share': 0.2, 'hurr RI': 0, 'ET share': 0.3, 'named SD': 0.5, 'hurr SD': 0.3, 'ACE SD': 0.5, 'ENSO slope': 0.3 };
+function rareTargets(T, n, sdN) {
+  const out = T.map(([label, f, t, s, w]) => [label, f, t, s, RARE_WEIGHT[label] != null ? RARE_WEIGHT[label] : w]);
+  out.splice(1, 0, ['dep', (o) => o.dep, n.tracks, sdN(n.tracks, 0.6, 0.06), 2]);
+  return out;
 }
 export function lossOf(o, T) {
   const parts = T.map(([label, f, t, s, w]) => { const v = f(o); const z = Number.isFinite(v) ? (v - t) / s : 10; return [label, v, t, w * z * z]; });
@@ -67,6 +85,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const start = get('start') ? JSON.parse(readFileSync(get('start'), 'utf8')) : null;
   const ref = JSON.parse(readFileSync(new URL(`../data/generated/${basin}-tc-ref.json`, import.meta.url), 'utf8'));
   const hasEnso = ref.enso.slope_lon != null;
+  if (!a.includes('--no-gate')) GATE_LAT = gateLat(ref);
   if (hasEnso) { SPEC.find((s) => s[0] === 'ensoLon')[3] = 0.6 * ref.enso.slope_lon; SPEC.find((s) => s[0] === 'ensoLat')[3] = 0.6 * ref.enso.slope_lat; }
   SUB_ON = a.includes('--sub') || !!(ref.meta && ref.meta.synthetic);
   configure((get('free') ? get('free').split(',') : SPEC.map((s) => s[0])).filter((k) => (hasEnso || !ENSO_PARAMS.includes(k)) && (SUB_ON || !SUB_PARAMS.includes(k))), start);
@@ -84,9 +103,11 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     console.log('best:', b.tag, '\n' + b.now.parts.map((p) => `${p[0]} ${(+p[1]).toFixed(3)} (target ${(+p[2]).toFixed(3)}, loss ${p[3].toFixed(2)})`).join('\n'));
     process.exit(0);
   }
-  const x0 = FREE.map((s) => (start && start[s[0]] != null ? unit(start[s[0]], s) : unit(s[3], s)));
-  const cma = new CMA(x0, +get('sigma', 0.2), lambda, +get('rngseed', 1));
   const log = existsSync(out) && a.includes('--resume') ? JSON.parse(readFileSync(out, 'utf8')) : { basin, spec: FREE.map((s) => s[0]), seeds, history: [], best: null };
+  // a search that was cut short (a page that did not load in time) goes on from the mean and the step size where it stood; the covariance it had learned is lost, which costs a few generations
+  const last = log.history.length ? log.history[log.history.length - 1] : null;
+  const x0 = FREE.map((s) => (last && last.meanValues[s[0]] != null ? unit(last.meanValues[s[0]], s) : start && start[s[0]] != null ? unit(start[s[0]], s) : unit(s[3], s)));
+  const cma = new CMA(x0, last ? last.sigma : +get('sigma', 0.2), lambda, +get('rngseed', 1) + log.history.length);
   for (let g = log.history.length; g < gens; g++) {
     const t0 = Date.now(), pop = cma.ask(), sets = {};
     pop.forEach((p, i) => { sets['c' + i] = toPatch(toValues(p.x)); }); sets.mean = toPatch(toValues(cma.m));

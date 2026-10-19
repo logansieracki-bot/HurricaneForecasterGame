@@ -2,7 +2,7 @@
 // Network is stubbed to file:// only, so these also verify the app never
 // depends on reaching a live tile provider to be usable.
 import { chromium } from 'playwright';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -905,11 +905,11 @@ const STORM_SPECS = {
   eastpacific: { td: [13, -108], sd: [25, -125], low: [32, -135], day: 213, start: [4, 15], seeds: [1295, 1248, 1274] },
   westpacific: { td: [15, 135], sd: [28, 150], low: [38, 160], day: 212, start: [5, 1], seeds: [926, 902, 909] },
   nio: { td: [14, 70], sd: [22, 66], low: [18, 72], day: 200, start: [3, 1], seeds: [913, 954, 943] },
-  aus: { td: [-14, 125], sd: [-26, 112], low: [-34, 108], day: 215, start: [10, 1] },
-  swio: { td: [-14, 70], sd: [-27, 62], low: [-34, 70], day: 215, start: [10, 1] },
-  spac: { td: [-14, 185], sd: [-27, 195], low: [-34, 200], day: 215, start: [10, 1] },
-  satl: { td: [-24, -40], sd: [-28, -45], low: [-34, -40], day: 215, start: [10, 1] },
-  med: { td: [36, 18], sd: [38, 10], low: [41, 6], day: 92, start: [8, 1] },
+  aus: { td: [-14, 125], sd: [-26, 112], low: [-34, 108], day: 215, start: [10, 1], seeds: [932, 975, 915] },
+  swio: { td: [-14, 70], sd: [-27, 62], low: [-34, 70], day: 215, start: [10, 1], seeds: [927, 976, 982] },
+  spac: { td: [-14, 185], sd: [-27, 195], low: [-34, 200], day: 215, start: [10, 1], seeds: [927, 931, 993] },
+  satl: { td: [-24, -40], sd: [-28, -45], low: [-34, -40], day: 215, start: [10, 1], seeds: [903, 918, 913] },
+  med: { td: [37, 12], sd: [38, 10], low: [41, 6], day: 92, start: [8, 1], seeds: [903, 947, 901] },
 };
 async function checkStormsBasin(page, label, prefix) {
   const ev = (fn, arg) => page.evaluate(fn, arg);
@@ -976,8 +976,9 @@ async function checkStormsBasin(page, label, prefix) {
     return out;
   }, { sm: BI.seasonMonth, start: sp.start, seeds: sp.seeds });
   const mn = (k) => seas.reduce((x, y) => x + y[k], 0) / seas.length;
+  const rare = ref.named < 2;                          // (the South Atlantic and the Mediterranean have a named storm in most seasons, not in all, and one of hurricane strength in one of twenty: three seasons are three draws, so a season without one is allowed and the count of strong ones has only an upper bound)
   check(`[${label}] three whole seasons through the page look like the real ${BI.label}: ${mn('dep').toFixed(1)} depressions, ${mn('named').toFixed(1)} named storms, ${mn('hurr').toFixed(1)} ${BI.hurricane}s, ${mn('major').toFixed(1)} majors, ACE ${mn('ace').toFixed(0)} on average (real ${ref.tracks} / ${ref.named} / ${ref.hurricanes} / ${ref.majors} / ${Math.round(ref.ace_mean)}; seasons: ${seas.map((x) => x.named + '/' + x.hurr + '/' + x.major + '/' + Math.round(x.ace)).join(', ')} named/${BI.hurricane}s/majors/ACE)`,
-    mn('named') >= 0.55 * ref.named && mn('named') <= 1.6 * ref.named && mn('hurr') >= 0.45 * ref.hurricanes && mn('hurr') <= 1.9 * ref.hurricanes && mn('ace') >= 0.45 * ref.ace_mean && mn('ace') <= 1.9 * ref.ace_mean && seas.every((x) => x.named >= 1));
+    mn('named') >= 0.55 * ref.named && mn('named') <= 1.6 * ref.named && (rare ? mn('hurr') <= 0.5 : mn('hurr') >= 0.45 * ref.hurricanes && mn('hurr') <= 1.9 * ref.hurricanes) && mn('ace') >= 0.45 * ref.ace_mean && mn('ace') <= 1.9 * ref.ace_mean && (rare ? seas.some((x) => x.named >= 1) : seas.every((x) => x.named >= 1)));
 
   // save and resume in this basin: a season saved at a midnight continues bit for bit like the uninterrupted one
   const sv = await ev((q) => {
@@ -1053,14 +1054,35 @@ async function checkEnvSeasons(page, label, dist) {
 
 // A basin's storm system is switched on by its data (storms.maps in its data file, src/storm-hooks.js STORMS_READY): the page is then on by default and shows the storm controls; until then it runs
 // the plain simulation and shows none of them (the Menu button is there either way). Called on a freshly loaded page by checkBasin for every basin.
-async function checkStormGate(page, label, dist) {
-  const prefix = dist.replace(/^.*\//, '').replace('-sst-simulator.html', ''), ready = (() => { const d = JSON.parse(readFileSync(join(ROOT, 'data/generated', prefix === 'atlantic' ? 'data.json' : `${prefix}-data.json`), 'utf8')); return !!(d.storms && d.storms.maps); })();
+async function checkStormGate(page, label, dist, forceOff) {
+  const prefix = dist.replace(/^.*\//, '').replace('-sst-simulator.html', ''), ready = !forceOff && (() => { const d = JSON.parse(readFileSync(join(ROOT, 'data/generated', prefix === 'atlantic' ? 'data.json' : `${prefix}-data.json`), 'utf8')); return !!(d.storms && d.storms.maps); })();
   const stormsDefault = await page.evaluate(() => (window.SSTSIM.storms ? window.SSTSIM.storms() : null));
   check(`[${label}] the storm engine is ${ready ? 'on' : 'off'} by default (the page ${ready ? 'carries' : 'has no'} storm climatology)`, stormsDefault === ready);
   const hasWaves = (await import('../src/storms.js'), globalThis.HFStorms.basinInfo(prefix).waves);
   const stormUi = await page.evaluate(() => { const vis = (el) => !!el && getComputedStyle(el).display !== 'none'; const g = (id) => document.getElementById(id); return { body: document.body.classList.contains('no-storms'), season: vis(g('season')), place: vis(g('b-place')), menu: vis(g('b-menu')), rows: ['stlows', 'stdist', 'stlabels', 'st-auto'].map((i) => vis(g(i).parentElement)), waves: vis(g('stwaves').parentElement) }; });
   check(`[${label}] the storm controls (season bar, Place button, Lows / Disturbances / Names / automatic storms rows) are ${ready ? 'shown' : 'hidden'}, the Tropical waves row ${ready && hasWaves ? 'shown' : 'hidden'} (this basin ${hasWaves ? 'has' : 'has no'} wave train), and the Menu button is there either way`,
     stormUi.body === !ready && stormUi.season === ready && stormUi.place === ready && stormUi.rows.every((v) => v === ready) && stormUi.waves === (ready && hasWaves) && stormUi.menu === true);
+}
+
+// All nine pages carry a storm climatology now, so the page a basin without one would be is made here: the same page with the test of the data (STORMS_READY) forced off. It must come up with the engine off by default and
+// every storm control hidden (the Menu button stays), and nothing may throw.
+async function checkStormGateOff(browser, label, dist) {
+  const html = readFileSync(dist, 'utf8'), A = 'const STORMS_READY = !!(DATA.storms && DATA.storms.maps);', one = html.split(A).length === 2;
+  check(`[${label}] the page decides whether it has a storm climatology in one place (the copy without one is made from that line)`, one);
+  if (!one) return;
+  const off = dist.replace(/\.html$/, '.off.html'), page = await browser.newPage({ viewport: { width: 1280, height: 800 } }), errors = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  writeFileSync(off, html.replace(A, 'const STORMS_READY = false;'));
+  try {
+    await page.route('**://**/*', (route) => route.request().url().startsWith('file://') ? route.continue() : route.abort());
+    await page.goto(pathToFileURL(off).href, { waitUntil: 'load', timeout: 30000 });
+    await page.waitForFunction(() => window.__ready === true, { timeout: 15000 });
+    await page.waitForTimeout(800);
+    await checkStormGate(page, label + ', no storm climatology', dist, true);
+    const sw = await page.evaluate(() => { const S = window.SSTSIM; const a = S.storms(true); return [a, S.storms()]; });
+    check(`[${label}] a visitor cannot switch the storm engine on in a page that has no storm climatology (${sw})`, sw[0] === false && sw[1] === false);
+    check(`[${label}] a page without a storm climatology runs and starts with no errors (${errors.length})`, errors.length === 0);
+  } finally { await page.close(); rmSync(off, { force: true }); }
 }
 
 async function checkEnsoHold(page, label) {
@@ -1757,6 +1779,7 @@ async function checkBasin(label, dist, extra) {
   await page.waitForFunction(() => window.__ready === true, { timeout: 15000 });
   await page.waitForTimeout(1000);
   await checkStormGate(page, label, dist);
+  if (label === 'Atlantic') await checkStormGateOff(browser, label, dist);
   await page.evaluate(() => { if (window.SSTSIM.storms) window.SSTSIM.storms(false); });   // every check below tests the environment, so it runs on the unchanged simulation (storms have their own checks)
 
   check(`[${label}] loads with no JS errors`, errors.length === 0);
@@ -2499,6 +2522,7 @@ await checkBasin('Australian Region', AUS_DIST, async (page, label) => {
   await checkEnsoHold(page, label);
   await checkEnvSeasons(page, label, AUS_DIST);
   await checkCityMarkers(page, label, -33.87, 151.21, 'Sydney');
+  await checkStormsBasin(page, label, 'aus');
 });
 
 await checkBasin('South-West Indian Ocean', SWIO_DIST, async (page, label) => {
@@ -2563,6 +2587,7 @@ await checkBasin('South-West Indian Ocean', SWIO_DIST, async (page, label) => {
   await checkEnsoHold(page, label);
   await checkEnvSeasons(page, label, SWIO_DIST);
   await checkCityMarkers(page, label, -29.86, 31.02, 'Durban');
+  await checkStormsBasin(page, label, 'swio');
 });
 
 await checkBasin('South Pacific', SPAC_DIST, async (page, label) => {
@@ -2620,6 +2645,7 @@ await checkBasin('South Pacific', SPAC_DIST, async (page, label) => {
   await checkEnsoHold(page, label);
   await checkEnvSeasons(page, label, SPAC_DIST);
   await checkCityMarkers(page, label, -18.14, 178.42, 'Suva');
+  await checkStormsBasin(page, label, 'spac');
 });
 
 await checkBasin('South Atlantic', SATL_DIST, async (page, label) => {
@@ -2693,6 +2719,7 @@ await checkBasin('South Atlantic', SATL_DIST, async (page, label) => {
   await checkEnsoHold(page, label);
   await checkEnvSeasons(page, label, SATL_DIST);
   await checkCityMarkers(page, label, -22.91, -43.17, 'Rio de Janeiro');
+  await checkStormsBasin(page, label, 'satl');
 });
 
 await checkBasin('Mediterranean', MED_DIST, async (page, label) => {
@@ -2781,6 +2808,7 @@ await checkBasin('Mediterranean', MED_DIST, async (page, label) => {
   await checkEnsoHold(page, label);
   await checkEnvSeasons(page, label, MED_DIST);
   await checkCityMarkers(page, label, 45.44, 12.33, 'Venice');
+  await checkStormsBasin(page, label, 'med');
 });
 
 // Main menu: basin/mode select, disabled cards stay disabled, Start navigates to the built basin.

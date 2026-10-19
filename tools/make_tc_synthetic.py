@@ -79,6 +79,7 @@ def main():
         normals=dict(years=[years[0], years[-1]], tracks=n["tracks"], named=n["named"], hurricanes=n["hurricanes"], majors=n["majors"], cat5=n["cat5"], ace_mean=n["ace_mean"], ace_sd=n["ace_sd"],
                      ace_min=n["ace_min"], ace_max=n["ace_max"], ns_sd=n["ns_sd"], h_sd=n["h_sd"], mh_sd=n["mh_sd"], ace_median_day=int(np.argmax(cum >= cum[-1] / 2.0)), ace_peak_day_smoothed=int(np.argmax(daily)), by_year={}),
         genesis=dict(named_by_month=named_by_month, depression_by_month=dep_by_month, depression_lat_quantiles=[r(np.percentile(la, q), 1) for q in (2, 5, 10, 25, 50, 75, 95)],
+                     depression_abslat_quantiles=[r(np.percentile(np.abs(la), q), 1) for q in (2, 5, 10, 25, 50, 75, 95)],
                      depression_lon_quantiles=[r(np.percentile(lo, q), 1) for q in (5, 25, 50, 75, 95)], named_lat_quantiles=[r(np.percentile(la, q), 1) for q in (5, 25, 50, 75, 95)],
                      named_lon_quantiles=[r(np.percentile(lo, q), 1) for q in (5, 25, 50, 75, 95)], depression_count=int(round(n["tracks"] * len(years))), named_of_depressions=S["named_of_depressions"],
                      td_to_ts_hours_quantiles=[12, 24, 36, 60, 96]),

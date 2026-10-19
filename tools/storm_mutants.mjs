@@ -144,6 +144,9 @@ const mutants = [
   M('Z41', S, [E('const sstOK = S.sub && M ? par.subSstOK : 24,', 'const sstOK = S.sub && M ? 19 : 24,')], ['node'], 'a subtropical depression needs the Atlantic\'s 19 degC whatever the basin says'),
   M('Z42', S, [E('cold = S.sub && M ? par.subCold : par.seedCold,', 'cold = S.sub && M ? 17 : par.seedCold,')], ['node'], 'a developing subtropical system is carried off below the Atlantic\'s 17 degC whatever the basin says'),
   M('Z43', S, [E('cold = S.sub && M ? par.subCold : par.seedCold,', 'cold = S.sub && M ? par.subCold : 22,')], ['node'], 'an undeveloped disturbance is carried off below the Atlantic\'s 22 degC whatever the basin says'),
+  M('Z44', T, [E('const STORMS_READY = !!(DATA.storms && DATA.storms.maps);', 'const STORMS_READY = false;')], ['gate'], 'a page that has its storm climatology comes up without the storm engine'),
+  M('Z45', T, [E("if (!STORMS_READY) document.body.classList.add('no-storms');", "if (false) document.body.classList.add('no-storms');")], ['gate'], 'a page with no storm climatology shows the storm controls'),
+  M('Z46', H, [E('if (!STORMS_READY && !force) return false;', 'if (false) return false;')], ['gate'], 'a visitor can switch the storm engine on in a page with no storm climatology'),
   M('Z11', T, [E('const k = j * NX + i; return land[k] === 1 && lakeGrid[k] === 0;', 'const k = j * NX + i; return land[k] === 1;')], ['storms'], 'a lake is land for a storm'),
   M('Z12', T, [E('sst: (la, lo) => { const id = lakeIdAt(la, lo); return id ? kfLake[id - 1] : sampleFieldS(kfSst, la, lo); },', 'sst: (la, lo) => sampleFieldS(kfSst, la, lo),')], ['storms'], 'a lake has the land\'s temperature for the storms'),
   M('Z13', S, [E('wGen = (1 - smooth01(lf, 0.4, 0.8)) * smooth01(Math.abs(lat2), 3, 6) * smooth01(sstE, sstOK - 1, sstOK);', 'wGen = 1;')], ['node'], 'a depression can form over land, on the equator and over cold water'),
@@ -196,6 +199,7 @@ await page.goto(pathToFileURL(GATE_DIST).href, { waitUntil: 'load', timeout: 300
 await page.waitForFunction(() => window.__ready === true, { timeout: 30000 });
 await page.waitForTimeout(800);
 await checkStormGate(page, '${GATE_BASIN}', GATE_DIST);
+await checkStormGateOff(browser, '${GATE_BASIN}', GATE_DIST);
 await browser.close();
 `
     : which === 'env'

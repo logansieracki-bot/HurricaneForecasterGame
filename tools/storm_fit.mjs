@@ -296,26 +296,34 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     // node of the region, and the node-by-node step below then works on what is left (the pattern inside a region).
     const lim0 = (r, lo, hi) => Math.max(lo, Math.min(hi, r));
     const REGIONS = BASIN === 'atlantic' ? [['east', 5, 20, -45, 0], ['mdr', 5, 20, -62.5, -42.5], ['carib', 5, 20, -87.5, -62.5], ['gulf', 20, 32, -100, -80], ['seus', 20, 38, -80, -62.5], ['subtrop', 25, 66, -62.5, 0]] : autoRegions(gTr);
-    const fReg = new Float64Array(N).fill(1), dampR = +get('rdamp', 0.8), regLog = [];
+    const fReg = new Float64Array(N).fill(1), fRegS = new Float64Array(N).fill(1), dampR = +get('rdamp', 0.8), regLog = [];
+    // (a basin with a few depressions a season, the South Atlantic and the Mediterranean, has regions of a fraction of one: the thresholds scale down to a tenth of its total there, and are the old 0.3 and 0.1 for the rest;
+    // the subtropical depressions get the regional step too, as most of the cyclones of those two are subtropical)
+    const tot = (g) => { let t = 0; for (const m of RUN) for (let k = 0; k < N; k++) t += g[m * N + k]; return t; }, thrA = Math.min(0.3, 0.12 * (tot(gTr) + tot(gSr))), thrB = Math.min(0.1, 0.04 * (tot(gTr) + tot(gSr)));
     for (const [nm, la0, la1, lo0, lo1] of REGIONS) {
       const inR = (k) => latOf(k) >= la0 && latOf(k) < la1 && lonOf(k) >= lo0 && lonOf(k) < lo1;
-      let a = 0, b = 0; for (const m of RUN) for (let k = 0; k < N; k++) if (inR(k)) { a += gTr[m * N + k]; b += simT[m * N + k]; }
-      if (!(a > 0.3 && b > 0.1)) continue;
-      const f = Math.pow(lim0(a / b, 0.6, 1.5), dampR); regLog.push(`${nm} ${b.toFixed(2)} vs ${a.toFixed(2)} (x${f.toFixed(2)})`);
-      for (let k = 0; k < N; k++) if (inR(k)) fReg[k] = f;
+      let a = 0, b = 0, aS = 0, bS = 0; for (const m of RUN) for (let k = 0; k < N; k++) if (inR(k)) { a += gTr[m * N + k]; b += simT[m * N + k]; aS += gSr[m * N + k]; bS += simS[m * N + k]; }
+      if (a > thrA && b > thrB) {
+        const f = Math.pow(lim0(a / b, 0.6, 1.5), dampR); regLog.push(`${nm} ${b.toFixed(2)} vs ${a.toFixed(2)} (x${f.toFixed(2)})`);
+        for (let k = 0; k < N; k++) if (inR(k)) fReg[k] = f;
+      }
+      if (aS > thrA && bS > thrB && thrA < 0.3) {              // (the larger basins keep the node-by-node step alone for the subtropical class, as fitted)
+        const f = Math.pow(lim0(aS / bS, 0.6, 1.5), dampR); regLog.push(`${nm} subtropical ${bS.toFixed(2)} vs ${aS.toFixed(2)} (x${f.toFixed(2)})`);
+        for (let k = 0; k < N; k++) if (inR(k)) fRegS[k] = f;
+      }
     }
-    if (regLog.length) console.log('regions (simulated vs real numbered tropical depressions Jun-Dec): ' + regLog.join('; '));
-    for (let q = 0; q < simT.length; q++) simT[q] *= fReg[q % N];
+    if (regLog.length) console.log('regions (simulated vs real numbered depressions of the months the lab ran): ' + regLog.join('; '));
+    for (let q = 0; q < simT.length; q++) { simT[q] *= fReg[q % N]; simS[q] *= fRegS[q % N]; }
     const sg = +get('sigma', 1.5), sT = [smoothAvg(gTr, sg, 0.3), smoothAvg(simT, sg, 0.3)], sS = [smoothAvg(gSr, sg + 0.5, 0.3), smoothAvg(simS, sg + 0.5, 0.3)];            // --sigma: the smoothing, in nodes (1.5 for a few dozen seasons, ~1 for a few hundred)
     const lim = (r, lo, hi) => Math.max(lo, Math.min(hi, r)), damp = +get('damp', 1.0);
     const sN = smoothAvg(simN, sg, 0.3), sTall = smoothAvg(simT, sg, 0.3);                                              // the share of the events at a node that local seeds supply
     const fT = new Float64Array(12 * N).fill(1), fS = new Float64Array(12 * N).fill(1); let nCapped = 0;
     for (let q = 0; q < fT.length; q++) {
       if (sT[0][q] > 1e-3 && sT[1][q] > 1e-3) fT[q] = Math.pow(lim(sT[0][q] / sT[1][q], 0.6, 1.8), damp); else if (sT[0][q] > 1e-3) fT[q] = Math.pow(1.8, damp);
-      if (sS[0][q] > 1e-3 && sS[1][q] > 1e-3) fS[q] = Math.pow(lim(sS[0][q] / sS[1][q], 0.5, 2.0), damp);
+      if (sS[0][q] > 1e-3 && sS[1][q] > 1e-3) fS[q] = Math.pow(lim(sS[0][q] / sS[1][q], 0.5, 2.0), damp); else if (sS[0][q] > 1e-3 && thrA < 0.3) fS[q] = Math.pow(2.0, damp);          // (a basin of few depressions: a place the record has them and the lab none gets the rate doubled, as the tropical class does)
       // where the rate is already at its ceiling (the western Caribbean: few waves get there and a rate above ~0.04 an hour would develop a disturbance in under a day) what the rate can not take goes
       // to the supply of local seeds: with a share s of the events from seeds, scaling the rate by a and the supply by b scales the events by a (1 - s + s b)
-      fT[q] *= fReg[q % N];
+      fT[q] *= fReg[q % N]; fS[q] *= fRegS[q % N];
       const aMax = hz[q] > 0 ? HAZ_MAX / hz[q] : 1, sh = sTall[q] > 1e-4 ? lim(sN[q] / sTall[q], 0, 1) : 0;
       if (fT[q] <= aMax || sp[q] <= 0 || sh < 0.2) hz[q] = Math.min(HAZ_MAX, hz[q] * fT[q]);
       else { hz[q] = HAZ_MAX; sp[q] *= Math.min(3, (fT[q] / aMax - 1 + sh) / sh); nCapped++; }

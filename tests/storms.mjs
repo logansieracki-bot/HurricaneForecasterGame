@@ -905,9 +905,9 @@ const LAND = (la, lo) => (lo > -16.3 && lo < 38 && la > 4 && la < 30) || (lo < -
     check('a checkpoint keeps the basin, the day its season started and where its name list stands', r.basin === 'aus' && r.seasonMonth === 6 && r.season.year === 2027 && r.nameCur.seq === 7 && r.nameCur.west === 2 && r.seasonDay(r.hour) === m.seasonDay(m.hour)); }
 
   // a basin's fitted physics (BASIN_PARAMS): the Atlantic's calibrated law is the base, a basin's entry replaces what its record asked to be different, merges into nested settings, and a basin without an entry has the base
-  { const was = H.calibrated(true), at = H.defaultParams('atlantic'), ep = H.defaultParams('eastpacific'), au = H.defaultParams('aus'), none = H.defaultParams(); H.calibrated(was);
-    check(`a basin's fitted physics is applied on top of the Atlantic's calibrated law: East Pacific growth rate ${ep.kUp} against ${at.kUp}, its genesis gate starts at ${ep.genGate.lat[0]} degrees against ${at.genGate.lat[0]} and keeps the rest of the gate (sea ${ep.genGate.sst}, shear ${ep.genGate.shear}); a basin with no entry (Australian region) and no basin at all have the Atlantic's law`,
-      ep.kUp !== at.kUp && ep.vpScale !== at.vpScale && ep.genGate.lat[0] < at.genGate.lat[0] && ep.genGate.sst[0] === at.genGate.sst[0] && ep.genGate.shear === at.genGate.shear && ep.ri.rate[0] === at.ri.rate[0] && au.kUp === at.kUp && au.vpScale === 1 && none.kUp === at.kUp && at.kUp === H.CALIBRATED.kUp && at.vpScale === 1); }
+  { const was = H.calibrated(true), at = H.defaultParams('atlantic'), ep = H.defaultParams('eastpacific'), nw = H.defaultParams('nowhere'), none = H.defaultParams(); H.calibrated(was);
+    check(`a basin's fitted physics is applied on top of the Atlantic's calibrated law: East Pacific growth rate ${ep.kUp} against ${at.kUp}, its genesis gate starts at ${ep.genGate.lat[0]} degrees against ${at.genGate.lat[0]} and keeps the rest of the gate (sea ${ep.genGate.sst}, shear ${ep.genGate.shear}); a basin with no entry (one the table does not know) and no basin at all have the Atlantic's law`,
+      ep.kUp !== at.kUp && ep.vpScale !== at.vpScale && ep.genGate.lat[0] < at.genGate.lat[0] && ep.genGate.sst[0] === at.genGate.sst[0] && ep.genGate.shear === at.genGate.shear && ep.ri.rate[0] === at.ri.rate[0] && nw.kUp === at.kUp && nw.vpScale === 1 && none.kUp === at.kUp && at.kUp === H.CALIBRATED.kUp && at.vpScale === 1); }
 
   // no waves outside the Atlantic
   { const waves = (k) => { const m = H.create({ seed: 3, startMs: Date.UTC(2026, 7, 1), basin: k, auto: true }); m.advanceTo(24 * 40, makeEnv({ sst: 28.5, shear: 8, rh: 62 })); return m.n.W; };
@@ -947,6 +947,18 @@ const LAND = (la, lo) => (lo > -16.3 && lo < 38 && la > 4 && la < 30) || (lo < -
   const wp = sumRms(d.westpacific, 'humidity'), ep = sumRms(d.eastpacific, 'humidity');
   check(`the West Pacific's sustained-event humidity response is the joint fit's (${wp.toFixed(2)} % per degree; the one-lag-at-a-time fit gave 6.36, the East Pacific's unchanged one is ${ep.toFixed(2)}), the shear's too (${sumRms(d.westpacific, 'shear').toFixed(2)} kt; 5.30)`,
     wp < 3.6 && wp > 2.4 && sumRms(d.westpacific, 'shear') < 3.2 && ep > 5);
+
+  // all nine pages are switched on: each carries the climatology its engine is anchored to (the maps: 12 months of rates and seeds on the page's grid, the mean drift and the page's own mean steering and environment) and the real normals and
+  // daily ACE its season summary is drawn against, and each basin but the Atlantic has fitted physics of its own (BASIN_PARAMS)
+  const ids = Object.keys(files), grid3 = (a, ny, nx) => Array.isArray(a) && a.length === 12 && a.every((m) => Array.isArray(m) && m.length === ny && m.every((r) => Array.isArray(r) && r.length === nx));
+  const maps = (b) => d[b].storms && d[b].storms.maps;
+  check(`all nine pages carry the storm climatology (${ids.filter((b) => maps(b)).length} of ${ids.length}): the maps of the development rates and the supply of seeds on their own grid, the drift, the steering and environment they were fitted against`,
+    ids.every((b) => { const m = maps(b); return !!m && ['grid', 'drift', 'steerClim', 'haz', 'spawn', 'env0'].every((k) => m[k] != null) && grid3(m.haz.T, m.grid.ny, m.grid.nx) && grid3(m.haz.S, m.grid.ny, m.grid.nx) && grid3(m.spawn, m.grid.ny, m.grid.nx); }));
+  check('and the real normals and the daily ACE percentiles of their season summary (366 days; named storms, ACE and its spread a season)',
+    ids.every((b) => { const s = d[b].storms; return s && s.ace && s.ace.mean.length === 366 && s.ace.p10.length === 366 && s.ace.p90.length === 366 && s.normals.named > 0 && s.normals.ace > 0 && s.normals.aceSd > 0 && s.normals.dep >= s.normals.named; }));
+  { const was = H.calibrated(true), at = H.defaultParams('atlantic'), fit = ids.filter((b) => b !== 'atlantic').map((b) => [b, H.defaultParams(b)]); H.calibrated(was);
+    check(`every other basin has the fitted law of its own: ${fit.map(([b, p]) => `${b} ${p.vpScale.toFixed(2)}/${p.kUp.toFixed(3)}`).join(', ')} (potential-wind scale / growth rate; the Atlantic's ${at.vpScale}/${at.kUp.toFixed(3)}) and a genesis latitude gate that starts where its depressions really form`,
+      fit.every(([, p]) => p.vpScale !== at.vpScale && p.kUp !== at.kUp && p.genGate.lat[0] !== at.genGate.lat[0])); }
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

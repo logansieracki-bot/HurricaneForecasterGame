@@ -166,6 +166,33 @@ const BASIN_PARAMS = {
     ri: { haz: 0.01 }, etHaz: { b0: -4.5 }, latGate: [2.609, 9.609], tdMargin: 0.4463, act: { seasSd: 0.02545 },
     envB: { rh: 0.018, shear: 0.02132, sst: 0.02573, sstAbs: 0.005439 }, enso: { act: 0.5833, lon: -4.373, lat: -1.458 }, genGate: { lat: [2, 6.5] },
   },
+  swio: {
+    vpScale: 0.8467, kUp: 0.0331, kDn: 0.1988, sstGate: [25.27, 27.8], rhGate: [45.4, 55.5], shearK: 3.518, etaLo: 8.061, etaHi: 27.18, vpLat: 0.32, gCrit: 0.2003,
+    ri: { haz: 0.01608 }, etHaz: { b0: -6.738 }, latGate: [2.679, 9.679], tdMargin: 0.2117, act: { seasSd: 0.05842 },
+    envB: { rh: 0.04227, shear: 0.05006, sst: 0.06042, sstAbs: 0.01277 }, enso: { act: -0.08193, lon: -2.029, lat: -0.1037 }, genGate: { lat: [3.1, 7.3] },
+  },
+  satl: {
+    genGate: { lat: [16.4, 21.6], sstSub: [19.5, 22.5] }, etaLo: 10.01, etaHi: 24, subSstOK: 18, subCold: 16, seedCold: 20,
+    sub: { sstGate: [21, 24], vCap: 110, kUp: 0.02458, gCrit: 0.6, shearScale: 10.94 }, vpScale: 0.7, kUp: 0.06294, kDn: 0.02533, sstGate: [23.73, 26.26],
+    rhGate: [49.65, 59.75], shearK: 6.287, vpLat: 0.5, gCrit: 0.1299, ri: { haz: 0.01084 }, etHaz: { b0: -8.147 }, latGate: [4, 11], tdMargin: 0.1809,
+    act: { seasSd: 0.08952 }, envB: { rh: 0.05358, shear: 0.06345, sst: 0.07657, sstAbs: 0.01619 }, enso: { act: 0, lon: 0, lat: 0 },
+  },
+  med: {
+    genGate: { lat: [30.6, 34.2], sstSub: [13.5, 17.5] }, etaLo: 9.979, etaHi: 24.44, subSstOK: 13.5, subCold: 11.5, seedCold: 11.5,
+    sub: { sstGate: [14.5, 18.5], rhGate: [24, 45], vCap: 97.18, kUp: 0.06, gCrit: 0.05, shearScale: 57.83 }, vpScale: 1.12, kUp: 0.07, kDn: 0.01889,
+    sstGate: [23.73, 26.26], rhGate: [49.65, 59.75], shearK: 6.5, vpLat: 0.5, gCrit: 0.09755, ri: { haz: 0.02165 }, etHaz: { b0: -8.946 }, latGate: [4, 11],
+    tdMargin: 0.6784, act: { seasSd: 0.35 }, envB: { rh: 0.36, shear: 0.4263, sst: 0.5145, sstAbs: 0.1088 }, enso: { act: 0, lon: 0, lat: 0 },
+  },
+  spac: {
+    genGate: { lat: [6, 9.5] }, vpScale: 1.026, kUp: 0.05369, kDn: 0.2901, sstGate: [25.66, 28.19], rhGate: [37.96, 48.06], shearK: 1.4, etaLo: 7.48, etaHi: 27.33,
+    vpLat: 0.7947, gCrit: 0.1106, ri: { haz: 0.01622 }, etHaz: { b0: -6.945 }, latGate: [6.113, 13.11], tdMargin: 0.04976, act: { seasSd: 0.3174 },
+    envB: { rh: 0.1454, shear: 0.1722, sst: 0.2079, sstAbs: 0.04395 }, enso: { act: 0.07855, lon: 0.6724, lat: -0.8416 },
+  },
+  aus: {
+    genGate: { lat: [4.2, 8.9] }, vpScale: 0.9395, kUp: 0.02754, kDn: 0.5022, sstGate: [20.87, 23.4], rhGate: [45.15, 55.25], shearK: 3.864, etaLo: 20.46, etaHi: 26.97,
+    vpLat: 0.6091, gCrit: 0.09526, ri: { haz: 0.06613 }, etHaz: { b0: -7.438 }, latGate: [8.42, 15.42], tdMargin: 0.1675, act: { seasSd: 0.1257 },
+    envB: { rh: 0.1025, shear: 0.1214, sst: 0.1465, sstAbs: 0.03097 }, enso: { act: 0.116, lon: -4.088, lat: 0.6667 },
+  },
 };
 /* ==== BASIN PARAMS END ==== */
 const BASINS = {
