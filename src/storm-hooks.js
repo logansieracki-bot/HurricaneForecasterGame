@@ -103,8 +103,9 @@ function computeStormFields(oS, oH, oSh) {
 }
 
 const BI = HFStorms.basinInfo(STORM_BASIN), SM = BI.seasonMonth;      // STORM_BASIN is this page's basin (the template says which); BI: its label, season, words, region (src/storms.js, BASINS); SM: the month its season starts (0 January, 6 July)
-const HURR_TAG = { hurricane: 'HURR', typhoon: 'TYPH', cyclone: 'CYC', medicane: 'MEDI' }[BI.hurricane] || 'HURR';      // the season bar's and the summary's short word for the hurricane-strength count
-{ const e = $('se-hurr'); if (e && e.nextSibling) e.nextSibling.textContent = HURR_TAG; }
+const SCALE = HFStorms.scaleOf(STORM_BASIN), BAR = SCALE.bar;      // this basin's own intensity scale (src/storms.js, SCALES) and the tags of the season bar's three strength counters (>= 64, 96 and 137 kt)
+const HURR_TAG = BAR[0];
+{ [['se-hurr', 0], ['se-major', 1], ['se-c5', 2]].forEach(([id, k]) => { const e = $(id); if (e && e.nextSibling) e.nextSibling.textContent = BAR[k]; }); }
 const hurrWord = (t) => (BI.hurricane === 'hurricane' ? t : t.replace(/Hurricane/g, BI.hurricane[0].toUpperCase() + BI.hurricane.slice(1)).replace(/hurricane/g, BI.hurricane));      // the local word for a hurricane-strength cyclone
 const seasonLabel = (y) => (SM ? y + '\u2013' + String((y + 1) % 100).padStart(2, '0') : String(y));      // 2026, or 2026-27 for a southern season
 const stormCanvas = makeCanvas(461); stormCanvas.id = 'storm-canvas';
@@ -438,8 +439,8 @@ function placeSummary(F) {                                                // one
     return 'Low-pressure area' + (vmax >= 25 ? ' · up to ' + HFStorms.ktToMph(vmax) + ' mph' : '') + (F.alive ? ' · still there on day 7' : ' · gone ' + when(day(last.h)));
   }
   if (!F.developed) return placeKind === 'wave' ? 'Does not develop' : 'Fizzles';
-  const pk = F.peak, pf = fx.find((f) => f.h === pk.h) || fx[0], c = HFStorms.category(pk.v), mph = HFStorms.ktToMph(pk.v);
-  const kind = pf.th === 'sc' ? (pk.v >= 34 ? 'Subtropical storm' : 'Subtropical depression') : c.cat >= 1 ? 'Cat ' + c.cat + ' ' + BI.hurricane : pk.v >= 34 ? 'Tropical storm' : 'Tropical depression';
+  const pk = F.peak, pf = fx.find((f) => f.h === pk.h) || fx[0], k = HFStorms.classOf(STORM_BASIN, pk.v, 'tc'), mph = HFStorms.ktToMph(pk.v);
+  const kind = pf.th === 'sc' ? (pk.v >= 34 ? 'Subtropical storm' : 'Subtropical depression') : SCALE.major == null ? k.long : k.idx >= 2 ? 'Cat ' + (k.idx - 1) + ' ' + BI.hurricane : k.idx === 1 ? 'Tropical storm' : 'Tropical depression';
   return kind + ' · peak ' + mph + ' mph · ' + when(day(pk.h));
 }
 function drawPlacePreview(g, toPx) {
@@ -485,8 +486,8 @@ function stormKindName(S, fix) {                                    // the long 
   if (fix.th === 'nl') return S.depNum > 0 ? 'Remnant low' : 'Non-tropical low';
   if (fix.th === 'wv') return fix.st === 'DB' ? 'Disturbance' : fix.st === 'LO' ? 'Low-pressure area' : 'Tropical wave';
   if (fix.th === 'sc') return fix.v >= 34 ? 'Subtropical Storm' : 'Subtropical Depression';
-  const c = HFStorms.category(fix.v);
-  return hurrWord(c.cat >= 3 ? 'Major Hurricane (Cat ' + c.cat + ')' : c.name);
+  const k = HFStorms.classOf(STORM_BASIN, fix.v, 'tc');                  // the basin's own scale: Typhoon, Intense Tropical Cyclone, Category 3 Severe Tropical Cyclone ...
+  return hurrWord(SCALE.major != null && k.idx >= SCALE.major ? 'Major Hurricane (Cat ' + (k.idx - 1) + ')' : k.long);
 }
 function stormTitle(S, fix) {                                       // "Bertha", or "Tropical Depression Three" before it has a name
   if (S.name) return S.name;
@@ -499,14 +500,14 @@ function stormShortLabel(S, fix) {
   if (S.name) return (fix.th === 'ex' ? 'EX ' : fix.th === 'nl' ? 'L ' : '') + S.name;
   return (fix.th === 'sc' ? 'SD ' : fix.th === 'ex' ? 'EX ' : 'TD ') + (S.depNum || '');
 }
-function stormShape(g, shape, x, y, r, fill, stroke, lw) {          // circle (tropical), square (subtropical), triangle (extratropical)
+function stormShape(g, shape, x, y, r, fill, stroke, lw) {          // circle (tropical), square (subtropical), triangle (extratropical, remnant and other non-tropical lows)
   g.beginPath();
   if (shape === 'square') g.rect(x - r, y - r, 2 * r, 2 * r);
   else if (shape === 'triangle') { g.moveTo(x, y - r * 1.15); g.lineTo(x + r, y + r * 0.85); g.lineTo(x - r, y + r * 0.85); g.closePath(); }
   else g.arc(x, y, r, 0, Math.PI * 2);
   g.fillStyle = fill; g.fill(); if (stroke) { g.lineWidth = lw || 1.4; g.strokeStyle = stroke; g.stroke(); }
 }
-const shapeOf = (th) => (th === 'sc' ? 'square' : th === 'ex' ? 'triangle' : 'circle');
+const shapeOf = (th) => (th === 'sc' ? 'square' : th === 'ex' || th === 'nl' ? 'triangle' : 'circle');          // a remnant or other non-tropical low is a triangle like a post-tropical cyclone
 
 /* ---- drawing -------------------------------------------------------------------------------------------------------- */
 function drawStorms() {
@@ -697,7 +698,7 @@ function fillSummary() {
   $('sum-title').textContent = BI.label + ' ' + seasonLabel(rec.year);
   const n = SUM ? SUM.normals : null;
   $('sum-sub').textContent = (rec.current ? 'Season so far, to ' + sumDay(rec.year, rec.day) : rec.open ? 'Season over, a storm is still active' : 'Season complete') + (rec.from > 0 ? ' · counted from ' + sumDay(rec.year, rec.from) : '');
-  const cells = [['DEP', rec.dep, n && n.dep], ['NAMED', rec.named, n && n.named], [HURR_TAG, rec.hurr, n && n.hurr], ['MAJOR', rec.major, n && n.major], ['CAT 5', rec.cat5, n && n.cat5], ['ACE', sumF1(rec.ace), n && n.ace]];
+  const cells = [['DEP', rec.dep, n && n.dep], ['NAMED', rec.named, n && n.named], [BAR[0], rec.hurr, n && n.hurr], [BAR[1], rec.major, n && n.major], [BAR[2], rec.cat5, n && n.cat5], ['ACE', sumF1(rec.ace), n && n.ace]];
   $('sum-tot').innerHTML = cells.map(([k, v, a]) => '<div><b>' + v + '</b><span>' + k + '</span><small>' + (a == null ? '' : 'avg ' + sumF1(a)) + '</small></div>').join('');
   drawSumGraph(rec);
   const tb = $('sum-table').querySelector('tbody'); tb.innerHTML = '';
@@ -707,7 +708,7 @@ function fillSummary() {
     const tr = document.createElement('tr'); if (live) tr.className = 'live'; tr.dataset.id = s.id;
     const d0 = s.tdHour >= 0 ? simDate(s.tdHour) : null, d1 = s.end != null ? simDate(s.end) : null;
     const dates = d0 ? MON[d0.getUTCMonth()] + ' ' + d0.getUTCDate() + ' – ' + (d1 ? (d1.getUTCMonth() === d0.getUTCMonth() ? '' : MON[d1.getUTCMonth()] + ' ') + d1.getUTCDate() : 'now') : '–';
-    tr.innerHTML = '<td><i style="background:' + col + '"></i><b>' + (s.name || 'TD ' + s.depNum) + '</b></td><td>' + c.short + ' · ' + HFStorms.ktToMph(s.peakV) + '<span class="u"> mph</span></td><td>' + (s.peakV > 0 ? s.peakP : '–') + '</td><td>' + dates + '</td><td>' + sumF1(s.ace) + '</td>';
+    tr.innerHTML = '<td><i style="background:' + col + '"></i><b>' + (s.name || 'TD ' + s.depNum) + '</b></td><td>' + HFStorms.classOf(STORM_BASIN, s.peakV, 'tc').short + ' · ' + HFStorms.ktToMph(s.peakV) + '<span class="u"> mph</span></td><td>' + (s.peakV > 0 ? s.peakP : '–') + '</td><td>' + dates + '</td><td>' + sumF1(s.ace) + '</td>';
     tr.onclick = () => sumPick(s.id);
     tb.appendChild(tr);
   }

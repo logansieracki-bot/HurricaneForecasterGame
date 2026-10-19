@@ -458,18 +458,19 @@ async function checkStorms(page, label) {
   const shapes = await ev((ids) => {
     const S = window.SSTSIM, cv = document.getElementById('storm-canvas'), g = cv.getContext('2d'), d = cv.width / cv.clientWidth, out = {};
     document.getElementById('stlabels').checked = false;
-    const forced = { circle: { th: 'tc', v: 80, vr: 80 }, square: { th: 'sc', v: 45, vr: 45 }, triangle: { th: 'ex', v: 50, vr: 50 } };
+    const forced = { circle: { th: 'tc', v: 80, vr: 80 }, square: { th: 'sc', v: 45, vr: 45 }, triangle: { th: 'ex', v: 50, vr: 50 }, remnant: { th: 'nl', v: 20, vr: 20 } };
     const at = (id, dx, dy) => { const p = S.stormPx(id); return g.getImageData(Math.round((p.x + dx) * d), Math.round((p.y + dy) * d), 1, 1).data[3] > 100; };
-    ['circle', 'square', 'triangle'].forEach((k, i) => {
-      S.stormForce(ids[i], forced[k]); S.stormDraw();
+    ['circle', 'square', 'triangle', 'remnant'].forEach((k, i) => {
+      S.stormForce(ids[i % 3], forced[k]); S.stormDraw(); i = i % 3;
       out[k] = { center: at(ids[i], 0, 0), c: [[-8, -8], [8, -8], [-8, 8], [8, 8]].map(([x, y]) => at(ids[i], x, y)), top: [[-6, -6], [6, -6]].map(([x, y]) => at(ids[i], x, y)), bottom: [[-6, 6], [6, 6]].map(([x, y]) => at(ids[i], x, y)) };
     });
     document.getElementById('stlabels').checked = true;
     return out;
   }, b.ids);
   const nFilled = (arr) => arr.filter(Boolean).length;
-  check(`[${label}] a tropical cyclone is drawn as a circle (no corners: ${nFilled(shapes.circle.c)}/4), a subtropical one as a square (corners ${nFilled(shapes.square.c)}/4), an extratropical one as a triangle (top ${nFilled(shapes.triangle.top)}/2, base ${nFilled(shapes.triangle.bottom)}/2)`,
-    shapes.circle.center && nFilled(shapes.circle.c) <= 1 && shapes.square.center && nFilled(shapes.square.c) >= 3 && shapes.triangle.center && nFilled(shapes.triangle.top) === 0 && nFilled(shapes.triangle.bottom) === 2);
+  check(`[${label}] a tropical cyclone is drawn as a circle (no corners: ${nFilled(shapes.circle.c)}/4), a subtropical one as a square (corners ${nFilled(shapes.square.c)}/4), an extratropical one as a triangle (top ${nFilled(shapes.triangle.top)}/2, base ${nFilled(shapes.triangle.bottom)}/2) and so is a remnant low (top ${nFilled(shapes.remnant.top)}/2, base ${nFilled(shapes.remnant.bottom)}/2)`,
+    shapes.circle.center && nFilled(shapes.circle.c) <= 1 && shapes.square.center && nFilled(shapes.square.c) >= 3 && shapes.triangle.center && nFilled(shapes.triangle.top) === 0 && nFilled(shapes.triangle.bottom) === 2
+    && shapes.remnant.center && nFilled(shapes.remnant.top) === 0 && nFilled(shapes.remnant.bottom) === 2);
 
   // precursors are one lifecycle and are drawn by the stage they have reached: a wave as a dashed north-south axis, a low as a red disc with an L, a disturbance (either of them with the potential to
   // become a cyclone) as an X in a dashed ring; all three are on by default
@@ -915,7 +916,7 @@ async function checkStormsBasin(page, label, prefix) {
   const ev = (fn, arg) => page.evaluate(fn, arg);
   const sp = STORM_SPECS[prefix];
   await import('../src/storms.js');
-  const H = globalThis.HFStorms, BI = H.basinInfo(prefix), tag = { hurricane: 'HURR', typhoon: 'TYPH', cyclone: 'CYC', medicane: 'MEDI' }[BI.hurricane], word = BI.hurricane[0].toUpperCase() + BI.hurricane.slice(1);
+  const H = globalThis.HFStorms, BI = H.basinInfo(prefix), SC = H.scaleOf(prefix), tag = SC.bar[0], word = BI.hurricane[0].toUpperCase() + BI.hurricane.slice(1), esc = (t) => t.replace(/[.+*?^${}()|[\]\\]/g, '\\$&');      // SC: the basin's own intensity scale (src/storms.js SCALES)
   const ref = JSON.parse(readFileSync(join(ROOT, 'data/generated', `${prefix}-tc-ref.json`), 'utf8')).normals;
   const a = await ev(() => {
     const S = window.SSTSIM; S.setPlaying(false); S.applySeed(4242); S.setPlaying(false); S.storms(true); S.stormAuto(false);
@@ -923,8 +924,8 @@ async function checkStormsBasin(page, label, prefix) {
     return { on: S.storms(), shown: getComputedStyle(bar).display !== 'none', text: bar.innerText.replace(/\s+/g, ' ').trim(), year: document.getElementById('se-year').textContent, state: S.stormState(), mk: S.stormMapsKeys(), canvas: !!document.getElementById('storm-canvas') };
   });
   check(`[${label}] the page carries the climatology maps the engine is anchored to (${(a.mk || []).join(', ')})`, !!a.mk && ['drift', 'steerClim', 'haz', 'spawn', 'env0'].every((k) => a.mk.includes(k)));
-  const barRe = new RegExp(`^${BI.label} (\\d{4}${BI.seasonMonth ? '–\\d{2}' : ''}) 0 ?DEP 0 ?NAMED 0 ?${tag} 0 ?MAJOR 0 ?CAT 5 0\\.0 ?ACE ?Summary$`), yr = (barRe.exec(a.text) || [])[1];
-  check(`[${label}] the season bar shows "${a.text}" before anything has formed (the ${BI.seasonMonth ? 'southern season is named for the year it starts in, 2026–27' : 'season is the calendar year'}; the count of ${BI.hurricane}s is tagged ${tag})`, a.on === true && a.shown && !!yr && a.canvas && a.state.systems.length === 0);
+  const barRe = new RegExp(`^${BI.label} (\\d{4}${BI.seasonMonth ? '–\\d{2}' : ''}) 0 ?DEP 0 ?NAMED 0 ?${esc(SC.bar[0])} 0 ?${esc(SC.bar[1])} 0 ?${esc(SC.bar[2])} 0\\.0 ?ACE ?Summary$`), yr = (barRe.exec(a.text) || [])[1];
+  check(`[${label}] the season bar shows "${a.text}" before anything has formed (the ${BI.seasonMonth ? 'southern season is named for the year it starts in, 2026–27' : 'season is the calendar year'}; the three strength counts are tagged ${SC.bar.join(' / ')})`, a.on === true && a.shown && !!yr && a.canvas && a.state.systems.length === 0);
   const seasonYear = yr ? +yr.slice(0, 4) : 0;
 
   // hand-placed systems: a strong depression, a subtropical one, a low, in the middle of the basin's season
@@ -945,10 +946,11 @@ async function checkStormsBasin(page, label, prefix) {
   await page.mouse.move(px.x - 40, px.y - 40); await page.mouse.move(px.x, px.y, { steps: 4 });
   await page.waitForTimeout(150);
   const tip = await ev(() => { const t = document.getElementById('storm-tip'); return { shown: t.style.display === 'block', text: t.innerText.replace(/\n/g, ' | ') }; });
-  check(`[${label}] hovering a storm shows its card tooltip with the local word: ${tip.text}`, tip.shown && tip.text.includes(first) && new RegExp(`Major ${word} \\(Cat 3\\)`).test(tip.text) && /120 mph \(105 kt\)/.test(tip.text) && /946 hPa/.test(tip.text) && (word === 'Hurricane' || !/hurricane/i.test(tip.text)));
+  const k105 = H.classOf(prefix, 105, 'tc'), kind105 = SC.major != null ? new RegExp(`Major ${word} \\(Cat 3\\)`) : new RegExp(esc(k105.long));         // 105 kt in the basin's own scale: Typhoon, Extremely Severe Cyclonic Storm, Intense Tropical Cyclone, Category 4 Severe Tropical Cyclone ...
+  check(`[${label}] hovering a storm shows its card tooltip with the basin's own class (${k105.long}): ${tip.text}`, tip.shown && tip.text.includes(first) && kind105.test(tip.text) && /120 mph \(105 kt\)/.test(tip.text) && /946 hPa/.test(tip.text) && (word === 'Hurricane' || !/hurricane/i.test(tip.text)));
   await page.mouse.click(px.x, px.y); await page.waitForTimeout(250);
   const card = await ev(() => { const c = document.getElementById('storm-card'), g = (id) => document.getElementById(id).textContent; return { hidden: c.hidden, name: g('sc-name'), cat: g('sc-cat'), mph: g('sc-mph'), p: g('sc-p') }; });
-  check(`[${label}] clicking it opens the stat card (${card.name}, ${card.cat}, ${card.mph} mph, ${card.p} hPa)`, !card.hidden && card.name === first && new RegExp(`Major ${word}`).test(card.cat) && card.mph === '120' && card.p === '946');
+  check(`[${label}] clicking it opens the stat card (${card.name}, ${card.cat}, ${card.mph} mph, ${card.p} hPa)`, !card.hidden && card.name === first && (SC.major != null ? new RegExp(`Major ${word}`).test(card.cat) : card.cat === k105.long) && card.mph === '120' && card.p === '946');
   await page.keyboard.press('Escape'); await page.waitForTimeout(100);
 
   // Place mode in this basin: the button holds the clock and opens the picker, at the pointer the forecast is a line of three-hourly fixes (seven days), a click puts the system there and the clock goes on

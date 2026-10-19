@@ -961,5 +961,39 @@ const LAND = (la, lo) => (lo > -16.3 && lo < 38 && la > 4 && la < 30) || (lo < -
       fit.every(([, p]) => p.vpScale !== at.vpScale && p.kUp !== at.kUp && p.genGate.lat[0] !== at.genGate.lat[0])); }
 }
 
+/* ---- milestone 11: no crossing of the equator, and each basin's own intensity scale ---------------------------------------------------------- */
+{
+  // the soft floor: identity (bit for bit) poleward of 2.5 degrees, positive for any step, monotone, the same in the mirror image
+  const ks = (l, d) => H.keepSide(l, d, 2.5);
+  check('the equator floor leaves a step that ends poleward of 2.5 degrees exactly as it was (both hemispheres)', ks(10, -0.3) === 10 + -0.3 && ks(-10, 0.3) === -10 + 0.3 && ks(3, -0.4) === 3 + -0.4 && ks(-3, 0.4) === -3 + 0.4 && ks(25, 0.7) === 25 + 0.7);
+  check('a step toward the equator that would take a system across it ends on its own side (never zero, never the other hemisphere): 1 deg by -50, -1 deg by +50, 0 by -3',
+    ks(1, -50) > 0 && ks(-1, 50) < 0 && ks(0, -3) > 0 && ks(1, -50) < 2.5 && ks(-1, 50) > -2.5 && near(ks(2.6, -0.4), 2.5 * Math.exp(-0.3 / 2.5), 1e-12));
+  check('the floor is monotone (a longer step toward the equator never ends further from it) and mirror-symmetric', (() => { let ok = true; for (let l = 0.2; l < 8; l += 0.4) for (let d = -6; d < 1; d += 0.3) { if (ks(l, d - 0.1) > ks(l, d) + 1e-12 || !near(ks(-l, -d), -ks(l, d), 1e-12)) ok = false; } return ok; })());
+  // the whole engine: strong steering toward the equator for 15 days, a tropical cyclone, a wave and a low, in both hemispheres, hour by hour
+  const southward = makeEnv({ sst: 29, shear: 5, rh: 70, steer: () => [0, -25, 0, -25, 0, -25] }), northward = makeEnv({ sst: 29, shear: 5, rh: 70, steer: () => [0, 25, 0, 25, 0, 25] });
+  const cross = (th, lat, env, side) => { let worst = 99, seen = 0; for (let sd = 1; sd <= 6; sd++) { const S = system(th, lat, -60, 35, sd, th === 'nl' ? { nlTill: 1e9 } : null); for (let h = 0; h < 360 && S.alive; h++) { H.stepSystem(S, env, h, sd, par); seen++; worst = Math.min(worst, side * S.lat); } } return { worst, seen }; };
+  const res = [['tc', 4, southward, 1], ['wv', 5, southward, 1], ['nl', 4, southward, 1], ['tc', -4, northward, -1], ['wv', -5, northward, -1], ['nl', -4, northward, -1]].map(([th, la, env, side]) => cross(th, la, env, side));
+  check(`pushed toward the equator by 25 kt of steering for 15 days, a cyclone, a wave and a low never cross it in either hemisphere (lowest |latitude| ${res.map((r) => r.worst.toFixed(2)).join(' / ')} over ${res.reduce((a, r) => a + r.seen, 0)} hours)`, res.every((r) => r.worst > 0.05 && r.seen > 200));
+}
+{
+  const ids = Object.keys(H.BASINS), SC = (b) => H.scaleOf(b);
+  check('every basin has an intensity scale of its own: classes ascending from 0, a first storm class at 34 kt (the naming wind of every basin), three season-bar tags', ids.every((b) => { const C = SC(b).classes; return C[0][0] === 0 && C.every((c, i) => i === 0 || c[0] > C[i - 1][0]) && C.some((c) => c[0] === 34) && SC(b).bar.length === 3; }));
+  check('the Atlantic, East Pacific, South Atlantic and Mediterranean use Saffir-Simpson exactly (the same class as H.category at every wind)', ['atlantic', 'eastpacific', 'satl', 'med'].every((b) => { for (let v = 0; v <= 170; v += 5) { const k = H.classOf(b, v, 'tc'); if (k.short !== H.category(v).short) return false; } return true; }));
+  check('every cut-off is a boundary: the class changes at the first best-track (5-kt) wind of it and not 5 kt below (all nine scales; 96 and 137 kt are first reached at 100 and 140)', ids.every((b) => SC(b).classes.every((c, i) => { const m5 = Math.ceil(c[0] / 5) * 5; return i === 0 || (H.classOf(b, m5, 'tc').idx === i && H.classOf(b, m5 - 5, 'tc').idx === i - 1); })));
+  // the official cut-offs of the 10-minute agencies converted to the 1-minute wind (/0.88) and of the 3-minute one (x 1.05), rounded to 5 kt; the first storm class stays at 34
+  const conv = (kt, f) => 5 * Math.round((kt * f) / 5);
+  const mins = (b) => SC(b).classes.map((c) => c[0]).filter((v) => v > 34);
+  check('the converted cut-offs are what the agencies say: Meteo-France 48 / 64 / 90 / 116 kt of 10-min wind, BoM and Fiji 48 / 64 / 86 / 108, IMD 28 / 48 / 64 / 90 / 120 kt of 3-min wind (JTWC: 64 and 130 of 1-min, JMA 48 of 10-min)',
+    mins('swio').join() === [48, 64, 90, 116].map((k) => conv(k, 1 / 0.88)).join() && mins('aus').join() === [48, 64, 86, 108].map((k) => conv(k, 1 / 0.88)).join() && mins('spac').join() === mins('aus').join()
+    && SC('nio').classes.map((c) => c[0]).filter((v) => v > 0 && v !== 34).join() === [28, 48, 64, 90, 120].map((k) => conv(k, 1.05)).join() && mins('westpacific').join() === [conv(48, 1 / 0.88), 64, 130].join());
+  const name = (b, v) => H.classOf(b, v, 'tc').long;
+  check(`each page calls a wind what its own region calls it: 130 kt is ${name('westpacific', 130)} in the West Pacific, ${name('nio', 100)} in the North Indian (100 kt), ${name('swio', 105)} in the South-West Indian (105), ${name('aus', 80)} and ${name('spac', 105)} in the Australian region (80) and the South Pacific (105), ${name('atlantic', 105)} in the Atlantic`,
+    name('westpacific', 130) === 'Super Typhoon' && name('westpacific', 64) === 'Typhoon' && name('westpacific', 55) === 'Severe Tropical Storm' && name('nio', 100) === 'Extremely Severe Cyclonic Storm' && name('nio', 130) === 'Super Cyclonic Storm'
+    && name('swio', 105) === 'Intense Tropical Cyclone' && name('aus', 80) === 'Category 3 Severe Tropical Cyclone' && name('spac', 105) === 'Category 4 Severe Tropical Cyclone' && name('aus', 20) === 'Tropical Low' && name('spac', 20) === 'Tropical Depression' && name('atlantic', 105) === 'Category 3 Hurricane');
+  check('a subtropical cyclone keeps the subtropical names whatever the region', ids.every((b) => H.classOf(b, 40, 'sc').long === 'Subtropical Storm' && H.classOf(b, 30, 'sc').long === 'Subtropical Depression'));
+  check('the season-bar counters keep their engine thresholds and the real normals they are compared with: the tags are the only thing that is native (HURR / TYPH / VSCS ... , MAJOR / ESCS ..., CAT 5 / SUPER ...)',
+    ids.every((b) => SC(b).bar.every((t) => typeof t === 'string' && t.length > 0)) && SC('westpacific').bar.join() === 'TYPH,MAJOR,SUPER' && SC('nio').bar[0] === 'VSCS' && SC('aus').bar.join() === 'SEVERE,CAT 4+,CAT 5');
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed) process.exit(1);

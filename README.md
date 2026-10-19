@@ -82,8 +82,8 @@ nothing to run by hand.
   percentiles the season summary draws against go in beside them as `storms.ace` / `storms.normals` with `merge_data.mjs --storms`),
   `tools/storm_mc.mjs` runs whole seasons through the built page (any number of parameter sets at once, same weather),
   `tools/storm_opt.mjs` calibrates the intensity law and the environmental coupling with CMA-ES, `tools/storm_validate.mjs`
-  checks tracks, landfalls and genesis against the real best track, and `tools/storm_mutants.mjs` breaks the storm code in 119 ways, one at a time, and runs the
-  checks that should notice (all 119 are caught; `docs/roadmap.md` has what the passes found and how the checks were changed).
+  checks tracks, landfalls and genesis against the real best track, and `tools/storm_mutants.mjs` breaks the storm code in 125 ways, one at a time, and runs the
+  checks that should notice (all 125 are caught; `docs/roadmap.md` has what the passes found and how the checks were changed).
   The other eight basins' storm climatology is made by the same chain with a basin name: `tools/tc_basins.json` (the table: page, season, grid, hemisphere ...), `tools/storm_region.mjs`
   (which cells of a page are inside its basin and land for a storm), `tools/make_tc_basin.py` (the real targets and maps of the storms that form inside a page, by wind), `tools/storm_fit.mjs --basin`,
   `tools/storm_basin.mjs` (whole seasons of any basin against its reference), `tools/storm_basin_opt.mjs` (the CMA-ES calibration of a basin's intensity law, its `--rescore` on fresh seasons and `--resume`),
@@ -328,14 +328,19 @@ nothing to run by hand.
   plain simulation, and the tests make one to check that). `src/storms.js` is the engine (pure JS, no DOM) and `src/storm-hooks.js` / `src/storm-late.js` (see Layout)
   are everything that connects it to the page. **Systems:** the precursors are one lifecycle: a tropical wave (dashed line) or a
   low (a red `L`) that has the potential to become a cyclone turns into a *disturbance* (an X in a dashed ring), which turns into a
-  depression; then tropical depressions / storms / hurricanes (circles coloured by Saffir-Simpson category), subtropical depressions /
-  storms (squares) and extratropical / post-tropical cyclones (grey triangles), each with a track of advisory dots every three hours
+  depression; then tropical depressions / storms / hurricanes (circles coloured by the 1-minute wind in Saffir-Simpson steps, the same on every page, and named in the basin's own intensity
+  scale: Typhoon and Super Typhoon, Very Severe and Extremely Severe Cyclonic Storm, Intense Tropical Cyclone, Category 3 Severe Tropical Cyclone ...; `SCALES` in `src/storms.js`, below),
+  subtropical depressions / storms (squares) and extratropical / post-tropical cyclones and remnant or other non-tropical lows (grey triangles), each with a track of advisory dots every three hours
   (big at the synoptic 00 / 06 / 12 / 18Z, small between, so a peak that comes and goes in a few hours still shows), a white dot where it
   became a depression, and a name label; the waves, lows, disturbances and name labels are toggles under `Customization`, and the
   Advanced tab has `Storms form on their own` and `Storm activity (seeds)`. Hover a dot for name, category, wind in mph
   (kt) and gusts; click a live storm or a finished track for the stat card (category, wind, pressure, Peak, ACE, shear,
   gusts, movement, SST, formed). The top bar is the season: `Atlantic 2026 | DEP | NAMED | HURR | MAJOR | CAT 5 | ACE`
-  from the fixes with HURDAT2's own definitions (the ACE from the 00 / 06 / 12 / 18Z ones only). **Season summary:** the bar's `Summary` button opens a card with the totals and the real 1991-2020 average
+  from the fixes with HURDAT2's own definitions (the ACE from the 00 / 06 / 12 / 18Z ones only); the three strength tags are the basin's own (`TYPH | MAJOR | SUPER` in the West Pacific,
+  `VSCS | ESCS | SUPER` in the North Indian Ocean, `CYC | INTENSE | V.INT` in the South-West Indian, `SEVERE | CAT 4+ | CAT 5` in the Australian region and the South Pacific) and the counters keep their
+  64 / 96 / 137 kt thresholds, so the real averages beside them stay comparable. **Intensity scales:** the engine's wind is a 1-minute wind; each page's classes start at its agency's cut-offs
+  converted to it (10-minute winds / 0.88 for JMA-style agencies, Meteo-France, the Bureau of Meteorology and Fiji, 3-minute winds x 1.05 for IMD, rounded to 5 kt; the West Pacific takes
+  JTWC's own Typhoon at 64 kt and Super Typhoon at 130 kt with JMA's Severe Tropical Storm at 55), and a storm is named at 34 kt of 1-minute wind in every basin. **Season summary:** the bar's `Summary` button opens a card with the totals and the real 1991-2020 average
   beneath each, a graph of the season's accumulated cyclone energy through the year over the real seasons (the middle 50 % and 80 % as bands, the median dashed; the
   other seasons of the run as thin lines) and one row per cyclone (a click flies to it and opens its stat card); at Jan 1 the finished season's paths disappear, the bar
   starts the new year from zero, a cyclone still alive finishes under its own year, and the card opens by itself on the season that has just ended. **Save / resume:**
@@ -365,7 +370,7 @@ nothing to run by hand.
   the temperature the page draws for them), the fall of the potential wind with latitude is lifted in a perfect tropical environment (warm water, next to no shear, moist air: a depression
   over 27.5 degC water at the latitude of Lake Michigan becomes a hurricane in 37 of 40 seeds, it was 10), the post-tropical transition and the sea-temperature gate no longer shut a warm, calm
   sea, a map that is zero is not a wall (a development-rate floor and a supply of disturbances over the whole box make the Great Lakes, the Mediterranean and the rest of the water possible,
-  and extremely rare), and the sliders have the only ranges the model has. `docs/roadmap.md` (milestone 9) lists every limit and what it became. Selecting a storm (or one of its dots) hides every other path until it is
+  and extremely rare), a system never crosses the equator (the step toward it bends into a soft floor on |latitude| below 2.5 degrees, `keepSide`: untouched poleward of it, never zero), and the sliders have the only ranges the model has. `docs/roadmap.md` (milestone 9) lists every limit and what it became. Selecting a storm (or one of its dots) hides every other path until it is
   deselected. **Re-fitting:** the maps are a calibration of this simulator's weather, committed as data, so they are re-fitted when the
   weather changes (`npm run build`, then with `PLAYWRIGHT_CHROMIUM_PATH` set `node tools/storm_fit.mjs clim`, `wet`, `fit --ipf`,
   then `refine` and `motion` on `node tools/storm_mc.mjs --diag` runs of 70+ seasons until the regional totals stop moving, `maps`,

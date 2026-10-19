@@ -82,6 +82,26 @@ function category(kt) {                                   // by the wind as a be
   for (const c of SSHWS) if (v >= c[0]) return { short: c[1], name: c[2], cat: c[1][0] === 'C' ? +c[1][1] : 0 };
   return { short: 'TD', name: 'Tropical Depression', cat: 0 };
 }
+/* ---- each basin's own intensity scale -------------------------------------------------------------------------------------------------------
+   The wind the engine carries is a 1-minute sustained wind (the best-track convention of the US agencies, and what the real normals it is calibrated on are counted in). A region's official agency
+   classifies on its own winds: the 10-minute winds of JMA, Meteo-France, the Bureau of Meteorology and Fiji, the 3-minute winds of the India Meteorological Department. Each class below starts at the
+   agency's cut-off converted to the 1-minute wind (10-minute / 0.88, the WMO rule of thumb; 3-minute x 1.05) and rounded to the 5 kt a best track holds, so a storm is called what that agency would call
+   it. The first storm class always starts at 34 kt (a storm is named at 34 kt of 1-minute wind in every basin: the definition of the named storms the engine is calibrated on). The West Pacific takes
+   JTWC's own 1-minute Typhoon (64 kt) and Super Typhoon (130 kt) with JMA's Severe Tropical Storm (48 kt of 10-minute wind) between. `bar` are the three season-bar counters' tags: they keep their engine
+   thresholds (64 / 96 / 137 kt, what the real normals count) and only the word changes. Colours are not part of a scale: a marker's colour is its 1-minute wind, the same on every page.
+   Each class: [first 1-minute kt, short, long]. A word `Hurricane` in a long name is the page's local word for it (hurrWord in src/storm-hooks.js: Cyclone, Medicane, ...). */
+const NHC_CLASSES = SSHWS.slice().reverse();
+const AU_CLASSES = [[34, 'C1', 'Category 1 Tropical Cyclone'], [55, 'C2', 'Category 2 Tropical Cyclone'], [75, 'C3', 'Category 3 Severe Tropical Cyclone'], [100, 'C4', 'Category 4 Severe Tropical Cyclone'], [125, 'C5', 'Category 5 Severe Tropical Cyclone']];
+const SCALES = {
+  nhc:  { agency: 'NHC / CPHC', avg: '1-min', classes: NHC_CLASSES, major: 4, bar: ['HURR', 'MAJOR', 'CAT 5'] },          // major: the index of the first class called major (Category 3); the others have no such word
+  satl: { agency: 'Saffir-Simpson (no agency)', avg: '1-min', classes: NHC_CLASSES, major: 4, bar: ['CYC', 'MAJOR', 'CAT 5'] },
+  med:  { agency: 'Saffir-Simpson (no agency)', avg: '1-min', classes: NHC_CLASSES, major: 4, bar: ['MEDI', 'MAJOR', 'CAT 5'] },
+  jtwc: { agency: 'JTWC / JMA', avg: '1-min', classes: [[0, 'TD', 'Tropical Depression'], [34, 'TS', 'Tropical Storm'], [55, 'STS', 'Severe Tropical Storm'], [64, 'TY', 'Typhoon'], [130, 'STY', 'Super Typhoon']], bar: ['TYPH', 'MAJOR', 'SUPER'] },
+  imd:  { agency: 'IMD', avg: '3-min', classes: [[0, 'D', 'Depression'], [30, 'DD', 'Deep Depression'], [34, 'CS', 'Cyclonic Storm'], [50, 'SCS', 'Severe Cyclonic Storm'], [65, 'VSCS', 'Very Severe Cyclonic Storm'], [95, 'ESCS', 'Extremely Severe Cyclonic Storm'], [125, 'SuCS', 'Super Cyclonic Storm']], bar: ['VSCS', 'ESCS', 'SUPER'] },
+  mfr:  { agency: 'Meteo-France La Reunion', avg: '10-min', classes: [[0, 'TD', 'Tropical Depression'], [34, 'MTS', 'Moderate Tropical Storm'], [55, 'STS', 'Severe Tropical Storm'], [75, 'TC', 'Tropical Cyclone'], [100, 'ITC', 'Intense Tropical Cyclone'], [130, 'VITC', 'Very Intense Tropical Cyclone']], bar: ['CYC', 'INTENSE', 'V.INT'] },
+  bom:  { agency: 'Bureau of Meteorology', avg: '10-min', classes: [[0, 'TL', 'Tropical Low']].concat(AU_CLASSES), bar: ['SEVERE', 'CAT 4+', 'CAT 5'] },
+  fiji: { agency: 'Fiji Meteorological Service (RSMC Nadi)', avg: '10-min', classes: [[0, 'TD', 'Tropical Depression']].concat(AU_CLASSES), bar: ['SEVERE', 'CAT 4+', 'CAT 5'] },
+};
 const ktToMph = (kt) => round5(kt * KT_MPH);               // advisories round to 5 mph
 const aceOf = (kt) => (kt >= 34 ? (kt / 100) * (kt / 100) : 0);
 // fitted to the 1991-2020 Atlantic best track (tools/make_tc_ref.py): dp = c V^d exp(e (lat - 25) / 10), dp = 1013 - pressure
@@ -196,17 +216,26 @@ const BASIN_PARAMS = {
 };
 /* ==== BASIN PARAMS END ==== */
 const BASINS = {
-  atlantic:    { label: 'Atlantic', menu: 'atlantic', seasonMonth: 0, waves: true, hurricane: 'hurricane', lowLat0: 18, mdr: { lat: [10, 20], lon: [-80, -20] }, names: { type: 'yearly', base: 2021, lists: NAME_SETS, extra: NAME_SUPPLEMENTAL, verified: false }, params: BASIN_PARAMS.atlantic },
-  eastpacific: { label: 'Eastern Pacific', menu: 'epac', seasonMonth: 0, waves: false, hurricane: 'hurricane', lowLat0: 8, mdr: { lat: [8, 18], lon: [-125, -95] }, names: { type: 'yearly', base: 2020, lists: EP_SETS, extra: EP_EXTRA, west: { lon: -140, seq: CP_NAMES, start: 5 }, verified: false }, params: BASIN_PARAMS.eastpacific },
-  westpacific: { label: 'Western Pacific', menu: 'wpac', seasonMonth: 0, waves: false, hurricane: 'typhoon', lowLat0: 5, mdr: { lat: [8, 20], lon: [130, 165] }, names: { type: 'seq', list: WP_NAMES, start: 61, verified: false }, params: BASIN_PARAMS.westpacific },
-  nio:         { label: 'North Indian Ocean', menu: 'nio', seasonMonth: 0, waves: false, hurricane: 'cyclone', lowLat0: 5, mdr: { lat: [8, 18], lon: [60, 95] }, names: { type: 'seq', list: NI_NAMES, start: 26, verified: false }, params: BASIN_PARAMS.nio },
-  aus:         { label: 'Australian Region', menu: 'aus', seasonMonth: 6, waves: false, hurricane: 'cyclone', lowLat0: 5, mdr: { lat: [-18, -8], lon: [105, 150] }, names: { type: 'seq', list: AU_NAMES, start: 0, verified: false }, params: BASIN_PARAMS.aus },
-  swio:        { label: 'South-West Indian Ocean', menu: 'swio', seasonMonth: 6, waves: false, hurricane: 'cyclone', lowLat0: 5, mdr: { lat: [-20, -8], lon: [50, 90] }, names: { type: 'yearly', base: 2021, lists: SW_SETS, extra: NAME_SUPPLEMENTAL, verified: false }, params: BASIN_PARAMS.swio },
-  spac:        { label: 'South Pacific', menu: 'spac', seasonMonth: 6, waves: false, hurricane: 'cyclone', lowLat0: 5, mdr: { lat: [-20, -8], lon: [160, 210] }, names: { type: 'seq', list: SP_NAMES, start: 0, verified: false }, params: BASIN_PARAMS.spac },
-  satl:        { label: 'South Atlantic', menu: 'satl', seasonMonth: 6, waves: false, hurricane: 'cyclone', lowLat0: 15, mdr: { lat: [-32, -20], lon: [-50, -30] }, names: { type: 'seq', list: SA_NAMES, start: 12, verified: false }, params: BASIN_PARAMS.satl },
-  med:         { label: 'Mediterranean', menu: 'med', seasonMonth: 6, waves: false, hurricane: 'medicane', lowLat0: 30, mdr: { lat: [34, 40], lon: [0, 25] }, names: { type: 'seq', list: MED_NAMES, start: 0, verified: false }, params: BASIN_PARAMS.med },
+  atlantic:    { label: 'Atlantic', menu: 'atlantic', scale: 'nhc', seasonMonth: 0, waves: true, hurricane: 'hurricane', lowLat0: 18, mdr: { lat: [10, 20], lon: [-80, -20] }, names: { type: 'yearly', base: 2021, lists: NAME_SETS, extra: NAME_SUPPLEMENTAL, verified: false }, params: BASIN_PARAMS.atlantic },
+  eastpacific: { label: 'Eastern Pacific', menu: 'epac', scale: 'nhc', seasonMonth: 0, waves: false, hurricane: 'hurricane', lowLat0: 8, mdr: { lat: [8, 18], lon: [-125, -95] }, names: { type: 'yearly', base: 2020, lists: EP_SETS, extra: EP_EXTRA, west: { lon: -140, seq: CP_NAMES, start: 5 }, verified: false }, params: BASIN_PARAMS.eastpacific },
+  westpacific: { label: 'Western Pacific', menu: 'wpac', scale: 'jtwc', seasonMonth: 0, waves: false, hurricane: 'typhoon', lowLat0: 5, mdr: { lat: [8, 20], lon: [130, 165] }, names: { type: 'seq', list: WP_NAMES, start: 61, verified: false }, params: BASIN_PARAMS.westpacific },
+  nio:         { label: 'North Indian Ocean', menu: 'nio', scale: 'imd', seasonMonth: 0, waves: false, hurricane: 'cyclone', lowLat0: 5, mdr: { lat: [8, 18], lon: [60, 95] }, names: { type: 'seq', list: NI_NAMES, start: 26, verified: false }, params: BASIN_PARAMS.nio },
+  aus:         { label: 'Australian Region', menu: 'aus', scale: 'bom', seasonMonth: 6, waves: false, hurricane: 'cyclone', lowLat0: 5, mdr: { lat: [-18, -8], lon: [105, 150] }, names: { type: 'seq', list: AU_NAMES, start: 0, verified: false }, params: BASIN_PARAMS.aus },
+  swio:        { label: 'South-West Indian Ocean', menu: 'swio', scale: 'mfr', seasonMonth: 6, waves: false, hurricane: 'cyclone', lowLat0: 5, mdr: { lat: [-20, -8], lon: [50, 90] }, names: { type: 'yearly', base: 2021, lists: SW_SETS, extra: NAME_SUPPLEMENTAL, verified: false }, params: BASIN_PARAMS.swio },
+  spac:        { label: 'South Pacific', menu: 'spac', scale: 'fiji', seasonMonth: 6, waves: false, hurricane: 'cyclone', lowLat0: 5, mdr: { lat: [-20, -8], lon: [160, 210] }, names: { type: 'seq', list: SP_NAMES, start: 0, verified: false }, params: BASIN_PARAMS.spac },
+  satl:        { label: 'South Atlantic', menu: 'satl', scale: 'satl', seasonMonth: 6, waves: false, hurricane: 'cyclone', lowLat0: 15, mdr: { lat: [-32, -20], lon: [-50, -30] }, names: { type: 'seq', list: SA_NAMES, start: 12, verified: false }, params: BASIN_PARAMS.satl },
+  med:         { label: 'Mediterranean', menu: 'med', scale: 'med', seasonMonth: 6, waves: false, hurricane: 'medicane', lowLat0: 30, mdr: { lat: [34, 40], lon: [0, 25] }, names: { type: 'seq', list: MED_NAMES, start: 0, verified: false }, params: BASIN_PARAMS.med },
 };
 const basinOf = (id) => BASINS[id] || BASINS.atlantic;
+const scaleOf = (id) => SCALES[basinOf(id).scale] || SCALES.nhc;
+/* the class of a wind (kt, 1-minute) in a basin's own scale: { idx, short, long }. A subtropical cyclone keeps the subtropical names whatever the region */
+function classOf(id, kt, th) {
+  const v = round5(kt);
+  if (th === 'sc') return v >= 34 ? { idx: 1, short: 'SS', long: 'Subtropical Storm' } : { idx: 0, short: 'SD', long: 'Subtropical Depression' };
+  const C = scaleOf(id).classes; let k = 0;
+  for (let i = 0; i < C.length; i++) if (v >= C[i][0]) k = i;
+  return { idx: k, short: C[k][1], long: C[k][2] };
+}
 /* the next name for a storm that has just reached 34 kt: a yearly basin takes the index-th name of the season's list (a supplemental list after the last), a sequential one the next in a list that goes on
    from season to season and wraps; the Eastern Pacific names a storm west of 140W from the Central Pacific list */
 function stormName(basin, seasonYear, index, cursors, lon) {
@@ -351,6 +380,7 @@ function structureParams() {
     lowLat: [14, 18, 45, 50],                     // a tracked low develops like any disturbance, weighted by a ramp up between the first two latitudes and down between the last two (the tropics' own lows are the waves' business; far poleward the sea is cold)
     hazFloor: 2e-6, seedFloor: 0,                 // a development rate no map is zero under (per hour, before E: with a perfect environment a disturbance anywhere over water can develop, at odds of one in a few thousand per disturbance-week), and a
                                                   // supply of disturbances over the whole box (per year, uniform over the water, ids 'F<k>'): together what makes the Great Lakes, the Mediterranean or the South Atlantic possible without making them likely
+    eqSoft: 2.5,                                  // degrees: a system never crosses the equator -- a step toward it bends into a soft floor on |latitude| below this (identity poleward of it, see keepSide)
     seedLatMax: 42, endH: 4,                      // a disturbance that is not developing is carried off poleward of this latitude (waveLatMax for a wave), a cold sea does the same: both are hazards with this mean life in hours, not walls
     // ---- the climatology-anchored model (used when the host supplies maps, see prepareMaps) ----------------------------------------------------------------
     // motion: a system moves with the real mean drift of its kind at its place and time of year (maps.drift, from the best track) plus driftGain times the anomaly of
@@ -576,6 +606,13 @@ function statusOf(S) {
   }
 }
 
+/* the equator is not crossed: a system keeps its hemisphere. The meridional step bends into a soft floor on |lat| below `a` degrees (x >= a is untouched, bit for bit; below it the position
+   approaches the equator only asymptotically, positive for any step -- a ramp, not a wall); whatever is stuck there spins down by the growth gate's own latitude edge and ends */
+function keepSide(lat, dy, a) {
+  const hs = lat < 0 ? -1 : 1, x = hs * (lat + dy);
+  return hs * (x >= a ? x : a * Math.exp((x - a) / a));
+}
+
 /* ---- one hour of physics ----------------------------------------------------------------------------------------------
  *  stepSystem(S, env, h, seed, par): the state at hour h becomes the state at hour h + 1. Pure function of its arguments (plus the
  *  hash-keyed noise), so the live engine, the forecast preview and the tests all run exactly this code.                          */
@@ -711,7 +748,7 @@ function stepSystem(S, env, h, seed, par, doy, ctx) {
   const rho = Math.exp(-1 / par.wobbleTau), sr = Math.sqrt(1 - rho * rho);
   S.wx = rho * S.wx + sr * wobSd * rndn(seed, id, h, ST.WX); S.wy = rho * S.wy + sr * wobSd * rndn(seed, id, h, ST.WY);
   const mx = S.cx + S.wx, my = S.cy + S.wy;
-  S.lat = lat + (my * KT_KMH) / KM_DEG;
+  S.lat = keepSide(lat, (my * KT_KMH) / KM_DEG, par.eqSoft);
   S.lon = lon + (mx * KT_KMH) / (KM_DEG * Math.max(0.2, Math.cos(S.lat * DEG)));
 
   // ---- intensity
@@ -1211,7 +1248,7 @@ root.HFStorms = {
   VERSION, create: (o) => new Manager(o), restore: (o, extra) => Manager.restore(o, extra), defaultParams, mergeParams,
   prepareMaps, timeWeights, mapAt, driftAt, climAt, steerRing, envFactor, activityFactor, structureParams, CALIBRATED, calibrated: (on) => { const was = useCalibrated; if (on != null) useCalibrated = !!on; return was; },
   category, ktToMph, aceOf, round5, gustKt, compass, pressureFromWind, windFromPressure, WP, vPot, statusOf, describe, nameFor, NAME_SETS, NAME_SUPPLEMENTAL, BASINS, basinInfo: basinOf, stormName, seasonYearOf,
-  smooth01, rnd, rndn, hash5, idNum, stepSystem, newSystem, makeFix, seasonalWeight, WAVE_SEASON, LowTracker, etHazard6, disHazard6, baroclinicV, satur, softMin, lowWeight, sstGateAt, growthG, decayLimit,
+  smooth01, rnd, rndn, hash5, idNum, stepSystem, newSystem, makeFix, seasonalWeight, WAVE_SEASON, LowTracker, etHazard6, disHazard6, baroclinicV, satur, softMin, lowWeight, keepSide, SCALES, scaleOf, classOf, sstGateAt, growthG, decayLimit,
 };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
 /* ==== STORMS ENGINE END ==== */
