@@ -67,7 +67,7 @@ function computeStormFields(oS, oH, oSh) {
     }
   }
   { // humidity
-    const hvs = P.variability, hes = P.enso, hws = P.synoptic, hmo = P.moisture;
+    const hvs = P.variability * seasGain(humidSeas && humidSeas.eof, p), hes = P.enso * seasGain(humidSeas && humidSeas.enso, p), hws = P.synoptic, hmo = P.moisture;
     const HA0 = humidClimF[M(m1 - 1)], HA1 = humidClimF[M(m1)], HA2 = humidClimF[M(m1 + 1)], HA3 = humidClimF[M(m1 + 2)];
     for (let js = 0; js < NYS; js++) {
       const j = js * SS;
@@ -82,7 +82,7 @@ function computeStormFields(oS, oH, oSh) {
     }
   }
   { // wind shear
-    const svs = P.variability, ses = P.enso, sws = P.shearSynoptic, ssh = P.shearShift;
+    const svs = P.variability * seasGain(shearSeas && shearSeas.eof, p), ses = P.enso * seasGain(shearSeas && shearSeas.enso, p), sws = P.shearSynoptic, ssh = P.shearShift;
     const SA0 = shearClimF[M(m1 - 1)], SA1 = shearClimF[M(m1)], SA2 = shearClimF[M(m1 + 1)], SA3 = shearClimF[M(m1 + 2)];
     jetAxisFinal(jetAxisSt);
     for (let i = 0; i < NX; i++) { const fc = i / RATIO, c0 = Math.min(CNX - 2, Math.floor(fc)), t = fc - c0; jetAxisFS[i] = jetAxisSt[c0] * (1 - t) + jetAxisSt[c0 + 1] * t; }
@@ -192,7 +192,7 @@ const envFrom = (U, V, Pk, SST, RH, SH, REF, LK) => ({                          
   box: { lat0: ST_LAT0, lat1: ST_LAT1, lon0: ST_LON0, lon1: ST_LON1 },
   sst: (la, lo) => { const id = lakeIdAt(la, lo); return id ? LK[id - 1] : sampleFieldS(SST, la, lo); }, rh: (la, lo) => sampleFieldS(RH, la, lo), shear: (la, lo) => sampleFieldS(SH, la, lo),
   steer(la, lo, o) { o[0] = stSample(U[0], la, lo); o[1] = stSample(V[0], la, lo); o[2] = stSample(U[1], la, lo); o[3] = stSample(V[1], la, lo); o[4] = stSample(U[2], la, lo); o[5] = stSample(V[2], la, lo); },
-  slp: (la, lo) => (Pk ? stSample(Pk, la, lo) : NaN), isLand: stormLand, sstRef: () => REF,                // REF: the main development region's mean SST of that keyframe (what relative SST is measured against)
+  slp: (la, lo) => (Pk ? stSample(Pk, la, lo) : NaN), isLand: stormLand, sstRef: () => REF, enso: () => n34,                // REF: the main development region's mean SST of that keyframe (what relative SST is measured against)
 });
 /* the sea-level-pressure minima (lows) of a node-grid pressure field: the mirror image of steerDetectHighs(), refined with a parabola */
 const ST_LOW_MAX = 1008, ST_LOW_PROM = 2.0, ST_LOW_LAT0 = BI.lowLat0, ST_LOW_LAT1 = 68;
@@ -219,7 +219,7 @@ const stormEnv = {
   beginHour(h) { if (h !== wkHour) { wkHour = h; carrySteer(h, kfU, kfV, kfU0, kfV0, kfHour, kfHour0, wkU, wkV); } },          // the engine says which hour it is about to step: the steering of that hour
   sst: (la, lo) => { const id = lakeIdAt(la, lo); return id ? kfLake[id - 1] : sampleFieldS(kfSst, la, lo); }, rh: (la, lo) => sampleFieldS(kfHumid, la, lo), shear: (la, lo) => sampleFieldS(kfShear, la, lo),
   steer(la, lo, o) { o[0] = stSample(wkU[0], la, lo); o[1] = stSample(wkV[0], la, lo); o[2] = stSample(wkU[1], la, lo); o[3] = stSample(wkV[1], la, lo); o[4] = stSample(wkU[2], la, lo); o[5] = stSample(wkV[2], la, lo); },
-  slp: (la, lo) => stSample(kfP, la, lo), isLand: stormLand, sstRef: () => kfSstRef,
+  slp: (la, lo) => stSample(kfP, la, lo), isLand: stormLand, sstRef: () => kfSstRef, enso: () => n34,
   lows: () => { if (lowsStamp !== kfStamp) { lowsCache = detectLowsOn(kfP); lowsStamp = kfStamp; } return lowsCache; },   // read-only for every engine that asks
 };
 /* Calibration lab (dev only, tools/storm_mc.mjs): extra engines with other parameters run on the SAME keyframes and the same seed, so

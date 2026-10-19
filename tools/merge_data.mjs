@@ -144,6 +144,21 @@ export function mergeSteer(basin, dataFileName) {
   return out;
 }
 
+// Puts a basin's seasonal gains and joint-lag El Nino coefficients (tools/make_env_seasonality.py rewrites <basin>-humidity.json and <basin>-shear.json: `enso`, and `seas` = {enso: [12], eof: [12]})
+// into an already-merged data file, leaving everything else of humidity and shear (synoptic, jet) as it is.
+export function mergeEnvSeas(basin, dataFileName) {
+  const dataPath = join(GEN, dataFileName);
+  const existing = JSON.parse(readFileSync(dataPath, 'utf8'));
+  for (const field of ['humidity', 'shear']) {
+    const src = JSON.parse(readFileSync(join(GEN, `${basin}-${field}.json`), 'utf8'));
+    if (!src.seas) throw new Error(`${basin}-${field}.json has no seas: run tools/make_env_seasonality.py ${basin} --write first`);
+    existing[field] = { ...existing[field], enso: src.enso, seas: src.seas };
+  }
+  writeFileSync(dataPath, JSON.stringify(existing));
+  console.log(`wrote ${dataPath} (humidity and shear: joint-lag enso, seas)`);
+  return existing;
+}
+
 // Layers the real best-track climatology the storm pages draw their season summary against onto an already-merged data file, under one
 // `storms` key: the daily cumulative ACE of the 30 seasons 1991-2020 (mean and percentiles) and the seasonal normals, from
 // <basin>-tc-ref.json (tools/make_tc_ref.py). Only the numbers the page uses are shipped (about 11 KB).
@@ -165,7 +180,7 @@ export function mergeStorms(basin, dataFileName) {
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   const [basin, mode, dataFileName] = process.argv.slice(2);
-  if (!basin) { console.error('usage: node tools/merge_data.mjs <basin>\n       node tools/merge_data.mjs <basin> --humidity <data-file-name>\n       node tools/merge_data.mjs <basin> --humidity-synoptic <data-file-name>\n       node tools/merge_data.mjs <basin> --shear <data-file-name>\n       node tools/merge_data.mjs <basin> --shear-synoptic <data-file-name>\n       node tools/merge_data.mjs <basin> --shear-jet <data-file-name>\n       node tools/merge_data.mjs <basin> --steer <data-file-name>\n       node tools/merge_data.mjs <basin> --storm-maps <data-file-name>\n       node tools/merge_data.mjs <basin> --storms <data-file-name>'); process.exit(1); }
+  if (!basin) { console.error('usage: node tools/merge_data.mjs <basin>\n       node tools/merge_data.mjs <basin> --humidity <data-file-name>\n       node tools/merge_data.mjs <basin> --humidity-synoptic <data-file-name>\n       node tools/merge_data.mjs <basin> --shear <data-file-name>\n       node tools/merge_data.mjs <basin> --shear-synoptic <data-file-name>\n       node tools/merge_data.mjs <basin> --shear-jet <data-file-name>\n       node tools/merge_data.mjs <basin> --steer <data-file-name>\n       node tools/merge_data.mjs <basin> --env-seas <data-file-name>\n       node tools/merge_data.mjs <basin> --storm-maps <data-file-name>\n       node tools/merge_data.mjs <basin> --storms <data-file-name>'); process.exit(1); }
   if (mode === '--humidity') {
     if (!dataFileName) { console.error('usage: node tools/merge_data.mjs <basin> --humidity <data-file-name>'); process.exit(1); }
     mergeHumidity(basin, dataFileName);
@@ -184,6 +199,9 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   } else if (mode === '--steer') {
     if (!dataFileName) { console.error('usage: node tools/merge_data.mjs <basin> --steer <data-file-name>'); process.exit(1); }
     mergeSteer(basin, dataFileName);
+  } else if (mode === '--env-seas') {
+    if (!dataFileName) { console.error('usage: node tools/merge_data.mjs <basin> --env-seas <data-file-name>'); process.exit(1); }
+    mergeEnvSeas(basin, dataFileName);
   } else if (mode === '--storm-maps') {
     if (!dataFileName) { console.error('usage: node tools/merge_data.mjs <basin> --storm-maps <data-file-name>'); process.exit(1); }
     mergeStormMaps(basin, dataFileName);

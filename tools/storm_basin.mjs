@@ -60,7 +60,12 @@ export function summarize(raw, basin) {
     const grp = (f) => S.filter((s) => f(s.n34)), g = (a) => ({ n: a.length, ace: mean(a.map((s) => s.r.stats.ace)), named: mean(a.map((s) => s.r.stats.named)) });
     o.enso = { el: g(grp((x) => x > 0.5)), neutral: g(grp((x) => x >= -0.5 && x <= 0.5)), la: g(grp((x) => x < -0.5)) };
     o.enso.ratio = o.enso.el.n && o.enso.la.n ? o.enso.la.ace / o.enso.el.ace : NaN;
-    { const xs = S.map((s) => s.n34), ys = S.map((s) => Math.log(s.r.stats.ace + 10)), mx = mean(xs), my = mean(ys); let sxy = 0, sxx = 0; xs.forEach((x, i) => { sxy += (x - mx) * (ys[i] - my); sxx += (x - mx) ** 2; }); o.ensoSlope = sxx > 0 ? sxy / sxx : NaN; }
+    const slopeOf = (xs, ys) => { const mx = mean(xs), my = mean(ys); let sxy = 0, sxx = 0; xs.forEach((x, i) => { sxy += (x - mx) * (ys[i] - my); sxx += (x - mx) ** 2; }); return sxx > 0 ? sxy / sxx : NaN; };
+    o.ensoSlope = slopeOf(S.map((s) => s.n34), S.map((s) => Math.log(s.r.stats.ace + 10)));
+    o.ensoNamed = slopeOf(S.map((s) => s.n34), S.map((s) => Math.log(s.r.stats.named + 1)));
+    o.ensoDep = slopeOf(S.map((s) => s.n34), S.map((s) => Math.log(s.r.stats.dep + 1)));
+    { const P = S.filter((s) => s.r.storms.filter((x) => x.gen).length >= 2), place = (s, k) => mean(s.r.storms.filter((x) => x.gen).map((x) => x.gen[k]));       // where the season's depressions formed, on average: degrees per degree of the index
+      o.ensoLon = slopeOf(P.map((s) => s.n34), P.map((s) => place(s, 1))); o.ensoLat = slopeOf(P.map((s) => s.n34), P.map((s) => place(s, 0))); }
     res[name] = o;
   }
   return { ref, res };
@@ -112,6 +117,10 @@ export function report(raw, basin, only) {
   const e = ref.enso;
   L.push(`\nENSO (Nino 3.4 over months ${e.months.join('/')} above +0.5 / neutral / below -0.5): seasons, mean ACE; real ${[e.elnino, e.neutral, e.lanina].map((x) => `${x.n}: ${f1(x.ace, 0)}`).join('   ')}  La Nina / El Nino ${e.ace_ratio_lanina_over_elnino}, slope of ln(ACE+10) ${e.slope_ln_ace10} (r ${e.r_ln_ace10})`);
   for (const k of names) { const x = res[k].enso; L.push(`  ${k.padEnd(18)} ${[x.el, x.neutral, x.la].map((q) => `${q.n}: ${f1(q.ace, 0)}`).join('   ')}   ratio ${f1(x.ratio, 2)}   slope ${f1(res[k].ensoSlope, 2)}`); }
+  if (e.slope_lon != null) {
+    L.push(`  per degree of the index: ln(named + 1) real ${e.slope_ln_named}, ln(depressions + 1) real ${e.slope_ln_dep}; where the depressions form: longitude real ${e.slope_lon} (r ${e.r_lon}), latitude real ${e.slope_lat} (r ${e.r_lat})`);
+    for (const k of names) L.push(`  ${k.padEnd(18)} named ${f1(res[k].ensoNamed, 3)}   depressions ${f1(res[k].ensoDep, 3)}   longitude ${f1(res[k].ensoLon, 2)}   latitude ${f1(res[k].ensoLat, 2)}`);
+  }
   L.push('\nhow named storms end (share): ' + Object.entries(res[names[0]].ends).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${f1(100 * v, 0)}%`).join(', ') + `; the 90th percentile of the latitude a named storm reaches: ${f1(res[names[0]].maxLat, 0)}; tracked lows a season ${f1(res[names[0]].lowsPerSeason, 0)}`);
   return L.join('\n');
 }

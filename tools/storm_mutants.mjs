@@ -4,7 +4,7 @@
 // program does, which docs/roadmap.md names). Needs a clean tree and Chromium for the browser drivers:
 //   PLAYWRIGHT_CHROMIUM_PATH=/path/to/chromium node tools/storm_mutants.mjs [--dry] [--base] [--only X1,S4] [--drivers node,save] [--jobs 3]
 // --dry   only checks that every edit anchor occurs exactly once; --base runs every driver on the unmodified tree (all must pass first);
-// --only  a comma list of mutant ids; --drivers  restricts the drivers to run (node, storms, summary, place, save, gate); --jobs  how many mutants run at once (default 3; each builds into its own directory under $MUT_DIR or the
+// --only  a comma list of mutant ids; --drivers  restricts the drivers to run (node, storms, summary, place, save, gate, env); --jobs  how many mutants run at once (default 3; each builds into its own directory under $MUT_DIR or the
 //         temp directory). It changes src/storms.js, src/template.html or index.html for the few seconds a build takes and puts them back itself;
 //         if it is killed in between, `git checkout -- src index.html` restores them. The drivers are the check functions cut out of tests/run.mjs
 //         by their opening comments (`// The storm layer on the Atlantic page`, `// Save / resume`, `async function checkEnsoHold`): keep them.
@@ -24,7 +24,7 @@ const drivers = args.includes('--drivers') ? args[args.indexOf('--drivers') + 1]
 const GATE_BASIN = ['westpacific', 'nio', 'aus', 'swio', 'spac', 'satl', 'med', 'eastpacific'].find((b) => { const d = JSON.parse(readFileSync(join(REPO, 'data/generated', `${b}-data.json`), 'utf8')); return !(d.storms && d.storms.maps); }) || 'eastpacific';      // the page the 'gate' driver loads: one without storm climatology yet
 const M = (id, file, edits, drivers, what) => ({ id, file, edits, drivers, what });
 const E = (find, repl) => ({ find, repl }), R = (re, repl) => ({ re, repl });
-const T = 'src/template.html', S = 'src/storms.js', I = 'index.html';
+const T = 'src/template.html', S = 'src/storms.js', I = 'index.html', W = 'src/template-wpac.html', H = 'src/storm-hooks.js';
 const mutants = [
   // ---- M5: the season record and the summary card
   M('E1', S, [E('clamp(this.seasonDay(h), 0, 365)', '0')], ['node'], 'ACE of every fix credited to day 0'),
@@ -112,19 +112,33 @@ const mutants = [
   M('Z5', S, [E('function decayLimit(par, x, V) { return satur(x, par.decayCap[0] + par.decayCap[1] * (V / 60) * (V / 60)); }', 'function decayLimit(par, x, V) { return Math.min(x, par.decayCap[0] + par.decayCap[1] * (V / 60) * (V / 60)); }')], ['node'], 'the fastest loss of wind is a clamp'),
   M('Z6', S, [E('rnd(seed, id, h, ST.ENDH) < wend / par.endH', 'wend >= 0.5')], ['node'], 'a disturbance over cold water dies at a line'),
   M('Z7', S, [E('return smooth01(lat, L[0], L[1]) * (1 - smooth01(lat, L[2], L[3]));', 'return lat >= L[1] && lat <= L[2] ? 1 : 0;')], ['node'], 'a tracked low counts only inside a window of latitude'),
-  M('Z8', S, [E('return Math.max(mapAt(M, arr, tw, lat, lon), par.hazFloor || 0);', 'return mapAt(M, arr, tw, lat, lon);')], ['node'], 'a map that is zero is a wall to development'),
+  M('Z8', S, [E('return Math.max(sh ? mapAt(M, arr, tw, lat - sh[0], lon - sh[1]) : mapAt(M, arr, tw, lat, lon), par.hazFloor || 0);', 'return sh ? mapAt(M, arr, tw, lat - sh[0], lon - sh[1]) : mapAt(M, arr, tw, lat, lon);')], ['node'], 'a map that is zero is a wall to development'),
   M('Z9', S, [E('if (par.seedFloor > 0 && env && env.box &&', 'if (false && env && env.box &&')], ['node'], 'no disturbance is ever born outside the maps'),
   M('Z10', S, [E('if (!(env.isLand && env.isLand(lat, lon))) {\n        const S = this._seedSystem(\'F\'', 'if (true) {\n        const S = this._seedSystem(\'F\'')], ['node'], 'floor seeds are born on land'),
   // ---- M10: the storm layer on all nine pages
   M('Z17', T, [E('const STORMS_READY = !!(DATA.storms && DATA.storms.maps);', 'const STORMS_READY = true;')], ['gate'], 'a page with no storm climatology runs the storm engine and shows its controls'),
   M('Z18', S, [E("atlantic:    { label: 'Atlantic', menu: 'atlantic', seasonMonth: 0, waves: true,", "atlantic:    { label: 'Atlantic', menu: 'atlantic', seasonMonth: 0, waves: false,")], ['node'], 'the Atlantic has no easterly waves'),
   M('Z19', S, [E('if (basinOf(this.basin).waves && this.sched.waveT == null)', 'if (this.sched.waveT == null)'), E('while (basinOf(this.basin).waves && h >= this.sched.waveT)', 'while (h >= this.sched.waveT)')], ['node'], 'every basin has the Atlantic\'s easterly waves'),
-  M('Z20', S, [E('ctx.act = activityFactor(par, this.seed, seasonYearOf(this.startMs + h * HOUR_MS, this.seasonMonth), h); }', 'ctx.act = activityFactor(par, this.seed, this.dateAt(h).getUTCFullYear(), h); }'), E('this.ctx.act = activityFactor(this.par, this.seed, seasonYearOf(this.startMs + h * HOUR_MS, this.seasonMonth), h); }', 'this.ctx.act = activityFactor(this.par, this.seed, this.dateAt(h).getUTCFullYear(), h); }')], ['node'], 'the activity of a southern season changes on Jan 1'),
+  M('Z20', S, [E('ctx.act = activityFactor(par, this.seed, seasonYearOf(this.startMs + h * HOUR_MS, this.seasonMonth), h); ensoOf(par, env, ctx); }', 'ctx.act = activityFactor(par, this.seed, this.dateAt(h).getUTCFullYear(), h); ensoOf(par, env, ctx); }'), E('this.ctx.act = activityFactor(this.par, this.seed, seasonYearOf(this.startMs + h * HOUR_MS, this.seasonMonth), h); ensoOf(this.par, env, this.ctx); }', 'this.ctx.act = activityFactor(this.par, this.seed, this.dateAt(h).getUTCFullYear(), h); ensoOf(this.par, env, this.ctx); }')], ['node'], 'the activity of a southern season changes on Jan 1'),
   M('Z21', S, [E('ty = par.steerScale * ((1 - a) * vm + a * vd) + hs * (par.driftV[0]', 'ty = par.steerScale * ((1 - a) * vm + a * vd) + (par.driftV[0]')], ['node'], 'a southern cyclone drifts toward the equator'),
   M('Z22', S, [E("aus:         { label: 'Australian Region', menu: 'aus', seasonMonth: 6,", "aus:         { label: 'Australian Region', menu: 'aus', seasonMonth: 0,")], ['node'], 'a southern season turns over on Jan 1'),
   M('Z23', S, [E("const k = cursors.seq = (cursors.seq == null ? N.start : cursors.seq + 1); return N.list[k % N.list.length];", "const k = cursors.seq = N.start; return N.list[k % N.list.length];")], ['node'], 'a sequential name list starts again with every storm'),
   M('Z25', S, [E('return useCalibrated && B && B.params ? mergeParams(base, B.params) : base;', 'return base;')], ['node'], 'a basin\'s fitted physics is not applied'),
   M('Z24', S, [E("if (N.west && lon != null && lon > -180 && lon < N.west.lon)", "if (false)")], ['node'], 'the East Pacific never takes a Central Pacific name'),
+  // ---- the seasonal gains of the humidity and the shear (data `seas`), in the drawn field (the West Pacific's template) and in the storms' grid (the shared hooks); par.enso in the engine
+  M('Z26', W, [E('hes = P.enso * seasGain(humidSeas && humidSeas.enso, p)', 'hes = P.enso')], ['env'], 'the drawn humidity ignores the month\'s gain on its El Nino response'),
+  M('Z27', W, [E('hvs = P.variability * seasGain(humidSeas && humidSeas.eof, p)', 'hvs = P.variability')], ['env'], 'the drawn humidity ignores the month\'s gain on its year-to-year modes'),
+  M('Z28', W, [E('ses = P.enso * seasGain(shearSeas && shearSeas.enso, p)', 'ses = P.enso')], ['env'], 'the drawn shear ignores the month\'s gain on its El Nino response'),
+  M('Z29', W, [E('svs = P.variability * seasGain(shearSeas && shearSeas.eof, p)', 'svs = P.variability')], ['env'], 'the drawn shear ignores the month\'s gain on its year-to-year modes'),
+  M('Z30', H, [E('hes = P.enso * seasGain(humidSeas && humidSeas.enso, p)', 'hes = P.enso')], ['env'], 'the storms\' humidity ignores the month\'s gain on its El Nino response'),
+  M('Z31', H, [E('hvs = P.variability * seasGain(humidSeas && humidSeas.eof, p)', 'hvs = P.variability')], ['env'], 'the storms\' humidity ignores the month\'s gain on its year-to-year modes'),
+  M('Z32', H, [E('ses = P.enso * seasGain(shearSeas && shearSeas.enso, p)', 'ses = P.enso')], ['env'], 'the storms\' shear ignores the month\'s gain on its El Nino response'),
+  M('Z33', H, [E('svs = P.variability * seasGain(shearSeas && shearSeas.eof, p)', 'svs = P.variability')], ['env'], 'the storms\' shear ignores the month\'s gain on its year-to-year modes'),
+  M('Z34', W, [E('return g[((m % 12) + 12) % 12] * (1 - t) + g[(((m + 1) % 12) + 12) % 12] * t; }', 'return g[((m % 12) + 12) % 12]; }')], ['env'], 'the month\'s gain is not interpolated to the day'),
+  M('Z35', S, [E('if (E.act) ctx.act = (ctx.act || 1) * Math.exp(E.act * z);', 'if (E.act) ctx.act = ctx.act || 1;')], ['node'], 'El Nino does not change the development rates'),
+  M('Z36', S, [E('mapAt(M, arr, tw, lat - sh[0], lon - sh[1])', 'mapAt(M, arr, tw, lat + sh[0], lon + sh[1])')], ['node'], 'El Nino moves the development region the wrong way'),
+  M('Z37', S, [E('      if (this.ctx.shift) { lat += this.ctx.shift[0]; lon += this.ctx.shift[1];', '      if (false) { lat += this.ctx.shift[0]; lon += this.ctx.shift[1];')], ['node'], 'the seeds stay where the maps put them when El Nino moves the region'),
+  M('Z38', S, [E('hazAt(par, M, M.haz.T, tw, t.lat, t.lon, ctx.shift) * eT * this.autoRate', 'hazAt(par, M, M.haz.T, tw, t.lat, t.lon) * eT * this.autoRate')], ['node'], 'a tracked low develops at the unshifted place'),
   M('Z11', T, [E('const k = j * NX + i; return land[k] === 1 && lakeGrid[k] === 0;', 'const k = j * NX + i; return land[k] === 1;')], ['storms'], 'a lake is land for a storm'),
   M('Z12', T, [E('sst: (la, lo) => { const id = lakeIdAt(la, lo); return id ? kfLake[id - 1] : sampleFieldS(kfSst, la, lo); },', 'sst: (la, lo) => sampleFieldS(kfSst, la, lo),')], ['storms'], 'a lake has the land\'s temperature for the storms'),
   M('Z13', S, [E('wGen = (1 - smooth01(lf, 0.4, 0.8)) * smooth01(Math.abs(lat2), 3, 6) * smooth01(sstE, sstOK - 1, sstOK);', 'wGen = 1;')], ['node'], 'a depression can form over land, on the equator and over cold water'),
@@ -179,6 +193,16 @@ await page.waitForTimeout(800);
 await checkStormGate(page, '${GATE_BASIN}', GATE_DIST);
 await browser.close();
 `
+    : which === 'env'
+    ? `const browser = await chromium.launch(launchOpts);
+const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+await page.route('**://**/*', (route) => route.request().url().startsWith('file://') ? route.continue() : route.abort());
+await page.goto(pathToFileURL(WPAC_DIST).href, { waitUntil: 'load', timeout: 30000 });
+await page.waitForFunction(() => window.__ready === true, { timeout: 30000 });
+await page.waitForTimeout(800);
+await checkEnvSeasons(page, 'West Pacific', WPAC_DIST);
+await browser.close();
+`
     : `const browser = await chromium.launch(launchOpts);
 const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
 await page.route('**://**/*', (route) => route.request().url().startsWith('file://') ? route.continue() : route.abort());
@@ -197,7 +221,7 @@ await browser.close();
 function snapshot(id, mutatedIndexHtml) {
   const dir = join(OUT, id); rmSync(dir, { recursive: true, force: true });
   for (const d of ['dist', 'tests', 'src']) mkdirSync(join(dir, d), { recursive: true });
-  for (const f of new Set(['atlantic', GATE_BASIN])) copyFileSync(join(REPO, `dist/${f}-sst-simulator.html`), join(dir, `dist/${f}-sst-simulator.html`));
+  for (const f of new Set(['atlantic', GATE_BASIN, 'westpacific'])) copyFileSync(join(REPO, `dist/${f}-sst-simulator.html`), join(dir, `dist/${f}-sst-simulator.html`));
   if (!existsSync(join(dir, 'data'))) symlinkSync(join(REPO, 'data'), join(dir, 'data'));
   writeFileSync(join(dir, 'index.html'), mutatedIndexHtml);
   copyFileSync(join(REPO, 'package.json'), join(dir, 'package.json'));
@@ -210,7 +234,7 @@ function runDriver(dir, name) {            // resolves {name, code, fails[], tai
   return new Promise((resolve) => {
     let file, argv;
     if (name === 'node') { file = join(dir, 'tests/storms.mjs'); argv = [file]; copyFileSync(join(dir, 'storms.js.mut'), join(dir, 'src/storms.js')); }
-    else { file = join(dir, `tests/_drv_${name}.mjs`); writeFileSync(file, makeDriver(name)); argv = [file]; if (name === 'gate') copyFileSync(join(dir, 'storms.js.mut'), join(dir, 'src/storms.js')); }
+    else { file = join(dir, `tests/_drv_${name}.mjs`); writeFileSync(file, makeDriver(name)); argv = [file]; if (name === 'gate' || name === 'env') copyFileSync(join(dir, 'storms.js.mut'), join(dir, 'src/storms.js')); }
     const p = spawn('node', argv, { cwd: dir, env: process.env });
     let out = ''; p.stdout.on('data', (d) => (out += d)); p.stderr.on('data', (d) => (out += d));
     const timer = setTimeout(() => { out += '\nTIMEOUT'; p.kill('SIGKILL'); }, 900000);
@@ -232,7 +256,7 @@ async function runMutant(m, results) {
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------------
-let list = base ? [M('base', S, [], ['node', 'storms', 'summary', 'place', 'save'], 'unmutated')] : (only ? mutants.filter((m) => only.includes(m.id)) : mutants);
+let list = base ? [M('base', S, [], ['node', 'storms', 'summary', 'place', 'save', 'gate', 'env'], 'unmutated')] : (only ? mutants.filter((m) => only.includes(m.id)) : mutants);
 if (drivers) list = list.map((m) => ({ ...m, drivers: m.drivers.filter((d) => drivers.includes(d)) })).filter((m) => m.drivers.length);
 if (dry) { let bad = 0; for (const m of mutants) { try { applyEdits(readFileSync(join(REPO, m.file), 'utf8'), m.edits, m.id); } catch (e) { bad++; console.log(e.message); } } console.log(bad ? bad + ' of ' + mutants.length + ' anchors broken' : 'all ' + mutants.length + ' anchors found exactly once'); process.exit(bad ? 1 : 0); }
 mkdirSync(OUT, { recursive: true });

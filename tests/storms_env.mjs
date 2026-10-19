@@ -14,7 +14,7 @@ export function defaultSteer(lat) {
   return [us, vs, um, vm, ud, vd];
 }
 
-// opts: sst, shear, rh, slp (number or (lat, lon) => number), steer ((lat, lon) => [us, vs, um, vm, ud, vd]), land ((lat, lon) => boolean), lows (() => detections)
+// opts: sst, shear, rh, slp (number or (lat, lon) => number), steer ((lat, lon) => [us, vs, um, vm, ud, vd]), land ((lat, lon) => boolean), lows (() => detections), enso (() => Nino 3.4)
 export function makeEnv(opts = {}) {
   const sst = fn(opts.sst ?? 28.5), shear = fn(opts.shear ?? 8), rh = fn(opts.rh ?? 62), slp = fn(opts.slp ?? 1012);
   const steer = opts.steer || ((lat) => defaultSteer(lat)), land = opts.land || (() => false);
@@ -25,6 +25,7 @@ export function makeEnv(opts = {}) {
     steer(la, lo, out) { const s = steer(la, lo); for (let i = 0; i < 6; i++) out[i] = s[i]; },
   };
   if (opts.lows) env.lows = opts.lows;
+  if (opts.enso) env.enso = opts.enso;
   return env;
 }
 

@@ -265,7 +265,7 @@ def status_stats(tr, years):
                 cut_fraction=r(np.mean([q["cut"] for q in t]), 3))
 
 
-def enso_composites(st, B):
+def enso_composites(st, B, tr=None):
     sst = cl.load(os.path.join(ROOT, "data", "raw", "ersstv5.nc"))
     times, anom = cl.nino34_index(sst)
     ts = pd.Series(anom, index=pd.to_datetime(times))
@@ -288,6 +288,19 @@ def enso_composites(st, B):
     out["ace_ratio_lanina_over_elnino"] = r(out["lanina"]["ace"] / out["elnino"]["ace"], 2) if out["elnino"]["ace"] and out["lanina"]["ace"] else None
     ys = np.array(list(idx)); x = np.array([idx[y] for y in ys]); yv = np.log(np.array([st.loc[y].ace for y in ys]) + 10)
     out["slope_ln_ace10"] = r(np.polyfit(x, yv, 1)[0], 3); out["r_ln_ace10"] = r(np.corrcoef(x, yv)[0, 1], 2)
+    # the rest of the response, per degree of the index: the counts (ln(n + 1)) and where the depressions form (the season's mean place, degrees): El Nino moves the western North Pacific's genesis region
+    # about 4.7 degrees of longitude east and 1.1 degrees south per degree, which the page's fields alone do not do (tools/storm_basin_opt.mjs fits par.enso against these)
+    cnt = {"named": "ns", "dep": "tracks"}
+    for key, col in cnt.items():
+        yy = np.log(np.array([st.loc[y][col] for y in ys]) + 1.0); out[f"slope_ln_{key}"] = r(np.polyfit(x, yy, 1)[0], 3); out[f"r_ln_{key}"] = r(np.corrcoef(x, yy)[0, 1], 2)
+    if tr is not None:
+        by = {}
+        for q in tr:
+            by.setdefault(q["season"], []).append(q)
+        ysm = [y for y in ys if len(by.get(int(y), [])) >= 2]
+        xm = np.array([idx[y] for y in ysm])
+        for key, fld in (("lon", "td_lon"), ("lat", "td_lat")):
+            yy = np.array([np.mean([q[fld] for q in by[int(y)]]) for y in ysm]); out[f"slope_{key}"] = r(np.polyfit(xm, yy, 1)[0], 2); out[f"r_{key}"] = r(np.corrcoef(xm, yy)[0, 1], 2)
     return out
 
 
@@ -407,7 +420,7 @@ def main():
     refj = dict(meta=dict(source=f"PyPI huracanpy {ref.WHEEL_VERSION} (IBTrACS-derived tables, JTWC 1-minute winds, 00/06/12/18 UTC)", wheel_sha256=ref.WHEEL_SHA256, generator="tools/make_tc_basin.py", basin=basin,
                           normals=[years[0], years[-1]], seasonMonth=month, tracks=len(tr), tracks_outside_region=int(outside), definitions="by wind: named >= 34 kt, hurricane-strength >= 64, major >= 96, cat 5 >= 137; depression = first tropical row >= 25 kt; ACE over tropical rows >= 34 kt"),
                 normals=nrm, genesis=gen, ace_curve=ace_c, named_curve=named_c, intensity_change=intensity_change(tr, years), motion=motion_stats(tr, years), lifetime=lifetime_stats(tr, years),
-                peak=peak_stats(tr, years), hurr_rows=hurr_lat_stats(tr, years), status=status_stats(tr, years), enso=enso_composites(st_all, B))
+                peak=peak_stats(tr, years), hurr_rows=hurr_lat_stats(tr, years), status=status_stats(tr, years), enso=enso_composites(st_all, B, tr))
     ev = []
     for q in tr:
         if gy0 <= q["season"] <= gy1:

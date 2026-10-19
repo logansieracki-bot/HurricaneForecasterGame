@@ -36,6 +36,7 @@
  *    env.box = {lat0, lat1, lon0, lon1}  the simulated box (systems that leave it end)
  *    env.lows() -> [{lat, lon, p, prom}]  optional: the sea-level-pressure minima right now (for the low tracker)
  *    env.sstRef() degC                  optional: the main development region's mean SST right now (the reference of relative SST)
+ *    env.enso() degC                    optional: the Nino 3.4 index right now (par.enso: the part of El Nino's response the fields do not carry)
  * ------------------------------------------------------------------------------------------------------------------------ */
 (function (root) {
 'use strict';
@@ -322,6 +323,9 @@ function structureParams() {
     // genesis: a disturbance (an easterly wave, a local seed, a tracked low) develops at the hourly rate maps.haz times E, how much better or worse the environment is than
     // its own mean at that place and time (maps.env0): exp(rh anomaly [%], - shear anomaly [page kt], relative-SST and absolute-SST anomaly), clipped, times soft physical gates
     envB: { rh: 0.03, shear: 0.05, sst: 0.5, sstAbs: 0.2, clip: 1.0 },
+    enso: { act: 0, lon: 0, lat: 0 },             // the part of the response to El Nino the page's fields do not carry (env.enso(), Nino 3.4): every development rate is multiplied by exp(act * index) and the places the maps say a disturbance is likely to
+                                                  // develop, and the seeds' own places, are moved by (lat, lon) degrees per degree of the index (the real genesis region of the western North Pacific moves 4.7 degrees east per degree: the page's humidity and
+                                                  // shear say the opposite of the east of the basin getting better). All zero is the engine without it, bit for bit; the basin calibration (tools/storm_basin_opt.mjs) fits the three
     hazMul: 1,                                    // a multiplier of every development rate (the fitting tools and the lab use it; the shipped value is 1, the maps carry the calibration)
     devGate: [-0.05, 0.15],                       // a disturbance only develops where a depression could live: its growth gate g must exceed gCrit by between these amounts (the rate is zero below the first, full above the second)
     rhSelf: 0, rhSelfV: [30, 65],                 // points of humidity an established storm adds to what the page's field says (a storm moistens its own environment: the page's 2-degree field flips a marginal gate with every dry pocket, and without this a storm in
@@ -399,7 +403,7 @@ function bil(a, off, M, lat, lon) {
 }
 function lowWeight(par, lat) { const L = par.lowLat; return smooth01(lat, L[0], L[1]) * (1 - smooth01(lat, L[2], L[3])); }          // how much a tracked low at this latitude counts as a precursor (a ramp up and a ramp down, no window)
 function mapAt(M, arr, tw, lat, lon) { return bil(arr, tw.m0 * M.n, M, lat, lon) * (1 - tw.t) + bil(arr, tw.m1 * M.n, M, lat, lon) * tw.t; }
-function hazAt(par, M, arr, tw, lat, lon) { return Math.max(mapAt(M, arr, tw, lat, lon), par.hazFloor || 0); }           // the development rate of the map, and never less than the floor: no place is impossible, only unlikely
+function hazAt(par, M, arr, tw, lat, lon, sh) { return Math.max(sh ? mapAt(M, arr, tw, lat - sh[0], lon - sh[1]) : mapAt(M, arr, tw, lat, lon), par.hazFloor || 0); }           // the development rate of the map, and never less than the floor: no place is impossible, only unlikely
 const DV = new Float64Array(2), CV = new Float64Array(6), DACC = new Float64Array(2);
 function driftAt(M, cls, tw, lat, lon, out) { const d = M.drift[cls]; out[0] = mapAt(M, d.u, tw, lat, lon); out[1] = mapAt(M, d.v, tw, lat, lon); }
 function addDrift(M, cls, w, tw, lat, lon, acc) { if (w > 0) { driftAt(M, cls, tw, lat, lon, DV); acc[0] += w * DV[0]; acc[1] += w * DV[1]; } }
@@ -449,6 +453,15 @@ function activityFactor(par, seed, year, h) {
   let zt = 0; const d = h / 24;
   if (A.intraSd) { for (let k = 0; k < A.K; k++) { const T = A.T[0] * Math.pow(A.T[1] / A.T[0], A.K > 1 ? k / (A.K - 1) : 0); zt += Math.cos(2 * Math.PI * d / T + 2 * Math.PI * rnd(seed, 7002, k, ST.ACT)); } zt *= Math.sqrt(2 / A.K); }
   return Math.exp(A.seasSd * rndn(seed, 7001, year, ST.ACT) + A.intraSd * zt - 0.5 * (A.seasSd * A.seasSd + A.intraSd * A.intraSd));
+}
+
+/* the El Nino part of par.enso for this hour: the development rates' extra factor (into ctx.act) and the shift of the maps' places (ctx.shift = [lat, lon] degrees, or null); nothing at all when the parameter is zero or the host has no index */
+function ensoOf(par, env, ctx) {
+  const E = par.enso; ctx.shift = null;
+  if (!E || !(E.act || E.lon || E.lat) || !env || !env.enso) return;
+  const z = env.enso(); if (!(z === z)) return;
+  if (E.act) ctx.act = (ctx.act || 1) * Math.exp(E.act * z);
+  if (E.lon || E.lat) ctx.shift = [E.lat * z, E.lon * z];
 }
 
 /* ---- the calibration lab's accumulators (dev only): where disturbances were, how favourable it was for them, where they developed, by class, month and node ------------------- */
@@ -675,7 +688,7 @@ function stepSystem(S, env, h, seed, par, doy, ctx) {
     const eS = water > 0 && S.kind !== 'W' && S.kind !== 'M' ? water * envFactor(par, M, tw, lat, lon, sst, rh, shear, sstRef, true) * devGateAt(par, env, true, lat, sst, rh, shear, doy, dSst) * Q * act : 0;
     S.eq = eT;
     if (S.dev < 0) {
-      const hT = satur(par.hazMul * hazAt(par, M, M.haz.T, tw, lat, lon) * eT, par.hazMax), hS = eS > 0 ? satur(par.hazMul * hazAt(par, M, M.haz.S, tw, lat, lon) * eS, par.hazMax) : 0;
+      const hT = satur(par.hazMul * hazAt(par, M, M.haz.T, tw, lat, lon, ctx.shift) * eT, par.hazMax), hS = eS > 0 ? satur(par.hazMul * hazAt(par, M, M.haz.S, tw, lat, lon, ctx.shift) * eS, par.hazMax) : 0;
       if (ctx.diag) diagExposure(ctx, S.kind, tw, lat, lon, eT, eS);
       const u = rnd(seed, id, h, ST.GEN);
       if (u < hT + hS) {
@@ -939,7 +952,8 @@ Manager.prototype._spawn = function (h, env) {
       const a = (M.spawn[tw.m0 * M.n + k] * (1 - tw.t) + M.spawn[tw.m1 * M.n + k] * tw.t) * rate;
       if (!(a > 0) || rnd(seed, 1000 + k, h, ST.SPAWN) >= a) continue;
       const j = (k / M.nx) | 0, i = k - j * M.nx;
-      const lat = M.lat0 + (j + rnd(seed, 1000 + k, h, ST.SEEDPOS) - 0.5) * M.res, lon = M.lon0 + (i + rnd(seed, 1000 + k, h + 1000003, ST.SEEDPOS) - 0.5) * M.res;
+      let lat = M.lat0 + (j + rnd(seed, 1000 + k, h, ST.SEEDPOS) - 0.5) * M.res, lon = M.lon0 + (i + rnd(seed, 1000 + k, h + 1000003, ST.SEEDPOS) - 0.5) * M.res;
+      if (this.ctx.shift) { lat += this.ctx.shift[0]; lon += this.ctx.shift[1]; const B = env && env.box; if (B) { lat = clamp(lat, B.lat0 + 0.6, B.lat1 - 0.6); lon = clamp(lon, B.lon0 + 0.6, B.lon1 - 0.6); } }
       if (env && env.isLand && env.isLand(lat, lon)) continue;
       const v0 = par.seedV[0] + (par.seedV[1] - par.seedV[0]) * rnd(seed, 1000 + k, h, ST.V0);
       const S = this._seedSystem('N', 'wv', lat, lon, v0, h, 'seed', false);
@@ -990,7 +1004,7 @@ Manager.prototype._updateLows = function (h, env) {
       const act = ctx.act || 1, doy = this.doyAt(h);
       const eT = lw * envFactor(par, M, tw, t.lat, t.lon, sst, rh, sh, sstRef, false) * devGateAt(par, env, false, t.lat, sst, rh, sh, doy, par.sstOffset) * act;
       const eS = lw * envFactor(par, M, tw, t.lat, t.lon, sst, rh, sh, sstRef, true) * devGateAt(par, env, true, t.lat, sst, rh, sh, doy, par.sstOffset) * act;
-      const hT = satur(6 * par.hazMul * hazAt(par, M, M.haz.T, tw, t.lat, t.lon) * eT * this.autoRate, par.hazMax), hS = satur(6 * par.hazMul * hazAt(par, M, M.haz.S, tw, t.lat, t.lon) * eS * this.autoRate, par.hazMax);
+      const hT = satur(6 * par.hazMul * hazAt(par, M, M.haz.T, tw, t.lat, t.lon, ctx.shift) * eT * this.autoRate, par.hazMax), hS = satur(6 * par.hazMul * hazAt(par, M, M.haz.S, tw, t.lat, t.lon, ctx.shift) * eS * this.autoRate, par.hazMax);
       if (ctx.diag) diagExposure(ctx, 'L', tw, t.lat, t.lon, eT, eS, 6);
       const pot = Math.max(eT, eS); if (pot >= par.distOnE) t.dist = true; else if (pot < par.distOffE) t.dist = false;           // a low with the potential to become a cyclone is a disturbance too
       const u = rnd(this.seed, idNum('L', +t.id.slice(1)), h, ST.LOWSEED);
@@ -1078,7 +1092,7 @@ Manager.prototype.advanceTo = function (target, envSrc) {
     if (env && env.beginHour) env.beginHour(h);                                // an environment that carries its keyframes forward in time is told the hour it is about to be asked about
     if (h >= this.yearEndH) this._rollover(h);
     const doy = this.doyAt(h);
-    if (this.maps) { this.ctx.tw = timeWeights(doy + (((h % 24) + 24) % 24) / 24); this.ctx.act = activityFactor(this.par, this.seed, seasonYearOf(this.startMs + h * HOUR_MS, this.seasonMonth), h); }
+    if (this.maps) { this.ctx.tw = timeWeights(doy + (((h % 24) + 24) % 24) / 24); this.ctx.act = activityFactor(this.par, this.seed, seasonYearOf(this.startMs + h * HOUR_MS, this.seasonMonth), h); ensoOf(this.par, env, this.ctx); }
     if (this.auto) this._spawn(h, env);
     for (const S of this.systems) if (S.alive) stepSystem(S, env, h, this.seed, this.par, doy, this.ctx);
     this.hour = h + 1;
@@ -1096,7 +1110,7 @@ Manager.prototype.forecast = function (spec, envSrc, horizonH) {
   for (let k = 0; k < horizonH && S.alive; k++) {
     const env = envSrc && typeof envSrc.at === 'function' ? envSrc.at(h) : envSrc;
     const doy = this.doyAt(h);
-    if (this.maps) { ctx.tw = timeWeights(doy + (((h % 24) + 24) % 24) / 24); ctx.act = activityFactor(par, this.seed, seasonYearOf(this.startMs + h * HOUR_MS, this.seasonMonth), h); }
+    if (this.maps) { ctx.tw = timeWeights(doy + (((h % 24) + 24) % 24) / 24); ctx.act = activityFactor(par, this.seed, seasonYearOf(this.startMs + h * HOUR_MS, this.seasonMonth), h); ensoOf(par, env, ctx); }
     stepSystem(S, env, h, this.seed, par, doy, ctx); h++;
     if (h % 3 === 0 || !S.alive) {
       const rv = round5(S.vr), isTC = S.th === 'tc' || S.th === 'sc';

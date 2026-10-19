@@ -623,6 +623,32 @@ const LAND = (la, lo) => (lo > -16.3 && lo < 38 && la > 4 && la < 30) || (lo < -
     const runs = []; for (let sd = 1; sd <= 40; sd++) runs.push(cnt(sd)); runs.sort((a, b) => a[0] - b[0]);
     const lo = mean(runs.slice(0, 10).map((r) => r[1])), hi = mean(runs.slice(-10).map((r) => r[1]));
     check(`seasons of a high activity factor develop more disturbances than seasons of a low one (${hi.toFixed(1)} against ${lo.toFixed(1)} in 60 days, same weather and waves)`, hi > 1.4 * lo); }
+  // ---- the El Nino part (par.enso): the development rates' activity and the places of the maps, both nothing at zero
+  { const base = { waveRate0: 0, act: { seasSd: 0, intraSd: 0, K: 6, T: [14, 60] } };
+    const run = (sd, mp, enso, z, hours = 24 * 25) => { const e = makeEnv({ sst: 28.5, shear: 8, rh: 60, steer: () => [-8, 1, -8, 1, -8, 1], enso: z == null ? undefined : () => z });
+      const m = H.create({ seed: sd, startMs: Date.UTC(2026, 7, 1), params: Object.assign({}, base, enso ? { enso } : {}), maps: mp }); m.advanceTo(hours, e); return m; };
+    const sig = (m) => JSON.stringify(m.systems.map((S) => [S.id, S.lat, S.lon, S.v, S.th, S.dev]));
+    const mpA = testMaps({ haz: 0.004, spawn: (m) => (m === 7 ? 3 : 0) });
+    let same = true; for (let sd = 1; sd <= 4; sd++) same = same && sig(run(sd, mpA, null, null)) === sig(run(sd, mpA, null, 2)) && sig(run(sd, mpA, { act: 0, lon: 0, lat: 0 }, 2)) === sig(run(sd, mpA, null, null));
+    check('with the El Nino parameters at zero the engine is what it was, bit for bit, whether the host supplies an index or not', same);
+    const dep = (m) => m.systems.filter((S) => S.depNum > 0).length;
+    let d0 = 0, d1 = 0, d2 = 0; for (let sd = 1; sd <= 30; sd++) { d0 += dep(run(sd, mpA, { act: Math.log(2) }, 0)); d1 += dep(run(sd, mpA, { act: Math.log(2) }, 1)); d2 += dep(run(sd, mpA, { act: Math.log(2) }, -1)); }
+    check(`an El Nino activity of ln 2 a degree doubles the development rates at +1 and halves them at -1 (depressions in 30 seasons: ${d2} at -1, ${d0} at 0, ${d1} at +1)`, d1 > 1.5 * d0 && d2 < 0.7 * d0 && d0 > 20);
+    // the places: a bump of development rate and of seed supply at 85W, 25N; +10 degrees east and -3 north a degree
+    const bump = (peak) => (m, la, lo) => (Math.abs(la - 25) < 6 && Math.abs(lo + 85) < 6 ? peak : 0);
+    const mpB = testMaps({ haz: 0, spawn: (m, la, lo) => (m === 7 && la === 25 && lo === -85 ? 9 : 0) }); mpB.haz = { T: field((m, la, lo) => bump(0.02)(m, la, lo)), S: flat(0) };
+    const at = (z) => { const la = [], lo = []; for (let sd = 1; sd <= 24; sd++) { const m = run(sd, mpB, { lon: 10, lat: -3 }, z, 24 * 30); for (const S of m.systems) if (S.depNum > 0) { const f = S.fixes.find((x) => x.th === 'tc' || x.th === 'sc'); if (f) { la.push(f.lat); lo.push(f.lon); } } } return [mean(la), mean(lo), la.length]; };
+    const z0 = at(0), z1 = at(1), zm = at(-1);
+    check(`the genesis region moves with the index: +10 degrees east and 3 south per degree of it (mean place of the depressions ${z0[1].toFixed(1)}E ${z0[0].toFixed(1)}N at 0, ${z1[1].toFixed(1)}E ${z1[0].toFixed(1)}N at +1, ${zm[1].toFixed(1)}E ${zm[0].toFixed(1)}N at -1; ${z0[2]}, ${z1[2]}, ${zm[2]} of them)`,
+      z0[2] > 10 && z1[2] > 10 && zm[2] > 10 && near(z1[1] - z0[1], 10, 3.5) && near(z0[1] - zm[1], 10, 3.5) && near(z1[0] - z0[0], -3, 2.2));
+    // a tracked low develops where the shifted map says a disturbance can: a low 10 degrees east of the bump only develops when the index moves the bump east
+    { const lowAt = (z) => { let n = 0; for (let sd = 1; sd <= 20; sd++) { const e = makeEnv({ sst: 27, shear: 8, rh: 60, steer: () => [0, 0, 0, 0, 0, 0], lows: () => [{ lat: 25, lon: -75, p: 1000, prom: 6 }], enso: () => z });
+        const m = H.create({ seed: sd, startMs: Date.UTC(2026, 8, 1), auto: true, params: { waveRate0: 0, act: { seasSd: 0, intraSd: 0, K: 6, T: [14, 60] }, enso: { lon: 10 } }, maps: mpB }); m.advanceTo(24 * 12, e); n += m.systems.filter((S) => S.origin === 'low').length; } return n; };
+      const l0 = lowAt(0), l1 = lowAt(1);
+      check(`a tracked low develops where the shifted map says it can (a low 10 degrees east of the bump: ${l0} developments in 20 seasons at index 0, ${l1} at +1 with the bump 10 degrees east)`, l0 <= 1 && l1 >= 6); }
+    // a seed born at the shifted node stays inside the page
+    const m = run(5, mpB, { lon: 80, lat: 0 }, 1, 24 * 20), inside = m.systems.every((S) => S.fixes.length === 0 || (S.lon <= 40 && S.lon >= -110));
+    check('a shift that would take a seed past the edge of the box puts it just inside', inside && m.n.N > 0); }
   // ---- the lab's diagnostics, determinism, restore
   { const mp = testMaps({ haz: 0.004 }), e = makeEnv({ sst: 28.5, shear: 8, rh: 60, steer: () => [-8, 1, -8, 1, -8, 1] });
     const m = H.create({ seed: 3, startMs: Date.UTC(2026, 7, 1), maps: mp, params: { shearK: 1 } }); m.enableDiag(); m.advanceTo(24 * 20, e);
@@ -896,6 +922,24 @@ const LAND = (la, lo) => (lo > -16.3 && lo < 38 && la > 4 && la < 30) || (lo < -
     const [n, s, nsc, ssc] = [drift(16, 'tc'), drift(-16, 'tc'), drift(28, 'sc'), drift(-28, 'sc')];
     check(`in no steering a tropical cyclone drifts west by the same in both hemispheres and poleward (the northern one ends further north than the southern one) (36 h: ${n.map((x) => x.toFixed(2)).join('/')} north, ${s.map((x) => x.toFixed(2)).join('/')} south), a subtropical one too (${nsc.map((x) => x.toFixed(2)).join('/')} and ${ssc.map((x) => x.toFixed(2)).join('/')})`,
       n[0] > s[0] + 0.5 && n[1] < -1 && s[1] < -1 && near(n[1], s[1], 0.2) && nsc[0] > ssc[0] + 0.5 && nsc[1] < -1 && ssc[1] < -1 && near(nsc[1], ssc[1], 0.2)); }       // (the wobble is the same draw in both, so the north-south sum is the noise and the difference is twice the poleward drift)
+}
+
+/* ---- the humidity and shear data of the pages: the joint-lag El Nino coefficients and the gains of the month (tools/make_env_seasonality.py) ----------------------------------------------------- */
+{
+  const dataOf = (f) => JSON.parse(readFileSync(new URL(`../data/generated/${f}`, import.meta.url), 'utf8'));
+  const files = { atlantic: 'data.json', eastpacific: 'eastpacific-data.json', westpacific: 'westpacific-data.json', nio: 'nio-data.json', aus: 'aus-data.json', swio: 'swio-data.json', spac: 'spac-data.json', satl: 'satl-data.json', med: 'med-data.json' };
+  const inRange = (a, lo, hi) => Array.isArray(a) && a.length === 12 && a.every((v) => typeof v === 'number' && v >= lo && v <= hi);
+  const i16 = (b64) => { const u = Buffer.from(b64, 'base64'); return new Int16Array(u.buffer, u.byteOffset, u.length >> 1); };
+  const sumRms = (d, k) => { const a = i16(d[k].enso), n = a.length / 3; let t = 0; for (let q = 0; q < n; q++) { const s = (a[q] + a[n + q] + a[2 * n + q]) / 1000; t += s * s; } return Math.sqrt(t / n); };
+  const d = Object.fromEntries(Object.entries(files).map(([b, f]) => [b, dataOf(f)]));
+  const seven = ['westpacific', 'nio', 'aus', 'swio', 'spac', 'satl', 'med'];
+  check('the seven pages whose storm physics is fitted on the joint-lag fields carry a gain of each calendar month on the El Nino response (0.2 to 1) and on the year-to-year modes (0.3 to 1.5) of the humidity and of the shear',
+    seven.every((b) => inRange(d[b].humidity.seas.enso, 0.2, 1) && inRange(d[b].humidity.seas.eof, 0.3, 1.5) && inRange(d[b].shear.seas.enso, 0.2, 1) && inRange(d[b].shear.seas.eof, 0.3, 1.5)));
+  check('the Atlantic and the East Pacific, whose storm physics was calibrated on the original fields, carry none (a page without them is what it was)', !d.atlantic.humidity.seas && !d.atlantic.shear.seas && !d.eastpacific.humidity.seas && !d.eastpacific.shear.seas);
+  // the response to a sustained 1 degC event is the three lag terms added: fitted jointly it is about half what one-lag-at-a-time fits gave (the Atlantic: 2.1 % of humidity per degree, the East Pacific 5.4, West Pacific before 6.4)
+  const wp = sumRms(d.westpacific, 'humidity'), ep = sumRms(d.eastpacific, 'humidity');
+  check(`the West Pacific's sustained-event humidity response is the joint fit's (${wp.toFixed(2)} % per degree; the one-lag-at-a-time fit gave 6.36, the East Pacific's unchanged one is ${ep.toFixed(2)}), the shear's too (${sumRms(d.westpacific, 'shear').toFixed(2)} kt; 5.30)`,
+    wp < 3.6 && wp > 2.4 && sumRms(d.westpacific, 'shear') < 3.2 && ep > 5);
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

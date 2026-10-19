@@ -82,11 +82,13 @@ nothing to run by hand.
   percentiles the season summary draws against go in beside them as `storms.ace` / `storms.normals` with `merge_data.mjs --storms`),
   `tools/storm_mc.mjs` runs whole seasons through the built page (any number of parameter sets at once, same weather),
   `tools/storm_opt.mjs` calibrates the intensity law and the environmental coupling with CMA-ES, `tools/storm_validate.mjs`
-  checks tracks, landfalls and genesis against the real best track, and `tools/storm_mutants.mjs` breaks the storm code in 97 ways, one at a time, and runs the
-  checks that should notice (all 97 are caught; `docs/roadmap.md` has what the passes found and how the checks were changed).
+  checks tracks, landfalls and genesis against the real best track, and `tools/storm_mutants.mjs` breaks the storm code in 111 ways, one at a time, and runs the
+  checks that should notice (all 111 are caught; `docs/roadmap.md` has what the passes found and how the checks were changed).
   The other eight basins' storm climatology is made by the same chain with a basin name: `tools/tc_basins.json` (the table: page, season, grid, hemisphere ...), `tools/storm_region.mjs`
   (which cells of a page are inside its basin and land for a storm), `tools/make_tc_basin.py` (the real targets and maps of the storms that form inside a page, by wind), `tools/storm_fit.mjs --basin`,
-  `tools/storm_basin.mjs` (whole seasons of any basin against its reference) and `HF_DIST=<dir> npm run build` for a lab build beside a test run.
+  `tools/storm_basin.mjs` (whole seasons of any basin against its reference) and `HF_DIST=<dir> npm run build` for a lab build beside a test run. The storm engine reads the page's humidity and shear, so the year-to-year
+  part of those two fields has to be right in the cyclone season: `tools/make_env_seasonality.py` refits their El Nino coefficients jointly and fits a gain for each calendar month on the El Nino part and on the EOF modes
+  (the seven pages other than the Atlantic and the East Pacific carry it, `humidity.seas` / `shear.seas` in their data; `tools/merge_data.mjs <basin> --env-seas`).
 
 ## How the simulation works (keep these ideas when changing things)
 - Grid: 0.25° over lon -110..40, lat -40..72 (601×449). Time: 1 sim hour per 60 ms
@@ -409,11 +411,14 @@ check that Satellite still resolves to something usable.
   they are run by hand when a calibration changes.
 - Domain is the North Atlantic basin only; SST south of the equator and in the
   Mediterranean/Black Sea is intentionally masked out (they're future basins).
-  ENSO changes SST, humidity and wind shear in all 9 basins (their three lag terms
-  are summed, which for a sustained event counts the same response about three
-  times where the real response is large — and the "Keep ENSO at this value" box
-  makes exactly that visible; the steering field already fits its lags jointly —
-  see `docs/roadmap.md`).
+  ENSO changes SST, humidity and wind shear in all 9 basins. The Atlantic's and the East
+  Pacific's humidity and shear sum three lag terms that were each fitted on their own
+  (a sustained event is counted about twice) and have the same El Nino pattern and
+  year-to-year spread in every month, which the real record does not (their storm
+  physics was calibrated on those fields, so they keep them). The other seven pages
+  have the joint-lag coefficients and a gain by calendar month
+  (`tools/make_env_seasonality.py`; the steering field already fitted its lags jointly,
+  and SST is unchanged) — see `docs/roadmap.md` for the numbers.
 - ERSST at 2° is warm-biased in coastal cells; several corrections are hand-tuned
   (see the shelf, Northeast shelf, Gulf Stream blocks in `src/template.html`).
 - Storms exist in the Atlantic only (the test basin). 240 seasons the calibration was not fitted on (seeds 1401-1448, 1501-1596, 1601-1696; the 214 days from Jun 1)

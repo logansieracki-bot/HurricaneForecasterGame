@@ -986,7 +986,57 @@ async function checkStormsBasin(page, label, prefix) {
     return { same: a === b, ha, mid, kb: Math.round(a.length / 1024) };
   }, { sm: BI.seasonMonth, start: sp.start, day: Math.min(sp.day, 120), td: sp.td });
   check(`[${label}] a season saved at a midnight (hour ${sv.mid}) and resumed continues bit for bit like the uninterrupted one (${sv.kb} KB of storms)`, sv.same && sv.mid < sv.ha);
-  await ev(() => { window.SSTSIM.storms(false); window.SSTSIM.restart(); });
+  // the main menu's Continue card for a season saved here names the basin, the season and the local word (this is the last check of a basin's callback: it leaves the page)
+  const sc = await ev((q) => { const S = window.SSTSIM; S.stormLabCalendar(q.sm, 1); S.applySeed(31); S.setPlaying(false); S.stormAuto(true); S.tick(24 * 40); S.advance(0); S.saveTick(); return { stats: S.stormState().stats, year: document.getElementById('se-year').textContent, meta: JSON.parse(S.saveInfo().meta) }; }, { sm: BI.seasonMonth });
+  await page.goto(pathToFileURL(join(ROOT, 'index.html')).href, { waitUntil: 'load' });
+  const cardText = await page.evaluate(() => ({ hidden: document.getElementById('continue').hidden, text: document.getElementById('continue').innerText.replace(/\s+/g, ' ') }));
+  const seasonText = sc.year.replace(BI.label + ' ', ''), hw = BI.hurricane + (sc.stats.hurr === 1 ? '' : 's');
+  check(`[${label}] the main menu's Continue card for a season saved here reads "${cardText.text.slice(0, 120)}": the basin, the season (${seasonText}), the named storms and the ${hw}`,
+    !cardText.hidden && sc.meta.basin === BI.menu && cardText.text.includes(BI.label + ' ' + seasonText) && cardText.text.includes(sc.stats.named + ' named') && cardText.text.includes(sc.stats.hurr + ' ' + hw));
+}
+
+// The humidity and the wind shear answer El Nino, and carry their year-to-year (EOF) modes, with a gain that depends on the calendar month in the pages whose data have `seas` (tools/make_env_seasonality.py): the
+// real response is not the same in every month -- over the western North Pacific's main development region the humidity falls by 5-8 points per degree in January to April and by 1 in August to October -- and the
+// three lag terms of the El Nino response are fitted together. Same seed, same day, only one thing different -- a held El Nino against a held La Nina (the lagged terms already in it), or the year-to-year slider at 1
+// against 0 -- the difference of a field at a point is that part alone and nothing else, so on the day of the strongest gain and on the day of the weakest it must be in the ratio of the two gains, in the
+// field the map draws and in the grid the storms read. A page without `seas` (the Atlantic, the East Pacific) must have a ratio of 1.
+async function checkEnvSeasons(page, label, dist) {
+  const prefix = dist.replace(/^.*\//, '').replace('-sst-simulator.html', '');
+  const data = JSON.parse(readFileSync(join(ROOT, 'data/generated', prefix === 'atlantic' ? 'data.json' : `${prefix}-data.json`), 'utf8'));
+  const hum = data.humidity.seas || null, she = data.shear.seas || null, y = new Date().getUTCFullYear();
+  const gain = (g, m, d) => {                                           // the page's own interpolation between the middles of the months
+    if (!g) return 1;
+    const doy = (Date.UTC(y, m, d) - Date.UTC(y, 0, 1)) / 86400000, ylen = ((y % 4 === 0 && y % 100 !== 0) || y % 400 === 0) ? 366 : 365, p = doy / ylen * 12 - 0.5, i = Math.floor(p), t = p - i;
+    return g[((i % 12) + 12) % 12] * (1 - t) + g[(((i + 1) % 12) + 12) % 12] * t;
+  };
+  const mHi = hum ? hum.enso.indexOf(Math.max(...hum.enso)) : 1, mLo = hum ? hum.enso.indexOf(Math.min(...hum.enso)) : 7;
+  await import('../src/storms.js');
+  const mdr = globalThis.HFStorms.basinInfo(prefix).mdr, pts = [], la0 = Math.min(...mdr.lat), la1 = Math.max(...mdr.lat), lo0 = Math.min(...mdr.lon), lo1 = Math.max(...mdr.lon);
+  for (let i = 0; i < 4; i++) for (let j = 0; j < 6; j++) pts.push([la0 + (la1 - la0) * (i + 0.5) / 4, lo0 + (lo1 - lo0) * (j + 0.5) / 6]);
+  const home = STORM_SPECS[prefix] ? STORM_SPECS[prefix].start : [5, 1];                      // the day the page's own template starts on (the Atlantic's is Jun 1)
+  const runs = await page.evaluate(({ dates, pts, home }) => {
+    const S = window.SSTSIM, chk = document.getElementById('enso-hold');
+    S.stormsForce(true);
+    const at = (month, enso, variability) => {
+      S.stormLabCalendar(month, 15); S.setPlaying(false);
+      if (!chk.checked) { chk.checked = true; chk.dispatchEvent(new Event('change')); }
+      S.forceEnso(enso); S.applySeed(4242); S.setPlaying(false); S.set('variability', variability); S.advance(1);      // a held ENSO restarts already in its regime, lagged terms included (a restart reads the sliders again: the year-to-year one is set after it)
+      return pts.map(([la, lo]) => { const a = S.sample(la, lo), b = S.stormEnvSample(la, lo); return [a.humid, a.shear, b.rh, b.shear]; });
+    };
+    const out = dates.map((m) => ({ m, nino: at(m, 2, 1), nina: at(m, -2, 1), on: at(m, 0, 1), off: at(m, 0, 0) }));
+    chk.checked = false; chk.dispatchEvent(new Event('change')); S.set('variability', 1); S.storms(false); S.stormLabCalendar(home[0], home[1]); S.applySeed(4242); S.setPlaying(false);
+    return { out };
+  }, { dates: [mHi, mLo], pts, home });
+  const diff = (a, b, k) => a.map((r, i) => r[k] - b[i][k]);
+  // the field and the part: [index into a sample, gain table, what differs, label]
+  const parts = [[0, hum && hum.enso, 'nino', 'nina', 'humidity El Nino'], [0, hum && hum.eof, 'on', 'off', 'humidity year-to-year'], [1, she && she.enso, 'nino', 'nina', 'shear El Nino'], [1, she && she.eof, 'on', 'off', 'shear year-to-year']];
+  for (const grid of [0, 2]) for (const [k, g, A, B, name] of parts) {
+    const hi = diff(runs.out[0][A], runs.out[0][B], k + grid), lo = diff(runs.out[1][A], runs.out[1][B], k + grid);
+    const mid = (i) => [0, 1].every((d) => [A, B].every((st) => { const v = runs.out[d][st][i][k + grid]; return k === 0 ? v > 12 && v < 85 : v > 4 && v < 100; }));       // away from the soft limits of a field (humidity near 0 or 100, shear near 0), which would flatten a large difference
+    let best = -1, bv = 0; hi.forEach((v, i) => { if (mid(i) && Number.isFinite(v) && Number.isFinite(lo[i]) && Math.abs(v) > bv) { bv = Math.abs(v); best = i; } });
+    const want = gain(g, mLo, 15) / gain(g, mHi, 15), got = best >= 0 ? lo[best] / hi[best] : NaN, big = bv > (k === 0 ? 0.3 : 0.15);
+    check(`[${label}] ${grid ? 'the storm grid\'s' : 'the drawn'} ${name} part on ${gain(g, mLo, 15).toFixed(2)}-gain day over ${gain(g, mHi, 15).toFixed(2)}-gain day is ${got.toFixed(2)} (the gains say ${want.toFixed(2)}; difference ${bv.toFixed(2)} at the best point)`, big && Math.abs(got - want) <= 0.04 + 0.05 * want);
+  }
 }
 
 // A basin's storm system is switched on by its data (storms.maps in its data file, src/storm-hooks.js STORMS_READY): the page is then on by default and shows the storm controls; until then it runs
@@ -2207,6 +2257,7 @@ await checkBasin('Atlantic', ATLANTIC_DIST, async (page, label) => {
 
   await checkSteering(page, label, STEER_SPECS.atlantic);
   await checkEnsoHold(page, label);
+  await checkEnvSeasons(page, label, ATLANTIC_DIST);
   await checkStorms(page, label);
   await checkPlace(page, label);
   await checkSummary(page, label);
@@ -2264,6 +2315,7 @@ await checkBasin('East Pacific', EPAC_DIST, async (page, label) => {
   await page.evaluate(() => window.SSTSIM.setView('sst'));   // the steering checks start from the default view
   await checkSteering(page, label, STEER_SPECS.eastpacific);
   await checkEnsoHold(page, label);
+  await checkEnvSeasons(page, label, EPAC_DIST);
   await checkCityMarkers(page, label, 16.86, -99.88, 'Acapulco');
   await checkStormsBasin(page, label, 'eastpacific');
 });
@@ -2317,6 +2369,7 @@ await checkBasin('West Pacific', WPAC_DIST, async (page, label) => {
   await page.evaluate(() => window.SSTSIM.setView('sst'));   // the steering checks start from the default view
   await checkSteering(page, label, STEER_SPECS.westpacific);
   await checkEnsoHold(page, label);
+  await checkEnvSeasons(page, label, WPAC_DIST);
   await checkCityMarkers(page, label, 14.60, 120.98, 'Manila');
 });
 
@@ -2366,6 +2419,7 @@ await checkBasin('North Indian Ocean', NIO_DIST, async (page, label) => {
   await page.evaluate(() => window.SSTSIM.setView('sst'));   // the steering checks start from the default view
   await checkSteering(page, label, STEER_SPECS.nio);
   await checkEnsoHold(page, label);
+  await checkEnvSeasons(page, label, NIO_DIST);
   await checkCityMarkers(page, label, 19.08, 72.88, 'Mumbai');
 });
 
@@ -2429,6 +2483,7 @@ await checkBasin('Australian Region', AUS_DIST, async (page, label) => {
   await page.evaluate(() => window.SSTSIM.setView('sst'));   // the steering checks start from the default view
   await checkSteering(page, label, STEER_SPECS.aus);
   await checkEnsoHold(page, label);
+  await checkEnvSeasons(page, label, AUS_DIST);
   await checkCityMarkers(page, label, -33.87, 151.21, 'Sydney');
 });
 
@@ -2492,6 +2547,7 @@ await checkBasin('South-West Indian Ocean', SWIO_DIST, async (page, label) => {
   await page.evaluate(() => window.SSTSIM.setView('sst'));   // the steering checks start from the default view
   await checkSteering(page, label, STEER_SPECS.swio);
   await checkEnsoHold(page, label);
+  await checkEnvSeasons(page, label, SWIO_DIST);
   await checkCityMarkers(page, label, -29.86, 31.02, 'Durban');
 });
 
@@ -2548,6 +2604,7 @@ await checkBasin('South Pacific', SPAC_DIST, async (page, label) => {
   await page.evaluate(() => window.SSTSIM.setView('sst'));   // the steering checks start from the default view
   await checkSteering(page, label, STEER_SPECS.spac);
   await checkEnsoHold(page, label);
+  await checkEnvSeasons(page, label, SPAC_DIST);
   await checkCityMarkers(page, label, -18.14, 178.42, 'Suva');
 });
 
@@ -2620,6 +2677,7 @@ await checkBasin('South Atlantic', SATL_DIST, async (page, label) => {
   await page.evaluate(() => window.SSTSIM.setView('sst'));   // the steering checks start from the default view
   await checkSteering(page, label, STEER_SPECS.satl);
   await checkEnsoHold(page, label);
+  await checkEnvSeasons(page, label, SATL_DIST);
   await checkCityMarkers(page, label, -22.91, -43.17, 'Rio de Janeiro');
 });
 
@@ -2707,6 +2765,7 @@ await checkBasin('Mediterranean', MED_DIST, async (page, label) => {
   await page.evaluate(() => window.SSTSIM.setView('sst'));   // the steering checks start from the default view
   await checkSteering(page, label, STEER_SPECS.med);
   await checkEnsoHold(page, label);
+  await checkEnvSeasons(page, label, MED_DIST);
   await checkCityMarkers(page, label, 45.44, 12.33, 'Venice');
 });
 

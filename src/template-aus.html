@@ -420,6 +420,8 @@ const shearEofC = new Float32Array(KS * CN);     // interannual patterns (kt per
 { const a = b64i16(DATA.shear.eof); for (let q = 0; q < a.length; q++) shearEofC[q] = a[q] / 1000; }
 const shearEnsoC = new Float32Array(3 * CN);     // response to Niño 3.4 at lags 0, 3, 6 months (kt per °C)
 { const a = b64i16(DATA.shear.enso); for (let q = 0; q < a.length; q++) shearEnsoC[q] = a[q] / 1000; }
+const humidSeas = DATA.humidity.seas || null, shearSeas = DATA.shear.seas || null;   // month-by-month gains on the year-to-year part of the humidity and the shear: seas.eof (the EOF modes) and seas.enso (the El Nino response); a page without them has 1 all year (tools/make_env_seasonality.py)
+function seasGain(g, p) { if (!g) return 1; const m = Math.floor(p), t = p - m; return g[((m % 12) + 12) % 12] * (1 - t) + g[(((m + 1) % 12) + 12) % 12] * t; }   // p: the position between the middles of the months (the climatology's own)
 const PHI_DAY_S = DATA.shear.phi.map((p) => Math.pow(Math.max(0.3, p), 1 / 30.44));
 
 /* Day-to-day ("synoptic") humidity weather noise -- tropical waves, SAL outbreaks, the things
@@ -1258,7 +1260,7 @@ function computeField() {
    * EOF/ENSO-regression-derived field, physically defensible since one real ENSO event drives
    * both fields' own interannual variability. P.synoptic has no SST equivalent at all -- real
    * SST doesn't swing day to day the way real mid-level humidity does. */
-  const hvs = P.variability, hes = P.enso, hws = P.synoptic, hmo = P.moisture;
+  const hvs = P.variability * seasGain(humidSeas && humidSeas.eof, p), hes = P.enso * seasGain(humidSeas && humidSeas.enso, p), hws = P.synoptic, hmo = P.moisture;
   const HA0 = humidClimF[M(m1 - 1)], HA1 = humidClimF[M(m1)], HA2 = humidClimF[M(m1 + 1)], HA3 = humidClimF[M(m1 + 2)];
   for (let j = 0; j < NY; j++) {
     const o = j * NX;
@@ -1298,7 +1300,7 @@ function computeField() {
    * The slider scales how far the axis strays from its real mean path (and the local
    * texture): at 0 the jet is still there -- always flowing, as the real one is -- just
    * parked on its mean path instead of meandering. */
-  const svs = P.variability, ses = P.enso, sws = P.shearSynoptic, ssh = P.shearShift;
+  const svs = P.variability * seasGain(shearSeas && shearSeas.eof, p), ses = P.enso * seasGain(shearSeas && shearSeas.enso, p), sws = P.shearSynoptic, ssh = P.shearShift;
   const SA0 = shearClimF[M(m1 - 1)], SA1 = shearClimF[M(m1)], SA2 = shearClimF[M(m1 + 1)], SA3 = shearClimF[M(m1 + 2)];
   // Axis latitude at every fine longitude column: the final coarse axis (continuous-time, see
   // jetAxisRaw -- this is evaluated at the exact current jet clock, so it drifts smoothly hour to
