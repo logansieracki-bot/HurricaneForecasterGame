@@ -68,7 +68,7 @@ function rndn(seed, a, b, c) {                                                  
   return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
 }
 // streams (the `c` argument): one per purpose, so adding a draw somewhere never shifts another
-const ST = { VOL: 1, WX: 2, WY: 3, PRES: 4, RIT: 5, RID: 6, RIR: 7, SPAWN: 8, POS: 9, V0: 10, SUBC: 11, ETC: 12, LIFE: 13, WAVE: 14, LOWSEED: 15, PLACE: 16, Q: 17, Q0: 18, GEN: 19, LIFEN: 20, SEEDPOS: 21, ACT: 22, ETL: 23, ETD: 24, ETS: 25, GENC: 26, ENDH: 27, FLOOR: 28, CONV: 29 };
+const ST = { VOL: 1, WX: 2, WY: 3, PRES: 4, RIT: 5, RID: 6, RIR: 7, SPAWN: 8, POS: 9, V0: 10, SUBC: 11, ETC: 12, LIFE: 13, WAVE: 14, LOWSEED: 15, PLACE: 16, Q: 17, Q0: 18, GEN: 19, LIFEN: 20, SEEDPOS: 21, ACT: 22, ETL: 23, ETD: 24, ETS: 25, GENC: 26, ENDH: 27, FLOOR: 28, CONV: 29, LEAD: 30 };
 const NS = { W: 1, N: 2, M: 3, L: 4, F: 5 };                                                          // id namespaces
 const idNum = (ns, k) => NS[ns] * 1000000 + k;
 
@@ -216,18 +216,21 @@ const BASIN_PARAMS = {
 };
 /* ==== BASIN PARAMS END ==== */
 const BASINS = {
-  atlantic:    { label: 'Atlantic', menu: 'atlantic', scale: 'nhc', seasonMonth: 0, waves: true, hurricane: 'hurricane', lowLat0: 18, mdr: { lat: [10, 20], lon: [-80, -20] }, names: { type: 'yearly', base: 2021, lists: NAME_SETS, extra: NAME_SUPPLEMENTAL, verified: false }, params: BASIN_PARAMS.atlantic },
-  eastpacific: { label: 'Eastern Pacific', menu: 'epac', scale: 'nhc', seasonMonth: 0, waves: false, hurricane: 'hurricane', lowLat0: 8, mdr: { lat: [8, 18], lon: [-125, -95] }, names: { type: 'yearly', base: 2020, lists: EP_SETS, extra: EP_EXTRA, west: { lon: -140, seq: CP_NAMES, start: 5 }, verified: false }, params: BASIN_PARAMS.eastpacific },
-  westpacific: { label: 'Western Pacific', menu: 'wpac', scale: 'jtwc', seasonMonth: 0, waves: false, hurricane: 'typhoon', lowLat0: 5, mdr: { lat: [8, 20], lon: [130, 165] }, names: { type: 'seq', list: WP_NAMES, start: 61, verified: false }, params: BASIN_PARAMS.westpacific },
-  nio:         { label: 'North Indian Ocean', menu: 'nio', scale: 'imd', seasonMonth: 0, waves: false, hurricane: 'cyclone', lowLat0: 5, mdr: { lat: [8, 18], lon: [60, 95] }, names: { type: 'seq', list: NI_NAMES, start: 26, verified: false }, params: BASIN_PARAMS.nio },
-  aus:         { label: 'Australian Region', menu: 'aus', scale: 'bom', seasonMonth: 6, waves: false, hurricane: 'cyclone', lowLat0: 5, mdr: { lat: [-18, -8], lon: [105, 150] }, names: { type: 'seq', list: AU_NAMES, start: 0, verified: false }, params: BASIN_PARAMS.aus },
-  swio:        { label: 'South-West Indian Ocean', menu: 'swio', scale: 'mfr', seasonMonth: 6, waves: false, hurricane: 'cyclone', lowLat0: 5, mdr: { lat: [-20, -8], lon: [50, 90] }, names: { type: 'yearly', base: 2021, lists: SW_SETS, extra: NAME_SUPPLEMENTAL, verified: false }, params: BASIN_PARAMS.swio },
-  spac:        { label: 'South Pacific', menu: 'spac', scale: 'fiji', seasonMonth: 6, waves: false, hurricane: 'cyclone', lowLat0: 5, mdr: { lat: [-20, -8], lon: [160, 210] }, names: { type: 'seq', list: SP_NAMES, start: 0, verified: false }, params: BASIN_PARAMS.spac },
-  satl:        { label: 'South Atlantic', menu: 'satl', scale: 'satl', seasonMonth: 6, waves: false, hurricane: 'cyclone', lowLat0: 15, mdr: { lat: [-32, -20], lon: [-50, -30] }, names: { type: 'seq', list: SA_NAMES, start: 12, verified: false }, params: BASIN_PARAMS.satl },
-  med:         { label: 'Mediterranean', menu: 'med', scale: 'med', seasonMonth: 6, waves: false, hurricane: 'medicane', lowLat0: 30, mdr: { lat: [34, 40], lon: [0, 25] }, names: { type: 'seq', list: MED_NAMES, start: 0, verified: false }, params: BASIN_PARAMS.med },
+  atlantic:    { label: 'Atlantic', menu: 'atlantic', scale: 'nhc', inv: { w: 'L', e: 'L', at: 0 }, seasonMonth: 0, waves: true, hurricane: 'hurricane', lowLat0: 18, mdr: { lat: [10, 20], lon: [-80, -20] }, names: { type: 'yearly', base: 2021, lists: NAME_SETS, extra: NAME_SUPPLEMENTAL, verified: false }, params: BASIN_PARAMS.atlantic },
+  eastpacific: { label: 'Eastern Pacific', menu: 'epac', scale: 'nhc', inv: { w: 'C', e: 'E', at: -140 }, seasonMonth: 0, waves: false, hurricane: 'hurricane', lowLat0: 8, mdr: { lat: [8, 18], lon: [-125, -95] }, names: { type: 'yearly', base: 2020, lists: EP_SETS, extra: EP_EXTRA, west: { lon: -140, seq: CP_NAMES, start: 5 }, verified: false }, params: BASIN_PARAMS.eastpacific },
+  westpacific: { label: 'Western Pacific', menu: 'wpac', scale: 'jtwc', inv: { w: 'W', e: 'W', at: 0 }, seasonMonth: 0, waves: false, hurricane: 'typhoon', lowLat0: 5, mdr: { lat: [8, 20], lon: [130, 165] }, names: { type: 'seq', list: WP_NAMES, start: 61, verified: false }, params: BASIN_PARAMS.westpacific },
+  nio:         { label: 'North Indian Ocean', menu: 'nio', scale: 'imd', inv: { w: 'A', e: 'B', at: 78 }, seasonMonth: 0, waves: false, hurricane: 'cyclone', lowLat0: 5, mdr: { lat: [8, 18], lon: [60, 95] }, names: { type: 'seq', list: NI_NAMES, start: 26, verified: false }, params: BASIN_PARAMS.nio },
+  aus:         { label: 'Australian Region', menu: 'aus', scale: 'bom', inv: { w: 'S', e: 'P', at: 135 }, seasonMonth: 6, waves: false, hurricane: 'cyclone', lowLat0: 5, mdr: { lat: [-18, -8], lon: [105, 150] }, names: { type: 'seq', list: AU_NAMES, start: 0, verified: false }, params: BASIN_PARAMS.aus },
+  swio:        { label: 'South-West Indian Ocean', menu: 'swio', scale: 'mfr', inv: { w: 'S', e: 'S', at: 0 }, seasonMonth: 6, waves: false, hurricane: 'cyclone', lowLat0: 5, mdr: { lat: [-20, -8], lon: [50, 90] }, names: { type: 'yearly', base: 2021, lists: SW_SETS, extra: NAME_SUPPLEMENTAL, verified: false }, params: BASIN_PARAMS.swio },
+  spac:        { label: 'South Pacific', menu: 'spac', scale: 'fiji', inv: { w: 'P', e: 'P', at: 0 }, seasonMonth: 6, waves: false, hurricane: 'cyclone', lowLat0: 5, mdr: { lat: [-20, -8], lon: [160, 210] }, names: { type: 'seq', list: SP_NAMES, start: 0, verified: false }, params: BASIN_PARAMS.spac },
+  satl:        { label: 'South Atlantic', menu: 'satl', scale: 'satl', inv: { w: 'Q', e: 'Q', at: 0 }, seasonMonth: 6, waves: false, hurricane: 'cyclone', lowLat0: 15, mdr: { lat: [-32, -20], lon: [-50, -30] }, names: { type: 'seq', list: SA_NAMES, start: 12, verified: false }, params: BASIN_PARAMS.satl },
+  med:         { label: 'Mediterranean', menu: 'med', scale: 'med', inv: { w: 'M', e: 'M', at: 0 }, seasonMonth: 6, waves: false, hurricane: 'medicane', lowLat0: 30, mdr: { lat: [34, 40], lon: [0, 25] }, names: { type: 'seq', list: MED_NAMES, start: 0, verified: false }, params: BASIN_PARAMS.med },
 };
 const basinOf = (id) => BASINS[id] || BASINS.atlantic;
 const scaleOf = (id) => SCALES[basinOf(id).scale] || SCALES.nhc;
+/* the letter of an invest (the 90-99 numbers a forecaster gives an area under investigation): the agency's basin letter, split in two where the agency splits its basin -- the East Pacific's C west of 140W (Central Pacific),
+   the North Indian Ocean's A (Arabian Sea) west of 78E and B (Bay of Bengal) east of it, the southern Indian-Australian S west of 135E and P east of it */
+const investLetter = (id, lon) => { const I = basinOf(id).inv; return lon < I.at ? I.w : I.e; };
 /* the class of a wind (kt, 1-minute) in a basin's own scale: { idx, short, long }. A subtropical cyclone keeps the subtropical names whatever the region */
 function classOf(id, kt, th) {
   const v = round5(kt);
@@ -408,6 +411,17 @@ function structureParams() {
     act: { seasSd: 0.2, intraSd: 0.15, K: 6, T: [14, 60] },
     distOn: 19, distOff: 17, distOnE: 1.2, distOffE: 0.9,                  // the disturbance stage of a wave or seed (wind, kt, with hysteresis) and of a tracked low (development rate relative to its place's mean)
     seedV: [14, 20], lifeN: [48, 144], distV: [14, 22], seedMul: 1, waveLatMax: 32,          // an easterly wave that has not developed by 32N is no longer one (it has become a trough)
+    // the outlook (Manager.prototype.outlook): the areas of interest and their chances of formation in 2 and 7 days. Nothing here is fitted to data -- these are the choices of how a forecast is made and drawn
+    outlook: {
+      horizon: 168, step: 3, minP7: 10, maxAreas: 10,                              // hours ahead, the time step of the forecast track (hours), the least 7-day chance drawn (percent), the most areas
+      tdShare: 0.92, tdHold: 7,                                                   // the share of development events that become a depression, and the hours the new depression's wind must hold (genHold) on top of the time it takes to rise to devV
+      anomTau: { sst: 300, rh: 96, shear: 96, steer: 72 },                        // hours: the anomaly of a field from its own climate that the forecast keeps, decaying to the climate (a persistence forecast: the weather beyond the next keyframe is not known to it)
+      lowLife: 60,                                                                // hours: the mean remaining life of a tracked low
+      r0: 1.2, r1: 0.6, rUnborn: 1.5,                                             // the area's radius (degrees of latitude): at the start, per day ahead, and extra for a system that does not exist yet
+      win: [0.1, 0.9], fav: 0.5, arrowMin: 2.5,                                   // the area covers the 10th to 90th percentile of the formation time; the X sits inside it when the rate now is at least `fav` of the best ahead, else an arrow (at least arrowMin degrees long) points to it
+      lead: { W: [48, 168, 0], N: [12, 120, 0.3], F: [12, 120, 0.3] },           // how many hours before it exists a forecaster sees a system coming: shortest, longest, and the share nobody sees coming
+      cls: [35, 60],                                                              // an area is low (yellow) up to this 7-day chance, medium (orange) up to the next, high (red) above
+    },
   };
 }
 // a parameter set with some entries replaced: plain objects merge key by key, arrays and numbers replace (the calibration lab and the tests pass partial sets)
@@ -511,10 +525,8 @@ function devGrowth(par, env, sub, lat, sst, rh, shear, doy, dSst) {
   const sstG = par.sstRelW ? sst + par.sstRelW * (par.sstRef0 - (env.sstRef ? env.sstRef() + dSst : par.sstRef0)) : sst;
   return growthG(par, G, sub, par.devV, sstG, rh, shear / par.shearK, alat, sShift, latD, sst);
 }
-function devGateAt(par, env, sub, lat, sst, rh, shear, doy, dSst) {
-  const G = sub ? par.sub : par;
-  return smooth01(devGrowth(par, env, sub, lat, sst, rh, shear, doy, dSst), G.gCrit + par.devGate[0], G.gCrit + par.devGate[1]);
-}
+function devGateOf(par, sub, g) { const G = sub ? par.sub : par; return smooth01(g, G.gCrit + par.devGate[0], G.gCrit + par.devGate[1]); }          // the share of its development rate a disturbance keeps, from its place's growth gate g
+function devGateAt(par, env, sub, lat, sst, rh, shear, doy, dSst) { return devGateOf(par, sub, devGrowth(par, env, sub, lat, sst, rh, shear, doy, dSst)); }
 
 /* the activity factor (see par.act): 1 on average, a pure function of the seed, the season's year (the calendar year where the season is one; a southern season is named for the year it starts in, so it does not change in January) and the hour */
 function activityFactor(par, seed, year, h) {
@@ -590,7 +602,7 @@ function newSystem(o) {
   return {
     id: o.id, num: o.num, origin: o.origin || '', born: o.hour, th: o.th, sub: !!o.sub, dev: -1, life: o.life || 0, kind: o.kind || '',
     lat: o.lat, lon: o.lon, v: o.v, vr: o.v, p: 1008, cx: o.cx || 0, cy: o.cy || 0, wx: 0, wy: 0, zv: 0, zp: 0,
-    q: o.q || 0, dist: false, shSm: null, rhSm: null, cw: 0, ri: null, riCoolUntil: -1, riTotal: 0, onLand: false, genCount: 0, lowCount: 0, landLow: 0, convCount: 0, nlTill: -1,
+    q: o.q || 0, dist: false, invest: '', shSm: null, rhSm: null, cw: 0, ri: null, riCoolUntil: -1, riTotal: 0, onLand: false, genCount: 0, lowCount: 0, landLow: 0, convCount: 0, nlTill: -1,
     exDeep: 0, exEp: null, exLift: 0, ux: 0, uy: 0, etAt: -1, remnant: false, alive: true, end: null, endReason: '', depNum: 0, name: '', tdHour: -1, namedHour: -1,
     peakV: 0, peakP: 1020, peakHour: -1, ace: 0, season: 0, fixes: [], st: 'WV', lastShear: 15, lastRh: 50, lastSst: 27, lastLf: 0, kill: false,
   };
@@ -608,9 +620,10 @@ function statusOf(S) {
 
 /* the equator is not crossed: a system keeps its hemisphere. The meridional step bends into a soft floor on |lat| below `a` degrees (x >= a is untouched, bit for bit; below it the position
    approaches the equator only asymptotically, positive for any step -- a ramp, not a wall); whatever is stuck there spins down by the growth gate's own latitude edge and ends */
+const softFloor = (x, a) => (x >= a ? x : a * Math.exp((x - a) / a));                  // x itself from a up; below it x bends over toward zero, never reaching it
 function keepSide(lat, dy, a) {
-  const hs = lat < 0 ? -1 : 1, x = hs * (lat + dy);
-  return hs * (x >= a ? x : a * Math.exp((x - a) / a));
+  const hs = lat < 0 ? -1 : 1;
+  return hs * softFloor(hs * (lat + dy), a);
 }
 
 /* ---- one hour of physics ----------------------------------------------------------------------------------------------
@@ -961,6 +974,7 @@ function Manager(o) {
   this.n = { W: 0, N: 0, M: 0, F: 0 };
   this.auto = o.auto !== false; this.autoRate = o.autoRate == null ? 1 : o.autoRate;
   this.sched = { waveT: null, waveK: 0, waveSpawn: false };
+  this.invN = {};                                                              // invests given so far this season, per letter (the next is 90 + n mod 10)
   this.lows = new LowTracker();
   this.maps = prepareMaps(o.maps);                                             // the climatology the host supplied (null: the plain steering model)
   this.ctx = { maps: this.maps, tw: null, diag: null };                          // what a step needs besides the system: maps, the time weights of the hour, the calibration lab's accumulators
@@ -990,6 +1004,7 @@ Manager.prototype.place = function (spec) {
   const S = this._seedSystem('M', th, spec.lat, spec.lon, spec.v || v0, h, 'placed:' + spec.kind, spec.kind === 'sd');
   if (th === 'nl') S.nlTill = h + this.par.nlLife[3];
   if (th === 'tc' || th === 'sc') S.genCount = 0;
+  this._ol = null;                                                             // the held outlook does not know it
   return S;
 };
 
@@ -1001,10 +1016,40 @@ Manager.prototype.pendingPlacement = function (spec) {
   return S;
 };
 
-Manager.prototype._waveSchedule = function (from) {                      // next wave time after `from`: a quasi-periodic train whose rate follows the season
+/* ---- births: the generators the engine and the outlook share ------------------------------------------------------------------------------------------------------------
+   Every system the supply creates is a pure function of the seed and the hour (and the maps and the parameters): _waveNext / _waveBirth for the Atlantic's easterly waves, _localSeed for a map
+   cell's local seed, _floorSeed for the floor supply over the whole box. _spawn creates what they return at the hour it is; the outlook (Manager.prototype.outlook) calls the very same
+   functions for the hours ahead, so the disturbance it draws before it exists is the one that will be born, not a guess. */
+Manager.prototype._waveNext = function (from, k) {                            // next wave time after `from` (k: the running count of waves born): a quasi-periodic train whose rate follows the season
   const rate = this.par.waveRate0 * seasonalWeight(WAVE_SEASON, this.doyAt(from)) * seasonShape(this.par, this.doyAt(from)) * this.autoRate;
   if (rate < 0.02) return { t: from + 24, spawn: false };
-  return { t: from + 24 * (0.55 + 0.9 * rnd(this.seed, 77, this.sched.waveK, ST.WAVE)) / rate, spawn: true };
+  return { t: from + 24 * (0.55 + 0.9 * rnd(this.seed, 77, k, ST.WAVE)) / rate, spawn: true };
+};
+Manager.prototype._waveSchedule = function (from) { return this._waveNext(from, this.sched.waveK); };
+Manager.prototype._waveBirth = function (k, h) {                              // the k-th wave, born at hour h: where it leaves the coast and how strong it is
+  const par = this.par, seed = this.seed, doy = this.doyAt(h);
+  const sw = clamp((doy - 140) / 100, 0, 1), latC = par.waveLat0 + 2.5 * Math.sin(Math.PI * sw);
+  return { lat: clamp(latC + 2.2 * rndn(seed, 78, k, ST.POS), 8, 18), lon: -17.5 + 0.6 * rndn(seed, 79, k, ST.POS), v0: par.waveV0[0] + (par.waveV0[1] - par.waveV0[0]) * rnd(seed, 80, k, ST.V0) };
+};
+/* the local seed of map cell k at hour h, or null: born where the real Atlantic needs them (maps.spawn, per year per node), at a place inside the cell that El Nino can shift (shift: [lat, lon] degrees or null), over water, lasting a few days unless it develops */
+Manager.prototype._localSeed = function (k, h, tw, shift, env) {
+  const par = this.par, seed = this.seed, M = this.maps, rate = par.seedMul * this.autoRate / (30.4375 * 24);       // maps.spawn: the seeds a month contributes to a year's total, per node
+  const a = (M.spawn[tw.m0 * M.n + k] * (1 - tw.t) + M.spawn[tw.m1 * M.n + k] * tw.t) * rate;
+  if (!(a > 0) || rnd(seed, 1000 + k, h, ST.SPAWN) >= a) return null;
+  const j = (k / M.nx) | 0, i = k - j * M.nx;
+  let lat = M.lat0 + (j + rnd(seed, 1000 + k, h, ST.SEEDPOS) - 0.5) * M.res, lon = M.lon0 + (i + rnd(seed, 1000 + k, h + 1000003, ST.SEEDPOS) - 0.5) * M.res;
+  if (shift) { lat += shift[0]; lon += shift[1]; const B = env && env.box; if (B) { lat = clamp(lat, B.lat0 + 0.6, B.lat1 - 0.6); lon = clamp(lon, B.lon0 + 0.6, B.lon1 - 0.6); } }
+  if (env && env.isLand && env.isLand(lat, lon)) return null;
+  return { lat, lon, v0: par.seedV[0] + (par.seedV[1] - par.seedV[0]) * rnd(seed, 1000 + k, h, ST.V0), life: par.lifeN[0] + (par.lifeN[1] - par.lifeN[0]) * rnd(seed, 1000 + k, h, ST.LIFEN) };
+};
+/* the floor supply: a disturbance now and then anywhere in the box (par.seedFloor a year, uniform over the water, ids F<k> so no other system's id moves). Whether it comes to anything is the environment's business: over the Great
+   Lakes in the climate of today it never does, with the page's Warming, Moisture and Wind shear sliders pushed to the end it very rarely can */
+Manager.prototype._floorSeed = function (h, env) {
+  const par = this.par, seed = this.seed;
+  if (!(par.seedFloor > 0 && env && env.box && rnd(seed, 90001, h, ST.FLOOR) < par.seedFloor * this.autoRate / (365.25 * 24))) return null;
+  const B = env.box, lat = B.lat0 + 1 + (B.lat1 - B.lat0 - 2) * rnd(seed, 90002, h, ST.FLOOR), lon = B.lon0 + 1 + (B.lon1 - B.lon0 - 2) * rnd(seed, 90003, h, ST.FLOOR);
+  if (env.isLand && env.isLand(lat, lon)) return null;
+  return { lat, lon, v0: par.seedV[0] + (par.seedV[1] - par.seedV[0]) * rnd(seed, 90004, h, ST.FLOOR), life: par.lifeN[0] + (par.lifeN[1] - par.lifeN[0]) * rnd(seed, 90005, h, ST.FLOOR) };
 };
 Manager.prototype._spawn = function (h, env) {
   const par = this.par, seed = this.seed, doy = this.doyAt(h);
@@ -1012,39 +1057,22 @@ Manager.prototype._spawn = function (h, env) {
   if (basinOf(this.basin).waves && this.sched.waveT == null) { const s = this._waveSchedule(h); this.sched.waveT = s.t; this.sched.waveSpawn = s.spawn; }
   while (basinOf(this.basin).waves && h >= this.sched.waveT) {
     if (this.sched.waveSpawn) {
-      const k = this.sched.waveK++;
-      const sw = clamp((doy - 140) / 100, 0, 1), latC = par.waveLat0 + 2.5 * Math.sin(Math.PI * sw);
-      const lat = clamp(latC + 2.2 * rndn(seed, 78, k, ST.POS), 8, 18), lon = -17.5 + 0.6 * rndn(seed, 79, k, ST.POS);
-      const v0 = par.waveV0[0] + (par.waveV0[1] - par.waveV0[0]) * rnd(seed, 80, k, ST.V0);
-      this._seedSystem('W', 'wv', lat, lon, v0, h, 'wave', false);
+      const k = this.sched.waveK++, w = this._waveBirth(k, h);
+      this._seedSystem('W', 'wv', w.lat, w.lon, w.v0, h, 'wave', false);
     }
     const s = this._waveSchedule(this.sched.waveT); this.sched.waveT = s.t; this.sched.waveSpawn = s.spawn;
   }
-  // local seeds: disturbances the waves and the pressure lows do not supply (a trough or a gyre over the Gulf, a stalled front off the Carolinas ...), born where the real
-  // Atlantic needs them (maps.spawn, per year per node) and lasting a few days unless they develop
+  // local seeds: disturbances the waves and the pressure lows do not supply (a trough or a gyre over the Gulf, a stalled front off the Carolinas ...)
   if (this.maps) {
-    const M = this.maps, tw = this.ctx.tw, rate = par.seedMul * this.autoRate / (30.4375 * 24), diag = this.ctx.diag;       // maps.spawn: the seeds a month contributes to a year's total, per node
+    const M = this.maps, tw = this.ctx.tw, diag = this.ctx.diag;
     for (const k of M.spawnCells || []) {
-      const a = (M.spawn[tw.m0 * M.n + k] * (1 - tw.t) + M.spawn[tw.m1 * M.n + k] * tw.t) * rate;
-      if (!(a > 0) || rnd(seed, 1000 + k, h, ST.SPAWN) >= a) continue;
-      const j = (k / M.nx) | 0, i = k - j * M.nx;
-      let lat = M.lat0 + (j + rnd(seed, 1000 + k, h, ST.SEEDPOS) - 0.5) * M.res, lon = M.lon0 + (i + rnd(seed, 1000 + k, h + 1000003, ST.SEEDPOS) - 0.5) * M.res;
-      if (this.ctx.shift) { lat += this.ctx.shift[0]; lon += this.ctx.shift[1]; const B = env && env.box; if (B) { lat = clamp(lat, B.lat0 + 0.6, B.lat1 - 0.6); lon = clamp(lon, B.lon0 + 0.6, B.lon1 - 0.6); } }
-      if (env && env.isLand && env.isLand(lat, lon)) continue;
-      const v0 = par.seedV[0] + (par.seedV[1] - par.seedV[0]) * rnd(seed, 1000 + k, h, ST.V0);
-      const S = this._seedSystem('N', 'wv', lat, lon, v0, h, 'seed', false);
-      S.life = par.lifeN[0] + (par.lifeN[1] - par.lifeN[0]) * rnd(seed, 1000 + k, h, ST.LIFEN);
+      const b = this._localSeed(k, h, tw, this.ctx.shift, env); if (!b) continue;
+      const S = this._seedSystem('N', 'wv', b.lat, b.lon, b.v0, h, 'seed', false);
+      S.life = b.life;
       if (diag) diag['spawn.N'][(tw.t < 0.5 ? tw.m0 : tw.m1) * M.n + k] += 1;
     }
-    // the floor supply: a disturbance now and then anywhere in the box (par.seedFloor a year, uniform over the water, ids F<k> so no other system's id moves). Whether it comes to anything is the environment's business: over the Great
-    // Lakes in the climate of today it never does, with the page's Warming, Moisture and Wind shear sliders pushed to the end it very rarely can
-    if (par.seedFloor > 0 && env && env.box && rnd(seed, 90001, h, ST.FLOOR) < par.seedFloor * this.autoRate / (365.25 * 24)) {
-      const B = env.box, lat = B.lat0 + 1 + (B.lat1 - B.lat0 - 2) * rnd(seed, 90002, h, ST.FLOOR), lon = B.lon0 + 1 + (B.lon1 - B.lon0 - 2) * rnd(seed, 90003, h, ST.FLOOR);
-      if (!(env.isLand && env.isLand(lat, lon))) {
-        const S = this._seedSystem('F', 'wv', lat, lon, par.seedV[0] + (par.seedV[1] - par.seedV[0]) * rnd(seed, 90004, h, ST.FLOOR), h, 'seed', false, 'N');
-        S.life = par.lifeN[0] + (par.lifeN[1] - par.lifeN[0]) * rnd(seed, 90005, h, ST.FLOOR);
-      }
-    }
+    const f = this._floorSeed(h, env);
+    if (f) { const S = this._seedSystem('F', 'wv', f.lat, f.lon, f.v0, h, 'seed', false, 'N'); S.life = f.life; }
     return;
   }
   // regional sources
@@ -1086,8 +1114,9 @@ Manager.prototype._updateLows = function (h, env) {
       const u = rnd(this.seed, idNum('L', +t.id.slice(1)), h, ST.LOWSEED);
       if (u < hT + hS) {
         this.lows._finish(t, h); t.became = true;
+        if (!t.invest) this._invest(t);                                          // (a depression that grows from a low was an invest first, whether or not the six-hourly look saw it flagged)
         const S = this._seedSystem('N', 'wv', t.lat, t.lon, 22, h, 'low', u >= hT);
-        S.dev = h;
+        S.dev = h; S.invest = t.invest;
         S.fixes = t.fixes.map(([hh, la, lo, pp]) => ({ h: hh, lat: la, lon: lo, v: 20, p: pp, st: 'LO', th: 'wv', dir: 0, spd: 0, sst: 0, sh: 0, rh: 0, ace: 0, land: false }));      // the low's own path leads into the depression's
         if (ctx.diag) diagGenesis(ctx, 'L', S.sub, tw, t.lat, t.lon);
       }
@@ -1103,6 +1132,14 @@ Manager.prototype._updateLows = function (h, env) {
       this._seedSystem('N', 'wv', t.lat, t.lon, 24, h, 'low', true);
     }
   }
+};
+
+/* an invest: a disturbance (the engine's own flag S.dist / t.dist: development has begun, or the environment holds the wind near what a depression needs) is given the next 9x number of its letter the first
+   six-hourly time it is seen with the flag -- a number is a property of the system, kept when a low becomes a depression, and the same however the clock was chunked */
+Manager.prototype._invest = function (o) { const L = investLetter(this.basin, o.lon), n = this.invN[L] || 0; this.invN[L] = n + 1; o.invest = '9' + (n % 10) + L; };
+Manager.prototype._assignInvests = function () {
+  for (const S of this.systems) if (S.alive && S.th === 'wv' && S.dist && !S.invest) this._invest(S);
+  for (const t of this.lows.tracks) if (t.alive && t.dist && !t.invest) this._invest(t);
 };
 
 Manager.prototype._record = function (h, env) {                             // three-hourly fixes (the six-hourly ones are the synoptic times; ACE counts only those), naming, counters
@@ -1142,6 +1179,7 @@ Manager.prototype._rollover = function (h) {
   this.byId = {}; for (const S of this.systems) this.byId[S.id] = S;
   this.season = newSeason(y + 1);
   this.yearEndH = this._hourOfYearStart(y + 2);
+  this.invN = {};                                                              // a new season numbers its invests from 90 again
 };
 Manager.prototype._finalizePrev = function () {
   const p = this.prev, e = this.prevEntry;
@@ -1173,8 +1211,213 @@ Manager.prototype.advanceTo = function (target, envSrc) {
     for (const S of this.systems) if (S.alive) stepSystem(S, env, h, this.seed, this.par, doy, this.ctx);
     this.hour = h + 1;
     if (this.hour % 3 === 0) this._record(this.hour, env);
-    if (this.hour % 6 === 0) { this._updateLows(this.hour, env); this._cleanup(this.hour); }
+    if (this.hour % 6 === 0) { this._updateLows(this.hour, env); this._assignInvests(); this._cleanup(this.hour); }
   }
+};
+
+/* ---- the outlook: areas of interest ------------------------------------------------------------------------------------------------------------------------------------
+ *  Manager.prototype.outlook(env): the areas where a tropical or subtropical cyclone could form in the next 7 days, each with the chance of formation within 2 and within 7 days (percent, in steps of 5), the way the
+ *  National Hurricane Center draws them. One implementation for every basin; nothing in it is a number fitted to a basin (par.outlook holds the choices of how a forecast is made and drawn).
+ *  A candidate is a disturbance that exists (a wave, a local seed, a tracked low, a placed wave) or that the supply has already scheduled: the very generators _spawn uses (_waveNext, _waveBirth, _localSeed, _floorSeed) are
+ *  asked for the hours ahead, so a disturbance drawn before it exists is the one that will be born. Each is followed along its mean track (the drift of a weak system at its place and time of year plus the steering anomaly
+ *  the page shows now, decaying to the climate) through the environment the page has now with its anomaly decaying to the climate (a persistence forecast: the weather beyond the next keyframe is not known to it). Along the
+ *  track the development rate is the one stepSystem uses (the map rate x how favourable the environment is x the system's quality x the activity factor), thinned by the chance a development event becomes a depression and
+ *  competing with what ends a disturbance (cold water, latitude, age, land, its own drawn life): the chance of formation by a time is the integral of rate x survival.
+ *  The area covers where the formation is expected -- from the 10th to the 90th percentile of its time, along the track, widening with lead -- so a high chance soon after favourable conditions is a short compact area and a
+ *  thin chance spread over days a long one. A disturbance that exists has an X; when the rate it has now is well below the best it will have, the X gets an arrow to the area (not yet in favourable conditions), else it sits
+ *  inside it. A disturbance the supply has not made yet has the area only, and only once it is inside its lead, the hours a forecaster sees it coming (a wave leaving Africa for days, a local seed for a day or two, a third of those not at all).
+ *  The result is held for the six hours of its issue (00, 06, 12 and 18Z, the NHC's cycle). The call is pure: a function of the engine's state and the environment it is handed.
+ */
+const normCdf = (x) => {                                                       // the standard normal's distribution function (Abramowitz & Stegun 7.1.26, error < 1.5e-7)
+  const z = Math.abs(x) / Math.SQRT2, t = 1 / (1 + 0.3275911 * z), y = 1 - ((((1.061405429 * t - 1.453152027) * t + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-z * z);
+  return x >= 0 ? 0.5 * (1 + y) : 0.5 * (1 - y);
+};
+/* the outline of a chain of discs (centres [lat, lon], radii in degrees of latitude): the two offset curves, a half circle at each end, smoothed twice (Chaikin); a single disc is a circle. Lengths in degrees of longitude are scaled by the
+   cosine of latitude so that a disc is round on the map. An outline never crosses the equator any more than a system does: its latitudes go through the same soft floor (eq: par.eqSoft) on the side of the first centre */
+function capsule(pts, rad, eq) {
+  const n = pts.length, k = Math.max(0.2, Math.cos(pts.reduce((a, q) => a + q[0], 0) / n * DEG)), P = pts.map((q) => [q[1] * k, q[0]]);
+  let poly = [];
+  if (n === 1) for (let i = 0; i < 24; i++) { const a = 2 * Math.PI * i / 24; poly.push([P[0][0] + rad[0] * Math.cos(a), P[0][1] + rad[0] * Math.sin(a)]); }
+  else {
+    const T = P.map((q, i) => { const a = P[Math.max(0, i - 1)], b = P[Math.min(n - 1, i + 1)], dx = b[0] - a[0], dy = b[1] - a[1], d = Math.hypot(dx, dy) || 1; return [dx / d, dy / d]; });
+    for (let i = 0; i < n; i++) poly.push([P[i][0] - rad[i] * T[i][1], P[i][1] + rad[i] * T[i][0]]);                            // the left side, start to end
+    let phi = Math.atan2(T[n - 1][1], T[n - 1][0]);
+    for (let j = 1; j < 8; j++) { const a = phi + Math.PI / 2 - Math.PI * j / 8; poly.push([P[n - 1][0] + rad[n - 1] * Math.cos(a), P[n - 1][1] + rad[n - 1] * Math.sin(a)]); }          // round the end
+    for (let i = n - 1; i >= 0; i--) poly.push([P[i][0] + rad[i] * T[i][1], P[i][1] - rad[i] * T[i][0]]);                      // the right side, end to start
+    phi = Math.atan2(T[0][1], T[0][0]);
+    for (let j = 1; j < 8; j++) { const a = phi - Math.PI / 2 - Math.PI * j / 8; poly.push([P[0][0] + rad[0] * Math.cos(a), P[0][1] + rad[0] * Math.sin(a)]); }                // round the start
+  }
+  for (let it = 0; it < 2; it++) { const q = []; for (let i = 0; i < poly.length; i++) { const a = poly[i], b = poly[(i + 1) % poly.length]; q.push([0.75 * a[0] + 0.25 * b[0], 0.75 * a[1] + 0.25 * b[1]], [0.25 * a[0] + 0.75 * b[0], 0.25 * a[1] + 0.75 * b[1]]); } poly = q; }
+  const hs = pts[0][0] < 0 ? -1 : 1;
+  return poly.map((q) => [r1(eq > 0 ? hs * softFloor(hs * q[1], eq) : q[1]), r1(q[0] / k)]);
+}
+const outlookClass = (O, p7) => (p7 <= O.cls[0] ? 'low' : p7 <= O.cls[1] ? 'medium' : 'high');          // the NHC's three colours by the 7-day chance
+/* what ends a disturbance that has not developed, per hour: cold water, too high a latitude, old age (hazards with a mean life of endH hours), the land (twelve hours over it ends a seed), and for a tracked low its own life */
+function outlookEnd(par, c, alat, sst, lf, age) {
+  const latW = smooth01(alat - (c.kind === 'W' ? par.waveLatMax : par.seedLatMax), -2, 2);
+  const wend = 1 - (1 - smooth01(par.seedCold - sst, -1, 1)) * (1 - smooth01(age, par.waveLife - 96, par.waveLife + 96)) * (1 - latW);
+  return c.low ? 1 / par.outlook.lowLife + wend / par.endH + smooth01(lf, 0.6, 0.8) / 8 : wend / par.endH + (age > 12 ? smooth01(lf, 0.6, 0.8) / 8 : 0);
+}
+/* follow one candidate along its mean track: per step of par.outlook.step hours its place, the rate at which it becomes a depression (rate) and the probability that it does so in the step (mass), with the chance it still
+   exists and has not yet developed (surv) falling by what ends it. c: { kind, lat, lon, h0 (first hour on the path), born, life, ux, uy, q (its quality now, when known), vx, vy (a tracked low's motion), low, dev } */
+function outlookFollow(mgr, F, c) {
+  const par = mgr.par, O = par.outlook, M = F.M, env = F.env, A = O.anomTau, dt = O.step, H0 = F.H0, end = H0 + O.horizon, box = env.box;
+  const out = { t: [], lat: [], lon: [], dt: [], dly: [], rate: [], mass: [], surv: [] };
+  let lat = c.lat, lon = c.lon, ux = c.ux || 0, uy = c.uy || 0, h = c.h0, surv = 1, lastSst = 27, lastRh = 50, lastShear = 15;
+  const rq = Math.exp(-1 / par.qTau), al = 1 - Math.exp(-dt / 5), sub = c.kind !== 'W' && c.kind !== 'M';
+  while (h < end) {
+    const alat = Math.abs(lat), dh = h - H0;
+    if (box && (lat < box.lat0 + 0.5 || lat > box.lat1 - 0.5 || lon < box.lon0 + 0.5 || lon > box.lon1 - 0.5)) break;
+    const lf = landFraction(env, lat, lon, par.landSample), tw = timeWeights(mgr.doyAt(h) + (((h % 24) + 24) % 24) / 24), doy = mgr.doyAt(h);
+    let sst = env.sst(lat, lon), rh = env.rh(lat, lon), shear = env.shear(lat, lon);
+    if (!(sst === sst) && lf === 0) break;                                           // left the basin
+    if (!(sst === sst)) sst = lastSst; if (!(shear === shear)) shear = lastShear; if (!(rh === rh)) rh = lastRh;
+    if (M.env0 && dh > 0) {                                                          // the anomaly from the climate decays, the climate goes on: the season changes under a persistence forecast
+      const a = (name, arr, tau, v) => { const c0 = mapAt(M, arr, F.tw0, lat, lon); return mapAt(M, arr, tw, lat, lon) + (v - c0) * Math.exp(-dh / tau); };
+      sst = a('sst', M.env0.sst, A.sst, sst); rh = a('rh', M.env0.rh, A.rh, rh); shear = a('shear', M.env0.shear, A.shear, shear);
+    }
+    lastSst = sst; lastRh = rh; lastShear = shear;
+    sst += par.sstOffset; rh += par.rhOffset; shear += par.shearOffset;
+    const age = h - c.born, act = activityFactor(par, mgr.seed, seasonYearOf(mgr.startMs + h * HOUR_MS, mgr.seasonMonth), h) * F.ensoMul;
+    const gT = devGrowth(par, env, false, lat, sst, rh, shear, doy, par.sstOffset);
+    let eT, eS = 0, lamT, lamS = 0, Qm = 1;
+    if (c.low) {                                                                     // a tracked low develops at six-hourly draws (see _updateLows), weighted by its latitude
+      const lw = lowWeight(par, alat), gS = devGrowth(par, env, true, lat, sst, rh, shear, doy, par.sstOffset);
+      eT = lw * envFactor(par, M, tw, lat, lon, sst, rh, shear, F.sstRef, false) * devGateOf(par, false, gT) * act;
+      eS = lw * envFactor(par, M, tw, lat, lon, sst, rh, shear, F.sstRef, true) * devGateOf(par, true, gS) * act;
+      lamT = satur(6 * par.hazMul * hazAt(par, M, M.haz.T, tw, lat, lon, F.shift) * eT * mgr.autoRate, par.hazMax) / 6;
+      lamS = satur(6 * par.hazMul * hazAt(par, M, M.haz.S, tw, lat, lon, F.shift) * eS * mgr.autoRate, par.hazMax) / 6;
+      c.gS = gS;
+    } else {
+      const water = (1 - smooth01(lf, 0.2, 0.5)) * smooth01(alat, 2, 4);
+      if (c.q != null) Qm = Math.exp(par.qSd * Math.pow(rq, dh) * c.q - 0.5 * par.qSd * par.qSd * Math.pow(rq, 2 * dh));        // the mean of exp(qSd q) given the quality now (it relaxes to a unit-mean draw)
+      eT = water > 0 ? water * envFactor(par, M, tw, lat, lon, sst, rh, shear, F.sstRef, false) * devGateOf(par, false, gT) * Qm * act : 0;
+      lamT = satur(par.hazMul * hazAt(par, M, M.haz.T, tw, lat, lon, F.shift) * eT, par.hazMax);
+      if (sub && water > 0) {
+        const gS = devGrowth(par, env, true, lat, sst, rh, shear, doy, par.sstOffset); c.gS = gS;
+        eS = water * envFactor(par, M, tw, lat, lon, sst, rh, shear, F.sstRef, true) * devGateOf(par, true, gS) * Qm * act;
+        lamS = satur(par.hazMul * hazAt(par, M, M.haz.S, tw, lat, lon, F.shift) * eS, par.hazMax);
+      }
+    }
+    // the chance a development event becomes a depression: the doors the genesis rule closes (land, the equator, cold water) and the growth gate the new depression must hold (tdMargin)
+    const sd = c.q != null ? Math.sqrt(Math.max(0.0025, 1 - Math.pow(rq, 2 * dh))) : 1, mq = c.q != null ? Math.pow(rq, dh) * c.q : 0;
+    const sustP = (g, G) => { if (!(par.tdMargin > 0)) return 1; if (!(g > 0)) return 0; if (!(par.qSd > 0)) return g >= G.gCrit + par.tdMargin ? 1 : 0; return 1 - normCdf((Math.log((G.gCrit + par.tdMargin) / g) / par.qSd - mq) / sd); };
+    const door = (1 - smooth01(lf, 0.4, 0.8)) * smooth01(alat, 3, 6);
+    const convT = O.tdShare * door * smooth01(sst, 23, 24) * sustP(gT, par), convS = lamS > 0 ? O.tdShare * door * smooth01(sst, par.subSstOK - 1, par.subSstOK) * sustP(c.gS, par.sub) : 0;
+    const rate = lamT * convT + lamS * convS;
+    // the hours from the event to the depression: the wind rises from where the disturbance's environment holds it to devV (devVSub for a subtropical one) at devRate, then holds tdHold hours
+    const vPre = c.low ? 22 : par.distV[0] + (par.distV[1] - par.distV[0]) * smooth01(eT, 0.3, 2.0), dlyT = Math.max(0, par.devV - vPre) / par.devRate + O.tdHold, dlyS = Math.max(0, par.devVSub - vPre) / par.devRate + O.tdHold;
+    const dly = rate > 0 ? (lamT * convT * dlyT + lamS * convS * dlyS) / rate : dlyT;
+    const hE = outlookEnd(par, c, alat, sst, lf, age);
+    let step = Math.min(dt, end - h); const left = c.life > 0 ? c.born + c.life - h : Infinity;
+    if (left <= 0) break;
+    step = Math.min(step, left);
+    const tot = rate + hE, mass = surv * (tot > 1e-12 ? (rate / tot) * (1 - Math.exp(-tot * step)) : rate * step);
+    out.t.push(h); out.lat.push(lat); out.lon.push(lon); out.dt.push(step); out.dly.push(dly); out.rate.push(rate); out.mass.push(mass); out.surv.push(surv);
+    surv *= Math.exp(-tot * step);
+    // the mean motion over the step
+    if (c.low) {
+      const f = Math.exp(-dh / 48);
+      lat = keepSide(lat, c.vy * f * step, par.eqSoft); lon += c.vx * f * step;
+    } else {
+      DACC[0] = 0; DACC[1] = 0; addDrift(M, 'weak', 1, tw, lat, lon, DACC);
+      steerRing(env, lat, lon, F.ring, BUF); climAt(M, F.tw0, lat, lon, CV);
+      const dec = Math.exp(-dh / A.steer), gn = par.driftGain.wv * dec;
+      const tx = gn * (0.55 * (BUF[0] - CV[0]) + 0.45 * (BUF[2] - CV[2])), ty = gn * par.vGain * (0.55 * (BUF[1] - CV[1]) + 0.45 * (BUF[3] - CV[3]));
+      ux += al * (tx - ux); uy += al * (ty - uy);
+      lat = keepSide(lat, ((DACC[1] + uy) * KT_KMH * step) / KM_DEG, par.eqSoft); lon += ((DACC[0] + ux) * KT_KMH * step) / (KM_DEG * Math.max(0.2, Math.cos(lat * DEG)));
+    }
+    h += step;
+    if (surv < 1e-4) break;
+  }
+  out.endT = h; out.endLat = lat; out.endLon = lon;
+  return out;
+}
+Manager.prototype.outlook = function (env) {
+  const slot = Math.floor(this.hour / 6), key = slot + '|' + (this.auto ? 1 : 0) + '|' + this.autoRate;
+  if (this._ol && this._ol.key === key) return this._ol.res;
+  const res = this._outlookCompute(env);
+  this._ol = { key, res };
+  return res;
+};
+Manager.prototype._outlookCompute = function (env) {
+  const par = this.par, O = par.outlook, M = this.maps, H0 = this.hour, res = { issued: Math.floor(H0 / 6) * 6, hour: H0, areas: [] };
+  if (!M || !M.haz || !env || !O) return res;
+  const ens = { act: 1 }; ensoOf(par, env, ens);
+  const F = { M, env, H0, tw0: timeWeights(this.doyAt(H0) + (((H0 % 24) + 24) % 24) / 24), ring: M.ring != null ? M.ring : par.steerRing, sstRef: env.sstRef ? env.sstRef() + par.sstOffset : null, ensoMul: ens.act, shift: ens.shift };
+  const cands = [];
+  for (const S of this.systems) if (S.alive && S.th === 'wv') cands.push({ kind: S.kind || 'N', id: S.id, sys: S, lat: S.lat, lon: S.lon, ux: S.ux, uy: S.uy, q: S.q, h0: H0, born: S.born, life: S.life || 0, dev: S.dev, sust: S.sust, invest: S.invest });
+  if (this.auto) for (const t of this.lows.tracks) {
+    if (!t.alive || t.n < 3 || H0 - t.born < 6 || lowWeight(par, Math.abs(t.lat)) < 0.05 || env.isLand(t.lat, t.lon)) continue;
+    cands.push({ kind: 'L', low: true, id: t.id, track: t, lat: t.lat, lon: t.lon, vx: t.dx / 6, vy: t.dy / 6, h0: H0, born: t.born, life: 0, dev: -1, invest: t.invest });
+  }
+  if (this.auto) for (const b of this._peekBirths(env, F)) cands.push(b);
+  for (const c of cands) { const a = this._outlookArea(F, c); if (a) res.areas.push(a); }
+  res.areas.sort((a, b) => b.p7 - a.p7 || b.p2 - a.p2);
+  res.areas.length = Math.min(res.areas.length, O.maxAreas);
+  return res;
+};
+/* the systems the supply will make in the next horizon hours that a forecaster sees coming: the generators _spawn runs, asked for the hours ahead, kept while the hours to the birth are inside the system's lead */
+Manager.prototype._peekBirths = function (env, F) {
+  const par = this.par, O = par.outlook, H0 = F.H0, end = H0 + O.horizon, M = this.maps, out = [];
+  const lead = (kind, key, hb) => { const L = O.lead[kind]; if (rnd(this.seed, key, hb, ST.LEAD) < L[2]) return -1; return L[0] + (L[1] - L[0]) * rnd(this.seed, key, hb + 1, ST.LEAD); };
+  const add = (kind, key, hb, b, extra) => { const ld = lead(kind === 'F' ? 'F' : kind, key, hb); if (hb - H0 <= ld) out.push(Object.assign({ kind: kind === 'F' ? 'N' : kind, unborn: true, id: 'u' + kind + key + ':' + hb, lat: b.lat, lon: b.lon, h0: hb, born: hb, life: b.life || 0, dev: -1, ux: 0, uy: 0, q: null, birth: hb }, extra)); };
+  if (basinOf(this.basin).waves) {
+    let t = this.sched.waveT, spawn = this.sched.waveSpawn, k = this.sched.waveK;
+    if (t == null) { const s = this._waveNext(H0, k); t = s.t; spawn = s.spawn; }
+    for (let guard = 0; t < end && guard < 400; guard++) {
+      if (spawn) { const hb = Math.max(H0, Math.ceil(t)); add('W', k, hb, this._waveBirth(k, hb)); k++; }
+      const s = this._waveNext(t, k); t = s.t; spawn = s.spawn;
+    }
+  }
+  for (let hb = H0; hb < end; hb++) {
+    const tw = timeWeights(this.doyAt(hb) + (((hb % 24) + 24) % 24) / 24);
+    for (const k of M.spawnCells || []) { const b = this._localSeed(k, hb, tw, F.shift, env); if (b) add('N', 1000 + k, hb, b); }
+    const f = this._floorSeed(hb, env); if (f) add('F', 90001, hb, f);
+  }
+  return out;
+};
+/* the area of one candidate, or null when its 7-day chance rounds to less than par.outlook.minP7 */
+Manager.prototype._outlookArea = function (F, c) {
+  const par = this.par, O = par.outlook, H0 = F.H0, R = O.horizon, round5p = (x) => round5(x * 100);
+  let p2, p7, t0, t1, ax = null, arrow = null, arrowR = 0, centres = [], radii = [], raw = null;
+  const radius = (t) => O.r0 + O.r1 * Math.max(0, t - H0) / 24 + (c.unborn ? O.rUnborn : 0);
+  if (c.dev >= 0) {                                                                    // developing: the event has happened, the depression is a few hours off
+    const S = c.sys, tf = Math.max(0, c.dev + (par.devV - Math.min(par.devV, S.v)) / par.devRate + O.tdHold - H0), sustF = c.sust === false ? 0.3 : 1, spd = [S.cx || 0, S.cy || 0];
+    const hE = outlookEnd(par, Object.assign({}, c, { kind: S.kind }), Math.abs(c.lat), F.env.sst(c.lat, c.lon) + par.sstOffset, landFraction(F.env, c.lat, c.lon, par.landSample), H0 - c.born), P = Math.min(0.995, O.tdShare * sustF * Math.exp(-hE * tf));
+    p2 = p7 = round5p(P); if (p7 < O.minP7) return null; raw = [P, P];
+    t0 = 0; t1 = Math.max(6, tf);
+    const n = 3; for (let i = 0; i < n; i++) { const t = t1 * i / (n - 1); centres.push([keepSide(c.lat, (spd[1] * KT_KMH * t) / KM_DEG, par.eqSoft), c.lon + (spd[0] * KT_KMH * t) / (KM_DEG * Math.max(0.2, Math.cos(c.lat * DEG)))]); radii.push(radius(H0 + t)); }
+    ax = [c.lat, c.lon];
+  } else {
+    const fo = outlookFollow(this, F, c), n = fo.t.length; if (!n) return null;
+    const tBeg = (i) => fo.t[i] + fo.dly[i];                                           // the depression forms `dly` hours after the event
+    const cumAt = (X) => { let s = 0; for (let i = 0; i < n; i++) s += fo.mass[i] * clamp((X - tBeg(i)) / fo.dt[i], 0, 1); return s; };
+    const P7 = cumAt(H0 + R), P2 = cumAt(H0 + 48); p7 = round5p(P7); if (p7 < O.minP7) return null;
+    p2 = round5p(P2); raw = [P2, P7];
+    const timeAt = (x) => { let lo = H0, hi = H0 + R; for (let it = 0; it < 24; it++) { const mid = (lo + hi) / 2; if (cumAt(mid) >= x) hi = mid; else lo = mid; } return hi; };
+    const tq0 = timeAt(O.win[0] * P7), tq1 = timeAt(O.win[1] * P7);
+    const pos = (x) => {                                                                // the place of the mean track at hour x
+      if (x <= fo.t[0]) return [fo.lat[0], fo.lon[0]];
+      for (let i = 0; i < n; i++) { const e = fo.t[i] + fo.dt[i]; if (x < e) { const w = (x - fo.t[i]) / fo.dt[i], la1 = i + 1 < n ? fo.lat[i + 1] : fo.endLat, lo1 = i + 1 < n ? fo.lon[i + 1] : fo.endLon; return [fo.lat[i] + w * (la1 - fo.lat[i]), fo.lon[i] + w * (lo1 - fo.lon[i])]; } }
+      return [fo.endLat, fo.endLon]; };
+    let ts = tq0, te = tq1;
+    if (!c.unborn) {                                                                   // the X of a disturbance that exists: inside its area when the rate now is a good share of the best ahead, else an arrow to where it gets there
+      let fmax = 0; for (let i = 0; i < n; i++) fmax = Math.max(fmax, fo.rate[i] * fo.surv[i]);
+      let k0 = 0; if (fmax > 0 && fo.rate[0] < O.fav * fmax) { while (k0 < n - 1 && fo.rate[k0] * fo.surv[k0] < O.fav * fmax) k0++; }
+      ax = [c.lat, c.lon];
+      if (k0 > 0) {
+        ts = Math.max(tq0, fo.t[k0] + fo.dly[k0]);
+        const to = pos(ts), dl = Math.hypot(to[0] - c.lat, (to[1] - c.lon) * Math.cos(c.lat * DEG));
+        if (dl >= O.arrowMin) { arrow = to; arrowR = radius(ts); } else ts = H0;
+      } else ts = H0;
+    }
+    te = Math.max(te, ts + 6);
+    t0 = ts - H0; t1 = te - H0;
+    const m = Math.max(2, Math.min(14, Math.ceil((te - ts) / 6) + 1));
+    for (let i = 0; i < m; i++) { const t = ts + (te - ts) * i / (m - 1); centres.push(pos(t)); radii.push(radius(t)); }
+  }
+  return { key: c.id, id: c.unborn ? null : c.id, kind: c.unborn ? 'unborn' : c.low ? 'low' : c.kind === 'W' ? 'wave' : c.kind === 'M' ? 'placed' : 'seed', x: ax, arrow, arrowR, p2, p7, raw, cls: outlookClass(O, p7), poly: capsule(centres, radii, par.eqSoft), t0, t1, birth: c.unborn ? c.birth : null, invest: c.invest || '' };
 };
 
 /* a forecast / preview: the same physics through an environment source, on a copy, with the noise the placed storm would have */
@@ -1219,7 +1462,7 @@ Manager.prototype.active = function () { return this.systems.filter((S) => S.ali
 Manager.prototype.stats = function () { const s = this.season; return { year: s.year, dep: s.dep, named: s.named, hurr: s.hurr, major: s.major, cat5: s.cat5, ace: Math.round(s.ace * 10) / 10 }; };
 
 Manager.prototype.serialize = function () {
-  return { v: VERSION, basin: this.basin, nameCur: this.nameCur, seed: this.seed, startMs: this.startMs, hour: this.hour, par: this.par, n: this.n, auto: this.auto, autoRate: this.autoRate, sched: this.sched,
+  return { v: VERSION, basin: this.basin, nameCur: this.nameCur, seed: this.seed, startMs: this.startMs, hour: this.hour, par: this.par, n: this.n, auto: this.auto, autoRate: this.autoRate, sched: this.sched, invN: this.invN,
     season: this.season, prev: this.prev, prevEntry: this.prevEntry, archive: this.archive, yearEndH: this.yearEndH, systems: this.systems, lows: { tracks: this.lows.tracks, next: this.lows.next, done: this.lows.done } };
 };
 Manager.prototype.enableDiag = function () { if (this.maps) this.ctx.diag = newDiag(this.maps); return !!this.ctx.diag; };
@@ -1231,7 +1474,7 @@ Manager.prototype.diagPacked = function () {                              // the
 Manager.restore = function (o, extra) {                                  // a parameter added since the save is filled in with its default
   const m = new Manager({ seed: o.seed, startMs: o.startMs, params: {}, hour0: o.hour, auto: o.auto, autoRate: o.autoRate, maps: extra && extra.maps, basin: o.basin });
   m.nameCur = o.nameCur || {};
-  m.par = mergeParams(defaultParams(m.basin), o.par); m.n = Object.assign({ W: 0, N: 0, M: 0, F: 0 }, o.n); m.sched = o.sched; m.season = o.season; m.prev = o.prev; m.prevEntry = o.prevEntry || null; m.archive = o.archive; m.yearEndH = o.yearEndH;
+  m.par = mergeParams(defaultParams(m.basin), o.par); m.n = Object.assign({ W: 0, N: 0, M: 0, F: 0 }, o.n); m.sched = o.sched; m.invN = o.invN || {}; m.season = o.season; m.prev = o.prev; m.prevEntry = o.prevEntry || null; m.archive = o.archive; m.yearEndH = o.yearEndH;
   m.systems = o.systems; m.byId = {}; for (const S of m.systems) m.byId[S.id] = S;
   m.lows.tracks = o.lows.tracks; m.lows.next = o.lows.next; m.lows.done = o.lows.done || [];
   return m;
@@ -1248,7 +1491,7 @@ root.HFStorms = {
   VERSION, create: (o) => new Manager(o), restore: (o, extra) => Manager.restore(o, extra), defaultParams, mergeParams,
   prepareMaps, timeWeights, mapAt, driftAt, climAt, steerRing, envFactor, activityFactor, structureParams, CALIBRATED, calibrated: (on) => { const was = useCalibrated; if (on != null) useCalibrated = !!on; return was; },
   category, ktToMph, aceOf, round5, gustKt, compass, pressureFromWind, windFromPressure, WP, vPot, statusOf, describe, nameFor, NAME_SETS, NAME_SUPPLEMENTAL, BASINS, basinInfo: basinOf, stormName, seasonYearOf,
-  smooth01, rnd, rndn, hash5, idNum, stepSystem, newSystem, makeFix, seasonalWeight, WAVE_SEASON, LowTracker, etHazard6, disHazard6, baroclinicV, satur, softMin, lowWeight, keepSide, SCALES, scaleOf, classOf, sstGateAt, growthG, decayLimit,
+  smooth01, rnd, rndn, hash5, idNum, stepSystem, newSystem, makeFix, seasonalWeight, WAVE_SEASON, LowTracker, etHazard6, disHazard6, baroclinicV, satur, softMin, lowWeight, keepSide, SCALES, scaleOf, classOf, investLetter, capsule, outlookClass, sstGateAt, growthG, decayLimit,
 };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
 /* ==== STORMS ENGINE END ==== */

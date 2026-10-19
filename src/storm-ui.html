@@ -1,7 +1,7 @@
 <!--[panel]-->
         <label class="chk st-only st-waves"><input type="checkbox" id="stwaves" checked><span> Tropical waves (dashed lines)</span></label>
         <label class="chk st-only"><input type="checkbox" id="stlows" checked><span> Lows (L), with sea-level pressure</span></label>
-        <label class="chk st-only"><input type="checkbox" id="stdist" checked><span> Disturbances (X): a wave or low that could become a depression</span></label>
+        <label class="chk st-only"><input type="checkbox" id="stdist" checked><span> Areas of interest (outlook): where a depression could form in 2 and 7 days</span></label>
         <label class="chk st-only"><input type="checkbox" id="stlabels" checked><span> Storm names</span></label>
 <!--[advanced]-->
           <label class="chk st-only"><input type="checkbox" id="st-auto" checked><span> Storms form on their own</span></label>
@@ -12,6 +12,12 @@
 <!--[cards]-->
 <div id="season" class="card" role="status" aria-label="Season totals"><span id="se-year">{{BASIN_LABEL}}</span><span><b id="se-dep">0</b>DEP</span><span><b id="se-named">0</b>NAMED</span><span><b id="se-hurr">0</b>HURR</span><span><b id="se-major">0</b>MAJOR</span><span><b id="se-c5">0</b>CAT 5</span><span><b id="se-ace">0.0</b>ACE</span><button id="se-sum" type="button" aria-expanded="false" aria-controls="sum-card" title="Season summary: totals against the real normals, the ACE graph and every storm of the season">Summary</button></div>
 <div id="storm-tip" class="card" role="tooltip"><b></b><div></div></div>
+<div id="ol-legend" class="card" aria-label="Areas of interest: the chance of formation in 7 days">
+  <b>7-day chance of formation</b>
+  <div><i class="low"></i>Low · 0–30 %</div><div><i class="medium"></i>Medium · 40–60 %</div><div><i class="high"></i>High · 70–100 %</div>
+  <small><u>✕</u> a disturbance · <u>→</u> where it may form · labels: 2-day · 7-day chance</small>
+  <small id="ol-issued"></small>
+</div>
 <aside id="storm-card" class="card" hidden aria-label="Storm details">
   <button id="sc-close" aria-label="Close storm details" title="Close (Esc)">&times;</button>
   <b id="sc-name">–</b><span id="sc-cat"></span>
@@ -20,7 +26,7 @@
     <div><span>ACE</span><b id="sc-ace">0.0</b></div><div><span>Advisory</span><b id="sc-time">–</b></div>
     <div><span>Shear</span><b id="sc-sh">–</b></div><div><span>Gusts</span><b id="sc-gust">–</b></div>
     <div><span>Movement</span><b id="sc-mv">–</b></div><div><span>SST</span><b id="sc-sst">–</b></div>
-    <div><span>Damage</span><b>—</b></div><div><span>Formed</span><b id="sc-formed">–</b></div>
+    <div><span>Damage</span><b>—</b></div><div><span>Formed</span><b id="sc-formed">–</b><small id="sc-invest"></small></div>
   </div>
   <p id="sc-note">Showing only this system. Click the empty map or press Esc to show all.</p>
 </aside>

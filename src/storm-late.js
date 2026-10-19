@@ -63,7 +63,7 @@ function applySave(s) {
   initSim(P.seed);                                                                // the static structure of this seed (waves, jet modes ...) and a throw-away new season
   simRestoreLight(s.weather);
   stormMgr = HFStorms.restore(JSON.parse(s.storms), { maps: stormMapsNow() });
-  stormLab = null; shadow = null; stormSel = null; stormHot = null; stormHits = []; stormsDirty = true; sumArch = stormMgr.archive.length; if (sumOpen) closeSummary();
+  stormLab = null; shadow = null; stormSel = null; stormHot = null; stormHits = []; olHeld = null; olHits = []; stormsDirty = true; sumArch = stormMgr.archive.length; if (sumOpen) closeSummary();
   lowsStamp = -1; kfBreak = true; stormKeyframe(true); stormFieldsDirty = false;      // fresh keyframes of the steering and the fields at the restored hour
   if (s.kf0 && simHour === kfHour) { for (let i = 0; i < 3; i++) { b64f32(s.kf0.u[i], kfU0[i]); b64f32(s.kf0.v[i], kfV0[i]); } kfHour0 = s.kf0.h; wkHour = -1e9; stormEnv.beginHour(simHour); }
   seasonText = ''; acc = 0; lastClock = ''; updateClock(); updateSeasonBar(); refresh();
@@ -91,7 +91,7 @@ $('b-menu').addEventListener('click', () => { if (saveStamp !== savedStamp) save
 /* the storm half of window.SSTSIM (the tests, the calibration lab and the fitting tools drive the page through it) */
 const STORM_API = {
   storms(on) { return on === undefined ? stormsOn : stormsSwitch(on); }, stormsForce(on) { return stormsSwitch(on, true); },      // (the lab and the region dump of a page whose climatology is not made yet)
-  stormState() { return stormMgr ? { on: stormsOn, hour: stormMgr.hour, stats: stormMgr.stats(), lows: stormMgr.lows.tracks.filter((t) => t.alive).length, seeds: Object.assign({}, stormMgr.n), systems: stormMgr.systems.map((S) => ({ id: S.id, name: S.name, th: S.th, st: HFStorms.statusOf(S), lat: S.lat, lon: S.lon, v: S.v, vr: S.vr, p: S.p, alive: S.alive, depNum: S.depNum, peakV: S.peakV, ace: S.ace, fixes: S.fixes.length, end: S.endReason, origin: S.origin })) } : null; },
+  stormState() { return stormMgr ? { on: stormsOn, hour: stormMgr.hour, stats: stormMgr.stats(), lows: stormMgr.lows.tracks.filter((t) => t.alive).length, seeds: Object.assign({}, stormMgr.n), systems: stormMgr.systems.map((S) => ({ id: S.id, name: S.name, th: S.th, st: HFStorms.statusOf(S), lat: S.lat, lon: S.lon, v: S.v, vr: S.vr, p: S.p, alive: S.alive, depNum: S.depNum, peakV: S.peakV, ace: S.ace, fixes: S.fixes.length, end: S.endReason, origin: S.origin, invest: S.invest })) } : null; },
   stormJSON() { return JSON.stringify(stormMgr.serialize()); },
   stormLabStart(sets, opts) { stormLab = sets.map((p) => { const m = HFStorms.create({ seed: stormSeed(), startMs: START_MS, hour0: simHour, auto: true, autoRate: stormActivity, params: p, maps: stormMapsNow(), basin: STORM_BASIN }); if (opts && opts.diag) m.enableDiag(); return m; }); return stormLab.length; },
   stormLabCalendar(month, day) { START_MS = Date.UTC(START_YEAR, month, day || 1, 0, 0, 0); return START_MS; },   // the calibration lab starts a basin's whole season on its first day (call it before applySeed, which starts the clock): the page itself starts where its template says
@@ -132,6 +132,8 @@ const STORM_API = {
     stormsDirty = true; drawStorms(); return stormMgr.lows.tracks.length;
   },
   stormLowsDrawn() { return stormHits.filter((h) => h.low).map((h) => [h.low.lat, h.low.lon]); },
+  outlook() { return outlookNow(); }, outlookFresh() { if (stormMgr) stormMgr._ol = null; olHeld = null; const t = performance.now(), r = outlookNow(); return { ms: performance.now() - t, areas: r ? r.areas.length : -1 }; }, outlookForce(res) { olForced = res || null; stormsDirty = true; drawStorms(); return !!olForced; },        // the areas of interest the page shows (tests: force a list of areas to draw, null puts the engine's back)
+  outlookHits() { return { marks: stormHits.filter((h) => h.aoi).map((h) => ({ x: h.x, y: h.y, r: h.r, key: h.aoi.key })), areas: olHits.map((h) => ({ key: h.a.key, bbox: [h.x0, h.y0, h.x1, h.y1] })) }; },
   stormFieldCheck() {                                                  // the storm grid's fields against the map's fine fields at the nodes it keeps: the largest difference of each (they must be 0) and the nodes where only one is missing
     const a = new Float32Array(NSF), b = new Float32Array(NSF), c = new Float32Array(NSF);
     anomDirty = true; computeField();                                  // the map's fine fields as the state is now

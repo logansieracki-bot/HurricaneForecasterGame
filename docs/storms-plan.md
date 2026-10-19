@@ -16,7 +16,7 @@ graph, end-of-season clean-up, and mid-season save/resume with a **Continue** ca
 (rollout to the other 8 basins follows the test, like steering/shear did). Latent hooks for later steps (size/structure
 terms, forecast machinery) stay in; none of those steps are built here.
 
-**Out of scope now**: impacts (city markers, watches/warnings, damage — cards show "—"), invests / automatic AOIs, cone,
+**Out of scope now** (invests and the areas of interest came with milestone 11, see the status below): impacts (city markers, watches/warnings, damage — cards show "—"), invests / automatic AOIs, cone,
 wind fields / EWRCs, autosave toggle + GIF export, other basins, radar, satellite. (Open question for Step 7, not now:
 what "DES 2 (8–15)" on your reference card means.)
 
@@ -306,7 +306,7 @@ real possibilities happens this time*.
      some seasons be hyperactive and others quiet. So the genesis map, the monthly shape and the share of waves
      that develop (about 16 %) are the real ones by construction, and what varies from year to year is the environment: ENSO acts through shear and humidity,
      warming through the absolute SST term. A low develops into a tropical *or* a subtropical depression, whichever draw it wins, which is what keeps the
-     subtropical share at its real 10 %. Waves, local seeds (an X in a dashed ring) and lows (an L) are drawn, and the path of the disturbance leads into the
+     subtropical share at its real 10 %. Waves, local seeds (at that time an X in a dashed ring, since milestone 11 an area of interest with its own X) and lows (an L) are drawn, and the path of the disturbance leads into the
      depression's.
   3. *Intensity.* The same form (logistic growth to an environment-limited potential, stochastic rapid intensification, cold wake, Kaplan-DeMaria decay),
      recalibrated for the new structure on the real aggregates *and* on where depressions of each latitude become named storms and hurricanes and where the
@@ -345,6 +345,11 @@ Continue card (9fc40aa), M7 the mutation checks and this pass (130923b) M8 the l
   perfect environment), and the engine and the frame loop are lighter at 4x to 64x (milestone 8: a time budget per frame; milestone 9: the engine's own one-degree environment grid, six-hourly steering keyframes carried forward in time, the map's fine texture built only when drawn): `docs/roadmap.md`, milestones 8 and 9, have the numbers. Milestone 9 also removed the walls: `src/storms.js` has no threshold that switches a rule on or off and no clamp, each is a ramp, a hazard or a soft cap, lakes are water, and a perfect tropical environment lifts the fall of the potential wind with latitude.
 - **The rollout (milestone 10):** the page code of the storm layer is one copy for all nine pages (`src/storm-hooks.js`, `src/storm-late.js`, `src/storm-ui.css`, `src/storm-ui.html`, inlined by the build; `tools/port_storms.mjs` carried the rest of the Atlantic's edits into the other templates, the plan's `tools/port_block.mjs`),
   the engine has a basin table (season start, names, the word for hurricane strength, waves or not), a southern season is July to June, and a basin's storms switch on when its data file carries its fitted climatology (the lab chain of `tools/tc_basins.json`, `storm_region.mjs`, `make_tc_basin.py`, `storm_fit.mjs --basin`, `storm_basin.mjs`); all nine are on (`docs/roadmap.md`, milestone 10, has each basin's numbers and misses; the South Atlantic and the Mediterranean are calibrated to the literature, `tools/tc_synthetic.json`, because the best-track tables hold no record of them). The storms read the page's humidity and shear, so the rollout also fixed their year-to-year part where it was wrong for a cyclone season (`tools/make_env_seasonality.py`: joint-lag El Nino coefficients and a gain by calendar month, in seven pages' data), and the engine has an El Nino term of its own (`par.enso`: activity and the move of the development region per degree of Nino 3.4, zero by default, fitted per basin).
-- **As planned, not built:** impacts (the cards show a dash for them), invests and areas of interest, the cone, wind fields, the autosave switch and the GIF export.
-- **Mutation checks** (`tools/storm_mutants.mjs`): the 24 edits of milestone 1 on the node tests, and 125 edits over milestones 3-11 on the node and browser checks, all caught after the checks were tightened where
+- **The outlook and the equator (milestone 11):** one global part of the TC system, not a per-basin job (no data, calibration or fitting). `Manager.prototype.outlook` follows every disturbance that exists, every tracked low and the
+  births the supply has already scheduled (the very generators `_spawn` uses: `_waveNext`, `_waveBirth`, `_localSeed`, `_floorSeed`) along their mean track through the page's environment held as anomalies decaying to the climate, integrates the engine's own development rate
+  times the survival of the disturbance into the chance of formation in 2 and 7 days (steps of 5), and draws the area where most of the formation is expected as a hatched shape in the NHC's yellow, orange and red, with an X on a disturbance that exists and an arrow
+  to its area while the conditions are not favourable yet; an issue every six hours, a lead model for the ones that do not exist yet (some come with no warning), invests (9x plus the region's letter) from the engine's own disturbance flag. The same milestone stopped a system crossing the
+  equator (a soft floor on |latitude|), made remnant lows triangles and gave each basin its own intensity scale (`SCALES`, cut-offs converted to the engine's 1-minute wind). `docs/roadmap.md` (milestone 11) has the design, the numbers and the limits.
+- **As planned, not built:** impacts (the cards show a dash for them), the cone, wind fields, the autosave switch and the GIF export.
+- **Mutation checks** (`tools/storm_mutants.mjs`): the 24 edits of milestone 1 on the node tests, and 155 edits over milestones 3-11 on the node and browser checks, all caught after the checks were tightened where
   the first pass found a gap (`docs/roadmap.md`, milestones 7 to 9).

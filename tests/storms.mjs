@@ -995,5 +995,130 @@ const LAND = (la, lo) => (lo > -16.3 && lo < 38 && la > 4 && la < 30) || (lo < -
     ids.every((b) => SC(b).bar.every((t) => typeof t === 'string' && t.length > 0)) && SC('westpacific').bar.join() === 'TYPH,MAJOR,SUPER' && SC('nio').bar[0] === 'VSCS' && SC('aus').bar.join() === 'SEVERE,CAT 4+,CAT 5');
 }
 
+/* ---- milestone 11: the outlook (areas of interest with their chance of formation in 2 and 7 days, X's and arrows) and invests -------------------------------------------------------- */
+{
+  const GRO = { lon0: -105, lat0: -40, res: 5, nx: 21, ny: 17 };                                   // both hemispheres: 40S to 40N
+  const fieldO = (f) => Array.from({ length: 12 }, (_, m) => Array.from({ length: GRO.ny }, (_, j) => Array.from({ length: GRO.nx }, (_, i) => f(m, GRO.lat0 + j * GRO.res, GRO.lon0 + i * GRO.res))));
+  const flatO = (v) => fieldO(() => v);
+  const olMaps = (o = {}) => ({ grid: GRO, drift: { weak: { u: flatO(o.du ?? -8), v: flatO(o.dv ?? 2) }, strong: { u: flatO(-6), v: flatO(5) }, sub: { u: flatO(4), v: flatO(1) }, ex: { u: flatO(15), v: flatO(5) } },
+    steerClim: [0, 0, 0, 0, 0, 0].map((x) => flatO(x)), haz: { T: flatO(o.haz ?? 0.004), S: flatO(o.hazS ?? 0) }, spawn: o.spawn ? fieldO(o.spawn) : undefined, env0: { rh: flatO(58), shear: flatO(8), sst: flatO(28), sstRel: flatO(0) } });
+  const PERSIST = { sst: 1e9, rh: 1e9, shear: 1e9, steer: 1e9 }, NOACT = { seasSd: 0, intraSd: 0, K: 6, T: [14, 60] };           // (a persistence forecast is exact in a constant environment: the glue between the outlook and the engine is what is checked)
+  const mk = (seed, maps, o = {}) => H.create({ seed, startMs: o.start ?? Date.UTC(2026, 7, 15), basin: o.basin || 'atlantic', auto: !!o.auto, params: H.mergeParams({ shearK: 1, waveRate0: 0, act: NOACT, qSd: 0.4, outlook: { minP7: 0, anomTau: PERSIST } }, o.params || {}), maps });
+  const STEER = () => [-8, 2, -8, 2, -8, 2];
+  const good = makeEnv({ sst: 28.5, shear: 8, rh: 60, steer: STEER }), marg = makeEnv({ sst: 27, shear: 14, rh: 55, steer: STEER }), subE = makeEnv({ sst: 25, shear: 10, rh: 50, steer: STEER });
+  const placeWave = (m) => m.place({ kind: 'wave', lat: 14, lon: -45 }), placeSeed = (m) => { const S = m._seedSystem('N', 'wv', 28, -70, 16, 0, 'seed', false); S.life = 140; return S; };
+  const outlookChance = (env, N, place, maps, params) => { let a = 0, b = 0, c = 0, d = 0; for (let sd = 1; sd <= N; sd++) { const m = mk(sd, maps, { params }); place(m); const A = m.outlook(env).areas[0]; if (A) { a += A.raw[0]; b += A.raw[1]; c += A.p2 / 100; d += A.p7 / 100; } } return [a / N, b / N, c / N, d / N]; };      // (the exact chances, and the percentages the page shows, averaged over the seeds)
+  const engineChance = (env, N, place, maps, params) => { let a = 0, b = 0; for (let sd = 1; sd <= N; sd++) { const m = mk(sd, maps, { params }), S = place(m); for (let h = 1; h <= 168; h++) { m.advanceTo(h, env); if (S.tdHour >= 0 || !S.alive) break; } if (S.tdHour >= 0) { if (S.tdHour <= 48) a++; if (S.tdHour <= 168) b++; } } return [a / N, b / N]; };
+  // ---- the chances are the engine's own: N identical disturbances, the fraction that becomes a depression within 2 and 7 days against the outlook's chance (the same quality draws, averaged)
+  const N = 200, MP = olMaps();
+  for (const [name, env, place, maps, params] of [['a favourable environment', good, placeWave, MP, null], ['a marginal one (shear 14, 27 degC)', marg, placeWave, MP, null], ['a subtropical seed at 28N over 25 degC water', subE, placeSeed, olMaps({ haz: 0.003, hazS: 0.003 }), null]]) {
+    const o = outlookChance(env, N, place, maps, params), e = engineChance(env, N, place, maps, params);
+    check(`the outlook's chance of formation in 2 and 7 days is the engine's own in ${name}: ${o[0].toFixed(2)} and ${o[1].toFixed(2)} against ${e[0].toFixed(2)} and ${e[1].toFixed(2)} of ${N} identical disturbances (within 8 points)`, near(o[0], e[0], 0.08) && near(o[1], e[1], 0.08) && near(o[2], e[0], 0.08) && near(o[3], e[1], 0.08));      // (and the shown 2-day and 7-day percentages are those chances, not each other)
+  }
+  { const sd = { qSd: 0.7, tdMargin: 0.3 }, o = outlookChance(good, N, placeWave, MP, sd), e = engineChance(good, N, placeWave, MP, sd);
+    check(`and with a stricter depression (tdMargin 0.3) and a noisier seed (qSd 0.7): ${o[0].toFixed(2)} and ${o[1].toFixed(2)} against ${e[0].toFixed(2)} and ${e[1].toFixed(2)}`, near(o[0], e[0], 0.08) && near(o[1], e[1], 0.08) && near(o[2], e[0], 0.08) && near(o[3], e[1], 0.08)); }
+  // ---- a better environment, a better chance; no development rate, no area; a pure persistence forecast against one that relaxes to the climate
+  { const at = (shear) => { const m = mk(1, MP); placeWave(m); const A = m.outlook(makeEnv({ sst: 28.5, shear, rh: 60, steer: STEER })).areas[0]; return A ? A.raw[1] : 0; };
+    const c = [6, 9, 12, 15, 18].map(at);
+    check(`more shear, a smaller chance (7-day chance at shear 6 / 9 / 12 / 15 / 18: ${c.map((x) => x.toFixed(2)).join(' / ')}), and none drawn where next to nothing is able to develop (a zero map rate leaves the floor of 2e-6 an hour: ${(() => { const m = mk(1, olMaps({ haz: 0 }), { params: { outlook: { minP7: 10 } } }); placeWave(m); return m.outlook(good).areas.length; })()} areas of at least 10 %)`, c.every((x, i) => i === 0 || x <= c[i - 1] + 1e-12) && c[0] > c[4] + 0.1 && (() => { const m = mk(1, olMaps({ haz: 0 }), { params: { outlook: { minP7: 10 } } }); placeWave(m); return m.outlook(good).areas.length === 0; })()); }
+  { const dry = makeEnv({ sst: 28.5, shear: 16, rh: 50, steer: STEER }), wet = makeEnv({ sst: 28.5, shear: 3, rh: 70, steer: STEER });
+    const cl = (env, tau) => { const m = mk(2, MP, { params: { outlook: { anomTau: { sst: tau, rh: tau, shear: tau, steer: tau } } } }); placeWave(m); const A = m.outlook(env).areas[0]; return A ? A.raw[1] : 0; };
+    check(`a forecast that lets the anomaly decay to the climate regresses to the mean: over a poor environment its 7-day chance is higher than persistence's (${cl(dry, 48).toFixed(2)} against ${cl(dry, 1e9).toFixed(2)}), over a good one lower (${cl(wet, 48).toFixed(2)} against ${cl(wet, 1e9).toFixed(2)})`, cl(dry, 48) > cl(dry, 1e9) + 0.02 && cl(wet, 48) < cl(wet, 1e9) - 0.02); }
+  // ---- what is drawn: percent in fives, 2-day not above 7-day, three classes by the NHC's cut-offs (yellow up to 35, orange 40 to 60, red 65 and over), a closed outline, at most ten areas, highest chance first
+  const gradient = makeEnv({ sst: 28.5, rh: 60, shear: (la, lo) => 5 + 0.7 * Math.max(0, la - 12) + (lo > -50 ? 8 : 0) + (lo < -75 ? 6 : 0), steer: STEER });
+  const SP = olMaps({ haz: 0.006, spawn: (mo, la, lo) => (mo === 7 && la >= 10 && la <= 35 && lo >= -90 && lo <= -30 ? 0.15 : 0) });
+  const seasonOf = (seed, params) => { const m = mk(seed, SP, { auto: true, params: Object.assign({ waveRate0: 0.46, outlook: { minP7: 10 } }, params || {}) }), seen = []; for (let h = 6; h <= 24 * 14; h += 6) { m.advanceTo(h, gradient); seen.push([h, m.outlook(gradient), m]); } return { m, seen }; };
+  const S1 = seasonOf(5), areas = S1.seen.flatMap(([, r]) => r.areas), inPoly = (pt, P) => { let c = false; for (let k = 0, j = P.length - 1; k < P.length; j = k++) if ((P[k][0] > pt[0]) !== (P[j][0] > pt[0]) && pt[1] < (P[j][1] - P[k][1]) * (pt[0] - P[k][0]) / (P[j][0] - P[k][0]) + P[k][1]) c = !c; return c; };
+  const cls = (p) => (p <= 35 ? 'low' : p <= 60 ? 'medium' : 'high');
+  check(`${areas.length} areas over two synthetic weeks (every six hours): chances in steps of 5, from 10 to 100, the 2-day never above the 7-day, class low / medium / high by the 7-day chance (${['low', 'medium', 'high'].map((c) => c + ' ' + areas.filter((a) => a.cls === c).length).join(', ')}), at least 10 % drawn`,
+    areas.length > 100 && areas.every((a) => a.p2 % 5 === 0 && a.p7 % 5 === 0 && a.p2 >= 0 && a.p7 >= 10 && a.p7 <= 100 && a.p2 <= a.p7 && a.cls === cls(a.p7) && Number.isInteger(a.p2) && Number.isInteger(a.p7)) && ['low', 'medium', 'high'].every((c) => areas.some((a) => a.cls === c)));
+  check('the class cut-offs are the NHC\'s: 35 is yellow, 40 and 60 orange, 65 red', H.outlookClass(H.defaultParams().outlook, 35) === 'low' && H.outlookClass(H.defaultParams().outlook, 40) === 'medium' && H.outlookClass(H.defaultParams().outlook, 60) === 'medium' && H.outlookClass(H.defaultParams().outlook, 65) === 'high');
+  check('every area is a closed outline of finite points with a window of formation that starts now or later and lasts, at most ten per issue, highest chance first, and an issue is at 00, 06, 12 or 18Z',
+    S1.seen.every(([h, r]) => r.issued === h && r.issued % 6 === 0 && r.areas.length <= 10 && r.areas.every((a, i) => i === 0 || r.areas[i - 1].p7 >= a.p7)) && areas.every((a) => a.poly.length >= 24 && a.poly.every((q) => Number.isFinite(q[0]) && Number.isFinite(q[1])) && a.t0 >= 0 && a.t1 > a.t0 && a.t1 <= 168 + 1e-9));
+  check('areas without a disturbance (not formed yet) have neither an X nor an arrow; one that exists has its X, and an arrow only when it is not in favourable conditions yet (X outside its area, the arrow pointing from it to the area, at least 2.5 degrees long)',
+    areas.filter((a) => a.kind === 'unborn').length > 20 && areas.filter((a) => a.kind === 'unborn').every((a) => a.x === null && a.arrow === null && a.id === null && a.birth >= 0)
+    && areas.filter((a) => a.kind !== 'unborn').every((a) => a.x && a.id) && areas.filter((a) => a.arrow).length > 5 && areas.filter((a) => a.arrow).every((a) => !inPoly(a.x, a.poly) && inPoly(a.arrow, a.poly) === inPoly(a.arrow, a.poly) && Math.hypot(a.arrow[0] - a.x[0], (a.arrow[1] - a.x[1]) * Math.cos(a.x[0] * Math.PI / 180)) >= 2.5 - 1e-9)
+    && areas.filter((a) => a.kind !== 'unborn' && !a.arrow).length > 20 && areas.filter((a) => a.kind !== 'unborn' && !a.arrow).every((a) => inPoly(a.x, a.poly)));
+  // ---- the X sits in its area when the conditions are good now, and an arrow points to where they get good when they are not (a front of high shear that the wave leaves behind it, and the reverse)
+  { const front = (west) => makeEnv({ sst: 28.5, rh: 60, shear: (la, lo) => ((lo > -50) === west ? 24 : 5), steer: STEER });            // west: high shear east of 50W, low to the west
+    const A = (env) => { const m = mk(3, MP); m.place({ kind: 'wave', lat: 14, lon: -42 }); return m.outlook(env).areas[0]; };
+    const a1 = A(front(true)), a2 = A(front(false)), a3 = A(good), long = (() => { const m = mk(3, MP, { params: { outlook: { arrowMin: 20 } } }); m.place({ kind: 'wave', lat: 14, lon: -42 }); return m.outlook(front(true)).areas[0]; })();
+    check(`a wave in a front of shear it will leave behind gets an arrow to the west (${a1 && a1.arrow ? 'to ' + a1.arrow[1].toFixed(1) + 'W from ' + a1.x[1].toFixed(1) : 'none'}, formation window from ${a1 ? Math.round(a1.t0) : '-'} h), one in good conditions that turn bad and one in good conditions throughout have the X inside (${a2 && !a2.arrow ? 'inside' : 'arrow'}, ${a3 && !a3.arrow ? 'inside' : 'arrow'})`,
+      a1 && a1.arrow && a1.arrow[1] < a1.x[1] - 2 && a1.t0 > 12 && a2 && !a2.arrow && a2.t0 === 0 && a3 && !a3.arrow && a3.t0 === 0 && inPoly(a3.x, a3.poly) && inPoly(a2.x, a2.poly) && !inPoly(a1.x, a1.poly));
+    const len = Math.hypot(a1.arrow[0] - a1.x[0], (a1.arrow[1] - a1.x[1]) * Math.cos(a1.x[0] * Math.PI / 180));
+    check(`an arrow is only drawn when it is long enough to mean something: the ${len.toFixed(1)}-degree arrow of that wave is an X inside its area when the least length is raised to 20 degrees (${long.arrow === null ? 'inside' : 'arrow'}, window from ${Math.round(long.t0)} h)`, long.arrow === null && long.t0 === 0 && inPoly(long.x, long.poly) && len > 2.5 && len < 20); }
+  // ---- a high chance soon is a short area, a thin chance spread over days a long one
+  { const w = (haz) => { const m = mk(1, olMaps({ haz })); placeWave(m); const A = m.outlook(good).areas[0]; return A ? { len: A.t1 - A.t0, p7: A.p7, ext: Math.max(...A.poly.map((q) => q[1])) - Math.min(...A.poly.map((q) => q[1])) } : null; };
+    const hi = w(0.03), lo = w(0.0035);
+    check(`the window of formation (and the area with it) is short when the chance is high and long when it is thin: ${hi.len.toFixed(0)} h and ${hi.ext.toFixed(1)} degrees of longitude at ${hi.p7} % against ${lo.len.toFixed(0)} h and ${lo.ext.toFixed(1)} degrees at ${lo.p7} %`, hi.p7 > lo.p7 && hi.len < lo.len - 20 && hi.ext < lo.ext); }
+  { const m = mk(1, MP); m.advanceTo(12, good); const S = placeWave(m); S.dev = m.hour - 2; S.sust = true; const A = m.outlook(good).areas[0];
+    check(`a disturbance that has begun to develop has the X in a small area and a high chance (${A.p2} % and ${A.p7} %, window ${A.t0}-${Math.round(A.t1)} h)`, A.p7 >= 80 && A.p2 === A.p7 && A.arrow === null && A.x && A.t1 <= 24 && A.cls === 'high'); }
+  { const m = mk(1, MP); const S = placeWave(m); const A = m.outlook(good).areas[0], R = A.poly.map((q) => Math.hypot(q[0] - 14, (q[1] + 45) * Math.cos(14 * Math.PI / 180)));
+    check(`the shape widens with lead: the radius of the area (${Math.min(...R).toFixed(1)}-${Math.max(...R).toFixed(1)} degrees round the wave) is at least 1.2 degrees round the X and several degrees at the far end`, Math.max(...R) > 3.5 && A.poly.length >= 60); }
+  // ---- unborn systems: the very births the engine then makes, seen only inside their lead (a wave for days, a local seed a day or two, three in ten not at all)
+  { const GATE = { outlook: { lead: { W: [1e5, 1e5, 0], N: [1e5, 1e5, 0], F: [1e5, 1e5, 0] } } }, SPB = olMaps({ haz: 0.004, spawn: (mo, la) => (mo >= 5 && mo <= 9 && la >= 15 && la <= 35 ? 1.5 : 0) });
+    const mkb = (seed, start) => H.create({ seed, startMs: start, basin: 'atlantic', auto: true, params: H.mergeParams({ seedFloor: 30 }, GATE), maps: SPB });
+    let ok = 0, bad = 0, total = 0;
+    for (const [seed, month] of [[7, 6], [11, 7]]) { const m = mkb(seed, Date.UTC(2026, month, 1)), log = [], orig = m._seedSystem.bind(m); m._seedSystem = function (...a) { const S = orig(...a); log.push([S.id[0], S.born, S.lat.toFixed(6), S.lon.toFixed(6)].join()); return S; };
+      for (let day = 5; day < 50; day += 9) { m.advanceTo(day * 24 + 5, gradient); const pk = m._peekBirths(gradient, { H0: m.hour, shift: null }), n0 = log.length; m.advanceTo(m.hour + 168, gradient);
+        const real = new Set(log.slice(n0)), got = new Set(pk.map((p) => [p.id[1], p.born, p.lat.toFixed(6), p.lon.toFixed(6)].join())); total += real.size; for (const k of got) if (real.has(k)) ok++; else bad++; } }
+    check(`the births the outlook looks ahead to are the births the engine makes: ${ok} of ${total} (waves, local seeds and floor seeds, over a week each from eight starting times), and none it made up (${bad})`, total > 100 && ok === total && bad === 0);
+    const peek = (lead, H0) => { const m = mkb(7, Date.UTC(2026, 7, 1)); m.par.outlook.lead = lead; return m._peekBirths(gradient, { H0, shift: null }); };
+    const DEF = { W: [48, 168, 0], N: [12, 120, 0.3], F: [12, 120, 0.3] }, DENSE = Math;
+    let nearAll = 0, nearSeen = 0, farSeen = 0, wNear = 0, wNearSeen = 0, wSeenFar = 0;
+    for (let H0 = 0; H0 < 24 * 25; H0 += 6) {
+      const all = peek(GATE.outlook.lead, H0), seen = peek(DEF, H0), off = (p) => p.born - H0;
+      nearAll += all.filter((p) => p.kind !== 'W' && off(p) <= 12).length; nearSeen += seen.filter((p) => p.kind !== 'W' && off(p) <= 12).length; farSeen += seen.filter((p) => p.kind !== 'W' && off(p) > 120).length;
+      wNear += all.filter((p) => p.kind === 'W' && off(p) <= 48).length; wNearSeen += seen.filter((p) => p.kind === 'W' && off(p) <= 48).length; wSeenFar += seen.filter((p) => p.kind === 'W' && off(p) > 168).length;
+    }
+    check(`a forecaster sees a local seed that is about to be born (within 12 hours) seven times in ten (${nearSeen} of ${nearAll}: three in ten come with no warning), never one more than 120 hours ahead (${farSeen}), and every wave that is born within 48 hours of its coast (${wNearSeen} of ${wNear}), none beyond a week (${wSeenFar})`,
+      nearAll > 60 && nearSeen / nearAll > 0.55 && nearSeen / nearAll < 0.85 && farSeen === 0 && wNear > 5 && wNearSeen === wNear && wSeenFar === 0);
+  }
+  // ---- an issue is held for its six hours, a placed system shows at once, the answer is the same for any chunking of the clock and survives a save
+  { const m = mk(4, MP, { auto: true }); m.advanceTo(30, good); const r0 = m.outlook(good); m.advanceTo(32, good); const r1 = m.outlook(good); m.advanceTo(36, good); const r2 = m.outlook(good);
+    check(`an issue is held for its six hours (the same object at hour 30 and 32, a new one at 36: issued ${r0.issued}, ${r1.issued}, ${r2.issued})`, r0 === r1 && r2 !== r0 && r0.issued === 30 && r2.issued === 36);
+    const n = r2.areas.length; placeWave(m); const r3 = m.outlook(good);
+    check(`a hand-placed disturbance is in the outlook at once, without waiting for the next issue (${n} areas, then ${r3.areas.length}: ${r3.areas.map((a) => a.id).join(' ')})`, r3 !== r2 && r3.areas.some((a) => a.id === 'M1' && a.kind === 'placed' && a.x)); }
+  { const run = (steps) => { const m = mk(9, SP, { auto: true }); let h = 0; for (const k of steps) { h += k; m.advanceTo(h, gradient); } return JSON.stringify(m.outlook(gradient)); };
+    const a = run(new Array(120).fill(1)), b = run([7, 50, 3, 60]), c = run([120]);
+    check('the outlook is the same however the clock was chunked (1 h, mixed, all at once): ' + (a.length / 1024).toFixed(1) + ' KB of areas', a === b && b === c && a.length > 500); }
+  { const m = mk(6, SP, { auto: true }); m.advanceTo(24 * 9, gradient); const r = H.restore(JSON.parse(JSON.stringify(m.serialize())), { maps: SP }); r.par.outlook.minP7 = 0; m.par.outlook.minP7 = 0;
+    check('a restored engine gives the same outlook as the one it was saved from', JSON.stringify(r.outlook(gradient)) === JSON.stringify(m.outlook(gradient)) && m.outlook(gradient).areas.length > 0); }
+  // ---- tracked lows are candidates too (an X on the low, the L is not drawn under it), only over water where a depression could still form
+  { const lowsAt = (lat, lon) => makeEnv({ sst: 28.5, shear: 8, rh: 60, steer: STEER, lows: () => [{ lat, lon, p: 1003, prom: 4 }] });
+    const run = (lat, lon) => { const m = mk(2, olMaps({ haz: 0.006, hazS: 0.004 }), { auto: true }), e = lowsAt(lat, lon); m.advanceTo(30, e); return m.outlook(e).areas.filter((a) => a.kind === 'low'); };
+    const at26 = run(26, -60), at10 = run(10, -60), inland = (() => { const m = mk(2, olMaps({ haz: 0.006 }), { auto: true }), e = makeEnv({ sst: 28.5, shear: 8, rh: 60, steer: STEER, land: () => true, lows: () => [{ lat: 26, lon: -60, p: 1003, prom: 4 }] }); m.advanceTo(30, e); return m.outlook(e).areas.filter((a) => a.kind === 'low'); })();
+    check(`a pressure low over water at 26N is an area of interest with its X (${at26.length}: ${at26.map((a) => a.id + ' ' + a.p2 + '/' + a.p7 + ' %').join(', ')}); at 10N (the waves' business) and over land there is none (${at10.length}, ${inland.length})`, at26.length === 1 && at26[0].x && at26[0].id[0] === 'L' && at10.length === 0 && inland.length === 0); }
+  // ---- the equator: an outline never crosses it, in either hemisphere
+  { const c = H.capsule([[3, -40], [3.4, -46], [3.8, -52]], [2.6, 3.4, 4.2], 2.5), cs = H.capsule([[-3, -40], [-3.4, -46], [-3.8, -52]], [2.6, 3.4, 4.2], 2.5), raw = H.capsule([[3, -40], [3.4, -46], [3.8, -52]], [2.6, 3.4, 4.2], 0);
+    const far = H.capsule([[20, -40]], [3], 2.5), near0 = H.capsule([[20, -40]], [3], 0);
+    check(`an outline stays on its side of the equator (northern: lowest latitude ${Math.min(...c.map((q) => q[0])).toFixed(2)}, southern: highest ${Math.max(...cs.map((q) => q[0])).toFixed(2)}; without the floor ${Math.min(...raw.map((q) => q[0])).toFixed(2)}), and is the plain chain of discs where it does not come near it (${far.length} points, the same as without the floor: ${JSON.stringify(far) === JSON.stringify(near0)})`,
+      c.every((q) => q[0] > 0) && cs.every((q) => q[0] < 0) && Math.min(...raw.map((q) => q[0])) < 0 && JSON.stringify(far) === JSON.stringify(near0) && far.length === 96); }
+  // ---- invests: the letter of the region, 90 to 99 from the first of a season, the same however the clock was run, kept in a save, handed on by a low that becomes a depression
+  { const L = H.investLetter;
+    check('the invest letter is the basin\'s: L Atlantic, E East Pacific (C west of 140W), W West Pacific, A Arabian Sea and B Bay of Bengal (78E), S Indian and Australian west of 135E, P east of it, S South-West Indian, P South Pacific, Q South Atlantic, M Mediterranean',
+      L('atlantic', -50) === 'L' && L('eastpacific', -110) === 'E' && L('eastpacific', -150) === 'C' && L('westpacific', 140) === 'W' && L('nio', 70) === 'A' && L('nio', 88) === 'B' && L('aus', 120) === 'S' && L('aus', 150) === 'P' && L('swio', 60) === 'S' && L('spac', 170) === 'P' && L('satl', -40) === 'Q' && L('med', 15) === 'M');
+    const inv = S1.m.systems.filter((S) => S.invest).concat([]), ids = inv.map((S) => S.invest), nums = ids.map((i) => +i.slice(0, 2)).sort((a, b) => a - b);
+    const R = seasonOf(5), same = JSON.stringify(R.m.systems.map((S) => [S.id, S.invest])) === JSON.stringify(S1.m.systems.map((S) => [S.id, S.invest]));
+    check(`${ids.length} invests in two weeks (${ids.join(' ')}): each 9x and the letter, all different, numbered from 90 in the order they were given, the same on a second run (${same}) and the counter saved (${JSON.stringify(S1.m.serialize().invN)})`,
+      ids.length >= 3 && ids.every((i) => /^9\d[LCEWABSPQM]$/.test(i)) && new Set(ids).size === ids.length && S1.m.invN.L >= ids.length && nums.every((n) => n >= 90 && n < 90 + S1.m.invN.L) && same && S1.m.serialize().invN.L === S1.m.invN.L); }
+  { const m = mk(1, MP, { auto: false }), mkSys = () => m._seedSystem('N', 'wv', 14, -45, 20, m.hour, 'seed', false);
+    for (let k = 0; k < 13; k++) { const S = mkSys(); S.dist = true; S.life = 1e6; }
+    m.advanceTo(6, good);
+    const got = m.systems.filter((S) => S.invest).map((S) => S.invest);
+    check(`the numbers go 90 to 99 and then round again (13 invests: ${got.join(' ')})`, got.length === 13 && got.slice(0, 10).join() === ['90L', '91L', '92L', '93L', '94L', '95L', '96L', '97L', '98L', '99L'].join() && got.slice(10).join() === '90L,91L,92L');
+    const old = JSON.parse(JSON.stringify(m.serialize())); delete old.invN; const r = H.restore(old, { maps: MP });
+    check('a save made before invests existed restores with an empty counter and goes on', JSON.stringify(r.invN) === '{}' && (() => { r.advanceTo(r.hour + 6, good); return true; })());
+    const y = mk(1, MP, { auto: false, start: Date.UTC(2026, 11, 31, 12) }); const T = y._seedSystem('N', 'wv', 14, -45, 20, 0, 'seed', false); T.dist = true; T.life = 1e6; y.advanceTo(6, good);
+    const before = T.invest; y.advanceTo(18, good); const U = y._seedSystem('N', 'wv', 14, -46, 20, y.hour, 'seed', false); U.dist = true; U.life = 1e6; y.advanceTo(24, good);
+    check(`a new season numbers its invests from 90 again (${before} on Dec 31, ${U.invest} on Jan 1)`, before === '90L' && U.invest === '90L' && y.season.year === 2027); }
+  { const lowEnv = makeEnv({ sst: 28.5, shear: 6, rh: 66, steer: STEER, lows: () => [{ lat: 27, lon: -65, p: 1002, prom: 5 }] });
+    let withInv = 0, handed = 0, made = 0;
+    for (let sd = 1; sd <= 30; sd++) { const m = mk(sd, olMaps({ haz: 0.03, hazS: 0.02 }), { auto: true, params: { distOnE: 0.1, distOffE: 0.05 } }), seen = new Set();
+      for (let h = 6; h <= 24 * 8; h += 6) { m.advanceTo(h, lowEnv);
+        for (const S of m.systems) if (S.origin === 'low' && !seen.has(S.id)) { seen.add(S.id); made++; const t = m.lows.tracks.find((q) => q.became && q.end === S.born && q.lat === S.lat && q.lon === S.lon); if (t && t.invest) { withInv++; if (S.invest === t.invest) handed++; } } } }
+    check(`a low with an invest that becomes a depression keeps its number (${handed} of ${withInv} of the ${made} that developed from a tracked low)`, made >= 3 && withInv === made && handed === made); }
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed) process.exit(1);

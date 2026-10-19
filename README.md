@@ -82,8 +82,8 @@ nothing to run by hand.
   percentiles the season summary draws against go in beside them as `storms.ace` / `storms.normals` with `merge_data.mjs --storms`),
   `tools/storm_mc.mjs` runs whole seasons through the built page (any number of parameter sets at once, same weather),
   `tools/storm_opt.mjs` calibrates the intensity law and the environmental coupling with CMA-ES, `tools/storm_validate.mjs`
-  checks tracks, landfalls and genesis against the real best track, and `tools/storm_mutants.mjs` breaks the storm code in 125 ways, one at a time, and runs the
-  checks that should notice (all 125 are caught; `docs/roadmap.md` has what the passes found and how the checks were changed).
+  checks tracks, landfalls and genesis against the real best track, and `tools/storm_mutants.mjs` breaks the storm code in 155 ways, one at a time, and runs the
+  checks that should notice (all 155 are caught; `docs/roadmap.md` has what the passes found and how the checks were changed).
   The other eight basins' storm climatology is made by the same chain with a basin name: `tools/tc_basins.json` (the table: page, season, grid, hemisphere ...), `tools/storm_region.mjs`
   (which cells of a page are inside its basin and land for a storm), `tools/make_tc_basin.py` (the real targets and maps of the storms that form inside a page, by wind), `tools/storm_fit.mjs --basin`,
   `tools/storm_basin.mjs` (whole seasons of any basin against its reference), `tools/storm_basin_opt.mjs` (the CMA-ES calibration of a basin's intensity law, its `--rescore` on fresh seasons and `--resume`),
@@ -327,12 +327,12 @@ nothing to run by hand.
   anchored to (`storms.maps`, `STORMS_READY` in `src/storm-hooks.js`); a page without one shows none of the storm controls and runs the
   plain simulation, and the tests make one to check that). `src/storms.js` is the engine (pure JS, no DOM) and `src/storm-hooks.js` / `src/storm-late.js` (see Layout)
   are everything that connects it to the page. **Systems:** the precursors are one lifecycle: a tropical wave (dashed line) or a
-  low (a red `L`) that has the potential to become a cyclone turns into a *disturbance* (an X in a dashed ring), which turns into a
+  low (a red `L`) that has the potential to become a cyclone is an *area of interest* (the outlook, below), which turns into a
   depression; then tropical depressions / storms / hurricanes (circles coloured by the 1-minute wind in Saffir-Simpson steps, the same on every page, and named in the basin's own intensity
   scale: Typhoon and Super Typhoon, Very Severe and Extremely Severe Cyclonic Storm, Intense Tropical Cyclone, Category 3 Severe Tropical Cyclone ...; `SCALES` in `src/storms.js`, below),
   subtropical depressions / storms (squares) and extratropical / post-tropical cyclones and remnant or other non-tropical lows (grey triangles), each with a track of advisory dots every three hours
   (big at the synoptic 00 / 06 / 12 / 18Z, small between, so a peak that comes and goes in a few hours still shows), a white dot where it
-  became a depression, and a name label; the waves, lows, disturbances and name labels are toggles under `Customization`, and the
+  became a depression, and a name label; the waves, lows, areas of interest and name labels are toggles under `Customization`, and the
   Advanced tab has `Storms form on their own` and `Storm activity (seeds)`. Hover a dot for name, category, wind in mph
   (kt) and gusts; click a live storm or a finished track for the stat card (category, wind, pressure, Peak, ACE, shear,
   gusts, movement, SST, formed). The top bar is the season: `Atlantic 2026 | DEP | NAMED | HURR | MAJOR | CAT 5 | ACE`
@@ -352,7 +352,26 @@ nothing to run by hand.
   it did not resume leaves that season alone until `Restart`, and a save from another version is refused and removed. **Place:** the dock's `Place` button (key `P`) holds the clock and opens a picker (tropical wave,
   tropical depression, subtropical depression, low); a white dot follows the pointer with a line of the next seven days of a system put right there (the engine run through a *shadow
   environment*: the simulator's own weather looked up seven days ahead from a copy of its state, which is put back), labelled e.g. `Cat 1 hurricane · peak 85 mph · by day 6.0` or
-  `Does not develop`; a click places it exactly there (it then does what the preview said) and `Esc` cancels. **How a storm lives (climatology-anchored):** a *disturbance*
+  `Does not develop`; a click places it exactly there (it then does what the preview said) and `Esc` cancels. **Outlook (areas of interest):** the National Hurricane Center's graphic for every basin, one implementation in `src/storms.js`
+  (`Manager.prototype.outlook`) and one drawing layer in `src/storm-hooks.js`, with nothing fitted per basin. A shape is where a tropical or subtropical cyclone could form in the next seven days, filled with
+  diagonal lines (a pattern over a faint wash, closer and thicker for a higher chance) in yellow (low, up to 35 %), orange (medium, 40-60 %) or red (high, 65 % and over) by its 7-day chance, with
+  the 2-day and 7-day chance written on it, in steps of 5 and never a decimal (the Storm names box turns the numbers off). A bold X is a disturbance that exists (a wave, a local seed, a tracked low or a
+  placed wave): it sits inside its shape when the conditions are good now, and an arrow points from it to the shape when they are not yet (the shape is then where it is expected to get them). A shape with
+  neither is a disturbance that has not formed yet, drawn only inside the lead a forecaster would have (a wave leaving Africa for up to a week, a local seed for a day or two, three in ten with no warning
+  at all); one that forms unexpectedly shows up with its X. The shape is where most of the formation is expected (the 10th to the 90th percentile of its time) along the disturbance's mean track, widening with
+  lead, so a high chance soon after favourable conditions is short and compact and a thin chance spread over days long and wide. An issue is made at 00, 06, 12 and 18Z (the legend says which) and held
+  for its six hours; a hand-placed disturbance is in it at once. Hover an X or a shape for the chances, what it is, where it is going and when it should get good conditions or form. **How it is made:** each candidate is followed
+  along its mean track (the real drift of a weak system there and then plus the steering anomaly the page shows now, decaying to the climate over three days) through the environment the page has now with
+  its anomalies decaying to the page's own climate over days (a persistence forecast: honest, not sharp, it does not know the weather beyond the next keyframe); along the track the development rate is
+  the one the engine itself uses (the map rate, times how favourable humidity, shear and sea temperature are, times the system's quality and the activity factor), thinned by the chance that a development
+  event becomes a depression and competing with what ends a disturbance (cold water, latitude, age, land, a seed's own drawn life); the chance of formation by a time is the integral of rate times survival.
+  The disturbances that do not exist yet are the births the supply will make: the generators that make them (`_waveNext`, `_waveBirth`, `_localSeed`, `_floorSeed`) are shared by the engine and the outlook, so
+  the one drawn ahead of time is the one that is born (a check compares 405 of 405 over eight starting times). A node check runs 200 identical disturbances through the engine and compares the fractions that
+  become depressions in 2 and 7 days with the outlook's chances (0.47 against 0.47 in a favourable environment, 0.15 against 0.14 in a marginal one, 0.13 against 0.09 for a subtropical seed). A fresh issue
+  costs 1-5 ms; the page recomputes at most every 0.6 s at 8x and above. **Invests:** a disturbance the engine flags (its development has begun, or its environment holds its wind near what a depression needs)
+  is given the next number from 90 to 99 of its region's letter at the first six-hourly look (L Atlantic, E East Pacific and C west of 140W, W West Pacific, A Arabian Sea and B Bay of Bengal either side of
+  78E, S and P either side of 135E in the Australian region, S South-West Indian, P South Pacific, Q South Atlantic, M Mediterranean), counted again from 90 each season; it is in the tooltip (`Invest 92L`), on
+  the stat card of the depression it becomes (`as Invest 92L`) and in the save. **How a storm lives (climatology-anchored):** a *disturbance*
   (an African easterly wave, a local seed where the real Atlantic forms storms from troughs and gyres, or a tracked pressure
   low) develops at the hourly rate of the real genesis map for that place and month, times how much better the simulated
   humidity, shear and SST are than their own mean there and a large-scale random activity factor (a draw per season and a few
@@ -394,7 +413,7 @@ nothing to run by hand.
   eight basins which have no engine yet) nothing changes. Every random
   draw in the engine is a pure function of (seed, system id, hour, stream), so a checkpoint is plain JSON and a hand-placed
   system never changes an automatic one. **Not yet:** impacts (watches, warnings, cities),
-  invests, the cone and the wind fields are later milestones/steps.
+  the cone and the wind fields are later milestones/steps.
 
 ## Imagery
 The "Blue Marble" theme is a crop **embedded in the build** (`data.bm`, drawn on
@@ -438,7 +457,7 @@ check that Satellite still resolves to something usable.
   0.03) high; category 5 storms 0.37 a season (0.47) and ACE 12 % above the real normal (the perfect-environment relief adds a few majors); a sixth of numbered depressions never reach storm strength (real 12 %); post-tropical systems are about 20 % too slow after
   their transition and there are fewer of them than in the data; subtropical storms are 1.1 a year (1.7); the page's own pressure lows are
   fewer and longer-lived than ERA5's; the moisture slider's effect is far stronger than the warming slider's. The lows thresholds, the
-  2027+ name lists and the clock at 32× and 64× (about a third of its nominal speed in headless Chromium) are also open. No impacts or invests yet.
+  2027+ name lists and the clock at 32× and 64× (about a third of its nominal speed in headless Chromium) are also open. No impacts yet (the outlook and invests are in).
 - All nine basins run in Simulation mode; Forecaster mode hasn't been started (its
   menu card is disabled). Steering arrows and highs are in all nine basins; the
   Mediterranean and the North Indian Ocean have hardly any highs to show (about one day in ten in winter).
