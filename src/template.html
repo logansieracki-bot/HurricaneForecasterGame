@@ -44,23 +44,10 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--focus);outline-
 #dock{left:50%;transform:translateX(-50%);bottom:16px;display:flex;align-items:center;gap:4px;padding:8px 12px 8px 8px}
 .btn{width:40px;height:40px;border-radius:10px;border:0;background:transparent;display:grid;place-items:center;cursor:pointer}
 .btn:hover{background:rgba(255,255,255,.09)}
-a.btn{color:var(--text);text-decoration:none}
 .btn svg{width:20px;height:20px;fill:currentColor}
 #b-play{width:50px;height:50px;border-radius:50%;background:var(--ice);color:#141414;margin:0 4px}
 #b-play:hover{background:#fff}
 #b-play svg{width:22px;height:22px}
-#b-place{width:auto;padding:0 13px 0 11px;gap:7px;font-size:13px;font-weight:600;color:var(--text);margin-left:6px;border:1px solid var(--line);border-radius:12px}
-#b-place svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
-#b-place[aria-pressed="true"]{background:var(--ice);color:#141414;border-color:var(--ice)}
-#place-menu{left:50%;transform:translateX(-50%);bottom:88px;width:236px;padding:8px;display:grid;gap:2px;z-index:950}
-#place-menu[hidden]{display:none}
-#place-menu button{display:flex;align-items:center;gap:9px;text-align:left;border:0;background:transparent;color:var(--text);font:inherit;font-size:13px;padding:8px 10px;border-radius:8px;cursor:pointer}
-#place-menu button:hover{background:rgba(255,255,255,.09)}
-#place-menu button[aria-checked="true"]{background:rgba(255,255,255,.14);font-weight:600}
-#place-menu button i{width:11px;height:11px;border:2px solid var(--dim);border-radius:50%;flex:none}
-#place-menu button[aria-checked="true"] i{border-color:var(--ice);background:var(--ice)}
-#place-menu p{margin:4px 10px 2px;font-size:11.5px;color:var(--dim);line-height:1.4}
-body.placing .leaflet-container, body.placing #storm-canvas{cursor:crosshair}
 #speed{min-width:132px;padding-left:8px;line-height:1.15}
 #speed b{display:block;font-size:21px;font-weight:600;font-variant-numeric:tabular-nums}
 #speed span{font-size:11.5px;color:var(--dim)}
@@ -121,7 +108,7 @@ body.steer-on #panel{max-height:calc(100% - 300px)}   /* the steering legend sit
 #attr{position:absolute;right:0;bottom:0;z-index:900;font-size:10.5px;color:var(--dim);background:#1a1a1c;padding:2px 8px;border-top-left-radius:6px;pointer-events:none}
 
 /* notices + loader */
-#toast{left:50%;top:64px;transform:translateX(-50%);padding:9px 16px;font-size:13px;display:none}
+#toast{left:50%;top:16px;transform:translateX(-50%);padding:9px 16px;font-size:13px;display:none}
 #city-tip{padding:9px 12px;max-width:210px;pointer-events:none;display:none;z-index:950}
 #city-tip b{font-size:13px;font-weight:600;display:block}
 #city-tip div{font-size:11.5px;color:var(--dim);margin-top:3px;line-height:1.5}
@@ -137,67 +124,7 @@ body.steer-on #panel{max-height:calc(100% - 300px)}   /* the steering legend sit
 .leaflet-control-attribution a{color:#bdbdbd!important}
 canvas.overlay{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none}
 
-/* storms: season bar, hover tooltip, stat card */
-#season{left:50%;top:14px;transform:translateX(-50%);display:flex;align-items:center;padding:7px 4px;font-size:12.5px;white-space:nowrap}
-#season span{padding:0 11px;border-left:1px solid var(--line);color:var(--dim)}
-#season span:first-child{border-left:0;color:var(--text);font-weight:600}
-#season b{color:var(--text);font-weight:600;font-variant-numeric:tabular-nums;margin-right:5px}
-#storm-tip{padding:9px 12px;max-width:236px;pointer-events:none;display:none;z-index:960}
-#storm-tip b{font-size:13px;font-weight:600;display:block}
-#storm-tip div{font-size:11.5px;color:var(--dim);margin-top:3px;line-height:1.5}
-#storm-card{right:324px;top:50%;transform:translateY(-50%);width:262px;padding:12px 14px}
-#storm-card[hidden]{display:none}
-#panel.collapsed ~ #storm-card{right:14px}
-#sc-close{position:absolute;right:8px;top:8px;width:26px;height:26px;border:0;background:transparent;color:var(--dim);border-radius:6px;cursor:pointer;font-size:17px;line-height:1}
-#sc-close:hover{background:rgba(255,255,255,.09);color:var(--text)}
-#sc-name{font-size:17px;font-weight:600;display:block;padding-right:26px}
-#sc-note{margin:10px 0 0;padding-top:8px;border-top:1px solid var(--line);font-size:11px;line-height:1.4;color:var(--dim)}
-#sc-cat{font-size:12.5px;color:var(--dim)}
-.sc-main{display:flex;align-items:flex-end;gap:18px;margin:10px 0 9px}
-.sc-main b{font-size:30px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1}
-.sc-main small{display:block;font-size:11px;color:var(--dim);margin-top:3px}
-#sc-peak{margin-left:auto;font-size:11px;font-weight:600;color:#141414;background:var(--ice);border-radius:6px;padding:2px 7px}
-.sc-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px 14px;border-top:1px solid var(--line);padding-top:9px}
-.sc-grid span{display:block;font-size:11px;color:var(--dim)}
-.sc-grid b{font-size:13px;font-weight:600;font-variant-numeric:tabular-nums}
-#season button{margin:0 5px 0 4px;border:1px solid var(--line);background:rgba(255,255,255,.07);color:var(--text);font:inherit;font-size:12px;padding:3px 11px;border-radius:8px;cursor:pointer}
-#season button:hover{background:rgba(255,255,255,.14)}
-#season button[aria-expanded=true]{background:rgba(255,255,255,.2);border-color:var(--ice)}
-#sum-card{left:50%;bottom:92px;transform:translateX(-50%);width:492px;max-height:calc(100% - 170px);display:flex;flex-direction:column;padding:12px 14px 10px;z-index:930}
-#sum-card[hidden]{display:none}
-#sum-close{position:absolute;right:8px;top:8px;width:26px;height:26px;border:0;background:transparent;color:var(--dim);border-radius:6px;cursor:pointer;font-size:17px;line-height:1}
-#sum-close:hover,#sum-head button:hover:not(:disabled){background:rgba(255,255,255,.09);color:var(--text)}
-#sum-head{display:flex;align-items:center;gap:6px;padding-right:30px;flex:none}
-#sum-head button{width:26px;height:26px;border:0;background:transparent;color:var(--dim);border-radius:6px;cursor:pointer;font-size:19px;line-height:1;flex:none}
-#sum-head button:disabled{opacity:.3;cursor:default}
-#sum-head div{min-width:0}
-#sum-title{font-size:17px;font-weight:600;display:block}
-#sum-sub{font-size:12px;color:var(--dim);display:block}
-#sum-tot{display:grid;grid-template-columns:repeat(6,1fr);gap:4px;margin:10px 0 6px;text-align:center;flex:none}
-#sum-tot div{padding:5px 0 4px;border-radius:8px;background:rgba(255,255,255,.045)}
-#sum-tot b{display:block;font-size:19px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1.15}
-#sum-tot span{display:block;font-size:10.5px;color:var(--dim);letter-spacing:.03em}
-#sum-tot small{display:block;font-size:10.5px;color:var(--dim);margin-top:2px;font-variant-numeric:tabular-nums;white-space:nowrap}
-#sum-graph{display:block;width:100%;height:172px;flex:none}
-#sum-cap{font-size:11px;color:var(--dim);line-height:1.45;margin:2px 0 8px;flex:none}
-#sum-scroll{overflow:auto;min-height:0;flex:1 1 auto}
-#sum-table{width:100%;border-collapse:collapse;font-size:12px;font-variant-numeric:tabular-nums}
-#sum-table th{position:sticky;top:0;background:var(--panel);text-align:left;font-weight:500;font-size:11px;color:var(--dim);padding:2px 8px 4px 0}
-#sum-table td{padding:5px 8px 5px 0;border-top:1px solid var(--line);white-space:nowrap}
-#sum-table tbody tr{cursor:pointer}
-#sum-table tbody tr:hover td{background:rgba(255,255,255,.05)}
-#sum-table tr.live td:first-child b::after{content:" \25CF";color:#6ee7a8;font-size:9px;font-weight:400}
-#sum-table i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px}
-#sum-empty{color:var(--dim);font-size:12px;padding:8px 0}
-
 @media (max-width:1040px){
-  #season{left:14px;top:209px;transform:none;display:grid;grid-template-columns:repeat(3,1fr);width:max-content;min-width:236px;row-gap:5px;padding:8px 2px;font-size:12px}
-  #season span{padding:0 8px}
-  #season span:first-child{grid-column:1/3;padding:0 12px 4px}
-  #season button{grid-column:3;grid-row:1;justify-self:end;margin:0 8px 4px 0}
-  #season span:nth-child(2),#season span:nth-child(5){border-left:0}
-  #storm-card{right:14px;top:auto;bottom:130px;transform:none}
-  #sum-card{top:14px;max-height:none;width:min(492px,calc(100% - 28px))}
   #readout{bottom:84px}
   #legend{bottom:112px}
   #steer-legend{bottom:200px}
@@ -206,15 +133,6 @@ canvas.overlay{position:absolute;left:0;top:0;width:100%;height:100%;pointer-eve
   body.steer-on #panel{max-height:calc(100% - 412px)}
 }
 @media (max-width:640px){
-  #season{top:192px;font-size:11.5px}
-  #storm-card{left:14px;right:14px;width:auto;bottom:120px}
-  #sum-card{left:14px;right:14px;width:auto;transform:none;padding:12px 12px 8px}
-  #sum-tot b{font-size:16px}
-  #sum-tot small{font-size:9.5px}
-  #sum-table{font-size:11.5px}
-  #sum-table td,#sum-table th{padding-right:6px}
-  #sum-table .u{display:none}
-  #sum-table th:nth-child(2)::after{content:" (mph)"}
   #clock{min-width:0;padding:9px 12px}
   #c-time{font-size:34px}
   #panel{width:calc(100% - 28px);top:auto;bottom:196px;max-height:38%}
@@ -226,10 +144,8 @@ canvas.overlay{position:absolute;left:0;top:0;width:100%;height:100%;pointer-eve
   #dock{width:calc(100% - 28px);justify-content:space-between}
   #speed{min-width:0}
   #speed span{display:none}
-  #b-place{margin-left:0;padding:0 10px}
-  #b-place span{display:none}
-  #place-menu{bottom:96px}
 }
+/*__STORM_CSS__*/
 </style>
 </head>
 <body>
@@ -283,10 +199,7 @@ canvas.overlay{position:absolute;left:0;top:0;width:100%;height:100%;pointer-eve
         <label class="chk"><input type="checkbox" id="jetline"><span> Jet stream line (axis of strongest shear)<i id="jet-note"></i></span></label>
         <label class="chk"><input type="checkbox" id="steerarrows"><span> Steering arrows (colour = speed)</span></label>
         <label class="chk"><input type="checkbox" id="highs"><span> Highs (H) with sea-level pressure</span></label>
-        <label class="chk"><input type="checkbox" id="stwaves" checked><span> Tropical waves (dashed lines)</span></label>
-        <label class="chk"><input type="checkbox" id="stlows" checked><span> Lows (L), with sea-level pressure</span></label>
-        <label class="chk"><input type="checkbox" id="stdist" checked><span> Disturbances (X): a wave or low that could become a depression</span></label>
-        <label class="chk"><input type="checkbox" id="stlabels" checked><span> Storm names</span></label>
+<!--__STORM_HTML:panel-->
       </div>
     </section>
     <section class="subsec collapsed" id="sec-exp">
@@ -351,11 +264,7 @@ canvas.overlay{position:absolute;left:0;top:0;width:100%;height:100%;pointer-eve
             <div class="sl"><label for="p-enso">El Niño / La Niña influence</label><output id="p-enso-o">1.0×</output></div>
             <input id="p-enso" type="range" min="0" max="4" step="0.05" value="1">
           </div>
-          <label class="chk"><input type="checkbox" id="st-auto" checked><span> Storms form on their own</span></label>
-          <div class="row">
-            <div class="sl"><label for="p-stact" title="How often waves and the other seeds appear: 1.0× is about the real Atlantic">Storm activity (seeds)</label><output id="p-stact-o">1.0×</output></div>
-            <input id="p-stact" type="range" min="0" max="3" step="0.1" value="1">
-          </div>
+<!--__STORM_HTML:advanced-->
           <label class="chk"><input type="checkbox" id="seed-vary" checked> Seed nudges swing, currents and El Niño</label>
         </div>
         <div class="seedrow">
@@ -384,34 +293,11 @@ canvas.overlay{position:absolute;left:0;top:0;width:100%;height:100%;pointer-eve
 
 <div id="toast" class="card" role="status"></div>
 <div id="city-tip" class="card" role="tooltip"><b></b><div></div></div>
-<div id="season" class="card" role="status" aria-label="Season totals"><span id="se-year">Atlantic</span><span><b id="se-dep">0</b>DEP</span><span><b id="se-named">0</b>NAMED</span><span><b id="se-hurr">0</b>HURR</span><span><b id="se-major">0</b>MAJOR</span><span><b id="se-c5">0</b>CAT 5</span><span><b id="se-ace">0.0</b>ACE</span><button id="se-sum" type="button" aria-expanded="false" aria-controls="sum-card" title="Season summary: totals against the real normals, the ACE graph and every storm of the season">Summary</button></div>
-<div id="storm-tip" class="card" role="tooltip"><b></b><div></div></div>
-<aside id="storm-card" class="card" hidden aria-label="Storm details">
-  <button id="sc-close" aria-label="Close storm details" title="Close (Esc)">&times;</button>
-  <b id="sc-name">–</b><span id="sc-cat"></span>
-  <div class="sc-main"><div><b id="sc-mph">0</b><small>mph (1-min)</small></div><div><b id="sc-p">0</b><small>hPa</small></div><span id="sc-peak">Peak</span></div>
-  <div class="sc-grid">
-    <div><span>ACE</span><b id="sc-ace">0.0</b></div><div><span>Advisory</span><b id="sc-time">–</b></div>
-    <div><span>Shear</span><b id="sc-sh">–</b></div><div><span>Gusts</span><b id="sc-gust">–</b></div>
-    <div><span>Movement</span><b id="sc-mv">–</b></div><div><span>SST</span><b id="sc-sst">–</b></div>
-    <div><span>Damage</span><b>—</b></div><div><span>Formed</span><b id="sc-formed">–</b></div>
-  </div>
-  <p id="sc-note">Showing only this system. Click the empty map or press Esc to show all.</p>
-</aside>
-<aside id="sum-card" class="card" hidden role="dialog" aria-label="Season summary">
-  <button id="sum-close" aria-label="Close season summary" title="Close (Esc)">&times;</button>
-  <div id="sum-head"><button id="sum-prev" aria-label="Previous season" title="Previous season">&#8249;</button><div><b id="sum-title">Atlantic</b><span id="sum-sub"></span></div><button id="sum-next" aria-label="Next season" title="Next season">&#8250;</button></div>
-  <div id="sum-tot"></div>
-  <canvas id="sum-graph" role="img" aria-label="Accumulated cyclone energy through the year against the real seasons"></canvas>
-  <div id="sum-cap"></div>
-  <div id="sum-scroll"><table id="sum-table"><thead><tr><th>Storm</th><th>Peak</th><th>hPa</th><th>Dates</th><th>ACE</th></tr></thead><tbody></tbody></table><div id="sum-empty" hidden>No depression has formed this season yet.</div></div>
-</aside>
+<!--__STORM_HTML:cards-->
 <div id="attr"></div>
 
 <nav id="dock" class="card" aria-label="Playback">
-  <a class="btn" id="b-menu" href="../index.html" aria-label="Main menu" title="Main menu: your season is saved and waits under Continue">
-    <svg viewBox="0 0 24 24"><path d="M3 11.2 12 3.6l9 7.6V20a1 1 0 0 1-1 1h-5v-6.2H9V21H4a1 1 0 0 1-1-1z"/></svg>
-  </a>
+<!--__STORM_HTML:dockMenu-->
   <button class="btn" id="b-restart" aria-label="Restart at June 1" title="Restart at June 1 (R)">
     <svg viewBox="0 0 24 24"><path d="M12 5V2L7 6.5 12 11V8c3.3 0 6 2.7 6 6s-2.7 6-6 6-6-2.7-6-6H4c0 4.4 3.6 8 8 8s8-3.6 8-8-3.6-8-8-8z"/></svg>
   </button>
@@ -426,17 +312,9 @@ canvas.overlay{position:absolute;left:0;top:0;width:100%;height:100%;pointer-eve
     <svg viewBox="0 0 24 24"><path d="M13 6v12l8.5-6zM3 6v12l8.5-6z"/></svg>
   </button>
   <div id="speed"><b id="speed-x">1×</b><span id="speed-sub">+1 h every 60 ms</span></div>
-  <button class="btn" id="b-place" aria-label="Place a system" aria-pressed="false" aria-haspopup="true" title="Place a tropical wave, depression or low and see where it would go (P)">
-    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.4"/><path d="M12 2.5v4.5M12 17v4.5M2.5 12H7M17 12h4.5"/></svg><span>Place</span>
-  </button>
+<!--__STORM_HTML:dockPlace-->
 </nav>
-<div id="place-menu" class="card" role="radiogroup" aria-label="What to place" hidden>
-  <button role="radio" aria-checked="true" data-kind="wave"><i></i>Tropical wave</button>
-  <button role="radio" aria-checked="false" data-kind="td"><i></i>Tropical depression</button>
-  <button role="radio" aria-checked="false" data-kind="sd"><i></i>Subtropical depression</button>
-  <button role="radio" aria-checked="false" data-kind="low"><i></i>Low-pressure area</button>
-  <p>Click the map to place it. The line shows where it goes and how strong it gets; Esc cancels.</p>
-</div>
+<!--__STORM_HTML:placeMenu-->
 
 <div id="loading">Building the ocean grid…</div>
 
@@ -1550,100 +1428,6 @@ function computeField() {
 
   updateLakes(f, doy);
 }
-/* The storm engine's own copy of the environment: SST, humidity and shear on every SS-th node (0.5 degrees), exactly the values computeField gives at those nodes (SSTSIM.stormFieldCheck
-   compares them), for a quarter of the cost: the engine samples a few dozen points an hour, it does not need every cell of the map. Every storm keyframe, the Place look-ahead and the
-   calibration lab use it; the map's own fine fields are computed only when the map is drawn. sAnomDirty plays anomDirty's part for the storm grid's copies of the interannual terms. */
-const sAnomF = new Float32Array(NSF), sEnsoF = new Float32Array(NSF), sHAnomF = new Float32Array(NSF), sHEnsoF = new Float32Array(NSF), sSAnomF = new Float32Array(NSF), sSEnsoF = new Float32Array(NSF);
-const sHumPrev = new Float32Array(NSF), sHumCur = new Float32Array(NSF), sShPrev = new Float32Array(NSF), sShCur = new Float32Array(NSF);      // the day's synoptic humidity and shear pairs at the storm nodes, up-sampled from the generators' coarse pair (what the fine pair holds there, bit for bit)
-function sampleFieldS(arr, lat, lon) {                                    // sampleField on the storm grid (bilinear between nodes one degree apart)
-  const fx = (lon - LON0) / (RES * SS), fy = (LAT1 - lat) / (RES * SS);
-  if (fx < 0 || fy < 0 || fx > NXS - 1 + 1e-6 || fy > NYS - 1 + 1e-6) return NaN;
-  const i = Math.min(Math.floor(fx), NXS - 2), j = Math.min(Math.floor(fy), NYS - 2), ax = fx - i, ay = fy - j, p = j * NXS + i, q = p + NXS;
-  return (arr[p] * (1 - ax) + arr[p + 1] * ax) * (1 - ay) + (arr[q] * (1 - ax) + arr[q + 1] * ax) * ay;
-}
-function computeStormFields(oS, oH, oSh) {
-  const d = simDate(simHour), y = d.getUTCFullYear(), doy = (d.getTime() - Date.UTC(y, 0, 1)) / 86400000;
-  const ylen = ((y % 4 === 0 && y % 100 !== 0) || y % 400 === 0) ? 366 : 365, f = doy / ylen;
-  const p = f * 12 - 0.5, m1 = Math.floor(p), w = cr(p - m1), M = (x) => ((x % 12) + 12) % 12;
-  const A0 = climF[M(m1 - 1)], A1 = climF[M(m1)], A2 = climF[M(m1 + 1)], A3 = climF[M(m1 + 2)];
-  const w0 = w[0], w1 = w[1], w2 = w[2], w3 = w[3];
-  const wf = 0.5 + 0.5 * Math.cos(2 * Math.PI * (f - 45 / 365.25));
-  const synD = Math.floor(simHour / 24), synT = simHour / 24 - synD;
-  advanceSynDraws(synD); advanceShearSynDraws(synD);                       // the draws the map's own blend would make (pinned here), without the fine up-sampling it does not need
-  upsample.S(humidSynCd, sHumPrev); upsample.S(humidSynC, sHumCur); upsample.S(shearSynCd, sShPrev); upsample.S(shearSynC, sShCur);
-  const sp0 = 1 - synT, sp1 = synT;
-  if (sAnomDirty) {
-    anomC.fill(0);
-    for (let k = 0; k < K; k++) { const c = pc[k]; if (!c) continue; const o = k * CN; for (let q = 0; q < CN; q++) anomC[q] += c * eofC[o + q]; }
-    upsample.S(anomC, sAnomF);
-    const c0 = ensoLag(0), c3 = ensoLag(91), c6 = ensoLag(183);
-    for (let q = 0; q < CN; q++) ensoCo[q] = c0 * ensoC[q] + c3 * ensoC[CN + q] + c6 * ensoC[2 * CN + q];
-    upsample.S(ensoCo, sEnsoF);
-    humidAnomC.fill(0);
-    for (let k = 0; k < KH; k++) { const c = pcH[k]; if (!c) continue; const o = k * CN; for (let q = 0; q < CN; q++) humidAnomC[q] += c * humidEofC[o + q]; }
-    upsample.S(humidAnomC, sHAnomF);
-    for (let q = 0; q < CN; q++) humidEnsoCo[q] = c0 * humidEnsoC[q] + c3 * humidEnsoC[CN + q] + c6 * humidEnsoC[2 * CN + q];
-    upsample.S(humidEnsoCo, sHEnsoF);
-    shearAnomC.fill(0);
-    for (let k = 0; k < KS; k++) { const c = pcS[k]; if (!c) continue; const o = k * CN; for (let q = 0; q < CN; q++) shearAnomC[q] += c * shearEofC[o + q]; }
-    upsample.S(shearAnomC, sSAnomF);
-    for (let q = 0; q < CN; q++) shearEnsoCo[q] = c0 * shearEnsoC[q] + c3 * shearEnsoC[CN + q] + c6 * shearEnsoC[2 * CN + q];
-    upsample.S(shearEnsoCo, sSEnsoF);
-    sAnomDirty = false;
-  }
-  computeFeatures(doy, wf, w0, w1, w2, w3, A0, A1, A2, A3);
-  { // sea-surface temperature (computeField's combine loop, on the storm grid)
-    const fs = P.features, vs = P.variability, sa = P.seasonal, wm = P.warming, es = P.enso, wmUp = Math.max(0, wm), saUp = 1 + (sa - 1) * 0.6;
-    for (let js = 0; js < NYS; js++) {
-      const j = js * SS, ceil = seaCeil(LAT1 - j * RES) + wmUp, c0 = ceil - 1.2;
-      for (let is = 0; is < NXS; is++) {
-        const k = j * NX + is * SS, ks = js * NXS + is;
-        if (outOfBasin[k]) { oS[ks] = NaN; continue; }
-        const mth = w0 * A0[k] + w1 * A1[k] + w2 * A2[k] + w3 * A3[k], fn = featN[k], dev = mth - annual[k];
-        const peakBoost = dev > 0 ? WARM_PEAK_BIAS * Math.tanh(dev / 1.5) : 0;
-        let an = vs * sAnomF[ks] + es * sEnsoF[ks]; if (an > 2) an = 2 + 1.5 * Math.tanh((an - 2) / 1.5); else if (an < -2) an = -2 - 1.5 * Math.tanh((-an - 2) / 1.5);
-        let v = annual[k] + (dev > 0 ? saUp : sa) * dev + peakBoost + fs * (fn + vs * featD[k]) + an + wm;
-        if (v > c0) v = c0 + 1.2 * Math.tanh((v - c0) / 1.2);
-        if (v > 38) v = 38 + 1.5 * Math.tanh((v - 38) / 1.5); else if (v < -1.8) v = -1.8 - 1.5 * Math.tanh((-v - 1.8) / 1.5);
-        oS[ks] = v;
-      }
-    }
-  }
-  { // humidity
-    const hvs = P.variability, hes = P.enso, hws = P.synoptic, hmo = P.moisture;
-    const HA0 = humidClimF[M(m1 - 1)], HA1 = humidClimF[M(m1)], HA2 = humidClimF[M(m1 + 1)], HA3 = humidClimF[M(m1 + 2)];
-    for (let js = 0; js < NYS; js++) {
-      const j = js * SS;
-      for (let is = 0; is < NXS; is++) {
-        const k = j * NX + is * SS, ks = js * NXS + is;
-        if (outOfBasin[k]) { oH[ks] = NaN; continue; }
-        const mth = w0 * HA0[k] + w1 * HA1[k] + w2 * HA2[k] + w3 * HA3[k], syn = sp0 * sHumPrev[ks] + sp1 * sHumCur[ks];
-        let v = mth + hvs * sHAnomF[ks] + hes * sHEnsoF[ks] + hws * syn + hmo;
-        if (v > 95) v = 95 + 5 * Math.tanh((v - 95) / 5); else if (v < 3) v = 3 * Math.exp((v - 3) / 3);
-        oH[ks] = v;
-      }
-    }
-  }
-  { // wind shear
-    const svs = P.variability, ses = P.enso, sws = P.shearSynoptic, ssh = P.shearShift;
-    const SA0 = shearClimF[M(m1 - 1)], SA1 = shearClimF[M(m1)], SA2 = shearClimF[M(m1 + 1)], SA3 = shearClimF[M(m1 + 2)];
-    jetAxisFinal(jetAxisSt);
-    for (let i = 0; i < NX; i++) { const fc = i / RATIO, c0 = Math.min(CNX - 2, Math.floor(fc)), t = fc - c0; jetAxisFS[i] = jetAxisSt[c0] * (1 - t) + jetAxisSt[c0 + 1] * t; }
-    for (let js = 0; js < NYS; js++) {
-      const j = js * SS, lat = LAT1 - j * RES;
-      for (let is = 0; is < NXS; is++) {
-        const i = is * SS, k = j * NX + i, ks = js * NXS + is;
-        if (outOfBasin[k]) { oSh[ks] = NaN; continue; }
-        const mth = w0 * SA0[k] + w1 * SA1[k] + w2 * SA2[k] + w3 * SA3[k] - jetSmearF[k], syn = sp0 * sShPrev[ks] + sp1 * sShCur[ks];
-        let v = mth + svs * sSAnomF[ks] + ses * sSEnsoF[ks] + sws * SHEAR_TEXTURE_GAIN * syn + ssh;
-        const off = Math.abs(lat - jetAxisFS[i]);
-        if (off < JET_LUT_MAX) { const n = off / JET_LUT_STEP, n0 = n | 0; v += jetBumpLut[n0] + (n - n0) * (jetBumpLut[n0 + 1] - jetBumpLut[n0]); }
-        if (v > 115) v = 115 + 10 * Math.tanh((v - 115) / 10); else if (v < 2) v = 2 * Math.exp((v - 2) / 2);
-        oSh[ks] = v;
-      }
-    }
-  }
-}
 const CEIL_LAT = [0, 10, 20, 25, 30, 35, 38, 40, 45, 50, 55, 60, 70, 80], CEIL_T = [33, 33, 32.6, 32, 31.2, 30, 29, 28.2, 26, 23, 19.5, 16, 9, 3];
 function seaCeil(lat) { return interp1(CEIL_LAT, CEIL_T, Math.abs(lat)); }
 
@@ -2487,668 +2271,12 @@ function steerReadout() {
 }
 /* ==== STEER DRAW END ==== */
 
-/* ==== STORM HOOKS BEGIN ==== */
-/* The storm engine (src/storms.js, inlined above as HFStorms) is pure: it knows nothing about this page. This block is everything
-   that connects the two -- the environment the storms live in, the clock, the drawing, the hover / click cards and the season bar.
-   Time: advanceHours() walks in sub-chunks that end on every absolute 3-hour boundary; the engine runs hour by hour on the LAST
-   keyframe (a copy of the steering nodes every 3 h, of SST / humidity / shear once a day at 00Z and whenever a slider moved), so a
-   storm sees the same weather however the clock is chunked or however often the page happened to redraw. The lazy weather draws that
-   computeField() would otherwise make at render time (ensureSynDay / ensureShearSynDay) are pinned to the midnight keyframe, which
-   makes SST, humidity, shear and ENSO a pure function of the seed while storms are on. */
-const stormCanvas = makeCanvas(461); stormCanvas.id = 'storm-canvas';
-let sumOpen = false, sumYear = 0, sumArch = 0, sumAt = 0, sumGeo = null;
-let saveStamp = 0, savedStamp = 0, saveLast = 0, saveOwner = true;     // saveOwner: this page may write the save (false when it opened beside a season it did not resume: see the save / resume block)
-function markDirty() { saveStamp++; }                                // anything that changes the running season: the saver writes it out within seconds
-let stormMgr = null, stormsOn = true, stormFieldsDirty = true, stormsDirty = true, stormActivity = 1, stormAuto = true, stormSel = null, stormHot = null, stormHits = [], lastStormCardAt = 0;
-const STORM_KEY_H = 6;                                                // the steering and the pressure are taken every 6 h (the wave sums are the cost of a simulated day), the fields of SST / humidity / shear once a day
-const mkU = () => [new Float32Array(SN), new Float32Array(SN), new Float32Array(SN)];
-const kfU = mkU(), kfV = mkU(), kfP = new Float32Array(SN);           // the latest steering keyframe (shallow / medium / deep winds, sea-level pressure) ...
-const kfU0 = mkU(), kfV0 = mkU(), kfP0 = new Float32Array(SN);        // ... and the one before it
-const wkU = mkU(), wkV = mkU();                                       // what the engine reads: the latest keyframe carried forward by the change since the one before it (linear, hour by hour: more exact than holding it for six hours)
-let kfHour = -1e9, kfHour0 = -1e9, kfBreak = true, wkHour = -1e9;     // when they were taken; kfBreak: the next keyframe has nothing to be carried from (the start, a slider moved)
-/* Lakes are water for a storm. The map draws every lake with a temperature of its own and the land mask under it says "land", so a storm put on the Great Lakes met cold made-up
-   sea and a coast on every side and died at once. Here the page's own lake polygons are rastered onto the fine grid (the first time a storm asks), a node inside a lake is not land for
-   the storms, and over it the sea temperature is the lake's (stormLakes: the same formula as updateLakes, taken at the keyframe from the storm grid's anomalies, so that storms
-   stay a function of the seed and not of when the map was last redrawn). What a lake does to a storm after that is the engine's own physics, nothing is forbidden: warm enough
-   water, little shear and moist air let it grow, the shore ring of the land test takes its share, a lake the size of a storm cannot feed one for long. */
-let lakeGrid = null;                                                  // per fine node: 0 = no lake, otherwise the lake's index + 1
-function buildLakeGrid() {
-  lakeGrid = new Uint16Array(N);
-  const inside = (rings, x, y) => { let c = false; for (let r = 0; r < rings.length; r++) { const xs = rings[r].xs, ys = rings[r].ys; for (let a = 0, b = xs.length - 1; a < xs.length; b = a++) if ((ys[a] > y) !== (ys[b] > y) && x < (xs[b] - xs[a]) * (y - ys[a]) / (ys[b] - ys[a]) + xs[a]) c = !c; } return c; };
-  for (let li = 0; li < LAKES.length; li++) {
-    const Lk = LAKES[li], g0 = stNormLon(Lk.x0 * 360 - 180), g1 = stNormLon(Lk.x1 * 360 - 180), latN = invMerc(Lk.y0), latS = invMerc(Lk.y1);
-    const i0 = Math.max(0, Math.ceil((g0 - LON0) / RES)), i1 = Math.min(NX - 1, Math.floor((g1 - LON0) / RES)), j0 = Math.max(0, Math.ceil((LAT1 - latN) / RES)), j1 = Math.min(NY - 1, Math.floor((LAT1 - latS) / RES));
-    for (let j = j0; j <= j1; j++) {
-      const y = mercN(LAT1 - j * RES);
-      for (let i = i0; i <= i1; i++) { let lon = LON0 + i * RES; if (lon > 180) lon -= 360; if (inside(Lk.rings, (lon + 180) / 360, y)) lakeGrid[j * NX + i] = li + 1; }
-    }
-  }
-}
-function lakeIdAt(lat, lon) {
-  const i = Math.round((lon - LON0) / RES), j = Math.round((LAT1 - lat) / RES);
-  if (i < 0 || j < 0 || i >= NX || j >= NY) return 0;
-  if (!lakeGrid) buildLakeGrid();
-  return lakeGrid[j * NX + i];
-}
-function stormLand(lat, lon) {                                       // land for a storm: the land mask, except where a lake lies
-  const i = Math.round((lon - LON0) / RES), j = Math.round((LAT1 - lat) / RES);
-  if (i < 0 || j < 0 || i >= NX || j >= NY) return false;
-  if (!lakeGrid) buildLakeGrid();
-  const k = j * NX + i; return land[k] === 1 && lakeGrid[k] === 0;
-}
-const kfLake = new Float32Array(LAKES.length);                        // the lakes' temperatures at the latest field keyframe
-function stormLakes(out) {                                           // updateLakes' formula, on the storm grid's anomalies and the keyframe's clock
-  const d = simDate(simHour), y = d.getUTCFullYear(), doy = (d.getTime() - Date.UTC(y, 0, 1)) / 86400000, ylen = ((y % 4 === 0 && y % 100 !== 0) || y % 400 === 0) ? 366 : 365, f = doy / ylen;
-  const sa = P.seasonal, saUp = 1 + (sa - 1) * 0.6, vs = P.variability, wm = P.warming;
-  for (let i = 0; i < LAKES.length; i++) {
-    const L = LAKE_META[i], c = lakeClim(L, f, doy), T = c[0], tm = c[1];
-    let an = vs * 1.2 * sampleFieldS(sAnomF, L.lat, L.lon); if (an !== an) an = 0; if (an > 3) an = 3 + 1.2 * Math.tanh((an - 3) / 1.2); else if (an < -3) an = -3 - 1.2 * Math.tanh((-an - 3) / 1.2);
-    let v = tm + (T >= tm ? saUp : sa) * (T - tm) + an + wm * 0.9;
-    const lc0 = seaCeil(L.lat) - 1 + Math.max(0, wm); if (v > lc0) v = lc0 + 1.2 * Math.tanh((v - lc0) / 1.2); if (T >= 0 && v < 0) v = 0;
-    out[i] = v;
-  }
-}
-function carrySteer(h, U, V, U0, V0, T, T0, oU, oV) {
-  const a = T0 > -1e8 && T > T0 ? (h - T) / (T - T0) : 0;
-  for (let i = 0; i < 3; i++) {
-    const u = U[i], v = V[i], u0 = U0[i], v0 = V0[i], ou = oU[i], ov = oV[i];
-    if (a > 0) for (let n = 0; n < SN; n++) { ou[n] = u[n] + a * (u[n] - u0[n]); ov[n] = v[n] + a * (v[n] - v0[n]); } else { ou.set(u); ov.set(v); }
-  }
-}
-const kfSst = new Float32Array(NSF), kfHumid = new Float32Array(NSF), kfShear = new Float32Array(NSF);          // the storm grid (computeStormFields)
-let kfFieldHour = -1, kfStamp = 0, lowsStamp = -1, lowsCache = [], kfSstRef = 28.2;
-function stormKeyframe(fields) {
-  steerUpdate(); kfStamp++;
-  for (let i = 0; i < 3; i++) { kfU0[i].set(kfU[i]); kfV0[i].set(kfV[i]); } kfP0.set(kfP); kfHour0 = kfHour;
-  kfU[0].set(stU.shallow); kfV[0].set(stV.shallow); kfU[1].set(stU.medium); kfV[1].set(stV.medium); kfU[2].set(stU.deep); kfV[2].set(stV.deep); kfP.set(stPt); kfHour = simHour;
-  if (kfBreak) { for (let i = 0; i < 3; i++) { kfU0[i].set(kfU[i]); kfV0[i].set(kfV[i]); } kfP0.set(kfP); kfHour0 = -1e9; kfBreak = false; }
-  wkHour = -1e9; stormEnv.beginHour(simHour);
-  if (fields) { computeStormFields(kfSst, kfHumid, kfShear); stormLakes(kfLake); kfFieldHour = simHour; stormFieldsDirty = false; kfSstRef = mdrMeanSst(); }
-  if (stormClim) climAccumulate(fields);
-}
-/* the mean sea-surface temperature of the main development region (10-20N, 80-20W, water only) in the last field keyframe: the reference of "relative SST" */
-function mdrMeanSst(arr = kfSst) {
-  let t = 0, n = 0;
-  for (let la = 10; la <= 20; la += 2.5) for (let lo = -80; lo <= -20; lo += 2.5) { if (isLand(la, lo)) continue; const v = sampleFieldS(arr, la, lo); if (v === v) { t += v; n++; } }
-  return n ? t / n : 28.2;
-}
-const envFrom = (U, V, Pk, SST, RH, SH, REF, LK) => ({                                // the engine's environment over one set of keyframe arrays
-  box: { lat0: ST_LAT0, lat1: ST_LAT1, lon0: ST_LON0, lon1: ST_LON1 },
-  sst: (la, lo) => { const id = lakeIdAt(la, lo); return id ? LK[id - 1] : sampleFieldS(SST, la, lo); }, rh: (la, lo) => sampleFieldS(RH, la, lo), shear: (la, lo) => sampleFieldS(SH, la, lo),
-  steer(la, lo, o) { o[0] = stSample(U[0], la, lo); o[1] = stSample(V[0], la, lo); o[2] = stSample(U[1], la, lo); o[3] = stSample(V[1], la, lo); o[4] = stSample(U[2], la, lo); o[5] = stSample(V[2], la, lo); },
-  slp: (la, lo) => (Pk ? stSample(Pk, la, lo) : NaN), isLand: stormLand, sstRef: () => REF,                // REF: the main development region's mean SST of that keyframe (what relative SST is measured against)
-});
-/* the sea-level-pressure minima (lows) of a node-grid pressure field: the mirror image of steerDetectHighs(), refined with a parabola */
-const ST_LOW_MAX = 1008, ST_LOW_PROM = 2.0, ST_LOW_LAT0 = 18, ST_LOW_LAT1 = 68;
-function detectLowsOn(Pn) {
-  const out = [];
-  for (let j = 2; j < SNY - 2; j++) for (let i = 2; i < SNX - 2; i++) {
-    const n = j * SNX + i, p = Pn[n], al = Math.abs(stNodeLat[n]);
-    if (!(p <= ST_LOW_MAX) || al < ST_LOW_LAT0 || al > ST_LOW_LAT1) continue;
-    let low = true;
-    for (let dj = -1; dj <= 1 && low; dj++) for (let di = -1; di <= 1; di++) { if ((di || dj) && Pn[n + dj * SNX + di] <= p) { low = false; break; } }
-    if (!low) continue;
-    const ring = (Pn[n - 2] + Pn[n + 2] + Pn[n - 2 * SNX] + Pn[n + 2 * SNX] + Pn[n - 2 - 2 * SNX] + Pn[n + 2 - 2 * SNX] + Pn[n - 2 + 2 * SNX] + Pn[n + 2 + 2 * SNX]) / 8;
-    if (ring - p < ST_LOW_PROM) continue;
-    const l = Pn[n - 1], r = Pn[n + 1], u = Pn[n - SNX], dn = Pn[n + SNX];
-    const cx = l + r - 2 * p, cy = u + dn - 2 * p;
-    const ox = cx > 1e-6 ? Math.max(-1, Math.min(1, (l - r) / (2 * cx))) : 0, oy = cy > 1e-6 ? Math.max(-1, Math.min(1, (dn - u) / (2 * cy))) : 0;
-    const pk = p - (cx > 1e-6 ? (r - l) * (r - l) / (8 * cx) : 0) - (cy > 1e-6 ? (u - dn) * (u - dn) / (8 * cy) : 0);
-    out.push({ lat: stNodeLat[n] + oy * STRES, lon: stNodeLon[n] + ox * STRES, p: pk, prom: ring - p });
-  }
-  return out;
-}
-const stormEnv = {
-  box: { lat0: ST_LAT0, lat1: ST_LAT1, lon0: ST_LON0, lon1: ST_LON1 },
-  beginHour(h) { if (h !== wkHour) { wkHour = h; carrySteer(h, kfU, kfV, kfU0, kfV0, kfHour, kfHour0, wkU, wkV); } },          // the engine says which hour it is about to step: the steering of that hour
-  sst: (la, lo) => { const id = lakeIdAt(la, lo); return id ? kfLake[id - 1] : sampleFieldS(kfSst, la, lo); }, rh: (la, lo) => sampleFieldS(kfHumid, la, lo), shear: (la, lo) => sampleFieldS(kfShear, la, lo),
-  steer(la, lo, o) { o[0] = stSample(wkU[0], la, lo); o[1] = stSample(wkV[0], la, lo); o[2] = stSample(wkU[1], la, lo); o[3] = stSample(wkV[1], la, lo); o[4] = stSample(wkU[2], la, lo); o[5] = stSample(wkV[2], la, lo); },
-  slp: (la, lo) => stSample(kfP, la, lo), isLand: stormLand, sstRef: () => kfSstRef,
-  lows: () => { if (lowsStamp !== kfStamp) { lowsCache = detectLowsOn(kfP); lowsStamp = kfStamp; } return lowsCache; },   // read-only for every engine that asks
+const STORM_BASIN = 'atlantic';                                       // which basin this page is (src/storms.js, BASINS: its label, season, words, region and the engine's parameters)
+const featState = {                                                   // the state the ocean features carry from day to day (the Gulf Stream's shift, the Loop Current's eddies): captured and put back with the rest of the weather
+  get() { return { gsShift, nextShed, lcDip, eddies: eddies.map((e) => Object.assign({}, e)) }; },
+  set(f) { gsShift = f.gsShift; nextShed = f.nextShed; lcDip = f.lcDip; eddies = f.eddies.map((e) => Object.assign({}, e)); },
 };
-/* Calibration lab (dev only, tools/storm_mc.mjs): extra engines with other parameters run on the SAME keyframes and the same seed, so
-   a comparison of parameter sets sees identical weather and identical waves (common random numbers). They never touch the live engine. */
-let stormLab = null, stormMapsOverride = null, stormClim = null, lowsKept = null;
-const stormMapsNow = () => stormMapsOverride || (DATA.storms && DATA.storms.maps) || null;   // the climatology the engine is anchored to (data.json's `storms.maps`; the fitting tools hand in candidates)
-const stormSeed = () => ((P.seed * 2654435761) ^ 0x517171) >>> 0;
-/* the page's own mean steering and environment on the maps' grid, by month: what the engine's "anomaly" and "E" are measured against (tools/storm_fit.mjs) */
-function climAccumulate(fields) {
-  const C = stormClim; if (!C) return;
-  const m = simDate(simHour).getUTCMonth(), t = new Float64Array(6);
-  for (let k = 0; k < C.n; k++) { HFStorms.steerRing(stormEnv, C.lat[k], C.lon[k], C.R, t); const o = (m * C.n + k) * 6; for (let q = 0; q < 6; q++) C.steer[o + q] += t[q]; C.ns[m * C.n + k]++; }
-  if (fields && simHour % 24 === 0) {
-    for (let k = 0; k < C.n; k++) {
-      const la = C.lat[k], lo = C.lon[k], s = sampleFieldS(kfSst, la, lo), r = sampleFieldS(kfHumid, la, lo), sh = sampleFieldS(kfShear, la, lo);
-      if (s === s && r === r && sh === sh && !isLand(la, lo)) { const o = m * C.n + k; C.sst[o] += s; C.rh[o] += r; C.shear[o] += sh; C.rel[o] += s - kfSstRef; C.ne[o]++; }
-    }
-  }
-}
-function labRecord(m) {
-  const mon = (h) => m.dateAt(h).getUTCMonth(), TCs = m.systems.filter((S) => S.depNum > 0), out = { stats: m.stats(), n: m.n, hour: m.hour };
-  out.depByMonth = new Array(12).fill(0); out.namedByMonth = new Array(12).fill(0); out.aceByMonth = new Array(12).fill(0);
-  const ad = m.season.aceDaily, y = m.season.year;
-  for (let d = 0; d < ad.length; d++) out.aceByMonth[new Date(Date.UTC(y, 0, 1 + d)).getUTCMonth()] += ad[d];
-  out.storms = TCs.map((S) => {
-    const fx = S.fixes.filter((f) => f.h % 6 === 0), byH = {}; for (const f of fx) byH[f.h] = f;      // the six-hourly (synoptic) fixes: what the real best track holds
-    let ri = 0, win = 0, riAny = false;
-    for (const f of fx) { if ((f.th === 'tc' || f.th === 'sc') && f.v >= 25) { const g = byH[f.h + 24]; if (g && (g.th === 'tc' || g.th === 'sc' || g.th === 'ex' || g.th === 'nl')) { win++; if (g.v - f.v >= 30) { ri++; riAny = true; } } } }
-    const tcFx = fx.filter((f) => f.th === 'tc' || f.th === 'sc'), first = tcFx[0], nf = fx.find((f) => f.v >= 34 && (f.th === 'tc' || f.th === 'sc')), lastN = fx.slice().reverse().find((f) => f.v >= 34 && (f.th === 'tc' || f.th === 'sc'));
-    const rows = tcFx.map((f) => [f.lat, f.lon, f.v, f.spd, f.dir, f.sst, f.sh, f.rh, f.h, f.land ? 1 : 0]);
-    const THC = { tc: 0, sc: 1, ex: 2, nl: 3, wv: 4 }, trk = fx.map((f) => [f.lat, f.lon, f.v, f.h, THC[f.th], f.land ? 1 : 0, f.sst, f.sh]);   // the whole path, wave stage and post-tropical stage included, with the sea temperature and shear it saw
-    return { id: S.id, origin: S.origin, th: S.th, named: S.namedHour >= 0, peak: Math.max(0, ...tcFx.map((f) => f.v)), ace: S.ace, td: S.tdHour, nh: S.namedHour, ri, win, riAny, end: S.endReason || (S.alive ? 'alive' : ''), maxLat: fx.reduce((a, f) => Math.max(a, f.lat), -90), lastLat: fx.length ? fx[fx.length - 1].lat : null,
-      etLat: (fx.find((f) => f.th === 'ex') || {}).lat, etV: (fx.find((f) => f.th === 'ex') || {}).v,
-      sub: tcFx.some((f) => f.th === 'sc'), subNamed: fx.some((f) => f.st === 'SS'), et: S.namedHour >= 0 && fx.some((f) => f.th === 'ex'), hours: nf && lastN ? lastN.h - nf.h : 0,
-      tdMonth: S.tdHour >= 0 ? mon(S.tdHour) : -1, namedMonth: S.namedHour >= 0 ? mon(S.namedHour) : -1,
-      gen: first ? [first.lat, first.lon, first.v, first.sst, first.sh, first.rh, first.h] : null, genN: nf ? [nf.lat, nf.lon, nf.v, nf.sst, nf.sh, nf.rh] : null, rows, trk, kind: S.kind, sub0: S.sub };
-  });
-  for (const st of out.storms) { if (st.tdMonth >= 0) out.depByMonth[st.tdMonth]++; if (st.namedMonth >= 0) out.namedByMonth[st.namedMonth]++; }
-  out.diag = m.diagPacked ? m.diagPacked() : null; out.waves = m.n.W; out.seeds = m.n.N;
-  out.lows = m.lows.done.concat(m.lows.tracks.filter((t) => t.alive).map((t) => [t.born, m.hour, t.n, t.pmin])).map((r) => [mon(r[0]), r[2], Math.round(r[3]), r[1] - r[0]]);   // [month, fixes, deepest hPa, hours]
-  return out;
-}
-function stormsReset() {
-  stormMgr = HFStorms.create({ seed: stormSeed(), startMs: START_MS, hour0: simHour, auto: stormAuto, autoRate: stormActivity, maps: stormMapsNow() });
-  stormLab = null; shadow = null; stormFieldsDirty = true; kfBreak = true; kfFieldHour = -1; stormSel = null; stormHot = null; stormHits = []; stormsDirty = true;
-  sumArch = 0; if (sumOpen) closeSummary();
-  const card = $('storm-card'), tip = $('storm-tip'); if (card) card.hidden = true; if (tip) tip.style.display = 'none';
-  updateSeasonBar();
-}
-function stormEnvChanged() { stormFieldsDirty = true; kfBreak = true; shadowStale(); markDirty(); }             // a slider / ENSO / seed change: the storms see the new weather at the next keyframe (the steering is not carried across the change)
-function stormsAdvance(n) {
-  if (!stormMgr) stormsReset();
-  if (kfFieldHour < 0) stormKeyframe(true);                        // first use after a (re)start: keyframe at the current hour
-  let left = n;
-  while (left > 0) {
-    const k = Math.min(left, STORM_KEY_H - (((simHour % STORM_KEY_H) + STORM_KEY_H) % STORM_KEY_H));
-    simHour += k;
-    if (simHour % 24 === 0) stepDay();                               // a sub-chunk never crosses midnight: it ends exactly on it
-    jetClockH += k * P.jetSpeed;
-    left -= k;
-    stormMgr.advanceTo(simHour, stormEnv);                           // every hour runs on the keyframe taken at or before its start
-    if (stormMgr.archive.length !== sumArch) seasonEnded();            // Jan 1: the finished season's paths are gone; show how it went
-    if (stormLab) for (const m of stormLab) m.advanceTo(simHour, stormEnv);
-    if (simHour % STORM_KEY_H === 0) {
-      const midnight = simHour % 24 === 0;
-      if (midnight) { const d = Math.floor(simHour / 24); advanceSynDraws(d); advanceShearSynDraws(d); }
-      stormKeyframe(midnight || stormFieldsDirty);
-    }
-  }
-  dirty = true; stormsDirty = true; updateSeasonBar(); markDirty();
-}
-function stormsSwitch(on) {
-  if (on === stormsOn) return stormsOn;
-  stormsOn = !!on;
-  if (!stormsOn && typeof placeSet === 'function') placeSet(false);
-  if (stormsOn) stormsReset();                                     // storms resume from the current hour with a fresh season
-  stormsDirty = true; drawStorms(); updateSeasonBar();
-  return stormsOn;
-}
-
-/* ---- the whole weather as data: capture / restore ---------------------------------------------------------------------------------------
-   Everything that makes the next hour of weather what it is: the three random streams, every generator state (the daily weather modes,
-   the synoptic humidity and shear fields with their fine day-before / day-after caches, the jet's history, the steering modes, ENSO
-   and its history, the eddies) and the clocks. Taking it, running the weather forward, and putting it back leaves the live sim exactly
-   where it was -- that is how the Place preview looks ahead (shadow environment) -- and writing it to disk is what a saved game is.
-   `computeField()` etc. recompute every derived array on the next call (anomDirty / stStamp).                                          */
-function simCapture() {
-  const c32 = (a) => new Float32Array(a);
-  return {
-    rs, jrs, strs, simHour, dayCount, jetClockH, jetNewest, gsShift, nextShed, lcDip, ensoZr, ensoZi, n34, ensoHi, ensoHold, ensoHeld, lastSynDay, lastShearSynDay, synDay, shearSynDay, synFineDay, shearSynFineDay,
-    pc: c32(pc), pcH: c32(pcH), pcS: c32(pcS), ensoHist: c32(ensoHist), humidSynC: c32(humidSynC), shearSynC: c32(shearSynC), humidSynCd: c32(humidSynCd), shearSynCd: c32(shearSynCd), pcStPrev: c32(pcStPrev), pcStCur: c32(pcStCur),
-    humidSynPrev: c32(humidSynPrev), humidSynCur: c32(humidSynCur), shearSynPrev: c32(shearSynPrev), shearSynCur: c32(shearSynCur),
-    eddies: eddies.map((e) => Object.assign({}, e)), jetHist: new Map(Array.from(jetHist, ([k, v]) => [k, c32(v)])),
-  };
-}
-/* The light version, what a saved game keeps: everything simCapture() holds except the four fine daily snapshots (several MB). Each of those is the
-   upsampled coarse generator state of one day, and the generators keep that state (humidSynCd / humidSynC, shearSynCd / shearSynC), so only
-   the coarse states are written (as base64 of their float32 bytes: exact) and the snapshots are rebuilt on restore. */
-function f32b64(a) { const u = new Uint8Array(a.buffer, a.byteOffset, a.byteLength); let t = ''; for (let i = 0; i < u.length; i += 8192) t += String.fromCharCode.apply(null, u.subarray(i, i + 8192)); return btoa(t); }
-function b64f32(str, into) { const bin = atob(str), u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); const f = new Float32Array(u.buffer); if (into) { into.set(f); return into; } return f; }
-function lightArrays() { return [['pc', pc], ['pcH', pcH], ['pcS', pcS], ['ensoHist', ensoHist], ['humidSynC', humidSynC], ['humidSynCd', humidSynCd], ['shearSynC', shearSynC], ['shearSynCd', shearSynCd], ['pcStPrev', pcStPrev], ['pcStCur', pcStCur]]; }
-function simCaptureLight() {
-  return {
-    rs, jrs, strs, simHour, dayCount, jetClockH, jetNewest, gsShift, nextShed, lcDip, ensoZr, ensoZi, n34, ensoHi, ensoHold, ensoHeld, lastSynDay, lastShearSynDay, synDay, shearSynDay,
-    f32: Object.fromEntries(lightArrays().map(([k, a]) => [k, f32b64(a)])),
-    eddies: eddies.map((e) => Object.assign({}, e)), jetHist: Array.from(jetHist, ([k, v]) => [k, f32b64(v)]),
-  };
-}
-function simRestoreLight(s) {
-  rs = s.rs; jrs = s.jrs; strs = s.strs; simHour = s.simHour; dayCount = s.dayCount; jetClockH = s.jetClockH; jetNewest = s.jetNewest; gsShift = s.gsShift; nextShed = s.nextShed; lcDip = s.lcDip;
-  ensoZr = s.ensoZr; ensoZi = s.ensoZi; n34 = s.n34; ensoHi = s.ensoHi; ensoHold = s.ensoHold; ensoHeld = s.ensoHeld; lastSynDay = s.lastSynDay; lastShearSynDay = s.lastShearSynDay; synDay = s.synDay; shearSynDay = s.shearSynDay;
-  for (const [k, a] of lightArrays()) b64f32(s.f32[k], a);
-  eddies = s.eddies.map((e) => Object.assign({}, e)); jetHist.clear(); for (const [k, v] of s.jetHist) jetHist.set(k, b64f32(v));
-  synFineDay = -999; shearSynFineDay = -999;
-  if (synDay > -900) { upsample(humidSynCd, humidSynPrev); upsample(humidSynC, humidSynCur); synFineDay = synDay; }          // Prev is the generator on day synDay, Cur the day after
-  if (shearSynDay > -900) { upsample(shearSynCd, shearSynPrev); upsample(shearSynC, shearSynCur); shearSynFineDay = shearSynDay; }
-  anomDirty = true; sAnomDirty = true; stStamp = ''; dirty = true;
-}
-function simRestore(s) {
-  rs = s.rs; jrs = s.jrs; strs = s.strs; simHour = s.simHour; dayCount = s.dayCount; jetClockH = s.jetClockH; jetNewest = s.jetNewest; gsShift = s.gsShift; nextShed = s.nextShed; lcDip = s.lcDip;
-  ensoZr = s.ensoZr; ensoZi = s.ensoZi; n34 = s.n34; ensoHi = s.ensoHi; ensoHold = s.ensoHold; ensoHeld = s.ensoHeld; lastSynDay = s.lastSynDay; lastShearSynDay = s.lastShearSynDay; synDay = s.synDay; shearSynDay = s.shearSynDay; synFineDay = s.synFineDay; shearSynFineDay = s.shearSynFineDay;
-  pc.set(s.pc); pcH.set(s.pcH); pcS.set(s.pcS); ensoHist.set(s.ensoHist); humidSynC.set(s.humidSynC); shearSynC.set(s.shearSynC); humidSynCd.set(s.humidSynCd); shearSynCd.set(s.shearSynCd); pcStPrev.set(s.pcStPrev); pcStCur.set(s.pcStCur);
-  humidSynPrev.set(s.humidSynPrev); humidSynCur.set(s.humidSynCur); shearSynPrev.set(s.shearSynPrev); shearSynCur.set(s.shearSynCur);
-  eddies = s.eddies.map((e) => Object.assign({}, e)); jetHist.clear(); for (const [k, v] of s.jetHist) jetHist.set(k, new Float32Array(v));
-  anomDirty = true; sAnomDirty = true; stStamp = ''; dirty = true;
-}
-
-/* ---- shadow environment: the weather of the next days, for the Place preview ----------------------------------------------------------------
-   The weather is a pure function of the seed, the settings and the clock, so "what will the steering / SST / humidity / shear be in 5 days" is
-   answered by running the weather itself forward from a captured copy of its state and putting the state back (simCapture / simRestore): the
-   keyframes it takes on the way (steering every 3 h, the fields every 00Z) are exactly the ones the live engine will take when the clock gets there,
-   so a system placed now follows its preview. Nothing here touches the live engine or its keyframes. ~0.4 s for 7 days; the arrays are pooled.     */
-const SHADOW_H = 7 * 24 + 6;
-let shadow = null, shadowPool = null;
-function shadowBuild() {
-  if (kfFieldHour < 0) stormKeyframe(true);                               // the engine's own keyframes must exist before they are copied
-  if (!shadowPool) shadowPool = { kf: Array.from({ length: 40 }, () => ({ h: 0, u: mkU(), v: mkU(), p: new Float32Array(SN) })),
-    fd: Array.from({ length: 10 }, () => ({ h: 0, ref: 28.2, sst: new Float32Array(NSF), humid: new Float32Array(NSF), shear: new Float32Array(NSF), lake: new Float32Array(LAKES.length) })), sU: mkU(), sV: mkU() };
-  const Pl = shadowPool, t0 = simHour, snap = simCapture(), wasDirty = dirty;
-  let nk = 0, nf = 0;
-  const putKf = (h, U, V, Pk) => { const k = Pl.kf[nk++]; k.h = h; for (let i = 0; i < 3; i++) { k.u[i].set(U[i]); k.v[i].set(V[i]); } k.p.set(Pk); };
-  putKf(kfHour0, kfU0, kfV0, kfP0); putKf(kfHour, kfU, kfV, kfP);                          // what the live engine is on right now (and the keyframe before it, which its steering is carried forward from)
-  { const f = Pl.fd[nf++]; f.h = kfFieldHour; f.ref = kfSstRef; f.sst.set(kfSst); f.humid.set(kfHumid); f.shear.set(kfShear); f.lake.set(kfLake); }
-  try {
-    let left = SHADOW_H;
-    while (left > 0) {
-      const k = Math.min(left, STORM_KEY_H - (((simHour % STORM_KEY_H) + STORM_KEY_H) % STORM_KEY_H));
-      simHour += k;
-      if (simHour % 24 === 0) stepDay();
-      jetClockH += k * P.jetSpeed; left -= k;
-      if (simHour % STORM_KEY_H === 0) {
-        const midnight = simHour % 24 === 0;
-        if (midnight) { const d = Math.floor(simHour / 24); advanceSynDraws(d); advanceShearSynDraws(d); }
-        steerUpdate();
-        putKf(simHour, [stU.shallow, stU.medium, stU.deep], [stV.shallow, stV.medium, stV.deep], stPt);
-        if (midnight) { const f = Pl.fd[nf++]; f.h = simHour; computeStormFields(f.sst, f.humid, f.shear); stormLakes(f.lake); f.ref = mdrMeanSst(f.sst); }
-      }
-    }
-  } finally { simRestore(snap); steerUpdate(); dirty = wasDirty; }        // the live state goes back to NOW; the map's own fields were never touched (the look-ahead works on the storm grid), so they are not recomputed
-  shadow = { t0, nk, nf, pool: Pl, cache: new Map() };
-}
-function shadowEnv(h) {                                                   // the environment for hour h: the latest keyframes at or before it, the steering carried forward to the hour exactly as the live engine does
-  const sh = shadow, Pl = sh.pool; let i = sh.nk - 1, j = sh.nf - 1;
-  while (i > 1 && Pl.kf[i].h > h) i--;
-  while (j > 0 && Pl.fd[j].h > h) j--;
-  const k = Pl.kf[i], k0 = Pl.kf[i - 1];
-  carrySteer(h, k.u, k.v, k0.u, k0.v, k.h, k0.h, Pl.sU, Pl.sV);
-  let e = sh.cache.get(j);
-  if (!e) { const f = Pl.fd[j]; e = envFrom(Pl.sU, Pl.sV, null, f.sst, f.humid, f.shear, f.ref, f.lake); sh.cache.set(j, e); }
-  return e;
-}
-function shadowStale() { shadow = null; if (placeMode) placeRefresh(); }   // sliders, ENSO, a new seed: the look-ahead is of a different weather now
-
-/* ---- Place mode: a white dot at the pointer, the forecast of what would happen to a system put there ---------------------------------------- */
-const PLACE_NAMES = { wave: 'tropical wave', td: 'tropical depression', sd: 'subtropical depression', low: 'low-pressure area' };
-let placeMode = false, placeKind = 'wave', placeAtLL = null, placePrev = null, placeWasPlaying = false, placeQueued = false;
-function placeSet(on) {
-  if (!stormsOn || !stormMgr) on = false;
-  if (on === placeMode) return placeMode;
-  placeMode = on;
-  document.body.classList.toggle('placing', on);
-  $('b-place').setAttribute('aria-pressed', on ? 'true' : 'false');
-  $('place-menu').hidden = !on;
-  map.doubleClickZoom[on ? 'disable' : 'enable']();
-  if (on) { placeWasPlaying = playing; if (playing) setPlaying(false); closeStormCard(); $('storm-tip').style.display = 'none'; setTimeout(() => { if (placeMode && (!shadow || simHour - shadow.t0 >= 24)) { shadowBuild(); placeRefresh(); } }, 30); }      // a look-ahead from an earlier session is rebuilt now, not at the first move of the pointer
-  else { if (placeWasPlaying) setPlaying(true); placeAtLL = null; placePrev = null; }
-  stormsDirty = true; drawStorms();
-  return placeMode;
-}
-function placeRefresh() {                                                 // recompute the forecast for the pointer and redraw (one per frame at most)
-  if (placeQueued) return; placeQueued = true;
-  requestAnimationFrame(() => {
-    placeQueued = false;
-    if (!placeMode) return;
-    if (placeAtLL && stormMgr) {
-      if (!shadow || simHour - shadow.t0 >= 24) shadowBuild();
-      placePrev = stormMgr.forecast({ kind: placeKind, lat: placeAtLL.lat, lon: placeAtLL.lng }, { at: shadowEnv }, 7 * 24);
-    } else placePrev = null;
-    stormsDirty = true; drawStorms();
-  });
-}
-function placeCommit(ll) {
-  if (!placeMode || !stormMgr) return;
-  const S = stormMgr.place({ kind: placeKind, lat: ll.lat, lon: ll.lng });
-  placeSet(false);
-  updateSeasonBar(); stormsDirty = true; drawStorms(); markDirty();
-  return S;
-}
-function placeSummary(F) {                                                // one line for the label next to the dot
-  if (!F || !F.fixes.length) return '';
-  const fx = F.fixes, t0 = fx[0].h, day = (h) => (h - t0) / 24, when = (d) => (d < 1 ? 'within a day' : 'by day ' + (d < 10 ? d.toFixed(1) : Math.round(d)));
-  if (placeKind === 'low') {
-    const vmax = fx.reduce((a, f) => Math.max(a, f.v), 0), last = fx[fx.length - 1];
-    return 'Low-pressure area' + (vmax >= 25 ? ' · up to ' + HFStorms.ktToMph(vmax) + ' mph' : '') + (F.alive ? ' · still there on day 7' : ' · gone ' + when(day(last.h)));
-  }
-  if (!F.developed) return placeKind === 'wave' ? 'Does not develop' : 'Fizzles';
-  const pk = F.peak, pf = fx.find((f) => f.h === pk.h) || fx[0], c = HFStorms.category(pk.v), mph = HFStorms.ktToMph(pk.v);
-  const kind = pf.th === 'sc' ? (pk.v >= 34 ? 'Subtropical storm' : 'Subtropical depression') : c.cat >= 1 ? 'Cat ' + c.cat + ' hurricane' : pk.v >= 34 ? 'Tropical storm' : 'Tropical depression';
-  return kind + ' · peak ' + mph + ' mph · ' + when(day(pk.h));
-}
-function drawPlacePreview(g, toPx) {
-  if (!placeAtLL) return;
-  const p0 = toPx(placeAtLL.lat, placeAtLL.lng), F = placePrev;
-  if (F && F.fixes.length > 1) {
-    const pts = F.fixes.map((f) => { const p = toPx(f.lat, f.lon); return { x: p.x, y: p.y, f }; }), n = pts.length;
-    g.save(); g.lineJoin = 'round'; g.lineCap = 'round';
-    for (let i = 1; i < n; i++) {                                         // fades with lead time: solid for three days, then thinning out
-      const lead = (pts[i].f.h - pts[0].f.h) / 24, a = lead < 3 ? 0.95 : Math.max(0.28, 0.95 - (lead - 3) * 0.17);
-      g.globalAlpha = a; g.setLineDash(lead > 5 ? [4, 5] : []);
-      g.lineWidth = 5; g.strokeStyle = 'rgba(8,10,16,.55)'; g.beginPath(); g.moveTo(pts[i - 1].x, pts[i - 1].y); g.lineTo(pts[i].x, pts[i].y); g.stroke();
-      g.lineWidth = 2.6; g.strokeStyle = pts[i].f.th === 'wv' ? 'rgba(255,255,255,.6)' : stormColor(pts[i].f); g.beginPath(); g.moveTo(pts[i - 1].x, pts[i - 1].y); g.lineTo(pts[i].x, pts[i].y); g.stroke();
-    }
-    g.setLineDash([]);
-    for (let i = 1; i < n; i++) {
-      const f = pts[i].f, lead = (f.h - pts[0].f.h) / 24; if (f.th === 'wv' || f.h % 6 !== 0) continue;
-      g.globalAlpha = lead < 3 ? 0.95 : Math.max(0.28, 0.95 - (lead - 3) * 0.17);
-      stormShape(g, shapeOf(f.th), pts[i].x, pts[i].y, 3.6, stormColor(f), 'rgba(8,10,16,.85)', 1.1);
-    }
-    g.restore();
-    const txt = placeSummary(F);
-    if (txt) {
-      g.save(); g.font = '600 12px system-ui, sans-serif'; g.textAlign = 'left'; g.textBaseline = 'middle';
-      const pr = $('panel'), limitX = pr.classList.contains('collapsed') ? W : Math.min(W, pr.getBoundingClientRect().left);        // keep the label on the free part of the map
-      const w = g.measureText(txt).width + 14, x = Math.max(8, Math.min(p0.x + 14, limitX - w - 8)), y = Math.min(Math.max(18, p0.y - 22), H - 96);
-      g.fillStyle = 'rgba(10,14,24,.88)'; g.beginPath(); g.roundRect(x, y - 11, w, 22, 8); g.fill(); g.fillStyle = '#fff'; g.fillText(txt, x + 7, y + 0.5);
-      g.restore();
-    }
-  }
-  g.beginPath(); g.arc(p0.x, p0.y, 6.5, 0, Math.PI * 2); g.fillStyle = '#ffffff'; g.fill(); g.lineWidth = 2; g.strokeStyle = 'rgba(8,10,16,.9)'; g.stroke();
-}
-
-/* ---- labels, colours, shapes ---------------------------------------------------------------------------------------- */
-const STORM_COL = { TD: '#3d8bff', TS: '#2fd27a', C1: '#ffe14a', C2: '#ffa534', C3: '#ff4d3d', C4: '#e53fb5', C5: '#a45dff', EX: '#a9a9a9' };
-const NUM_WORD = ['Zero', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen', 'Twenty', 'Twenty-One', 'Twenty-Two', 'Twenty-Three', 'Twenty-Four', 'Twenty-Five', 'Twenty-Six', 'Twenty-Seven', 'Twenty-Eight', 'Twenty-Nine', 'Thirty'];
-const numWord = (k) => NUM_WORD[k] || String(k);
-function stormColor(fix) { if (fix.th === 'ex' || fix.th === 'nl') return STORM_COL.EX; return STORM_COL[HFStorms.category(fix.v).short] || STORM_COL.TD; }
-function stormDate(h) { const d = simDate(h); return String(d.getUTCHours()).padStart(2, '0') + 'Z ' + MON[d.getUTCMonth()] + ' ' + d.getUTCDate(); }
-function stormDateFull(h) { const d = simDate(h); return String(d.getUTCHours()).padStart(2, '0') + 'z ' + MON[d.getUTCMonth()] + ' ' + d.getUTCDate() + ' ' + d.getUTCFullYear(); }
-function stormKindName(S, fix) {                                    // the long status text of a fix
-  if (fix.th === 'ex') return 'Extratropical (post-tropical)';
-  if (fix.th === 'nl') return S.depNum > 0 ? 'Remnant low' : 'Non-tropical low';
-  if (fix.th === 'wv') return fix.st === 'DB' ? 'Disturbance' : fix.st === 'LO' ? 'Low-pressure area' : 'Tropical wave';
-  if (fix.th === 'sc') return fix.v >= 34 ? 'Subtropical Storm' : 'Subtropical Depression';
-  const c = HFStorms.category(fix.v);
-  return c.cat >= 3 ? 'Major Hurricane (Cat ' + c.cat + ')' : c.name;
-}
-function stormTitle(S, fix) {                                       // "Bertha", or "Tropical Depression Three" before it has a name
-  if (S.name) return S.name;
-  if (fix.th === 'nl' && S.depNum === 0) return 'Low ' + S.id;
-  if (S.depNum > 0) return (fix.th === 'sc' ? 'Subtropical Depression ' : 'Tropical Depression ') + numWord(S.depNum);
-  return S.id;
-}
-function stormShortLabel(S, fix) {
-  if (fix.th === 'nl' && S.depNum === 0) return 'Low';
-  if (S.name) return (fix.th === 'ex' ? 'EX ' : fix.th === 'nl' ? 'L ' : '') + S.name;
-  return (fix.th === 'sc' ? 'SD ' : fix.th === 'ex' ? 'EX ' : 'TD ') + (S.depNum || '');
-}
-function stormShape(g, shape, x, y, r, fill, stroke, lw) {          // circle (tropical), square (subtropical), triangle (extratropical)
-  g.beginPath();
-  if (shape === 'square') g.rect(x - r, y - r, 2 * r, 2 * r);
-  else if (shape === 'triangle') { g.moveTo(x, y - r * 1.15); g.lineTo(x + r, y + r * 0.85); g.lineTo(x - r, y + r * 0.85); g.closePath(); }
-  else g.arc(x, y, r, 0, Math.PI * 2);
-  g.fillStyle = fill; g.fill(); if (stroke) { g.lineWidth = lw || 1.4; g.strokeStyle = stroke; g.stroke(); }
-}
-const shapeOf = (th) => (th === 'sc' ? 'square' : th === 'ex' ? 'triangle' : 'circle');
-
-/* ---- drawing -------------------------------------------------------------------------------------------------------- */
-function drawStorms() {
-  stormsDirty = false;
-  const g = stormCanvas.getContext('2d'); g.setTransform(DPR, 0, 0, DPR, 0, 0); g.clearRect(0, 0, W, H);
-  stormHits = [];
-  if (!stormsOn || !stormMgr) return;
-  const toPx = (lat, lon) => map.latLngToContainerPoint([lat, lon]);
-  const only = stormSel ? stormSel.id : null;                       // a selected system is shown alone: every other path, wave and low disappears until it is deselected
-  const showWaves = $('stwaves').checked && !only, showLows = $('stlows').checked && !only, showDist = $('stdist').checked && !only, showNames = $('stlabels').checked;
-  // precursors are one lifecycle: a wave (dashed line) or a low (L) that has the potential to become a cyclone turns into a disturbance (X in a dashed ring), then a depression
-  const drawLow = (p, hPa) => {
-    g.beginPath(); g.arc(p.x, p.y, 10, 0, 7); g.fillStyle = '#d6532f'; g.fill(); g.lineWidth = 2; g.strokeStyle = '#fff'; g.stroke();
-    g.fillStyle = '#fff'; g.font = '700 12px system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('L', p.x, p.y + 0.5);
-    const tx = String(Math.round(hPa)); g.font = '600 11px system-ui, sans-serif'; const tw = g.measureText(tx).width + 10;
-    g.fillStyle = 'rgba(10,14,24,.82)'; g.beginPath(); g.roundRect(p.x - tw / 2, p.y + 12, tw, 16, 8); g.fill(); g.fillStyle = '#fff'; g.fillText(tx, p.x, p.y + 20.5);
-  };
-  const drawDist = (p, col) => {
-    g.save(); g.lineCap = 'round'; g.setLineDash([3, 3]); g.lineWidth = 3.5; g.strokeStyle = 'rgba(20,12,4,.55)'; g.beginPath(); g.arc(p.x, p.y, 11, 0, 7); g.stroke();
-    g.lineWidth = 1.8; g.strokeStyle = col; g.beginPath(); g.arc(p.x, p.y, 11, 0, 7); g.stroke();
-    g.setLineDash([]); g.lineWidth = 3.8; g.strokeStyle = 'rgba(20,12,4,.55)'; g.beginPath(); g.moveTo(p.x - 5, p.y - 5); g.lineTo(p.x + 5, p.y + 5); g.moveTo(p.x + 5, p.y - 5); g.lineTo(p.x - 5, p.y + 5); g.stroke();
-    g.lineWidth = 2; g.strokeStyle = col; g.beginPath(); g.moveTo(p.x - 5, p.y - 5); g.lineTo(p.x + 5, p.y + 5); g.moveTo(p.x + 5, p.y - 5); g.lineTo(p.x - 5, p.y + 5); g.stroke(); g.restore();
-  };
-  if (showLows || showDist) for (const t of stormMgr.lows.tracks) {
-    if (!t.alive || t.fixes.length < 3 || HFStorms.lowWeight(stormMgr.par, t.lat) < 0.05 || isLand(t.lat, t.lon)) continue;      // only the lows over water where a depression could still form (the engine weighs a low by its latitude: a ramp, not a window)
-    if (t.dist ? !showDist : !showLows) continue;
-    const p = toPx(t.lat, t.lon); if (p.x < -20 || p.y < -20 || p.x > W + 20 || p.y > H + 20) continue;
-    if (t.dist) {
-      drawDist(p, '#ffd27a');
-      const tx = String(Math.round(t.p)); g.font = '600 11px system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; const tw = g.measureText(tx).width + 10;
-      g.fillStyle = 'rgba(10,14,24,.82)'; g.beginPath(); g.roundRect(p.x - tw / 2, p.y + 14, tw, 16, 8); g.fill(); g.fillStyle = '#fff'; g.fillText(tx, p.x, p.y + 22.5);
-    } else drawLow(p, t.p);
-    stormHits.push({ x: p.x, y: p.y, r: 12, low: t });
-  }
-  if (showWaves || showLows || showDist) for (const S of stormMgr.systems) {
-    if (!S.alive || S.th !== 'wv') continue;
-    const stage = S.dist ? 'dist' : S.kind === 'N' ? 'low' : 'wave';                // the same system, drawn for the stage it has reached
-    if (stage === 'dist' ? !showDist : stage === 'low' ? !showLows : !showWaves) continue;
-    const p = toPx(S.lat, S.lon); if (p.x < -20 || p.y < -30 || p.x > W + 20 || p.y > H + 30) continue;
-    const col = stage === 'dist' ? '#ffd27a' : '#ffa24d';
-    if (S.fixes.length > 1) {                                                // where it came from: the faint dotted trail that becomes the depression's own if it develops
-      g.save(); g.setLineDash([2, 4]); g.lineWidth = 1.5; g.strokeStyle = 'rgba(255,255,255,.3)'; g.beginPath();
-      S.fixes.forEach((f, i) => { const q = toPx(f.lat, f.lon); if (i) g.lineTo(q.x, q.y); else g.moveTo(q.x, q.y); }); g.lineTo(p.x, p.y); g.stroke(); g.restore();
-    }
-    if (stage === 'dist') drawDist(p, col);
-    else if (stage === 'low') drawLow(p, S.p);
-    else {
-      g.save(); g.lineCap = 'round'; g.setLineDash([5, 4]);
-      g.lineWidth = 4; g.strokeStyle = 'rgba(20,12,4,.55)'; g.beginPath(); g.moveTo(p.x, p.y - 15); g.lineTo(p.x, p.y + 15); g.stroke();
-      g.lineWidth = 2; g.strokeStyle = col; g.beginPath(); g.moveTo(p.x, p.y - 15); g.lineTo(p.x, p.y + 15); g.stroke(); g.restore();
-    }
-    stormHits.push({ x: p.x, y: p.y, r: 13, wave: S });
-  }
-  const list = stormMgr.systems.filter((S) => (only ? S.id === only : S.depNum > 0 || (S.alive && S.th !== 'wv'))).sort((a, b) => (a.alive - b.alive) || (a.tdHour - b.tdHour) || (a.born - b.born));
-  g.lineJoin = 'round'; g.lineCap = 'round';
-  for (const S of list) {
-    const fx = S.fixes, pts = fx.map((f) => { const p = toPx(f.lat, f.lon); return { x: p.x, y: p.y, f }; });
-    if (S.alive) { const p = toPx(S.lat, S.lon), f = HFStorms.makeFix(S, stormMgr.hour, S.ace); f.lat = S.lat; f.lon = S.lon; pts.push({ x: p.x, y: p.y, f, live: true }); }
-    if (pts.length === 0) continue;
-    if (pts.every((q) => q.x < -60 || q.y < -60 || q.x > W + 60 || q.y > H + 60)) continue;
-    // pre-genesis trail: faint and dotted
-    let first = pts.findIndex((q) => q.f.th !== 'wv'); if (first < 0) first = pts.length;
-    if (first > 1) { g.save(); g.setLineDash([2, 4]); g.lineWidth = 1.5; g.strokeStyle = 'rgba(255,255,255,.35)'; g.beginPath(); g.moveTo(pts[0].x, pts[0].y); for (let i = 1; i <= Math.min(first, pts.length - 1); i++) g.lineTo(pts[i].x, pts[i].y); g.stroke(); g.restore(); }
-    const from = Math.max(0, first - 1);
-    // the track: dark halo, then the colour of each leg by the intensity at its end
-    g.lineWidth = 5.5; g.strokeStyle = 'rgba(8,10,16,.6)'; g.beginPath(); g.moveTo(pts[from].x, pts[from].y); for (let i = from + 1; i < pts.length; i++) g.lineTo(pts[i].x, pts[i].y); g.stroke();
-    for (let i = from + 1; i < pts.length; i++) { g.lineWidth = 3; g.strokeStyle = stormColor(pts[i].f); g.beginPath(); g.moveTo(pts[i - 1].x, pts[i - 1].y); g.lineTo(pts[i].x, pts[i].y); g.stroke(); }
-    // advisory dots every three hours: the six-hourly (synoptic) ones are the big dots, the ones between them small, so a peak that comes and goes quickly still shows; the first tropical fix is the white start dot
-    let startDone = false;
-    for (let i = from; i < pts.length; i++) {
-      const q = pts[i], f = q.f; if (q.live || f.th === 'wv') continue;
-      const white = !startDone && (f.th === 'tc' || f.th === 'sc'); if (white) startDone = true;
-      const syn = white || f.h % 6 === 0;
-      stormShape(g, shapeOf(f.th), q.x, q.y, syn ? 4.2 : 2.7, white ? '#ffffff' : stormColor(f), 'rgba(8,10,16,.85)', syn ? 1.3 : 0.9);
-      stormHits.push({ x: q.x, y: q.y, r: syn ? 8 : 6, S, f });
-    }
-    // the live head
-    const last = pts[pts.length - 1];
-    if (S.alive) {
-      const f = last.f; stormShape(g, shapeOf(S.th), last.x, last.y, 8.5, stormColor(f), '#ffffff', 2.2);
-      stormHits.push({ x: last.x, y: last.y, r: 13, S, f, live: true });
-    }
-    if (showNames) {
-      let lab = null;
-      if (S.alive) lab = { x: last.x, y: last.y, text: stormShortLabel(S, last.f), dx: 13 };
-      else { const pk = pts.find((q) => q.f.h === S.peakHour && !q.live) || pts[pts.length - 1]; lab = { x: pk.x, y: pk.y, text: stormShortLabel(S, pk.f), dx: 9 }; }
-      g.font = '600 12.5px system-ui, sans-serif'; g.textAlign = 'left'; g.textBaseline = 'middle';
-      g.lineWidth = 3.5; g.strokeStyle = 'rgba(8,10,16,.85)'; g.strokeText(lab.text, lab.x + lab.dx, lab.y); g.fillStyle = '#fff'; g.fillText(lab.text, lab.x + lab.dx, lab.y);
-    }
-  }
-  if (placeMode) drawPlacePreview(g, toPx);
-  // the selected fix / storm gets a ring
-  if (stormSel) {
-    const S = stormMgr.get(stormSel.id); const hit = stormHits.find((hh) => hh.S === S && (stormSel.h < 0 ? hh.live : hh.f && hh.f.h === stormSel.h));
-    if (hit) { g.lineWidth = 2.4; g.strokeStyle = '#ffffff'; g.beginPath(); g.arc(hit.x, hit.y, hit.r + 3, 0, 7); g.stroke(); }
-  }
-  if (stormSel && stormSel.h < 0 && performance.now() - lastStormCardAt > 400) { lastStormCardAt = performance.now(); fillStormCard(); }
-}
-function fillStormCard() {
-  const card = $('storm-card'); if (!card || !stormSel) return;
-  const S = stormMgr.get(stormSel.id); if (!S) { card.hidden = true; stormSel = null; return; }
-  const fx = S.fixes, f = stormSel.h < 0 ? HFStorms.makeFix(S, stormMgr.hour, S.ace) : fx.find((q) => q.h === stormSel.h);
-  if (!f) { card.hidden = true; stormSel = null; return; }
-  const d = HFStorms.describe(S, f), over = !!f.land;
-  $('sc-name').textContent = S.name || stormTitle(S, f);
-  $('sc-cat').textContent = stormKindName(S, f);
-  $('sc-mph').textContent = d.windMph; $('sc-p').textContent = d.pressure;
-  $('sc-peak').style.display = (f.h === S.peakHour && f.v === S.peakV && f.th !== 'wv') ? '' : 'none';
-  $('sc-ace').textContent = f.ace.toFixed(1);
-  $('sc-sh').textContent = f.sh + ' kt';
-  $('sc-gust').textContent = d.gustMph + ' mph (' + (over ? 'land' : 'water') + ')';
-  $('sc-mv').textContent = d.move.replace('nearly stationary', 'Stationary');
-  $('sc-sst').textContent = (f.sst * 9 / 5 + 32).toFixed(1) + ' °F';
-  $('sc-formed').textContent = S.tdHour >= 0 ? stormDateFull(S.tdHour) : '—';
-  $('sc-time').textContent = stormDate(f.h);
-  card.hidden = false;
-}
-function openStormCard(S, f, live) { stormSel = { id: S.id, h: live ? -1 : f.h }; lastStormCardAt = 0; fillStormCard(); stormsDirty = true; drawStorms(); }
-function closeStormCard() { stormSel = null; $('storm-card').hidden = true; stormsDirty = true; drawStorms(); }
-function stormPick(cx, cy) {
-  let best = null, bd = 1e9;
-  for (const h of stormHits) { const d = Math.hypot(cx - h.x, cy - h.y); if (d <= h.r && d < bd) { bd = d; best = h; } }
-  return best;
-}
-function stormHover(cx, cy) {
-  const tip = $('storm-tip'), h = stormsOn ? stormPick(cx, cy) : null;
-  const key = h ? (h.S ? h.S.id + ':' + (h.live ? 'live' : h.f.h) : h.low ? h.low.id : h.wave.id) : null;
-  if (key !== stormHot) { stormHot = key; stormCanvas.style.cursor = ''; }
-  if (!h) { tip.style.display = 'none'; map.getContainer().style.cursor = ''; return false; }
-  map.getContainer().style.cursor = 'pointer';
-  let title, lines;
-  if (h.low) { title = (h.low.dist ? 'Disturbance (low) ' : 'Low ') + h.low.id.slice(1); lines = [Math.round(h.low.p) + ' hPa · ' + h.low.fixes.length * 6 + ' h old']; }
-  else if (h.wave) { const S = h.wave; title = S.dist ? 'Disturbance' : S.kind === 'N' ? 'Low-pressure area' : 'Tropical wave'; lines = [fmtLL(S.lat, S.lon), HFStorms.compass((Math.atan2(S.cx, S.cy) / DEG + 360) % 360) + ' at ' + Math.round(Math.hypot(S.cx, S.cy)) + ' kt']; }
-  else {
-    const S = h.S, f = h.f, d = HFStorms.describe(S, f);
-    title = stormTitle(S, f);
-    lines = [stormKindName(S, f), d.windMph + ' mph (' + d.windKt + ' kt) · gusts ' + d.gustMph + ' mph', d.pressure + ' hPa · ' + (h.live ? 'now' : stormDate(f.h))];
-  }
-  tip.querySelector('b').textContent = title; tip.querySelector('div').innerHTML = lines.join('<br>');
-  const left = Math.max(8, Math.min(W - 236, cx + 16)), top = Math.max(8, Math.min(H - 110, cy + 16));
-  tip.style.left = left + 'px'; tip.style.top = top + 'px'; tip.style.display = 'block';
-  return true;
-}
-function stormClick(cx, cy) {
-  const h = stormsOn ? stormPick(cx, cy) : null;
-  if (h && h.S) openStormCard(h.S, h.f, !!h.live);
-  else if (stormSel) closeStormCard();
-}
-let seasonText = '';
-function updateSeasonBar() {
-  const el = $('season'); if (!el) return;
-  el.style.display = stormsOn && stormMgr ? '' : 'none';
-  if (!stormsOn || !stormMgr) return;
-  const s = stormMgr.stats(), t = String(s.year) + '|' + s.dep + '|' + s.named + '|' + s.hurr + '|' + s.major + '|' + s.cat5 + '|' + s.ace;
-  if (sumOpen && performance.now() - sumAt > 900) fillSummary();
-  if (t === seasonText) return; seasonText = t;
-  $('se-year').textContent = 'Atlantic ' + s.year; $('se-dep').textContent = s.dep; $('se-named').textContent = s.named; $('se-hurr').textContent = s.hurr;
-  $('se-major').textContent = s.major; $('se-c5').textContent = s.cat5; $('se-ace').textContent = s.ace.toFixed(1);
-}
-
-/* ---- the season summary: the totals against the real normals, the accumulated cyclone energy through the year, one row per storm ------------------ */
-const SUM = DATA.storms || null;                                     // the real 1991-2020 normals and daily ACE percentiles (tools/merge_data.mjs --storms)
-const sumF1 = (x) => (Math.round(x * 10) / 10).toFixed(1);
-const sumDay = (y, d) => { const t = new Date(Date.UTC(y, 0, 1 + d)); return MON[t.getUTCMonth()] + ' ' + t.getUTCDate(); };
-const sumYearDays = (y) => Math.round((Date.UTC(y + 1, 0, 1) - Date.UTC(y, 0, 1)) / 86400000);
-function sumNiceTop(v) { for (const t of [30, 60, 100, 150, 200, 250, 300, 350, 400, 500, 650, 800, 1000]) if (v <= t) return t; return Math.ceil(v / 250) * 250; }
-function openSummary(year) {
-  if (!stormMgr) return;
-  sumYear = year == null ? stormMgr.season.year : year; sumOpen = true;
-  closeStormCard(); $('storm-tip').style.display = 'none';
-  $('sum-card').hidden = false; $('se-sum').setAttribute('aria-expanded', 'true'); fillSummary();
-}
-function closeSummary() { sumOpen = false; sumGeo = null; $('sum-card').hidden = true; $('se-sum').setAttribute('aria-expanded', 'false'); }
-function sumStep(dir) {
-  const ys = stormMgr.seasonYears(), i = ys.indexOf(sumYear), j = i + dir;
-  if (i >= 0 && j >= 0 && j < ys.length) { sumYear = ys[j]; fillSummary(); }
-}
-function seasonEnded() {
-  const n = stormMgr.archive.length, e = stormMgr.archive[n - 1]; sumArch = n;
-  stormSel = null; $('storm-card').hidden = true; stormHot = null; $('storm-tip').style.display = 'none'; stormsDirty = true;
-  openSummary(e.year);
-}
-function fillSummary() {
-  const rec = stormMgr && stormMgr.seasonRecord(sumYear); if (!rec) { closeSummary(); return; }
-  sumAt = performance.now();
-  const ys = stormMgr.seasonYears(), i = ys.indexOf(rec.year);
-  $('sum-prev').disabled = i <= 0; $('sum-next').disabled = i < 0 || i >= ys.length - 1;
-  $('sum-title').textContent = 'Atlantic ' + rec.year;
-  const n = SUM ? SUM.normals : null;
-  $('sum-sub').textContent = (rec.current ? 'Season so far, to ' + sumDay(rec.year, rec.day) : rec.open ? 'Season over, a storm is still active' : 'Season complete') + (rec.from > 0 ? ' · counted from ' + sumDay(rec.year, rec.from) : '');
-  const cells = [['DEP', rec.dep, n && n.dep], ['NAMED', rec.named, n && n.named], ['HURR', rec.hurr, n && n.hurr], ['MAJOR', rec.major, n && n.major], ['CAT 5', rec.cat5, n && n.cat5], ['ACE', sumF1(rec.ace), n && n.ace]];
-  $('sum-tot').innerHTML = cells.map(([k, v, a]) => '<div><b>' + v + '</b><span>' + k + '</span><small>' + (a == null ? '' : 'avg ' + sumF1(a)) + '</small></div>').join('');
-  drawSumGraph(rec);
-  const tb = $('sum-table').querySelector('tbody'); tb.innerHTML = '';
-  $('sum-empty').hidden = rec.storms.length > 0; $('sum-table').style.display = rec.storms.length ? '' : 'none';
-  for (const s of rec.storms) {
-    const c = HFStorms.category(s.peakV), col = STORM_COL[c.short] || STORM_COL.TD, live = s.end == null;
-    const tr = document.createElement('tr'); if (live) tr.className = 'live'; tr.dataset.id = s.id;
-    const d0 = s.tdHour >= 0 ? simDate(s.tdHour) : null, d1 = s.end != null ? simDate(s.end) : null;
-    const dates = d0 ? MON[d0.getUTCMonth()] + ' ' + d0.getUTCDate() + ' – ' + (d1 ? (d1.getUTCMonth() === d0.getUTCMonth() ? '' : MON[d1.getUTCMonth()] + ' ') + d1.getUTCDate() : 'now') : '–';
-    tr.innerHTML = '<td><i style="background:' + col + '"></i><b>' + (s.name || 'TD ' + s.depNum) + '</b></td><td>' + c.short + ' · ' + HFStorms.ktToMph(s.peakV) + '<span class="u"> mph</span></td><td>' + (s.peakV > 0 ? s.peakP : '–') + '</td><td>' + dates + '</td><td>' + sumF1(s.ace) + '</td>';
-    tr.onclick = () => sumPick(s.id);
-    tb.appendChild(tr);
-  }
-}
-function sumPick(id) {                                              // a row of the table: fly to that storm and open its stat card (only while its track still exists)
-  const S = stormMgr.get(id); if (!S) return;
-  const f = S.alive ? null : (S.fixes.find((q) => q.h === S.peakHour) || S.fixes[S.fixes.length - 1]), pos = f || { lat: S.lat, lon: S.lon };
-  map.panTo([pos.lat, pos.lon]); openStormCard(S, f || HFStorms.makeFix(S, stormMgr.hour, S.ace), !f);
-}
-function drawSumGraph(rec) {
-  const cv = $('sum-graph'), w = Math.max(240, Math.round(cv.clientWidth) || 460), h = 172;
-  if (cv.width !== Math.round(w * DPR) || cv.height !== Math.round(h * DPR)) { cv.width = Math.round(w * DPR); cv.height = Math.round(h * DPR); }
-  const g = cv.getContext('2d'); g.setTransform(DPR, 0, 0, DPR, 0, 0); g.clearRect(0, 0, w, h);
-  const L = 34, R = 10, T = 10, B = 20, pw = w - L - R, ph = h - T - B, nd = sumYearDays(rec.year);
-  const cum = (a) => { let t = 0; return a.map((x) => (t += x)); };
-  const mine = cum(rec.aceDaily), last = rec.current ? Math.min(nd - 1, rec.day) : nd - 1;
-  const others = stormMgr.seasonYears().filter((y) => y !== rec.year).map((y) => ({ y, c: cum(stormMgr.seasonRecord(y).aceDaily), nd: sumYearDays(y) }));
-  const A = SUM ? SUM.ace : null;
-  let top = Math.max(mine[last] * 1.08, A ? A.p90[365] * 1.04 : 0, 40);
-  for (const o of others) top = Math.max(top, o.c[o.nd - 1] * 1.08);
-  top = sumNiceTop(top);
-  const X = (d) => L + pw * d / (nd - 1), Y = (v) => T + ph * (1 - v / top);
-  g.font = '11px system-ui, sans-serif'; g.textBaseline = 'middle';
-  const step = [10, 20, 25, 50, 100, 200].find((q) => top / q <= 5.01) || 250;
-  g.lineWidth = 1; g.strokeStyle = 'rgba(255,255,255,.08)'; g.fillStyle = 'rgba(255,255,255,.5)'; g.textAlign = 'right';
-  for (let v = 0; v <= top + 1e-9; v += step) { const y = Math.round(Y(v)) + 0.5; g.beginPath(); g.moveTo(L, y); g.lineTo(w - R, y); g.stroke(); g.fillText(String(v), L - 5, y); }
-  g.textAlign = 'center'; g.textBaseline = 'alphabetic';
-  for (let m = 0; m < 12; m++) {
-    const d0 = Math.round((Date.UTC(rec.year, m, 1) - Date.UTC(rec.year, 0, 1)) / 86400000), d1 = m < 11 ? Math.round((Date.UTC(rec.year, m + 1, 1) - Date.UTC(rec.year, 0, 1)) / 86400000) : nd;
-    if (m) { g.strokeStyle = 'rgba(255,255,255,.06)'; g.beginPath(); g.moveTo(Math.round(X(d0)) + 0.5, T); g.lineTo(Math.round(X(d0)) + 0.5, T + ph); g.stroke(); }
-    g.fillStyle = 'rgba(255,255,255,.5)'; g.fillText('JFMAMJJASOND'[m], X((d0 + d1) / 2), h - 6);
-  }
-  const band = (lo, hi, fill) => {                                   // a band between two real percentile curves
-    g.beginPath(); for (let d = 0; d < nd; d++) { const x = X(d), y = Y(A[hi][Math.min(d, 365)]); if (d) g.lineTo(x, y); else g.moveTo(x, y); }
-    for (let d = nd - 1; d >= 0; d--) g.lineTo(X(d), Y(A[lo][Math.min(d, 365)]));
-    g.closePath(); g.fillStyle = fill; g.fill();
-  };
-  if (A) {
-    band('p10', 'p90', 'rgba(127,166,255,.13)'); band('p25', 'p75', 'rgba(127,166,255,.22)');
-    g.save(); g.setLineDash([4, 3]); g.lineWidth = 1.2; g.strokeStyle = 'rgba(190,210,255,.6)'; g.beginPath();
-    for (let d = 0; d < nd; d++) { const x = X(d), y = Y(A.p50[Math.min(d, 365)]); if (d) g.lineTo(x, y); else g.moveTo(x, y); } g.stroke(); g.restore();
-  }
-  g.lineJoin = 'round';
-  for (const o of others) { g.lineWidth = 1.2; g.strokeStyle = 'rgba(255,255,255,.3)'; g.beginPath(); for (let d = 0; d < o.nd; d++) { const x = X(Math.min(d, nd - 1) * (nd - 1) / (o.nd - 1)), y = Y(o.c[d]); if (d) g.lineTo(x, y); else g.moveTo(x, y); } g.stroke(); }
-  const from = Math.max(0, rec.from - 1);
-  g.lineWidth = 2.4; g.strokeStyle = '#f2f2f2'; g.beginPath(); for (let d = from; d <= last; d++) { const x = X(d), y = Y(mine[d]); if (d > from) g.lineTo(x, y); else g.moveTo(x, y); } g.stroke();
-  const ex = X(last), ey = Y(mine[last]);
-  g.beginPath(); g.arc(ex, ey, 3.6, 0, 7); g.fillStyle = '#f2f2f2'; g.fill(); g.lineWidth = 1.5; g.strokeStyle = 'rgba(18,18,18,.9)'; g.stroke();
-  if (rec.current) { g.save(); g.setLineDash([2, 3]); g.strokeStyle = 'rgba(255,255,255,.35)'; g.beginPath(); g.moveTo(Math.round(ex) + 0.5, T); g.lineTo(Math.round(ex) + 0.5, T + ph); g.stroke(); g.restore(); }
-  const lab = sumF1(mine[last]); g.font = '600 11.5px system-ui, sans-serif'; g.textAlign = ex > w - 46 ? 'right' : 'left'; g.textBaseline = 'middle';
-  g.lineWidth = 3; g.strokeStyle = 'rgba(26,26,28,.9)'; g.strokeText(lab, ex + (ex > w - 46 ? -7 : 7), ey - 8); g.fillStyle = '#f2f2f2'; g.fillText(lab, ex + (ex > w - 46 ? -7 : 7), ey - 8);
-  sumGeo = { w, h, L, T, pw, ph, top, nd, last, endX: ex, endY: ey, value: mine[last] };
-  const med = A ? A.p50[Math.min(last, 365)] : null;
-  $('sum-cap').textContent = A ? 'Real seasons ' + SUM.years[0] + '–' + SUM.years[1] + ': the middle 50 % and 80 % are shaded, the median dashed.' + (rec.current ? ' By ' + sumDay(rec.year, last) + ' the median season had ' + Math.round(med) + ' ACE (10th–90th percentile ' + Math.round(A.p10[Math.min(last, 365)]) + '–' + Math.round(A.p90[Math.min(last, 365)]) + ').' : ' The median season ends on ' + Math.round(A.p50[365]) + '.') : '';
-}
-$('se-sum').onclick = () => { if (sumOpen) closeSummary(); else openSummary(); };
-$('sum-close').onclick = closeSummary;
-$('sum-prev').onclick = () => sumStep(-1); $('sum-next').onclick = () => sumStep(1);
-/* ==== STORM HOOKS END ==== */
+/*__STORM_HOOKS__*/
 
 
 function render() {
@@ -3379,11 +2507,7 @@ window.addEventListener('keydown', (e) => {
   if (e.code === 'Space') { e.preventDefault(); setPlaying(!playing); }
   else if (e.key === '[') $('b-slower').click(); else if (e.key === ']') $('b-faster').click();
   else if (e.key === 'r' || e.key === 'R') restart();
-  else if (e.key === 'Escape') { if (placeMode) placeSet(false); else if (!$('storm-card').hidden) closeStormCard(); else if (sumOpen) closeSummary(); }
-  else if (e.key === 'p' || e.key === 'P') placeSet(!placeMode);
 });
-$('b-place').onclick = () => placeSet(!placeMode);
-document.querySelectorAll('#place-menu button').forEach((b) => { b.onclick = () => { placeKind = b.dataset.kind; document.querySelectorAll('#place-menu button').forEach((x) => x.setAttribute('aria-checked', x === b ? 'true' : 'false')); placeRefresh(); }; });
 
 /* panel */
 $('collapse').onclick = () => { const p = $('panel'); p.classList.toggle('collapsed'); $('collapse').innerHTML = p.classList.contains('collapsed') ? '&#9656;' : '&#9662;'; };
@@ -3408,10 +2532,6 @@ map.on('zoom', updateDetailOpacity);
 $('op').oninput = () => { $('op-o').textContent = $('op').value + '%'; scheduleRender(); };
 $('l265').onchange = scheduleRender; $('l2').onchange = scheduleRender; $('jetline').onchange = scheduleRender;
 $('steerarrows').onchange = steerChanged; $('highs').onchange = steerChanged;
-$('stwaves').onchange = $('stlows').onchange = $('stdist').onchange = $('stlabels').onchange = () => { stormsDirty = true; drawStorms(); };
-$('st-auto').onchange = () => { stormAuto = $('st-auto').checked; if (stormMgr) stormMgr.auto = stormAuto; markDirty(); };
-$('p-stact').oninput = () => { stormActivity = parseFloat($('p-stact').value); $('p-stact-o').textContent = stormActivity.toFixed(1) + '×'; if (stormMgr) stormMgr.autoRate = stormActivity; markDirty(); };
-$('sc-close').onclick = closeStormCard;
 document.querySelectorAll('#seg-depth button').forEach((b) => b.onclick = () => { steerLayer = b.dataset.d; document.querySelectorAll('#seg-depth button').forEach((x) => x.setAttribute('aria-pressed', x === b)); drawSteerLegend(); drawSteer(); updateReadout(); });
 const sliders = [['p-warm', 'warming', (v) => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(1) + ' °C'], ['p-moist', 'moisture', (v) => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(0) + ' %'], ['p-shear', 'shearShift', (v) => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(0) + ' kt'], ['p-var', 'variability', (v) => v.toFixed(1) + '×'], ['p-wx', 'synoptic', (v) => v.toFixed(1) + '×'], ['p-wxs', 'shearSynoptic', (v) => v.toFixed(1) + '×'], ['p-jets', 'jetSpeed', (v) => v.toFixed(1) + '×'], ['p-sea', 'seasonal', (v) => v.toFixed(2).replace(/0$/, '') + '×'], ['p-feat', 'features', (v) => v.toFixed(2).replace(/0$/, '') + '×'], ['p-enso', 'enso', (v) => v.toFixed(2).replace(/0$/, '') + '×']];
 sliders.forEach(([id, key, fmt]) => { $(id).oninput = () => { P[key] = parseFloat($(id).value); $(id + '-o').textContent = fmt(P[key]); stormEnvChanged(); refresh(); }; });
@@ -3426,81 +2546,7 @@ $('seed-vary').onchange = () => { setSliderValues($('seed-vary').checked ? seedS
 $('seed').onchange = () => applySeed(parseFloat($('seed').value));
 $('b-newseed').onclick = () => applySeed(1 + Math.floor(Math.random() * 999999));
 
-/* ---- save / resume -------------------------------------------------------------------------------------------------------------------------
-   A season in progress is kept in localStorage as one JSON text (a few hundred KB): the weather (simCaptureLight(): the generators' states and the
-   clocks), the storms as plain JSON (positions, intensities, every fix, ACE, the season counters and the finished seasons) and what the controls say.
-   It is written synchronously, so it also lands while the page is being closed (an IndexedDB write started then is cut off: measured, 0-2 of 8
-   arrived), every few seconds while the clock runs, a moment after a change while it is paused, when the page is hidden and before the Menu link
-   navigates. A few bytes of metadata next to it let the main menu offer "Continue" without parsing the season. `?resume=1` restores it, paused. The
-   engine takes fresh keyframes of the fields and the steering at the restored hour, so the storms are exactly where they were and the weather around
-   them goes on from the same generators; the one thing a resume does not reproduce is the age of the keyframes the next hours would have used
-   (up to a day for the daily fields), which is why a season saved at midnight continues bit for bit and one saved at 17Z only statistically.
-   A page opened directly (a bookmark of the simulator, the built file) beside a saved season it did not resume leaves that season alone: it does not
-   save its own new one until Restart (an explicit new start) or Start in the menu has replaced the old save. Same browser only (nothing leaves the machine). */
-const SAVE_V = 1, SAVE_KEY = 'hf-save', SAVE_META = 'hf-save-meta', SAVE_EVERY_MS = [8000, 1200];   // while the clock runs, and while it is paused (after a change)
-const RESUME = /[?&]resume=1(?:&|$)/.test(location.search);
-function captureSave() {
-  return {
-    v: SAVE_V, sv: HFStorms.VERSION, basin: 'atlantic', savedAt: Date.now(), startMs: START_MS, n: N, sn: SN,
-    weather: simCaptureLight(), storms: JSON.stringify(stormMgr.serialize()),
-    kf0: simHour === kfHour && kfHour0 > -1e8 ? { h: kfHour0, u: kfU0.map((a) => f32b64(a)), v: kfV0.map((a) => f32b64(a)) } : null,        // saved on a keyframe hour: the keyframe before it too, so the steering the engine carries forward is the same one after the resume
-    ui: { seed: P.seed, P: Object.assign({}, P), sliders: Object.fromEntries(sliders.map(([id]) => [id, $(id).value])), seedVary: $('seed-vary').checked,
-      ensoHold, ensoHeld, ensoNow: $('p-ensonow').value, activity: stormActivity, auto: stormAuto, speedIdx },
-  };
-}
-function saveMeta(s) {
-  const st = stormMgr.stats(), d = simDate(simHour);
-  return { v: SAVE_V, basin: 'atlantic', name: 'Atlantic', year: st.year, hour: simHour, date: MON[d.getUTCMonth()] + ' ' + d.getUTCDate(), dep: st.dep, named: st.named, hurr: st.hurr, major: st.major, ace: st.ace, savedAt: s.savedAt };
-}
-function saveNow() {
-  if (!saveOwner || !stormsOn || !stormMgr || simHour < 24) return false;        // a season nobody has played for a day is not worth a Continue card
-  const stamp = saveStamp;
-  try {
-    const s = captureSave();
-    localStorage.setItem(SAVE_KEY, JSON.stringify(s)); localStorage.setItem(SAVE_META, JSON.stringify(saveMeta(s)));
-    savedStamp = stamp; saveLast = performance.now(); return true;
-  } catch (e) { return false; }                                                    // storage full or blocked: the previous save stays
-}
-function saveTick() { if (saveStamp !== savedStamp && performance.now() - saveLast >= SAVE_EVERY_MS[playing ? 0 : 1]) saveNow(); }
-function deleteSave() { try { localStorage.removeItem(SAVE_KEY); localStorage.removeItem(SAVE_META); } catch (e) { /* storage blocked */ } savedStamp = saveStamp; }
-function loadSave() { try { const t = localStorage.getItem(SAVE_KEY); return t ? JSON.parse(t) : null; } catch (e) { return null; } }
-function hasSaveMeta() { try { return !!localStorage.getItem(SAVE_META); } catch (e) { return false; } }          // storage that refuses access (blocked site data) is a page with nothing saved, not a page that cannot start
-function applySave(s) {
-  if (!s || s.v !== SAVE_V || s.sv !== HFStorms.VERSION || s.n !== N || s.sn !== SN || s.basin !== 'atlantic') throw new Error('this save belongs to another version');
-  START_MS = s.startMs; START_YEAR = new Date(START_MS).getUTCFullYear(); saveOwner = true;
-  const u = s.ui;
-  Object.assign(P, u.P); sliders.forEach(([id, key, fmt]) => { $(id).value = P[key]; $(id + '-o').textContent = fmt(P[key]); });   // the model's values are the truth, the controls follow
-  $('seed').value = u.seed; $('seed-vary').checked = u.seedVary;
-  ensoHold = u.ensoHold; ensoHeld = u.ensoHeld; $('enso-hold').checked = ensoHold; $('p-ensonow').value = u.ensoNow;
-  stormActivity = u.activity; stormAuto = u.auto; $('st-auto').checked = stormAuto; $('p-stact').value = stormActivity; $('p-stact-o').textContent = stormActivity.toFixed(1) + '×';
-  speedIdx = u.speedIdx; updateSpeedUI();
-  initSim(P.seed);                                                                // the static structure of this seed (waves, jet modes ...) and a throw-away new season
-  simRestoreLight(s.weather);
-  stormMgr = HFStorms.restore(JSON.parse(s.storms), { maps: stormMapsNow() });
-  stormLab = null; shadow = null; stormSel = null; stormHot = null; stormHits = []; stormsDirty = true; sumArch = stormMgr.archive.length; if (sumOpen) closeSummary();
-  lowsStamp = -1; kfBreak = true; stormKeyframe(true); stormFieldsDirty = false;      // fresh keyframes of the steering and the fields at the restored hour
-  if (s.kf0 && simHour === kfHour) { for (let i = 0; i < 3; i++) { b64f32(s.kf0.u[i], kfU0[i]); b64f32(s.kf0.v[i], kfV0[i]); } kfHour0 = s.kf0.h; wkHour = -1e9; stormEnv.beginHour(simHour); }
-  seasonText = ''; acc = 0; lastClock = ''; updateClock(); updateSeasonBar(); refresh();
-  savedStamp = saveStamp;                                                          // what was just loaded is what is on disk
-}
-function resumeFromSave() {
-  try {
-    const s = loadSave();
-    if (!s) { document.body.dataset.resume = 'none'; toast('There is no saved season to continue, so a new one has started.'); return false; }
-    applySave(s);
-    const d = simDate(simHour); document.body.dataset.resume = 'ok';
-    toast('Welcome back: Atlantic ' + stormMgr.season.year + ', ' + MON[d.getUTCMonth()] + ' ' + d.getUTCDate() + ', ' + String(d.getUTCHours()).padStart(2, '0') + 'Z. The clock is paused; press play to go on.');
-    return true;
-  } catch (e) {
-    document.body.dataset.resume = 'refused';
-    toast('The saved season could not be resumed (it may come from another version), so a new one has started.');
-    applySeed(1 + Math.floor(Math.random() * 999999));                             // a clean start (this also removes the unusable save)
-    return false;
-  }
-}
-document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && saveStamp !== savedStamp) saveNow(); });
-window.addEventListener('pagehide', () => { if (saveStamp !== savedStamp) saveNow(); });
-$('b-menu').addEventListener('click', () => { if (saveStamp !== savedStamp) saveNow(); });   // the link itself does the navigating
+/*__STORM_LATE__*/
 
 /* ------------------------------------------------------------------ *
  *  Start
@@ -3517,73 +2563,7 @@ $('loading').style.display = 'none';
 lastNow = performance.now(); requestAnimationFrame(frame);
 
 window.SSTSIM = {
-  storms(on) { return on === undefined ? stormsOn : stormsSwitch(on); },
-  stormState() { return stormMgr ? { on: stormsOn, hour: stormMgr.hour, stats: stormMgr.stats(), lows: stormMgr.lows.tracks.filter((t) => t.alive).length, seeds: Object.assign({}, stormMgr.n), systems: stormMgr.systems.map((S) => ({ id: S.id, name: S.name, th: S.th, st: HFStorms.statusOf(S), lat: S.lat, lon: S.lon, v: S.v, vr: S.vr, p: S.p, alive: S.alive, depNum: S.depNum, peakV: S.peakV, ace: S.ace, fixes: S.fixes.length, end: S.endReason, origin: S.origin })) } : null; },
-  stormJSON() { return JSON.stringify(stormMgr.serialize()); },
-  stormLabStart(sets, opts) { stormLab = sets.map((p) => { const m = HFStorms.create({ seed: stormSeed(), startMs: START_MS, hour0: simHour, auto: true, autoRate: stormActivity, params: p, maps: stormMapsNow() }); if (opts && opts.diag) m.enableDiag(); return m; }); return stormLab.length; },
-  stormMaps(raw) { stormMapsOverride = raw || null; return !!stormMapsNow(); }, stormMapsKeys() { const m = stormMapsNow(); return m ? Object.keys(m) : null; },
-  stormClimStart(grid, R) {
-    const n = grid.nx * grid.ny, lat = new Float64Array(n), lon = new Float64Array(n);
-    for (let j = 0; j < grid.ny; j++) for (let i = 0; i < grid.nx; i++) { lat[j * grid.nx + i] = grid.lat0 + j * grid.res; lon[j * grid.nx + i] = grid.lon0 + i * grid.res; }
-    stormClim = { n, lat, lon, R, steer: new Float64Array(12 * n * 6), ns: new Float64Array(12 * n), sst: new Float64Array(12 * n), rh: new Float64Array(12 * n), shear: new Float64Array(12 * n), rel: new Float64Array(12 * n), ne: new Float64Array(12 * n) };
-    return n;
-  },
-  stormClimGet() { const C = stormClim; stormClim = null; return C ? { n: C.n, steer: Array.from(C.steer), ns: Array.from(C.ns), sst: Array.from(C.sst), rh: Array.from(C.rh), shear: Array.from(C.shear), rel: Array.from(C.rel), ne: Array.from(C.ne) } : null; },
-  saveNow, deleteSave, loadSave() { const t = localStorage.getItem(SAVE_KEY), s = t && JSON.parse(t); return s ? { v: s.v, startMs: s.startMs, bytes: t.length, weatherBytes: JSON.stringify(s.weather).length, stormBytes: s.storms.length } : null; },
-  saveInfo() { return { stamp: saveStamp, saved: savedStamp, owner: saveOwner, meta: localStorage.getItem(SAVE_META) }; },
-  snapSave() { window.__save = JSON.stringify(captureSave()); return window.__save.length; }, snapLoad() { applySave(JSON.parse(window.__save)); return true; }, saveTick() { saveLast = -1e9; saveTick(); },
-  stormRecord(year) { return stormMgr ? stormMgr.seasonRecord(year == null ? stormMgr.season.year : year) : null; },
-  summary(on, year) { if (on === undefined) return { open: sumOpen, year: sumYear, geo: sumGeo }; if (on) openSummary(year); else closeSummary(); return sumOpen; },
-  place(on, kind) { if (kind) { placeKind = kind; document.querySelectorAll('#place-menu button').forEach((x) => x.setAttribute('aria-checked', x.dataset.kind === kind ? 'true' : 'false')); } return on === undefined ? placeMode : placeSet(on); },
-  placeAt(lat, lon) { placeAtLL = { lat, lng: lon }; if (!shadow) shadowBuild(); placePrev = stormMgr.forecast({ kind: placeKind, lat, lon }, { at: shadowEnv }, 7 * 24); stormsDirty = true; drawStorms(); return placePrev; },
-  placePx(lat, lon) { const p = map.latLngToContainerPoint([lat, lon]); return { x: p.x, y: p.y }; },
-  shadowBuild() { const t = performance.now(); shadowBuild(); return { ms: performance.now() - t, t0: shadow.t0, nk: shadow.nk, nf: shadow.nf }; },
-  placePreview() { return placePrev; }, placeLabel() { return placeSummary(placePrev); },
-  shadowInfo() { return shadow ? { t0: shadow.t0, nk: shadow.nk, nf: shadow.nf } : null; },
-  simCapture() { window.__snap = { weather: simCapture(), storms: stormMgr ? JSON.stringify(stormMgr.serialize()) : null }; return true; },
-  simRestore() { const s = window.__snap; simRestore(s.weather); if (s.storms) { stormMgr = HFStorms.restore(JSON.parse(s.storms), { maps: stormMapsNow() }); stormFieldsDirty = true; kfFieldHour = -1; } return true; },
-  stormLabRecord() { return stormLab ? stormLab.map(labRecord) : []; },
-  stormLabStop() { stormLab = null; },
-  stormPlace(spec) { const S = stormMgr.place(spec); stormsDirty = true; drawStorms(); markDirty(); return S.id; },
-  stormForce(id, patch) { const S = stormMgr.get(id); Object.assign(S, patch); stormsDirty = true; drawStorms(); return !!S; },
-  stormAuto(on) { stormAuto = !!on; if (stormMgr) stormMgr.auto = stormAuto; },
-  stormPx(id) { const S = stormMgr.get(id); if (!S) return null; const p = map.latLngToContainerPoint([S.lat, S.lon]); return { x: p.x, y: p.y }; },
-  stormFixPx(id, i) { const S = stormMgr.get(id); const f = S && S.fixes[i < 0 ? S.fixes.length + i : i]; if (!f) return null; const p = map.latLngToContainerPoint([f.lat, f.lon]); return { x: p.x, y: p.y, h: f.h, th: f.th }; },
-  stormDraw() { drawStorms(); }, stormDrawn() { return Array.from(new Set(stormHits.filter((h) => h.S).map((h) => h.S.id))); }, stormHover, stormClick,
-  stormDots(id) { return stormHits.filter((h) => h.S && h.S.id === id && !h.live).map((h) => ({ x: h.x, y: h.y, r: h.r, h: h.f.h, v: h.f.v, t: stormDate(h.f.h) })); },     // the advisory dots of one system as drawn: position, hit radius (8 six-hourly, 6 in between), hour, wind, time text
-  stormLowsSet(list) {                                                // the tracked lows are replaced by synthetic ones, each [lat, lon, hPa]; null puts the real ones back
-    if (!stormMgr) return 0;
-    if (list === null) { if (lowsKept) stormMgr.lows.tracks = lowsKept; lowsKept = null; }
-    else { if (!lowsKept) lowsKept = stormMgr.lows.tracks; stormMgr.lows.tracks = list.map(([lat, lon, p], i) => ({ id: 'T' + i, born: simHour, lat, lon, p, dx: 0, dy: 0, miss: 0, alive: true, maxDepth: 1010 - p, n: 3, pmin: p, fixes: [[simHour - 12, lat, lon, p], [simHour - 6, lat, lon, p], [simHour, lat, lon, p]] })); }
-    stormsDirty = true; drawStorms(); return stormMgr.lows.tracks.length;
-  },
-  stormLowsDrawn() { return stormHits.filter((h) => h.low).map((h) => [h.low.lat, h.low.lon]); },
-  stormFieldCheck() {                                                  // the storm grid's fields against the map's fine fields at the nodes it keeps: the largest difference of each (they must be 0) and the nodes where only one is missing
-    const a = new Float32Array(NSF), b = new Float32Array(NSF), c = new Float32Array(NSF);
-    anomDirty = true; computeField();                                  // the map's fine fields as the state is now
-    const diff = (A, B, C) => {
-      const max = [0, 0, 0]; let nanMismatch = 0, nodes = 0;
-      for (let js = 0; js < NYS; js++) for (let is = 0; is < NXS; is++) {
-        const k = js * SS * NX + is * SS, ks = js * NXS + is; nodes++;
-        [[0, A, sst], [1, B, humid], [2, C, shear]].forEach(([q, X, F]) => { const x = X[ks], y = F[k]; if (x !== x || y !== y) { if ((x !== x) !== (y !== y)) nanMismatch++; return; } max[q] = Math.max(max[q], Math.abs(x - y)); });
-      }
-      return { max, nanMismatch, nodes };
-    };
-    const live = kfFieldHour === simHour ? diff(kfSst, kfHumid, kfShear) : null;      // what the engine reads right now, when its keyframe was taken at this very hour (a midnight): the way it got there is under test too
-    sAnomDirty = true; computeStormFields(a, b, c);
-    const fresh = diff(a, b, c);
-    let interp = 0, pts = 0;                                          // and the bilinear lookup between the nodes against the same weights written out by hand, at 400 scattered points
-    for (let n = 0; n < 400; n++) {
-      const lat = LAT1 - (NY - 1) * RES * (0.02 + 0.96 * ((n * 0.6180339887) % 1)), lon = LON0 + (NX - 1) * RES * (0.02 + 0.96 * ((n * 0.7548776662) % 1));
-      const fx = (lon - LON0) / (RES * SS), fy = (LAT1 - lat) / (RES * SS), i = Math.floor(fx), j = Math.floor(fy), ax = fx - i, ay = fy - j;
-      [[a, sst], [b, humid], [c, shear]].forEach(([A, F]) => {
-        const v = (jj, ii) => F[jj * SS * NX + ii * SS], ref = v(j, i) * (1 - ax) * (1 - ay) + v(j, i + 1) * ax * (1 - ay) + v(j + 1, i) * (1 - ax) * ay + v(j + 1, i + 1) * ax * ay, got = sampleFieldS(A, lat, lon);
-        if (ref === ref && got === got) { interp = Math.max(interp, Math.abs(ref - got)); pts++; }
-      });
-    }
-    return { max: fresh.max, nanMismatch: fresh.nanMismatch, nodes: fresh.nodes, live, interp, pts };
-  },
-  stormEnvSample(lat, lon) { return { hour: kfFieldHour, land: stormLand(lat, lon), sst: stormEnv.sst(lat, lon), rh: sampleFieldS(kfHumid, lat, lon), shear: sampleFieldS(kfShear, lat, lon), lake: lakeIdAt(lat, lon) }; },
+  ...STORM_API,
   advance(h) { advanceHours(h); updateClock(); refresh(); },
   sample(lat, lon) { return { sst: sampleField(sst, lat, lon), normal: sampleField(normal, lat, lon), humid: sampleField(humid, lat, lon), shear: sampleField(shear, lat, lon) }; },
   state() { return { simHour, seed: P.seed, date: simDate(simHour).toISOString(), eddies: eddies.length, gsShift }; },

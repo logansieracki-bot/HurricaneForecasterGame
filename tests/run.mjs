@@ -660,22 +660,27 @@ async function checkStorms(page, label) {
   // a slow machine (the processor throttled to a third): the clock falls behind instead of freezing the page, and what it owes is capped, so there is no burst of catching up when the machine recovers
   // (the first version of the live loop advanced everything that was owed in one frame: 9 frames in 3 s at this slowness instead of 22-26)
   await ev(() => { const S = window.SSTSIM, speedX = document.getElementById('speed-x'); S.applySeed(901); S.setPlaying(false); S.storms(true); S.stormAuto(true); S.tick(24 * 40); S.advance(0); while (speedX.textContent !== '16×') document.getElementById('b-faster').click(); });
+  // (both speeds: since the engine got lighter (a simulated day costs 17 ms, not 44) the frame's time budget no longer binds at 16x on a third of a processor, only at 64x -- with no budget the page then
+  // draws 5 frames in 3 s, one blocked for 1.2 s, and with no cap on the debt the clock owes 3,400 hours; at 16x the broken versions pass)
   const cdp = await page.context().newCDPSession(page);
-  let slow;
+  const slow = {};
   try {
     await cdp.send('Emulation.setCPUThrottlingRate', { rate: 3 });
-    slow = await ev(async () => {
-      const S = window.SSTSIM, speedX = document.getElementById('speed-x'), sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-      S.setPlaying(true); await sleep(700);
-      const h0 = S.state().simHour; let frames = 0, run = true; const raf = () => { frames++; if (run) requestAnimationFrame(raf); };
-      requestAnimationFrame(raf); await sleep(3000); run = false;
-      const owed = S.owedHours(), adv = S.state().simHour - h0; S.setPlaying(false); S.stormAuto(false);
-      while (speedX.textContent !== '1×') document.getElementById('b-slower').click();
-      return { frames, owed: Math.round(owed * 10) / 10, adv };
-    });
+    for (const sp of ['16×', '64×']) {
+      await ev((sp) => { const S = window.SSTSIM, speedX = document.getElementById('speed-x'); S.applySeed(901); S.setPlaying(false); S.storms(true); S.stormAuto(true); S.tick(24 * 40); S.advance(0); while (speedX.textContent !== '1×') document.getElementById('b-slower').click(); while (speedX.textContent !== sp) document.getElementById('b-faster').click(); }, sp);
+      slow[sp] = await ev(async () => {
+        const S = window.SSTSIM, speedX = document.getElementById('speed-x'), sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+        S.setPlaying(true); await sleep(700);
+        const h0 = S.state().simHour; let frames = 0, run = true; const raf = () => { frames++; if (run) requestAnimationFrame(raf); };
+        requestAnimationFrame(raf); await sleep(3000); run = false;
+        const owed = S.owedHours(), adv = S.state().simHour - h0; S.setPlaying(false); S.stormAuto(false);
+        while (speedX.textContent !== '1×') document.getElementById('b-slower').click();
+        return { frames, owed: Math.round(owed * 10) / 10, adv };
+      });
+    }
   } finally { await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 }); await cdp.detach(); }
-  check(`[${label}] on a slow machine (processor throttled to a third) the page at 16x still draws ${slow.frames} frames in 3 s while the clock runs behind (${slow.adv} hours in them), and it owes the clock only ${slow.owed} hours (capped at 24)`,
-    slow.frames >= 12 && slow.adv >= 30 && slow.owed <= 25);
+  check(`[${label}] on a slow machine (processor throttled to a third) the page at 16x still draws ${slow['16×'].frames} frames in 3 s while the clock runs behind (${slow['16×'].adv} hours in them), and it owes the clock only ${slow['16×'].owed} hours (capped at 24); at 64x ${slow['64×'].frames} frames, ${slow['64×'].adv} hours, owing ${slow['64×'].owed}`,
+    slow['16×'].frames >= 12 && slow['16×'].adv >= 30 && slow['16×'].owed <= 25 && slow['64×'].frames >= 12 && slow['64×'].adv >= 100 && slow['64×'].owed <= 25);
   await ev(() => { window.SSTSIM.storms(false); window.SSTSIM.restart(); });   // leave the page without storms for anything after this
 }
 
@@ -893,6 +898,18 @@ async function checkSummary(page, label) {
   await ev(() => { for (const id of ['stwaves', 'stlows', 'stdist']) { const c = document.getElementById(id); c.checked = true; c.dispatchEvent(new Event('change')); } window.SSTSIM.storms(false); window.SSTSIM.restart(); });
 }
 
+// A basin's storm system is switched on by its data (storms.maps in its data file, src/storm-hooks.js STORMS_READY): the page is then on by default and shows the storm controls; until then it runs
+// the plain simulation and shows none of them (the Menu button is there either way). Called on a freshly loaded page by checkBasin for every basin.
+async function checkStormGate(page, label, dist) {
+  const prefix = dist.replace(/^.*\//, '').replace('-sst-simulator.html', ''), ready = (() => { const d = JSON.parse(readFileSync(join(ROOT, 'data/generated', prefix === 'atlantic' ? 'data.json' : `${prefix}-data.json`), 'utf8')); return !!(d.storms && d.storms.maps); })();
+  const stormsDefault = await page.evaluate(() => (window.SSTSIM.storms ? window.SSTSIM.storms() : null));
+  check(`[${label}] the storm engine is ${ready ? 'on' : 'off'} by default (the page ${ready ? 'carries' : 'has no'} storm climatology)`, stormsDefault === ready);
+  const hasWaves = (await import('../src/storms.js'), globalThis.HFStorms.basinInfo(prefix).waves);
+  const stormUi = await page.evaluate(() => { const vis = (el) => !!el && getComputedStyle(el).display !== 'none'; const g = (id) => document.getElementById(id); return { body: document.body.classList.contains('no-storms'), season: vis(g('season')), place: vis(g('b-place')), menu: vis(g('b-menu')), rows: ['stlows', 'stdist', 'stlabels', 'st-auto'].map((i) => vis(g(i).parentElement)), waves: vis(g('stwaves').parentElement) }; });
+  check(`[${label}] the storm controls (season bar, Place button, Lows / Disturbances / Names / automatic storms rows) are ${ready ? 'shown' : 'hidden'}, the Tropical waves row ${ready && hasWaves ? 'shown' : 'hidden'} (this basin ${hasWaves ? 'has' : 'has no'} wave train), and the Menu button is there either way`,
+    stormUi.body === !ready && stormUi.season === ready && stormUi.place === ready && stormUi.rows.every((v) => v === ready) && stormUi.waves === (ready && hasWaves) && stormUi.menu === true);
+}
+
 async function checkEnsoHold(page, label) {
   const ev = (fn, arg) => page.evaluate(fn, arg);
   const r = await ev(() => {
@@ -1001,6 +1018,7 @@ const STEER_SPECS = {
     dataFile: 'aus-data.json', calibFile: 'aus-steer-calib.json',
     view: [[-40, 94], [0, 172]], hover: [-14, 110],
     pts: { trop: [0, 106], sub: [-20, 106], jet: [-40, 146], far: [-12, 98] },
+    hoverJet: [-37, 146],                     // the pointer test's spot: the jet point itself sits on the bottom edge of the view, which the dock (Place and the clock's buttons) covers
     names: { trop: '0N 106E', sub: '20S 106E', jet: '40S 146E', far: '12S 98E' },
     extra: [[-24, 120], [-30, 150], [-16, 160]],
     hem: -1, latBands: [[10, 20], [20, 30], [30, 40]], lonRange: [98, 168],
@@ -1202,7 +1220,7 @@ async function checkSteering(page, label, S) {
     return { p, ll: await ev(([x, y]) => { const l = window.SSTSIM.map.containerPointToLatLng([x, y]); return [l.lat, l.lng]; }, [p.x, p.y]), text: await ev(() => document.getElementById('readout').textContent) };
   };
   const readSteer = (t) => { const m = t.match(/Steering toward (\d+)° \(([A-Z]+)\) at (\d+) kt/); return m ? { dir: +m[1], card: m[2], kt: +m[3] } : null; };
-  let hv = await hoverAt(S.pts.jet);
+  let hv = await hoverAt(S.hoverJet || S.pts.jet);
   let want2 = await ev((ll) => ({ deep: window.SSTSIM.steerAt(ll[0], ll[1], 'deep'), shallow: window.SSTSIM.steerAt(ll[0], ll[1], 'shallow'), p: window.SSTSIM.pressureAt(ll[0], ll[1]) }), hv.ll);
   await pickDepth('deep'); await page.mouse.move(hv.p.x + 2, hv.p.y); await page.mouse.move(hv.p.x, hv.p.y); await page.waitForTimeout(100);
   hv = { ...hv, text: await ev(() => document.getElementById('readout').textContent) };
@@ -1575,6 +1593,7 @@ const launchOpts = process.env.PLAYWRIGHT_CHROMIUM_PATH ? { executablePath: proc
 // offline Satellite fallback all work, and the embedded Blue Marble debug hook is sane. Basin-
 // specific checks (pan limits, which regions should/shouldn't have SST) are passed in as `extra`.
 async function checkBasin(label, dist, extra) {
+  if (process.env.ONLY && !process.env.ONLY.split(',').includes(label)) return;      // ONLY='Atlantic,Australian Region' runs just those pages (a working aid; CI runs them all)
   const browser = await chromium.launch(launchOpts);
   const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
   await page.route('**://**/*', (route) => route.request().url().startsWith('file://') ? route.continue() : route.abort());
@@ -1584,8 +1603,7 @@ async function checkBasin(label, dist, extra) {
   await page.goto(pathToFileURL(dist).href, { waitUntil: 'load', timeout: 30000 });
   await page.waitForFunction(() => window.__ready === true, { timeout: 15000 });
   await page.waitForTimeout(1000);
-  const stormsDefault = await page.evaluate(() => (window.SSTSIM.storms ? window.SSTSIM.storms() : null));   // the Atlantic page has the storm engine, on by default
-  if (label === 'Atlantic') check(`[${label}] the storm engine is on by default`, stormsDefault === true);
+  await checkStormGate(page, label, dist);
   await page.evaluate(() => { if (window.SSTSIM.storms) window.SSTSIM.storms(false); });   // every check below tests the environment, so it runs on the unchanged simulation (storms have their own checks)
 
   check(`[${label}] loads with no JS errors`, errors.length === 0);

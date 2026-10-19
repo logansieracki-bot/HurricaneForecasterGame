@@ -22,10 +22,13 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { runLab, meanActivity, ACT_ELASTICITY } from './storm_mc.mjs';
+import { runLab, meanActivity, ACT_ELASTICITY, TCB } from './storm_mc.mjs';
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
-const REAL = JSON.parse(readFileSync(join(ROOT, 'data/generated/atlantic-tc-maps.json'), 'utf8'));
+// the basin: STORM_BASIN or --basin <name> (tools/tc_basins.json; the default is the Atlantic, whose maps and priors below were the first); its real maps are data/generated/<basin>-tc-maps.json (tools/make_tc_basin.py)
+export const BASIN = process.env.STORM_BASIN || (process.argv.includes('--basin') ? process.argv[process.argv.indexOf('--basin') + 1] : 'atlantic');
+const REAL = JSON.parse(readFileSync(join(ROOT, `data/generated/${BASIN}-tc-maps.json`), 'utf8'));
+const BCFG = BASIN === 'atlantic' ? { start: [5, 1], seasonMonth: 0, days: 214 } : { ...TCB[BASIN], days: 365 };            // the month and day the lab's season starts on, the month the real season starts in, and the days a lab season runs
 const GRID = REAL.grid, NX = GRID.nx, NY = GRID.ny, N = NX * NY;
 const RING = 3.0;
 
@@ -47,10 +50,29 @@ function smoothAvg(a, sigma, wMonth = 0.2) {
   return out;
 }
 
+/* the months a lab season of `days` days starting on the 1st of month m0 passes through */
+const runMonths = (m0, days) => { const o = new Set(), t0 = Date.UTC(2026, m0, 1); for (let d = 0; d < days; d++) o.add(new Date(t0 + d * 864e5).getUTCMonth()); return o; };
+/* up to six boxes of roughly equal real genesis for the regional step of `refine` (the Atlantic has its own, named): three longitude bands cut at the terciles of the real genesis mass, each split in two at the node-row median
+   of its latitudes; every box is [la0, la1) x [lo0, lo1) and together they cover the whole grid */
+function autoRegions(g) {
+  const lonMass = new Float64Array(NX); let tot = 0;
+  for (let m = 0; m < 12; m++) for (let k = 0; k < N; k++) { lonMass[k % NX] += g[m * N + k]; tot += g[m * N + k]; }
+  const cut = [1 / 3, 2 / 3].map((f) => { let c = 0; for (let i = 0; i < NX; i++) { c += lonMass[i]; if (c >= f * tot) return GRID.lon0 + (i + 0.5) * GRID.res; } return GRID.lon0 + NX * GRID.res; });
+  const edges = [-1e9, ...cut, 1e9], out = [];
+  for (let b = 0; b < 3; b++) {
+    const rowMass = new Float64Array(NY); let t = 0;
+    for (let m = 0; m < 12; m++) for (let k = 0; k < N; k++) { const lo = lonOf(k); if (lo >= edges[b] && lo < edges[b + 1]) { rowMass[(k / NX) | 0] += g[m * N + k]; t += g[m * N + k]; } }
+    let c = 0, mid = GRID.lat0 + NY * GRID.res; for (let j = 0; j < NY; j++) { c += rowMass[j]; if (c >= 0.5 * t) { mid = GRID.lat0 + (j + 0.5) * GRID.res; break; } }
+    out.push(['b' + b + 's', -1e9, mid, edges[b], edges[b + 1]], ['b' + b + 'n', mid, 1e9, edges[b], edges[b + 1]]);
+  }
+  return out;
+}
+
 /* ---- the prior for how much of the real genesis comes from local disturbances (not waves, not tracked lows) ------------------------------------------------------------------------ */
 const sstep = (x, a, b) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 const box = (lat, lon, la0, la1, lo0, lo1, e = 3) => sstep(lat, la0 - e, la0 + e) * (1 - sstep(lat, la1 - e, la1 + e)) * sstep(lon, lo0 - e, lo0 + e) * (1 - sstep(lon, lo1 - e, lo1 + e));
 export function localShare(lat, lon) {                       // 0.55 over the Gulf and the western Caribbean, 0.5 off the south-eastern US and the Bahamas, 0.3 in the subtropical Atlantic, 0.05 elsewhere
+  if (BASIN !== 'atlantic') return 0.9;                      // no easterly waves to lean on elsewhere: nearly all of the supply is local seeds (the tracked lows are the rest), and the rates are fitted to the real genesis whatever the split
   return Math.max(0.05, 0.55 * box(lat, lon, 12, 31, -100, -78), 0.5 * box(lat, lon, 22, 38, -82, -62), 0.3 * sstep(lat, 27, 31));
 }
 
@@ -58,7 +80,7 @@ export function localShare(lat, lon) {                       // 0.55 over the Gu
 const G_T = flat12(REAL.genesis.T), G_S = flat12(REAL.genesis.S);
 /* nodes that are at least a quarter water (the page's own land mask, sampled over each 5-degree cell): the only ones genesis can happen at */
 export function wetNodes() {
-  const D = JSON.parse(readFileSync(join(ROOT, 'data/generated/data.json'), 'utf8')), dm = D.domain, mb = Buffer.from(D.mask, 'base64');
+  const D = JSON.parse(readFileSync(join(ROOT, 'data/generated', BASIN === 'atlantic' ? 'data.json' : `${BASIN}-data.json`), 'utf8')), dm = D.domain, mb = Buffer.from(D.mask, 'base64');
   const isLand = (lat, lon) => { const i = Math.round((lon - dm.lon0) / dm.res), j = Math.round((dm.lat1 - lat) / dm.res); if (i < 0 || j < 0 || i >= dm.nx || j >= dm.ny) return false; const k = j * dm.nx + i; return ((mb[k >> 3] >> (7 - (k & 7))) & 1) === 1; };
   const w = new Float64Array(N);
   for (let k = 0; k < N; k++) { let n = 0, c = 0; for (let a = -2; a <= 2; a += 0.5) for (let b = -2; b <= 2; b += 0.5) { n++; if (!isLand(latOf(k) + a, lonOf(k) + b)) c++; } w[k] = c / n >= 0.25 ? 1 : 0; }
@@ -120,7 +142,7 @@ export function climFromRuns(seasons) {
 }
 
 /* ---- the fit of the development rates and the local-seed supply ------------------------------------------------------------------------------------------------------------------------ */
-const HAZ_MAX = 0.04, P_SEED0 = 0.35, F_SUB_LOCAL = 0.5;
+const HAZ_MAX = 0.04, P_SEED0 = 0.35, F_SUB_LOCAL = 0.5, EQ_GAP = 3;                  // EQ_GAP: nodes closer to the equator than this (degrees) are not wet outside the Atlantic (the real maps' smoothing leaks there; the engine's own latitude gate does the rest)
 function sumDiag(seasons, key) {
   const a = new Float64Array(12 * N);
   for (const s of seasons) { const d = s.diagEnd ? s.diagEnd[0] : s.sets.base.diag; for (const [i, v] of d[key]) a[i] += v; }
@@ -134,7 +156,7 @@ export function fitStep(seasons, maps, opts = {}) {
   const XTs = smoothAvg(XT, opts.sigmaX ?? 0.6, 0.2), XSs = smoothAvg(XS, opts.sigmaXS ?? 1.0, 0.25);
   const hazT = new Float64Array(12 * N), hazS = new Float64Array(12 * N);
   // genesis on the nodes that are mostly land is lost; the real maps were smoothed over the coast, so give that mass back to the nodes that can have it
-  const wetT = Float64Array.from(opts.wet || new Float64Array(N).fill(1), (w, k) => (latOf(k) < 7.5 ? 0 : w));       // the node on the equator only holds the real map's smoothing leaking south: nothing forms there
+  const wetT = Float64Array.from(opts.wet || new Float64Array(N).fill(1), (w, k) => (Math.abs(latOf(k)) < (BASIN === 'atlantic' ? 7.5 : EQ_GAP) ? 0 : w));       // the node on the equator only holds the real map's smoothing leaking south: nothing forms there
   const [gTreal, gSreal] = realTargets(wetT);
   const damp = (est, old, eta) => (old > 0 && est > 0 ? Math.exp((1 - eta) * Math.log(old) + eta * Math.log(est)) : est);
   for (let m = 0; m < 12; m++) for (let k = 0; k < N; k++) {
@@ -200,7 +222,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const seedsOf = (r) => { const [x, y] = r.split('-').map(Number), s = []; for (let q = x; q <= (y ?? x); q++) s.push(q); return s; };
   const t0 = Date.now(), tick = (s, n) => process.stderr.write(`\rseason ${n} (seed ${s}) ${((Date.now() - t0) / 1000).toFixed(0)} s   `);
   if (cmd === 'clim') {
-    const raw = await runLab({ seeds: seedsOf(get('seeds', '1-8')), days: 365, sets: { base: {} }, pages: +get('pages', 4), clim: { grid: GRID, R: RING }, onSeed: tick });
+    const raw = await runLab({ seeds: seedsOf(get('seeds', '1-8')), days: 365, sets: { base: {} }, pages: +get('pages', 4), basin: BASIN, clim: { grid: GRID, R: RING }, onSeed: tick });
     process.stderr.write('\n');
     const c = climFromRuns(raw.seasons);
     writeFileSync(get('out', 'clim.json'), JSON.stringify({ meta: { seeds: raw.seasons.length, ring: RING, grid: GRID, samplesPerNodeMonth: c.samples }, wet: Array.from({ length: NY }, (_, j) => Array.from({ length: NX }, (_, i) => c.wet[j * NX + i])), steerClim: c.steerClim.map((x) => nest12(x, 2)), env0: { rh: nest12(c.env0.rh, 2), shear: nest12(c.env0.shear, 2), sst: nest12(c.env0.sst, 2), sstRel: nest12(c.env0.sstRel, 2) } }));
@@ -214,7 +236,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     const params = get('params') ? JSON.parse(readFileSync(get('params'), 'utf8')) : {}, pool = [], poolFrom = +get('poolfrom', 2), eta = +get('eta', 0.7), ipf = a.includes('--ipf');
     for (let it = 1; it <= +get('iters', 3); it++) {
       const maps = assembleMaps(clim, fit);
-      const raw = await runLab({ seeds: seedsOf(get('seeds', '1-16')), days: +get('days', 214), extraDays: 365 - +get('days', 214), sets: { base: params }, pages: +get('pages', 4), maps, diag: true, onSeed: tick });
+      const raw = await runLab({ seeds: seedsOf(get('seeds', '1-16')), days: +get('days', BCFG.days), extraDays: 365 - +get('days', BCFG.days), sets: { base: params }, pages: +get('pages', 4), basin: BASIN, maps, diag: true, onSeed: tick });
       process.stderr.write('\n');
       if (get('raw')) writeFileSync(get('raw').replace('.json', `_it${it}.json`), JSON.stringify(raw));
       if (it >= poolFrom) for (const s of raw.seasons) pool.push({ diagEnd: s.diagEnd });      // the exposures of every pass from `poolfrom` on, pooled: less noise, and the depletion they show is the converged one
@@ -249,8 +271,8 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     // that has been smoothed the same, broadly (a few dozen seasons are few for a 5-degree node), and multiplies the rates by the ratio, limited to a factor 0.6-1.8 (subtropical 0.5-2).
     const climJ = JSON.parse(readFileSync(get('clim'), 'utf8')), wet = climJ.wet ? Float64Array.from(climJ.wet.flat()) : wetNodes();
     const j = JSON.parse(readFileSync(get('sim'), 'utf8')), raw = JSON.parse(readFileSync(get('raw'), 'utf8')), set = get('set', raw.names[0]), nS = raw.seasons.length;
-    const START_MS = Date.UTC(2026, 5, 1), hz = flat12(j.haz.T), hs = flat12(j.haz.S), sp = flat12(j.spawn);
-    const wetT = Float64Array.from(wet, (w, k) => (latOf(k) < 7.5 ? 0 : w)), [gTr, gSr] = realTargets(wetT);
+    const START_MS = Date.UTC(2026, BCFG.start[0], BCFG.start[1]), hz = flat12(j.haz.T), hs = flat12(j.haz.S), sp = flat12(j.spawn), RUN = runMonths(BCFG.start[0], raw.days || BCFG.days);
+    const wetT = Float64Array.from(wet, (w, k) => (Math.abs(latOf(k)) < (BASIN === 'atlantic' ? 7.5 : EQ_GAP) ? 0 : w)), [gTr, gSr] = realTargets(wetT);
     const simT = new Float64Array(12 * N), simS = new Float64Array(12 * N), simN = new Float64Array(12 * N);
     for (const s of raw.seasons) for (const x of s.sets[set].storms) {
       if (!x.gen || !(x.td >= 0)) continue;
@@ -260,15 +282,15 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     }
     const mAct = meanActivity(raw.seasons), actAdj = 1 - ACT_ELASTICITY * (mAct - 1);                                // the seeds' own mean activity (see meanActivity)
     for (let q = 0; q < simT.length; q++) { simT[q] *= actAdj; simS[q] *= actAdj; }
-    for (let m = 0; m < 5; m++) for (let k = 0; k < N; k++) { simT[m * N + k] = gTr[m * N + k]; simS[m * N + k] = gSr[m * N + k]; }          // Jan-May are not in a 214-day season: leave them as they are
+    for (let m = 0; m < 12; m++) if (!RUN.has(m)) for (let k = 0; k < N; k++) { simT[m * N + k] = gTr[m * N + k]; simS[m * N + k] = gSr[m * N + k]; }          // the months a lab season does not run (Jan-May of the Atlantic's 214 days) are left as they are
     // Regional totals first (a node has a few events a season, a region dozens): the real Atlantic's numbered depressions of each of the regions of tools/storm_validate.mjs against the simulated ones. The factor goes to every
     // node of the region, and the node-by-node step below then works on what is left (the pattern inside a region).
     const lim0 = (r, lo, hi) => Math.max(lo, Math.min(hi, r));
-    const REGIONS = [['east', 5, 20, -45, 0], ['mdr', 5, 20, -62.5, -42.5], ['carib', 5, 20, -87.5, -62.5], ['gulf', 20, 32, -100, -80], ['seus', 20, 38, -80, -62.5], ['subtrop', 25, 66, -62.5, 0]];
+    const REGIONS = BASIN === 'atlantic' ? [['east', 5, 20, -45, 0], ['mdr', 5, 20, -62.5, -42.5], ['carib', 5, 20, -87.5, -62.5], ['gulf', 20, 32, -100, -80], ['seus', 20, 38, -80, -62.5], ['subtrop', 25, 66, -62.5, 0]] : autoRegions(gTr);
     const fReg = new Float64Array(N).fill(1), dampR = +get('rdamp', 0.8), regLog = [];
     for (const [nm, la0, la1, lo0, lo1] of REGIONS) {
       const inR = (k) => latOf(k) >= la0 && latOf(k) < la1 && lonOf(k) >= lo0 && lonOf(k) < lo1;
-      let a = 0, b = 0; for (let m = 5; m < 12; m++) for (let k = 0; k < N; k++) if (inR(k)) { a += gTr[m * N + k]; b += simT[m * N + k]; }
+      let a = 0, b = 0; for (const m of RUN) for (let k = 0; k < N; k++) if (inR(k)) { a += gTr[m * N + k]; b += simT[m * N + k]; }
       if (!(a > 0.3 && b > 0.1)) continue;
       const f = Math.pow(lim0(a / b, 0.6, 1.5), dampR); regLog.push(`${nm} ${b.toFixed(2)} vs ${a.toFixed(2)} (x${f.toFixed(2)})`);
       for (let k = 0; k < N; k++) if (inR(k)) fReg[k] = f;
@@ -290,10 +312,10 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       else { hz[q] = HAZ_MAX; sp[q] *= Math.min(3, (fT[q] / aMax - 1 + sh) / sh); nCapped++; }
       hs[q] = Math.min(HAZ_MAX, hs[q] * fS[q]);
     }
-    const sum = (a, m0 = 5, m1 = 12) => { let t = 0; for (let m = m0; m < m1; m++) for (let k = 0; k < N; k++) t += a[m * N + k]; return t; };
+    const sum = (a) => { let t = 0; for (const m of RUN) for (let k = 0; k < N; k++) t += a[m * N + k]; return t; };
     console.log(`${nCapped} node-months were at the rate ceiling: their factor went to the supply of local seeds`);
     console.log(`the ${nS} seeds' mean activity is ${mAct.toFixed(3)}: counts scaled by ${actAdj.toFixed(3)} to an average season`);
-    console.log(`numbered depressions Jun-Dec per season: tropical ${sum(simT).toFixed(2)} (real ${sum(gTr).toFixed(2)}), subtropical ${sum(simS).toFixed(2)} (real ${sum(gSr).toFixed(2)}); the rates were scaled by ${(sum(gTr) / Math.max(1e-9, sum(simT))).toFixed(3)} on average`);
+    console.log(`numbered depressions per season (the months the lab ran): tropical ${sum(simT).toFixed(2)} (real ${sum(gTr).toFixed(2)}), subtropical ${sum(simS).toFixed(2)} (real ${sum(gSr).toFixed(2)}); the rates were scaled by ${(sum(gTr) / Math.max(1e-9, sum(simT))).toFixed(3)} on average`);
     writeFileSync(get('out'), JSON.stringify({ meta: Object.assign({}, j.meta, { refined: { seasons: nS, set } }), haz: { T: nest12(hz, 6), S: nest12(hs, 6) }, spawn: nest12(sp, 4), driftCorr: j.driftCorr }));
   } else if (cmd === 'motion') {
     // The drift maps are the mean motion of REAL storms of each kind at each place and time of year. A simulated storm is moved by that mean plus the anomaly of the page's steering; but the real mean

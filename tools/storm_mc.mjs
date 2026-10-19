@@ -18,10 +18,15 @@ import { etStats, etReal, etLines } from './storm_et.mjs';
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const REF = JSON.parse(readFileSync(join(ROOT, 'data/generated/atlantic-tc-ref.json'), 'utf8'));
+export const TCB = JSON.parse(readFileSync(join(ROOT, 'tools/tc_basins.json'), 'utf8')); delete TCB._;      // the other basins' pages: tools/tc_basins.json (the Atlantic's own constants are the ones below)
 export const FATE_BINS = [[0, 13], [13, 17], [17, 25], [25, 70]];                 // latitude of the first tropical fix: the real best track's share of depressions that become named storms / hurricanes / majors in each (atlantic-tc-validate.json)
 
 /* ---- running ------------------------------------------------------------------------------------------------------------------ */
-export async function runLab({ seeds, days = 214, sets, pages = 4, sliders = {}, page: pagePath = join(ROOT, 'dist/atlantic-sst-simulator.html'), onSeed = () => {}, maps = null, diag = false, clim = null, extraDays = 0 }) {
+export async function runLab({ seeds, days = 214, sets, pages = 4, sliders = {}, basin = 'atlantic', page: pagePath, onSeed = () => {}, maps = null, diag = false, clim = null, extraDays = 0 }) {
+  const B = basin === 'atlantic' ? null : TCB[basin];                              // another basin: its page, its season's first day, its main development region and the days its Nino 3.4 is read on
+  if (basin !== 'atlantic' && !B) throw new Error('unknown basin ' + basin);
+  pagePath = pagePath || join(process.env.HF_DIST || join(ROOT, 'dist'), B ? B.page : 'atlantic-sst-simulator.html');          // HF_DIST: a lab build elsewhere (tools/build.mjs)
+  const mdr = globalThis.HFStorms.basinInfo(basin).mdr, start = B ? B.start : null, ensoMonths = B ? B.ensoMonths : null;
   const { chromium } = await import('playwright');
   const browser = await chromium.launch(process.env.PLAYWRIGHT_CHROMIUM_PATH ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_PATH } : {});
   const names = Object.keys(sets), list = names.map((k) => sets[k]);
@@ -33,26 +38,33 @@ export async function runLab({ seeds, days = 214, sets, pages = 4, sliders = {},
     await page.waitForFunction(() => window.__ready === true, { timeout: 60000 });
     while (queue.length) {
       const seed = queue.shift();
-      const rec = await page.evaluate(({ seed, days, list, sliders, maps, diag, clim, extraDays }) => {
+      const rec = await page.evaluate(({ seed, days, list, sliders, maps, diag, clim, extraDays, mdr, start, ensoMonths }) => {
         const S = window.SSTSIM;
+        S.stormsForce(true);                                                       // (a page whose storm climatology is not made yet is off for visitors; the lab is how it gets made)
+        let startMs = null; if (start) startMs = S.stormLabCalendar(start[0], start[1]);
         S.setPlaying(false); S.applySeed(seed); S.setPlaying(false); S.stormAuto(true);
         for (const [k, v] of Object.entries(sliders)) S.set(k, v);                 // e.g. warming, moisture, shearShift: the page's own experiment sliders
         S.stormMaps(maps);                                                         // null: the maps the page was built with
         S.stormLabStart(list, { diag });
         if (clim) S.stormClimStart(clim.grid, clim.R);
-        // the environment the storms see, averaged over the main development region (10-20N, 80-20W) and Aug-Oct, to compare its year-to-year spread with ERA5's
-        const pts = []; for (let la = 10; la <= 20; la += 5) for (let lo = -80; lo <= -20; lo += 5) pts.push([la, lo]);
+        // the environment the storms see, averaged over the main development region (the Atlantic's 10-20N, 80-20W) and Aug-Oct, to compare its year-to-year spread with ERA5's
+        const pts = [], la0 = Math.min(...mdr.lat), la1 = Math.max(...mdr.lat), lo0 = Math.min(...mdr.lon), lo1 = Math.max(...mdr.lon), dla = Math.max(2.5, (la1 - la0) / 2), dlo = Math.max(5, (lo1 - lo0) / 12);
+        for (let la = la0; la <= la1 + 1e-9; la += dla) for (let lo = lo0; lo <= lo1 + 1e-9; lo += dlo) pts.push([la, lo]);
+        // the days the Nino 3.4 is read on (the Atlantic: Aug 3, Sep 4 and Oct 2 of a season that starts on Jun 1; another basin: the 15th of its ensoMonths, 13 and more being the next calendar year's)
+        const marks = ensoMonths ? ensoMonths.map((m) => Math.round((Date.UTC(new Date(startMs).getUTCFullYear() + (m > 12 ? 1 : 0), ((m - 1) % 12), 15) - startMs) / 86400000)) : [64, 96, 120];
+        const envFrom = ensoMonths ? marks[0] - 30 : 62, envTo = ensoMonths ? marks[marks.length - 1] + 30 : 152;
         const n34 = [], env = { sst: 0, rh: 0, shear: 0, n: 0 }; let d = 0;
         while (d < days) {
-          const step = Math.min(8, days - d); S.tick(24 * step); d += step;
-          if (d >= 62 && d <= 152) for (const [la, lo] of pts) { const e = S.stormEnvSample(la, lo); if (!e.land && isFinite(e.sst) && isFinite(e.shear)) { env.sst += e.sst; env.rh += e.rh; env.shear += e.shear; env.n++; } }
-          if (d === 64 || d === 96 || d === 120) n34.push(S.enso().n34);
+          let step = Math.min(8, days - d); for (const m of marks) if (m > d && m - d < step) step = m - d;
+          S.tick(24 * step); d += step;
+          if (d >= envFrom && d <= envTo) for (const [la, lo] of pts) { const e = S.stormEnvSample(la, lo); if (!e.land && isFinite(e.sst) && isFinite(e.shear)) { env.sst += e.sst; env.rh += e.rh; env.shear += e.shear; env.n++; } }
+          if (marks.includes(d)) n34.push(S.enso().n34);
         }
         const recs = S.stormLabRecord();
         let diagEnd = null;                                                         // extraDays: keep going (Jan-May of the next year) and report the accumulators again at the end
         if (extraDays) { let e = 0; while (e < extraDays) { const step = Math.min(8, extraDays - e); S.tick(24 * step); e += step; } diagEnd = S.stormLabRecord().map((r) => r.diag); }
         return { seed, n34, env: { sst: env.sst / env.n, rh: env.rh / env.n, shear: env.shear / env.n }, recs, diagEnd, clim: clim ? S.stormClimGet() : null };
-      }, { seed, days, list, sliders, maps, diag, clim, extraDays });
+      }, { seed, days, list, sliders, maps, diag, clim, extraDays, mdr, start, ensoMonths });
       out.push({ seed, n34: rec.n34, env: rec.env, clim: rec.clim, diagEnd: rec.diagEnd, sets: Object.fromEntries(names.map((k, i) => [k, rec.recs[i]])) });
       onSeed(seed, out.length);
     }

@@ -1,0 +1,51 @@
+<!--[panel]-->
+        <label class="chk st-only st-waves"><input type="checkbox" id="stwaves" checked><span> Tropical waves (dashed lines)</span></label>
+        <label class="chk st-only"><input type="checkbox" id="stlows" checked><span> Lows (L), with sea-level pressure</span></label>
+        <label class="chk st-only"><input type="checkbox" id="stdist" checked><span> Disturbances (X): a wave or low that could become a depression</span></label>
+        <label class="chk st-only"><input type="checkbox" id="stlabels" checked><span> Storm names</span></label>
+<!--[advanced]-->
+          <label class="chk st-only"><input type="checkbox" id="st-auto" checked><span> Storms form on their own</span></label>
+          <div class="row st-only">
+            <div class="sl"><label for="p-stact" title="How often waves and the other seeds appear: 1.0× is about the real {{BASIN_LABEL}}">Storm activity (seeds)</label><output id="p-stact-o">1.0×</output></div>
+            <input id="p-stact" type="range" min="0" max="3" step="0.1" value="1">
+          </div>
+<!--[cards]-->
+<div id="season" class="card" role="status" aria-label="Season totals"><span id="se-year">{{BASIN_LABEL}}</span><span><b id="se-dep">0</b>DEP</span><span><b id="se-named">0</b>NAMED</span><span><b id="se-hurr">0</b>HURR</span><span><b id="se-major">0</b>MAJOR</span><span><b id="se-c5">0</b>CAT 5</span><span><b id="se-ace">0.0</b>ACE</span><button id="se-sum" type="button" aria-expanded="false" aria-controls="sum-card" title="Season summary: totals against the real normals, the ACE graph and every storm of the season">Summary</button></div>
+<div id="storm-tip" class="card" role="tooltip"><b></b><div></div></div>
+<aside id="storm-card" class="card" hidden aria-label="Storm details">
+  <button id="sc-close" aria-label="Close storm details" title="Close (Esc)">&times;</button>
+  <b id="sc-name">–</b><span id="sc-cat"></span>
+  <div class="sc-main"><div><b id="sc-mph">0</b><small>mph (1-min)</small></div><div><b id="sc-p">0</b><small>hPa</small></div><span id="sc-peak">Peak</span></div>
+  <div class="sc-grid">
+    <div><span>ACE</span><b id="sc-ace">0.0</b></div><div><span>Advisory</span><b id="sc-time">–</b></div>
+    <div><span>Shear</span><b id="sc-sh">–</b></div><div><span>Gusts</span><b id="sc-gust">–</b></div>
+    <div><span>Movement</span><b id="sc-mv">–</b></div><div><span>SST</span><b id="sc-sst">–</b></div>
+    <div><span>Damage</span><b>—</b></div><div><span>Formed</span><b id="sc-formed">–</b></div>
+  </div>
+  <p id="sc-note">Showing only this system. Click the empty map or press Esc to show all.</p>
+</aside>
+<aside id="sum-card" class="card" hidden role="dialog" aria-label="Season summary">
+  <button id="sum-close" aria-label="Close season summary" title="Close (Esc)">&times;</button>
+  <div id="sum-head"><button id="sum-prev" aria-label="Previous season" title="Previous season">&#8249;</button><div><b id="sum-title">{{BASIN_LABEL}}</b><span id="sum-sub"></span></div><button id="sum-next" aria-label="Next season" title="Next season">&#8250;</button></div>
+  <div id="sum-tot"></div>
+  <canvas id="sum-graph" role="img" aria-label="Accumulated cyclone energy through the year against the real seasons"></canvas>
+  <div id="sum-cap"></div>
+  <div id="sum-scroll"><table id="sum-table"><thead><tr><th>Storm</th><th>Peak</th><th>hPa</th><th>Dates</th><th>ACE</th></tr></thead><tbody></tbody></table><div id="sum-empty" hidden>No depression has formed this season yet.</div></div>
+</aside>
+<!--[dockMenu]-->
+  <a class="btn" id="b-menu" href="../index.html" aria-label="Main menu" title="Main menu: your season is saved and waits under Continue">
+    <svg viewBox="0 0 24 24"><path d="M3 11.2 12 3.6l9 7.6V20a1 1 0 0 1-1 1h-5v-6.2H9V21H4a1 1 0 0 1-1-1z"/></svg>
+  </a>
+<!--[dockPlace]-->
+  <button class="btn" id="b-place" aria-label="Place a system" aria-pressed="false" aria-haspopup="true" title="Place a tropical wave, depression or low and see where it would go (P)">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.4"/><path d="M12 2.5v4.5M12 17v4.5M2.5 12H7M17 12h4.5"/></svg><span>Place</span>
+  </button>
+<!--[placeMenu]-->
+<div id="place-menu" class="card" role="radiogroup" aria-label="What to place" hidden>
+  <button role="radio" aria-checked="true" data-kind="wave"><i></i>Tropical wave</button>
+  <button role="radio" aria-checked="false" data-kind="td"><i></i>Tropical depression</button>
+  <button role="radio" aria-checked="false" data-kind="sd"><i></i>Subtropical depression</button>
+  <button role="radio" aria-checked="false" data-kind="low"><i></i>Low-pressure area</button>
+  <p>Click the map to place it. The line shows where it goes and how strong it gets; Esc cancels.</p>
+</div>
+

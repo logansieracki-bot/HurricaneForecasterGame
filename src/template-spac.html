@@ -145,6 +145,7 @@ canvas.overlay{position:absolute;left:0;top:0;width:100%;height:100%;pointer-eve
   #speed{min-width:0}
   #speed span{display:none}
 }
+/*__STORM_CSS__*/
 </style>
 </head>
 <body>
@@ -198,6 +199,7 @@ canvas.overlay{position:absolute;left:0;top:0;width:100%;height:100%;pointer-eve
         <label class="chk"><input type="checkbox" id="jetline"><span> Jet stream line (axis of strongest shear)<i id="jet-note"></i></span></label>
         <label class="chk"><input type="checkbox" id="steerarrows"><span> Steering arrows (colour = speed)</span></label>
         <label class="chk"><input type="checkbox" id="highs"><span> Highs (H) with sea-level pressure</span></label>
+<!--__STORM_HTML:panel-->
       </div>
     </section>
     <section class="subsec collapsed" id="sec-exp">
@@ -262,6 +264,7 @@ canvas.overlay{position:absolute;left:0;top:0;width:100%;height:100%;pointer-eve
             <div class="sl"><label for="p-enso">El Niño / La Niña influence</label><output id="p-enso-o">1.0×</output></div>
             <input id="p-enso" type="range" min="0" max="4" step="0.05" value="1">
           </div>
+<!--__STORM_HTML:advanced-->
           <label class="chk"><input type="checkbox" id="seed-vary" checked> Seed nudges swing, currents and El Niño</label>
         </div>
         <div class="seedrow">
@@ -290,9 +293,11 @@ canvas.overlay{position:absolute;left:0;top:0;width:100%;height:100%;pointer-eve
 
 <div id="toast" class="card" role="status"></div>
 <div id="city-tip" class="card" role="tooltip"><b></b><div></div></div>
+<!--__STORM_HTML:cards-->
 <div id="attr"></div>
 
 <nav id="dock" class="card" aria-label="Playback">
+<!--__STORM_HTML:dockMenu-->
   <button class="btn" id="b-restart" aria-label="Restart at November 1" title="Restart at November 1 (R)">
     <svg viewBox="0 0 24 24"><path d="M12 5V2L7 6.5 12 11V8c3.3 0 6 2.7 6 6s-2.7 6-6 6-6-2.7-6-6H4c0 4.4 3.6 8 8 8s8-3.6 8-8-3.6-8-8-8z"/></svg>
   </button>
@@ -307,12 +312,15 @@ canvas.overlay{position:absolute;left:0;top:0;width:100%;height:100%;pointer-eve
     <svg viewBox="0 0 24 24"><path d="M13 6v12l8.5-6zM3 6v12l8.5-6z"/></svg>
   </button>
   <div id="speed"><b id="speed-x">1×</b><span id="speed-sub">+1 h every 60 ms</span></div>
+<!--__STORM_HTML:dockPlace-->
 </nav>
+<!--__STORM_HTML:placeMenu-->
 
 <div id="loading">Building the ocean grid…</div>
 
 <script type="application/json" id="sim-data">/*__DATA__*/</script>
 <script>/*__LEAFLET_JS__*/</script>
+<script>/*__STORMS__*/</script>
 <script>
 (function () {
 'use strict';
@@ -326,6 +334,7 @@ const DM = DATA.domain;
 const NX = DM.nx, NY = DM.ny, RES = DM.res, LON0 = DM.lon0, LAT1 = DM.lat1;
 const CNX = DM.cnx, CNY = DM.cny, RATIO = DM.cres / DM.res;
 const N = NX * NY, CN = CNX * CNY, K = DATA.K;
+const SS = 4, NXS = Math.floor((NX - 1) / SS) + 1, NYS = Math.floor((NY - 1) / SS) + 1, NSF = NXS * NYS;     // the storm engine's environment lives on every SS-th node (one degree): see computeStormFields
 const DEG = Math.PI / 180;
 
 /* This basin's own real area of responsibility (RSMC Nadi: 160E-120W) crosses the antimeridian
@@ -503,7 +512,9 @@ const upsample = (function () {
   const rI = new Int32Array(NY * 4), rW = new Float32Array(NY * 4);
   for (let j = 0; j < NY; j++) { const f = j / RATIO, r1 = Math.floor(f), w = cr(f - r1); for (let q = 0; q < 4; q++) { rI[j * 4 + q] = Math.min(CNY - 1, Math.max(0, r1 - 1 + q)); rW[j * 4 + q] = w[q]; } }
   const tmp = new Float32Array(CNY * NX);
-  return function (src, dst) {
+  const loW = new Float32Array(NX), hiW = new Float32Array(NX);          // the clamp bounds of one window of four tmp rows, shared by the fine rows that lean on that window
+  const tmpS = new Float32Array(CNY * NXS), loS = new Float32Array(NXS), hiS = new Float32Array(NXS);
+  const full = function (src, dst) {
     for (let r = 0; r < CNY; r++) {
       const ro = r * CNX, to = r * NX;
       for (let i = 0; i < NX; i++) {
@@ -518,17 +529,44 @@ const upsample = (function () {
         tmp[to + i] = v < lo ? lo : v > hi ? hi : v;
       }
     }
+    let p0 = -1, p1 = -1, p2 = -1, p3 = -1;
     for (let j = 0; j < NY; j++) {
-      const b = j * 4, o0 = rI[b] * NX, o1 = rI[b + 1] * NX, o2 = rI[b + 2] * NX, o3 = rI[b + 3] * NX;
+      const b = j * 4, r0 = rI[b], r1 = rI[b + 1], r2 = rI[b + 2], r3 = rI[b + 3], o0 = r0 * NX, o1 = r1 * NX, o2 = r2 * NX, o3 = r3 * NX;
       const w0 = rW[b], w1 = rW[b + 1], w2 = rW[b + 2], w3 = rW[b + 3], d = j * NX;
+      if (r0 !== p0 || r1 !== p1 || r2 !== p2 || r3 !== p3) {            // a new window of four rows: its bounds, once for all the fine rows that use it (the values are exactly what the per-cell min / max gave)
+        p0 = r0; p1 = r1; p2 = r2; p3 = r3;
+        for (let i = 0; i < NX; i++) { const t0 = tmp[o0 + i], t1 = tmp[o1 + i], t2 = tmp[o2 + i], t3 = tmp[o3 + i]; loW[i] = Math.min(t0, t1, t2, t3); hiW[i] = Math.max(t0, t1, t2, t3); }
+      }
       for (let i = 0; i < NX; i++) {
-        const t0 = tmp[o0 + i], t1 = tmp[o1 + i], t2 = tmp[o2 + i], t3 = tmp[o3 + i];
-        let v = t0 * w0 + t1 * w1 + t2 * w2 + t3 * w3;
-        const lo = Math.min(t0, t1, t2, t3), hi = Math.max(t0, t1, t2, t3);
+        const v = tmp[o0 + i] * w0 + tmp[o1 + i] * w1 + tmp[o2 + i] * w2 + tmp[o3 + i] * w3, lo = loW[i], hi = hiW[i];
         dst[d + i] = v < lo ? lo : v > hi ? hi : v;
       }
     }
   };
+  full.S = function (src, dst) {                                         // the same upsample at every SS-th fine node only (dst is NXS wide): bit for bit the values `full` gives there, at 1/SS^2 of the cost
+    for (let r = 0; r < CNY; r++) {
+      const ro = r * CNX, to = r * NXS;
+      for (let is = 0; is < NXS; is++) {
+        const b = is * SS * 4, s0 = src[ro + cI[b]], s1 = src[ro + cI[b + 1]], s2 = src[ro + cI[b + 2]], s3 = src[ro + cI[b + 3]];
+        const v = s0 * cW[b] + s1 * cW[b + 1] + s2 * cW[b + 2] + s3 * cW[b + 3], lo = Math.min(s0, s1, s2, s3), hi = Math.max(s0, s1, s2, s3);
+        tmpS[to + is] = v < lo ? lo : v > hi ? hi : v;
+      }
+    }
+    let p0 = -1, p1 = -1, p2 = -1, p3 = -1;
+    for (let js = 0; js < NYS; js++) {
+      const b = js * SS * 4, r0 = rI[b], r1 = rI[b + 1], r2 = rI[b + 2], r3 = rI[b + 3], o0 = r0 * NXS, o1 = r1 * NXS, o2 = r2 * NXS, o3 = r3 * NXS;
+      const w0 = rW[b], w1 = rW[b + 1], w2 = rW[b + 2], w3 = rW[b + 3], d = js * NXS;
+      if (r0 !== p0 || r1 !== p1 || r2 !== p2 || r3 !== p3) {
+        p0 = r0; p1 = r1; p2 = r2; p3 = r3;
+        for (let is = 0; is < NXS; is++) { const t0 = tmpS[o0 + is], t1 = tmpS[o1 + is], t2 = tmpS[o2 + is], t3 = tmpS[o3 + is]; loS[is] = Math.min(t0, t1, t2, t3); hiS[is] = Math.max(t0, t1, t2, t3); }
+      }
+      for (let is = 0; is < NXS; is++) {
+        const v = tmpS[o0 + is] * w0 + tmpS[o1 + is] * w1 + tmpS[o2 + is] * w2 + tmpS[o3 + is] * w3, lo = loS[is], hi = hiS[is];
+        dst[d + is] = v < lo ? lo : v > hi ? hi : v;
+      }
+    }
+  };
+  return full;
 })();
 
 const climF = [], annual = new Float32Array(N);
@@ -604,8 +642,8 @@ function interp1(xs, ys, x) { if (x <= xs[0]) return ys[0]; for (let i = 1; i < 
 /* ------------------------------------------------------------------ *
  *  Simulation state (seeded)
  * ------------------------------------------------------------------ */
-const START_YEAR = new Date().getUTCFullYear();
-const START_MS = Date.UTC(START_YEAR, 10, 1, 0, 0, 0);
+let START_YEAR = new Date().getUTCFullYear();             // a resumed season brings its own (see applySave)
+let START_MS = Date.UTC(START_YEAR, 10, 1, 0, 0, 0);
 const P = { warming: 0, moisture: 0, shearShift: 0, variability: 1, seasonal: 1, features: 1, enso: 1, synoptic: 1, shearSynoptic: 1, jetSpeed: 1, seed: 1 };
 let rs = 1;
 function rand() { rs |= 0; rs = rs + 0x6D2B79F5 | 0; let t = Math.imul(rs ^ rs >>> 15, 1 | rs); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }
@@ -639,14 +677,16 @@ function ensoSet(target) {             // put the index and the oscillator on a 
 }
 function forceEnso(target) {           // jump to a chosen state; the South Pacific then responds with its natural 3–6 month delay
   if (ensoHold) ensoHeld = target;     // ...and while ENSO is held, the chosen state is the one that stays
-  ensoSet(target); anomDirty = true; updateEnsoUI(); refresh();
+  ensoSet(target); anomDirty = true; sAnomDirty = true; stormEnvChanged(); updateEnsoUI(); refresh();
 }
 
 let simHour = 0, dayCount = 0, pc = new Float32Array(K), pcH = new Float32Array(KH), pcS = new Float32Array(KS), gapIdx = 0;
 const humidSynC = new Float32Array(CN);   // per-cell AR(1) *generator* state, % RH directly -- no mode/pattern expansion, see decode comment above
 let lastSynDay = 0;
+const humidSynCd = new Float32Array(CN);  // the coarse state humidSynPrev was upsampled from (the generator on day synDay; humidSynC is the day after): a light save keeps these two instead of the fine snapshots
 const shearSynC = new Float32Array(CN);   // per-cell AR(1) *generator* state, kt directly -- same role as humidSynC above, local texture away from the jet axis
 let lastShearSynDay = 0;
+const shearSynCd = new Float32Array(CN);  // the same for shear
 // Jet axis state. The wave-mode amplitudes live in jetHist, one KJ-vector per whole jet-day, on
 // their own random stream (jrs) so a given seed always produces the same jet no matter how the
 // run is chunked into advance() calls or how fast it's played. jetClockH is the jet's own clock
@@ -669,13 +709,15 @@ function jetRandn() { let u = 0; while (u === 0) u = jetRand(); return Math.sqrt
 // there's no "which old slots can I still reuse" bookkeeping to get wrong when the sim skips
 // more than one day between renders, which it routinely does at high speed.
 const humidSynPrev = new Float32Array(N), humidSynCur = new Float32Array(N);
-let synDay = -999;   // which day humidSynPrev is pinned to (humidSynCur is always synDay+1); forces a build on first use
+let synDay = -999;   // which day the generator's pair (humidSynCd = that day, humidSynC = the day after) is pinned to; forces a build on first use
+let synFineDay = -999;   // which day the FINE pair humidSynPrev / humidSynCur was up-sampled for: the map asks for it, the storm engine does not (it reads the coarse pair on its own grid)
 const shearSynPrev = new Float32Array(N), shearSynCur = new Float32Array(N);
-let shearSynDay = -999;
+let shearSynDay = -999, shearSynFineDay = -999;
 // The jet axis is a COARSE-longitude path only (CNX, not N/fine-grid) -- a path has no upsample
 // step of its own. jetAxisC is the final axis (slider and band limit applied) at the coarse
 // columns; jetAxisF linearly interpolates it onto every fine column for the combine loop below.
 const jetAxisC = new Float32Array(CNX), jetAxisNow = new Float32Array(CNX), jetAnomTmp = new Float32Array(CNX);
+const jetAxisSt = new Float32Array(CNX), jetAxisFS = new Float32Array(NX);   // the storm grid's own copy of the two (computeStormFields), so that taking a storm keyframe or looking ahead leaves the map's arrays alone
 const jetAxisF = new Float32Array(NX);   // the axis latitude at every FINE longitude column, rebuilt each computeField() -- the combine loop and the SSTSIM.jetLat() test hook both read it
 function initSim(seed) {
   P.seed = seed; rs = (seed * 2654435761) >>> 0 || 1;
@@ -686,13 +728,14 @@ function initSim(seed) {
   initSteer(seed);
   for (let q = 0; q < CN; q++) humidSynC[q] = randn() * humidSynStdC[q];
   for (let q = 0; q < CN; q++) shearSynC[q] = randn() * shearSynStdC[q];
-  lastSynDay = 0; synDay = -999;
-  lastShearSynDay = 0; shearSynDay = -999;
+  lastSynDay = 0; synDay = -999; synFineDay = -999;
+  lastShearSynDay = 0; shearSynDay = -999; shearSynFineDay = -999;
   gapIdx = randn() * 0.4; dayCount = 0; simHour = 0;
   ensoZr = randn(); ensoZi = randn(); n34 = 0; ensoHist.fill(0); ensoHi = 0;
   for (let d = -10950; d < 0; d++) ensoStep((((134 + d) % 365.25) + 365.25) % 365.25);   // 30-year spin-up ending on 15 May
   if (ensoHold) { ensoSet(ensoHeld); ensoHist.fill(ensoHeld); }   // a held ENSO survives a restart: the new run starts already in that regime, lagged responses included
-  anomDirty = true;
+  anomDirty = true; sAnomDirty = true;
+  stormsReset();                                             // a new season of storms for the new year of weather
 }
 function stepDay() {
   dayCount++;
@@ -702,7 +745,7 @@ function stepDay() {
   for (let k = 0; k < KS; k++) pcS[k] = PHI_DAY_S[k] * pcS[k] + Math.sqrt(1 - PHI_DAY_S[k] * PHI_DAY_S[k]) * randn();
   stepSteerDay();
   const pg = Math.exp(-1 / 8); gapIdx = pg * gapIdx + Math.sqrt(1 - pg * pg) * randn();   // ~1-week-correlated gap-wind burst index, shared across the three jets (same synoptic cold-front passages drive all of them)
-  anomDirty = true;
+  anomDirty = true; sAnomDirty = true;
 }
 function simDate(h) { return new Date(START_MS + h * 3600000); }
 
@@ -735,14 +778,22 @@ function advanceSynTo(targetDay) {
 // (no-op, reuses the still-correct value) or strictly ahead of it, never behind: the previous
 // call always left lastSynDay at (old d)+1, and `d` only ever increases, so `d >= (old d)+1` ==
 // lastSynDay whenever this needs to do anything.
-function ensureSynDay(d) {
+function advanceSynDraws(d) {                                            // the generator's pair for day d (Cd = day d, C = the day after): the random numbers ensureSynDay always took, and nothing else
   if (d === synDay) return;
-  advanceSynTo(d); upsample(humidSynC, humidSynPrev);
-  advanceSynTo(d + 1); upsample(humidSynC, humidSynCur);
+  advanceSynTo(d); humidSynCd.set(humidSynC);
+  advanceSynTo(d + 1);
   synDay = d;
 }
+function ensureSynDay(d) {                                               // ...and the fine pair the map blends between, built only when it is wanted
+  advanceSynDraws(d);
+  if (d === synFineDay) return;
+  if (d === synFineDay + 1) humidSynPrev.set(humidSynCur);              // the next day: yesterday's Cur is exactly today's Prev (same coarse state, same upsample): a copy, not another upsample
+  else upsample(humidSynCd, humidSynPrev);
+  upsample(humidSynC, humidSynCur);
+  synFineDay = d;
+}
 const anomC = new Float32Array(CN), anomF = new Float32Array(N), ensoCo = new Float32Array(CN), ensoF = new Float32Array(N);
-let anomDirty = true;
+let anomDirty = true, sAnomDirty = true;
 const WARM_PEAK_BIAS = 1.0;   // deg C added at the seasonal peak (see computeField) to correct a cool bias there
 
 // Real shear anomalies correlate meaningfully between nearby cells (2-5 deg apart: +0.69 to
@@ -795,11 +846,19 @@ function advanceShearSynTo(targetDay) {
   }
   lastShearSynDay = targetDay;
 }
-function ensureShearSynDay(d) {
+function advanceShearSynDraws(d) {
   if (d === shearSynDay) return;
-  advanceShearSynTo(d); upsample(shearSynC, shearSynPrev);
-  advanceShearSynTo(d + 1); upsample(shearSynC, shearSynCur);
+  advanceShearSynTo(d); shearSynCd.set(shearSynC);
+  advanceShearSynTo(d + 1);
   shearSynDay = d;
+}
+function ensureShearSynDay(d) {
+  advanceShearSynDraws(d);
+  if (d === shearSynFineDay) return;
+  if (d === shearSynFineDay + 1) shearSynPrev.set(shearSynCur);
+  else upsample(shearSynCd, shearSynPrev);
+  upsample(shearSynC, shearSynCur);
+  shearSynFineDay = d;
 }
 
 // Jet axis. The KJ wave-mode amplitudes are a unit-variance AR(1) per mode (jetPhiEff, see the
@@ -1102,12 +1161,17 @@ function steerDetectHighs() {
 }
 /* ==== STEER MODEL END ==== */
 
+function computeFeatures(doy, wf, w0, w1, w2, w3, A0, A1, A2, A3) {          // the map's ocean-current / upwelling / shelf features, for the monthly blend and the day that are passed in
+  /* --- features: featN = climatological (normal) pattern, featD = this year's departures from it --- */
+  featN.fill(0); featD.fill(0);   // no synthetic ocean features for this basin -- see the note above; neither real candidate showed a resolvable anomaly
+}
 function computeField() {
   const d = simDate(simHour), y = d.getUTCFullYear(), doy = (d.getTime() - Date.UTC(y, 0, 1)) / 86400000;
   const ylen = ((y % 4 === 0 && y % 100 !== 0) || y % 400 === 0) ? 366 : 365, f = doy / ylen;
   const p = f * 12 - 0.5, m1 = Math.floor(p), w = cr(p - m1), M = (x) => ((x % 12) + 12) % 12;
   const A0 = climF[M(m1 - 1)], A1 = climF[M(m1)], A2 = climF[M(m1 + 1)], A3 = climF[M(m1 + 2)];
   const w0 = w[0], w1 = w[1], w2 = w[2], w3 = w[3];
+  const wf = 0.5 + 0.5 * Math.cos(2 * Math.PI * (f - 45 / 365.25));        // 1 in mid-February, 0 in mid-August
 
   // Synoptic weather noise's own day-fraction blend, computed every render (not just when
   // anomDirty fires) so it evolves continuously through the day -- same spirit as the monthly
@@ -1142,8 +1206,7 @@ function computeField() {
     anomDirty = false;
   }
 
-  /* --- features: featN = climatological (normal) pattern, featD = this year's departures from it --- */
-  featN.fill(0); featD.fill(0);   // no synthetic ocean features for this basin -- see the note above; neither real candidate showed a resolvable anomaly
+  computeFeatures(doy, wf, w0, w1, w2, w3, A0, A1, A2, A3);
 
   /* --- combine --- */
   const fs = P.features, vs = P.variability, sa = P.seasonal, wm = P.warming, es = P.enso, wmUp = Math.max(0, wm), saUp = 1 + (sa - 1) * 0.6;
@@ -1151,7 +1214,7 @@ function computeField() {
     const c0Row = seaCeil(LAT1 - j * RES) + wmUp - 1.2, o = j * NX;      // no water is hotter than physics allows for its latitude; a warmer world raises the limit
     for (let i = 0; i < NX; i++) {
       const k = o + i, mth = w0 * A0[k] + w1 * A1[k] + w2 * A2[k] + w3 * A3[k], fn = featN[k], dev = mth - annual[k];
-      const peakBoost = WARM_PEAK_BIAS * Math.tanh(Math.max(0, dev) / 1.5);   // climatology reads ~0.5-1.5 C cool right at the seasonal peak (real fall SSTs run warmer); ramps in with dev, capped so it doesn't over-add at high-latitude swings
+      const peakBoost = dev > 0 ? WARM_PEAK_BIAS * Math.tanh(dev / 1.5) : 0;   // climatology reads ~0.5-1.5 C cool right at the seasonal peak (real fall SSTs run warmer); ramps in with dev, capped so it doesn't over-add at high-latitude swings
       let an = vs * anomF[k] + es * ensoF[k]; if (an > 2) an = 2 + 1.5 * Math.tanh((an - 2) / 1.5); else if (an < -2) an = -2 - 1.5 * Math.tanh((-an - 2) / 1.5);
       let nrm = mth + fn + peakBoost, v = annual[k] + (dev > 0 ? saUp : sa) * dev + peakBoost + fs * (fn + vs * featD[k]) + an + wm;   // summer heat saturates: stretching the swing warms summers less than it cools winters
       if (nrm > 34) nrm = 34 + 1.5 * Math.tanh((nrm - 34) / 1.5); else if (nrm < -1.8) nrm = -1.8 - 1.5 * Math.tanh((-nrm - 1.8) / 1.5);   // soft: real water sometimes runs past the nominal range, it just shouldn't do so without limit
@@ -1615,7 +1678,7 @@ function fitCanvases() {
   const s = map.getSize(); DPR = Math.min(2, window.devicePixelRatio || 1);
   if (s.x !== W || s.y !== H || sstCanvas.width !== Math.round(W * DPR)) {
     W = s.x; H = s.y;
-    for (const c of [sstCanvas, baseCanvas, gridCanvas, jetCanvas, steerCanvas]) { c.width = Math.round(W * DPR); c.height = Math.round(H * DPR); }
+    for (const c of [sstCanvas, baseCanvas, gridCanvas, jetCanvas, steerCanvas, stormCanvas]) { c.width = Math.round(W * DPR); c.height = Math.round(H * DPR); }
   }
 }
 function paintLand(ctx, list, minX, minY, ws, stroke) {
@@ -1988,6 +2051,14 @@ function steerReadout() {
 }
 /* ==== STEER DRAW END ==== */
 
+const STORM_BASIN = 'spac';                                       // which basin this page is (src/storms.js, BASINS: its label, season, words, region and the engine's parameters)
+const featState = {                                                   // the state the ocean features carry from day to day (here the gap-wind index), captured and put back with the rest of the weather
+  get() { return { gapIdx }; },
+  set(f) { gapIdx = f.gapIdx; },
+};
+/*__STORM_HOOKS__*/
+
+
 function render() {
   needRender = false; fitCanvases();
   const z = map.getZoom(), ws = 256 * Math.pow(2, z), pb = map.getPixelBounds(), minX = pb.min.x, minY = pb.min.y;
@@ -2061,6 +2132,7 @@ function render() {
   drawGrid(minX, minY, ws);
   drawJetLine();
   drawSteer();
+  drawStorms();
   updateReadout();
 }
 let renderQueued = false;
@@ -2074,8 +2146,20 @@ window.addEventListener('resize', () => { map.invalidateSize(); syncMinZoom(); s
  *  Readout + legend
  * ------------------------------------------------------------------ */
 let pointer = null;
-map.on('mousemove', (e) => { pointer = e.latlng; updateReadout(); updateCityTip(e.containerPoint.x, e.containerPoint.y); });
-map.on('mouseout', () => { pointer = null; updateReadout(); hoveredCity = -1; $('city-tip').style.display = 'none'; });
+map.on('mousemove', (e) => {
+  pointer = e.latlng; updateReadout();
+  if (placeMode) { placeAtLL = e.latlng; placeRefresh(); updateCityTip(-1e4, -1e4); return; }
+  if (stormHover(e.containerPoint.x, e.containerPoint.y)) updateCityTip(-1e4, -1e4); else updateCityTip(e.containerPoint.x, e.containerPoint.y);
+});
+map.on('click', (e) => {
+  if (!placeMode) { stormClick(e.containerPoint.x, e.containerPoint.y); return; }
+  if (e.originalEvent && e.originalEvent.pointerType === 'touch') {                  // no hover on a touch screen: the first tap shows the forecast, a second tap on the same spot places it
+    const cur = placeAtLL && map.latLngToContainerPoint(placeAtLL);
+    if (!cur || Math.hypot(cur.x - e.containerPoint.x, cur.y - e.containerPoint.y) > 28) { placeAtLL = e.latlng; placeRefresh(); return; }
+  }
+  placeCommit(e.latlng);
+});
+map.on('mouseout', () => { pointer = null; updateReadout(); hoveredCity = -1; $('city-tip').style.display = 'none'; stormHover(-1e4, -1e4); if (placeMode) { placeAtLL = null; placePrev = null; stormsDirty = true; drawStorms(); } });
 $('cities').onchange = () => { hoveredCity = -1; $('city-tip').style.display = 'none'; scheduleRender(); };
 const fmtLL = (lat, lon) => Math.abs(lat).toFixed(1) + '°' + (lat >= 0 ? 'N' : 'S') + ' ' + Math.abs(lon).toFixed(1) + '°' + (lon >= 0 ? 'E' : 'W');
 function updateReadout() { updateReadoutBase(); steerReadout(); }
@@ -2138,7 +2222,8 @@ function updateClock() {
   $('year-bar').firstElementChild.style.width = ((d.getTime() - y0) / (y1 - y0) * 100).toFixed(2) + '%';
 }
 const STEP_MS = 60, SPEEDS = [0.125, 0.25, 0.5, 1, 2, 4, 8, 16, 32, 64];
-let speedIdx = 3, playing = true, acc = 0, lastNow = 0, lastComputeHour = -99, lastComputeAt = 0, dirty = true;
+const SIM_BUDGET_MS = 12, MAX_BACKLOG_H = 24;      // one frame advances the simulation for about this long (then the display gets its turn); a machine that cannot keep up runs slower than the speed shown, with at most this many hours owed, instead of freezing
+let speedIdx = 3, playing = true, acc = 0, lastNow = 0, lastComputeHour = -99, lastComputeAt = 0, dirty = true, lastStormDraw = 0;
 function updateSpeedUI() {
   const s = SPEEDS[speedIdx];
   $('speed-x').textContent = (s < 1 ? s : s) + '×';
@@ -2147,6 +2232,7 @@ function updateSpeedUI() {
 }
 function setPlaying(p) { playing = p; $('ic-pause').style.display = p ? '' : 'none'; $('ic-play').style.display = p ? 'none' : ''; $('b-play').setAttribute('aria-label', p ? 'Pause' : 'Play'); }
 function advanceHours(n) {
+  if (stormsOn) { stormsAdvance(n); return; }   // storms on: sub-chunks on absolute 3-hour keyframes (STORM HOOKS)
   const d0 = Math.floor(simHour / 24); simHour += n; const d1 = Math.floor(simHour / 24);
   for (let d = d0; d < Math.min(d1, d0 + 800); d++) stepDay();
   jetClockH += n * P.jetSpeed;   // the jet's own clock: the speed slider rescales time itself, so moving it never makes the jet jump
@@ -2158,19 +2244,35 @@ function frame(now) {
   const dt = Math.min(250, now - lastNow); lastNow = now;
   if (playing) {
     acc += dt * SPEEDS[speedIdx]; const n = Math.floor(acc / STEP_MS);
-    if (n > 0) { acc -= n * STEP_MS; advanceHours(n); updateClock(); }
+    if (n > 0) {
+      if (!stormsOn) { acc -= n * STEP_MS; advanceHours(n); }
+      else {                                                // storms on: one 3-hour keyframe interval at a time, and stop when this frame's share of the time is spent
+        let done = 0; const t0 = performance.now();
+        while (done < n) {
+          const k = Math.min(n - done, STORM_KEY_H - (((simHour % STORM_KEY_H) + STORM_KEY_H) % STORM_KEY_H));
+          advanceHours(k); done += k;
+          if (performance.now() - t0 >= SIM_BUDGET_MS) break;
+        }
+        acc = Math.min(acc - done * STEP_MS, MAX_BACKLOG_H * STEP_MS);
+      }
+      updateClock();
+    }
   }
   // Heavy layers (the field raster: ~50-70 ms) redraw every 3 simulated hours up to 2x and every 6 above it, but never more
   // often than the redraw itself can afford -- it used to be every 6 hours at 1x, about 3 redraws a second, which is what
   // made anything drifting across the map visibly step instead of glide.
-  if (dirty && now - lastComputeAt >= Math.max(120, 2.5 * lastRefreshMs) && Math.abs(simHour - lastComputeHour) >= (SPEEDS[speedIdx] <= 2 ? 3 : 6)) refresh();
+  const sp = SPEEDS[speedIdx], refreshGap = !playing || sp <= 1 ? 120 : sp <= 2 ? 160 : sp <= 4 ? 260 : sp <= 8 ? 420 : 650;   // the faster the clock, the less the map needs redrawing (and the more the simulation needs the time)
+  const duty = !playing || sp <= 2 ? 2.5 : sp <= 8 ? 4 : 6;                      // a redraw may cost about 1 / (duty + 1) of the time: 29 % up to 2x, 20 % to 8x, 14 % above
+  if (dirty && now - lastComputeAt >= Math.max(refreshGap, duty * lastRefreshMs) && Math.abs(simHour - lastComputeHour) >= (sp <= 2 ? 3 : 6)) refresh();
   else if (playing) {                                       // the line is cheap, so it moves every frame; the heavy layers wait for the check above
     if (jetLineOn.checked) drawJetLine();
     if (steerOn()) steerFrame(now);                         // arrows and highs: a few ms, so every few frames, not every 3 simulated hours
   }
+  if (stormsDirty && stormsOn && (!playing || now - lastStormDraw >= (sp >= 4 ? 50 : 33))) { drawStorms(); lastStormDraw = now; }      // the storms move with every simulated hour; a full-screen canvas is worth redrawing 20-30 times a second, not 60
+  saveTick();
   requestAnimationFrame(frame);
 }
-function restart() { initSim(P.seed); acc = 0; lastClock = ''; updateClock(); refresh(); }
+function restart() { deleteSave(); saveOwner = true; initSim(P.seed); acc = 0; lastClock = ''; updateClock(); refresh(); }
 
 $('b-play').onclick = () => setPlaying(!playing);
 $('b-slower').onclick = () => { if (speedIdx > 0) { speedIdx--; updateSpeedUI(); } };
@@ -2182,7 +2284,7 @@ $('enso-hold').onchange = () => {
     ensoHold = true; ensoHeld = n34;
     const t = Math.round(n34 * 10) / 10; $('p-ensonow').value = t; $('p-ensonow-o').textContent = ensoLabel(t) + ' (' + (t >= 0 ? '+' : '−') + Math.abs(t).toFixed(1) + ')';
   } else { ensoHold = false; ensoSet(ensoHeld); }   // the oscillator takes over again from the held value
-  anomDirty = true; updateEnsoUI(); refresh();
+  anomDirty = true; sAnomDirty = true; stormEnvChanged(); updateEnsoUI(); refresh();
 };
 window.addEventListener('keydown', (e) => {
   if (e.target && /INPUT|TEXTAREA/.test(e.target.tagName) && e.target.type !== 'range' && e.target.type !== 'checkbox') return;
@@ -2216,17 +2318,19 @@ $('l265').onchange = scheduleRender; $('l2').onchange = scheduleRender; $('jetli
 $('steerarrows').onchange = steerChanged; $('highs').onchange = steerChanged;
 document.querySelectorAll('#seg-depth button').forEach((b) => b.onclick = () => { steerLayer = b.dataset.d; document.querySelectorAll('#seg-depth button').forEach((x) => x.setAttribute('aria-pressed', x === b)); drawSteerLegend(); drawSteer(); updateReadout(); });
 const sliders = [['p-warm', 'warming', (v) => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(1) + ' °C'], ['p-moist', 'moisture', (v) => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(0) + ' %'], ['p-shear', 'shearShift', (v) => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(0) + ' kt'], ['p-var', 'variability', (v) => v.toFixed(1) + '×'], ['p-wx', 'synoptic', (v) => v.toFixed(1) + '×'], ['p-wxs', 'shearSynoptic', (v) => v.toFixed(1) + '×'], ['p-jets', 'jetSpeed', (v) => v.toFixed(1) + '×'], ['p-sea', 'seasonal', (v) => v.toFixed(2).replace(/0$/, '') + '×'], ['p-feat', 'features', (v) => v.toFixed(2).replace(/0$/, '') + '×'], ['p-enso', 'enso', (v) => v.toFixed(2).replace(/0$/, '') + '×']];
-sliders.forEach(([id, key, fmt]) => { $(id).oninput = () => { P[key] = parseFloat($(id).value); $(id + '-o').textContent = fmt(P[key]); refresh(); }; });
+sliders.forEach(([id, key, fmt]) => { $(id).oninput = () => { P[key] = parseFloat($(id).value); $(id + '-o').textContent = fmt(P[key]); stormEnvChanged(); refresh(); }; });
 /* the seed gives each run its own slightly different climate: seasonal swing, currents/upwelling and ENSO strength move by a small but noticeable amount */
 function hash01(seed, k) { let t = (seed ^ Math.imul(k, 0x9E3779B1)) >>> 0; t = Math.imul(t ^ (t >>> 16), 0x85EBCA6B); t = Math.imul(t ^ (t >>> 13), 0xC2B2AE35); t ^= t >>> 16; return (t >>> 0) / 4294967296; }
 function seedJitter(seed, k, lo, hi) { const mag = lo + (hi - lo) * hash01(seed, k * 2 + 1), v = 1 + (hash01(seed, k * 2 + 2) < 0.5 ? -mag : mag); return Math.round(v / 0.05) * 0.05; }
 function seedSliderValues(seed) { return { 'p-sea': seedJitter(seed, 1, 0.08, 0.22), 'p-feat': seedJitter(seed, 2, 0.10, 0.30), 'p-enso': seedJitter(seed, 3, 0.12, 0.40) }; }
 function setSliderValues(vals) { for (const id in vals) $(id).value = vals[id]; sliders.forEach(([id, key, fmt]) => { P[key] = parseFloat($(id).value); $(id + '-o').textContent = fmt(P[key]); }); }
-$('b-reset').onclick = () => { setSliderValues(Object.assign({ 'p-warm': 0, 'p-moist': 0, 'p-shear': 0, 'p-var': 1, 'p-wx': 1, 'p-wxs': 1, 'p-jets': 1 }, $('seed-vary').checked ? seedSliderValues(P.seed) : { 'p-sea': 1, 'p-feat': 1, 'p-enso': 1 })); refresh(); };
+$('b-reset').onclick = () => { setSliderValues(Object.assign({ 'p-warm': 0, 'p-moist': 0, 'p-shear': 0, 'p-var': 1, 'p-wx': 1, 'p-wxs': 1, 'p-jets': 1 }, $('seed-vary').checked ? seedSliderValues(P.seed) : { 'p-sea': 1, 'p-feat': 1, 'p-enso': 1 })); stormEnvChanged(); refresh(); };
 function applySeed(s) { s = Math.max(1, Math.min(999999, Math.floor(s) || 1)); $('seed').value = s; P.seed = s; if ($('seed-vary').checked) setSliderValues(seedSliderValues(s)); restart(); }
 $('seed-vary').onchange = () => { setSliderValues($('seed-vary').checked ? seedSliderValues(P.seed) : { 'p-sea': 1, 'p-feat': 1, 'p-enso': 1 }); refresh(); };
 $('seed').onchange = () => applySeed(parseFloat($('seed').value));
 $('b-newseed').onclick = () => applySeed(1 + Math.floor(Math.random() * 999999));
+
+/*__STORM_LATE__*/
 
 /* ------------------------------------------------------------------ *
  *  Start
@@ -2237,14 +2341,18 @@ if (window.innerWidth < 700) $('panel').classList.add('collapsed');
 const seed0 = 1 + Math.floor(Math.random() * 999999);
 $('seed').value = seed0; P.seed = seed0; setSliderValues(seedSliderValues(seed0)); initSim(seed0); updateClock();
 refresh();
+if (RESUME && !resumeFromSave()) setPlaying(true); else if (RESUME) setPlaying(false);
+else if (hasSaveMeta()) { saveOwner = false; document.body.dataset.resume = 'beside'; toast('A saved season is waiting in the main menu. This new one is not being saved: press Restart to replace the saved season, or go back to the menu and press Continue.'); }
 $('loading').style.display = 'none';
 lastNow = performance.now(); requestAnimationFrame(frame);
 
 window.SSTSIM = {
+  ...STORM_API,
   advance(h) { advanceHours(h); updateClock(); refresh(); },
   sample(lat, lon) { return { sst: sampleField(sst, lat, lon), normal: sampleField(normal, lat, lon), humid: sampleField(humid, lat, lon), shear: sampleField(shear, lat, lon) }; },
   state() { return { simHour, seed: P.seed, date: simDate(simHour).toISOString(), gapIdx }; },
-  set(k, v) { P[k] = v; refresh(); }, enso() { return { n34, lag0: ensoLag(0), lag3: ensoLag(91), lag6: ensoLag(183), hold: ensoHold, held: ensoHeld }; }, forceEnso, jetLat(lon) { return jetAxisF[Math.round((lon - LON0) / RES)]; },
+  owedHours() { return acc / STEP_MS; },                               // how many simulated hours the clock owes the playback (the frame loop caps it, see MAX_BACKLOG_H)
+  set(k, v) { P[k] = v; stormEnvChanged(); refresh(); }, enso() { return { n34, lag0: ensoLag(0), lag3: ensoLag(91), lag6: ensoLag(183), hold: ensoHold, held: ensoHeld }; }, forceEnso, jetLat(lon) { return jetAxisF[Math.round((lon - LON0) / RES)]; },
   // Live axis straight from the jet clock (what the line is drawn from), not the copy baked into the last computeField(); tick() moves the clocks WITHOUT the 50-70 ms field redraw advance() does, so a test can sample the jet hour by hour cheaply.
   jetLatLive(lon) { jetAxisFinal(jetAxisNow); const fc = (lon - LON0) / DM.cres, c0 = Math.min(CNX - 2, Math.max(0, Math.floor(fc))), t = fc - c0; return jetAxisNow[c0] * (1 - t) + jetAxisNow[c0 + 1] * t; }, tick(h) { advanceHours(h); }, setView(v) { document.querySelector('#seg-view button[data-v="' + v + '"]').click(); },
   steerNow() { steerUpdate(); return true; },

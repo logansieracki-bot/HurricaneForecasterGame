@@ -4,7 +4,7 @@
 // program does, which docs/roadmap.md names). Needs a clean tree and Chromium for the browser drivers:
 //   PLAYWRIGHT_CHROMIUM_PATH=/path/to/chromium node tools/storm_mutants.mjs [--dry] [--base] [--only X1,S4] [--drivers node,save] [--jobs 3]
 // --dry   only checks that every edit anchor occurs exactly once; --base runs every driver on the unmodified tree (all must pass first);
-// --only  a comma list of mutant ids; --drivers  restricts the drivers to run (node, storms, summary, place, save); --jobs  how many mutants run at once (default 3; each builds into its own directory under $MUT_DIR or the
+// --only  a comma list of mutant ids; --drivers  restricts the drivers to run (node, storms, summary, place, save, gate); --jobs  how many mutants run at once (default 3; each builds into its own directory under $MUT_DIR or the
 //         temp directory). It changes src/storms.js, src/template.html or index.html for the few seconds a build takes and puts them back itself;
 //         if it is killed in between, `git checkout -- src index.html` restores them. The drivers are the check functions cut out of tests/run.mjs
 //         by their opening comments (`// The storm layer on the Atlantic page`, `// Save / resume`, `async function checkEnsoHold`): keep them.
@@ -26,7 +26,7 @@ const E = (find, repl) => ({ find, repl }), R = (re, repl) => ({ re, repl });
 const T = 'src/template.html', S = 'src/storms.js', I = 'index.html';
 const mutants = [
   // ---- M5: the season record and the summary card
-  M('E1', S, [E('clamp(this.doyAt(h), 0, 365)', '0')], ['node'], 'ACE of every fix credited to day 0'),
+  M('E1', S, [E('clamp(this.seasonDay(h), 0, 365)', '0')], ['node'], 'ACE of every fix credited to day 0'),
   M('E2', S, [E("this.systems = this.systems.filter((S) => S.alive);                          // the finished season's dead paths disappear", 'this.systems = this.systems;')], ['node', 'summary'], 'a finished season keeps its dead paths'),
   M('E3', S, [E('from: q.from || 0', 'from: 0')], ['node', 'summary'], 'a season forgets the day its count started'),
   M('E4', S, [E("S.th !== 'wv')) this._finalizePrev();", "S.th !== 'wv')) void 0;")], ['node'], 'the old season is never closed'),
@@ -114,6 +114,15 @@ const mutants = [
   M('Z8', S, [E('return Math.max(mapAt(M, arr, tw, lat, lon), par.hazFloor || 0);', 'return mapAt(M, arr, tw, lat, lon);')], ['node'], 'a map that is zero is a wall to development'),
   M('Z9', S, [E('if (par.seedFloor > 0 && env && env.box &&', 'if (false && env && env.box &&')], ['node'], 'no disturbance is ever born outside the maps'),
   M('Z10', S, [E('if (!(env.isLand && env.isLand(lat, lon))) {\n        const S = this._seedSystem(\'F\'', 'if (true) {\n        const S = this._seedSystem(\'F\'')], ['node'], 'floor seeds are born on land'),
+  // ---- M10: the storm layer on all nine pages
+  M('Z17', T, [E('const STORMS_READY = !!(DATA.storms && DATA.storms.maps);', 'const STORMS_READY = true;')], ['gate'], 'a page with no storm climatology runs the storm engine and shows its controls'),
+  M('Z18', S, [E("atlantic:    { label: 'Atlantic', menu: 'atlantic', seasonMonth: 0, waves: true,", "atlantic:    { label: 'Atlantic', menu: 'atlantic', seasonMonth: 0, waves: false,")], ['node'], 'the Atlantic has no easterly waves'),
+  M('Z19', S, [E('if (basinOf(this.basin).waves && this.sched.waveT == null)', 'if (this.sched.waveT == null)'), E('while (basinOf(this.basin).waves && h >= this.sched.waveT)', 'while (h >= this.sched.waveT)')], ['node'], 'every basin has the Atlantic\'s easterly waves'),
+  M('Z20', S, [E('ctx.act = activityFactor(par, this.seed, seasonYearOf(this.startMs + h * HOUR_MS, this.seasonMonth), h); }', 'ctx.act = activityFactor(par, this.seed, this.dateAt(h).getUTCFullYear(), h); }'), E('this.ctx.act = activityFactor(this.par, this.seed, seasonYearOf(this.startMs + h * HOUR_MS, this.seasonMonth), h); }', 'this.ctx.act = activityFactor(this.par, this.seed, this.dateAt(h).getUTCFullYear(), h); }')], ['node'], 'the activity of a southern season changes on Jan 1'),
+  M('Z21', S, [E('ty = par.steerScale * ((1 - a) * vm + a * vd) + hs * (par.driftV[0]', 'ty = par.steerScale * ((1 - a) * vm + a * vd) + (par.driftV[0]')], ['node'], 'a southern cyclone drifts toward the equator'),
+  M('Z22', S, [E("aus:         { label: 'Australian Region', menu: 'aus', seasonMonth: 6,", "aus:         { label: 'Australian Region', menu: 'aus', seasonMonth: 0,")], ['node'], 'a southern season turns over on Jan 1'),
+  M('Z23', S, [E("const k = cursors.seq = (cursors.seq == null ? N.start : cursors.seq + 1); return N.list[k % N.list.length];", "const k = cursors.seq = N.start; return N.list[k % N.list.length];")], ['node'], 'a sequential name list starts again with every storm'),
+  M('Z24', S, [E("if (N.west && lon != null && lon > -180 && lon < N.west.lon)", "if (false)")], ['node'], 'the East Pacific never takes a Central Pacific name'),
   M('Z11', T, [E('const k = j * NX + i; return land[k] === 1 && lakeGrid[k] === 0;', 'const k = j * NX + i; return land[k] === 1;')], ['storms'], 'a lake is land for a storm'),
   M('Z12', T, [E('sst: (la, lo) => { const id = lakeIdAt(la, lo); return id ? kfLake[id - 1] : sampleFieldS(kfSst, la, lo); },', 'sst: (la, lo) => sampleFieldS(kfSst, la, lo),')], ['storms'], 'a lake has the land\'s temperature for the storms'),
   M('Z13', S, [E('wGen = (1 - smooth01(lf, 0.4, 0.8)) * smooth01(Math.abs(lat2), 3, 6) * smooth01(sstE, sstOK - 1, sstOK);', 'wGen = 1;')], ['node'], 'a depression can form over land, on the equator and over cold water'),
@@ -121,6 +130,16 @@ const mutants = [
   M('Z15', S, [E('if (cut < had) { S.v *= cut / had; S.landCut = cut; }', 'if (cut < had) { S.landCut = cut; }')], ['node'], 'a cyclone feels no friction at its first contact with land'),
   M('Z16', S, [E('* (1 - smooth01(lf || 0, 0.2, 0.5));', ';')], ['node'], 'a cyclone over land dissipates as it would at sea'),
 ];
+
+/* the page's storm code lives in several files now (the template and the shared src/storm-*.js / storm-ui.* that the build inlines into every basin's page): a mutant written against the
+   template finds the file its anchor is in */
+const PAGE_FILES = [T, 'src/storm-hooks.js', 'src/storm-late.js', 'src/storm-ui.html', 'src/storm-ui.css'];
+for (const m of mutants) {
+  if (m.file !== T || !m.edits.length) continue;
+  const e0 = m.edits[0], count = (txt) => (e0.find !== undefined ? txt.split(e0.find).length - 1 : (txt.match(new RegExp(e0.re, 'g')) || []).length);
+  const hit = PAGE_FILES.filter((f) => count(readFileSync(join(REPO, f), 'utf8')) === 1);
+  if (hit.length === 1) m.file = hit[0];
+}
 
 function applyEdits(text, edits, id) {
   for (const e of edits) {
@@ -147,6 +166,16 @@ function makeDriver(which) {
   const save = L.slice(idx((l) => l.startsWith('// Save / resume')), idx((l) => l.startsWith('await checkSave();'))).join('\n');
   const body = which === 'save'
     ? 'await checkSave();\n'
+    : which === 'gate'
+    ? `const browser = await chromium.launch(launchOpts);
+const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+await page.route('**://**/*', (route) => route.request().url().startsWith('file://') ? route.continue() : route.abort());
+await page.goto(pathToFileURL(EPAC_DIST).href, { waitUntil: 'load', timeout: 30000 });
+await page.waitForFunction(() => window.__ready === true, { timeout: 30000 });
+await page.waitForTimeout(800);
+await checkStormGate(page, 'East Pacific', EPAC_DIST);
+await browser.close();
+`
     : `const browser = await chromium.launch(launchOpts);
 const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
 await page.route('**://**/*', (route) => route.request().url().startsWith('file://') ? route.continue() : route.abort());
@@ -165,7 +194,8 @@ await browser.close();
 function snapshot(id, mutatedIndexHtml) {
   const dir = join(OUT, id); rmSync(dir, { recursive: true, force: true });
   for (const d of ['dist', 'tests', 'src']) mkdirSync(join(dir, d), { recursive: true });
-  copyFileSync(join(REPO, 'dist/atlantic-sst-simulator.html'), join(dir, 'dist/atlantic-sst-simulator.html'));
+  for (const f of ['atlantic', 'eastpacific']) copyFileSync(join(REPO, `dist/${f}-sst-simulator.html`), join(dir, `dist/${f}-sst-simulator.html`));
+  if (!existsSync(join(dir, 'data'))) symlinkSync(join(REPO, 'data'), join(dir, 'data'));
   writeFileSync(join(dir, 'index.html'), mutatedIndexHtml);
   copyFileSync(join(REPO, 'package.json'), join(dir, 'package.json'));
   for (const f of ['tests/storms.mjs', 'tests/storms_env.mjs']) copyFileSync(join(REPO, f), join(dir, f));
@@ -177,7 +207,7 @@ function runDriver(dir, name) {            // resolves {name, code, fails[], tai
   return new Promise((resolve) => {
     let file, argv;
     if (name === 'node') { file = join(dir, 'tests/storms.mjs'); argv = [file]; copyFileSync(join(dir, 'storms.js.mut'), join(dir, 'src/storms.js')); }
-    else { file = join(dir, `tests/_drv_${name}.mjs`); writeFileSync(file, makeDriver(name)); argv = [file]; }
+    else { file = join(dir, `tests/_drv_${name}.mjs`); writeFileSync(file, makeDriver(name)); argv = [file]; if (name === 'gate') copyFileSync(join(dir, 'storms.js.mut'), join(dir, 'src/storms.js')); }
     const p = spawn('node', argv, { cwd: dir, env: process.env });
     let out = ''; p.stdout.on('data', (d) => (out += d)); p.stderr.on('data', (d) => (out += d));
     const timer = setTimeout(() => { out += '\nTIMEOUT'; p.kill('SIGKILL'); }, 900000);

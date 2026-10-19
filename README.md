@@ -42,12 +42,19 @@ nothing to run by hand.
 - `index.html` main menu: basin select + mode select. All nine basins run in
   Simulation mode; the Forecaster card is present but disabled ("Coming soon"). With an Atlantic season
   saved in the browser it also has a Continue card (beside the picker on a wide screen, above it on a phone).
-- `src/template.html` the Atlantic simulator app: vanilla JS in one IIFE, four
-  build placeholders (`/*__LEAFLET_CSS__*/`, `/*__LEAFLET_JS__*/`, `/*__DATA__*/`,
-  `/*__STORMS__*/`).
+- `src/template.html` the Atlantic simulator app: vanilla JS in one IIFE, build
+  placeholders (`/*__LEAFLET_CSS__*/`, `/*__LEAFLET_JS__*/`, `/*__DATA__*/`,
+  `/*__STORMS__*/`, and for the storm layer `/*__STORM_HOOKS__*/`, `/*__STORM_LATE__*/`,
+  `/*__STORM_CSS__*/`, `<!--__STORM_HTML:name-->`, `{{BASIN_LABEL}}`).
   `window.SSTSIM` is the test/debug hook. `src/template-<basin>.html` are the other
-  eight basins' versions of the same app (per-basin constants and data; blocks are
-  ported between them by script, see `docs/roadmap.md`).
+  eight basins' versions of the same app (per-basin constants and data; the steering
+  and shear blocks are ported between them by script, see `docs/roadmap.md`).
+- `src/storm-hooks.js`, `src/storm-late.js`, `src/storm-ui.css`, `src/storm-ui.html` the storm layer's page code, ONE copy for
+  all nine pages (the build inlines it at the placeholders above): the storm grid (the engine's own, lighter copy of the environment),
+  the keyframes and the clock, lakes as water, the drawing, hover and click cards, Place mode, the season bar and summary, and the
+  save / resume. A template only says which basin it is (`const STORM_BASIN`) and how to read and set its ocean-feature state
+  (`featState`); `tools/port_storms.mjs` ported the rest of the Atlantic's storm-era edits (the 1-degree storm grid, the lazy
+  synoptic up-sampling, the features split) into the other eight templates once (`--check` proves it reproduces the Atlantic's).
 - `vendor/leaflet/` Leaflet 1.9.4 CSS/JS, vendored verbatim (not fetched at build
   time, so the build has no network dependency either).
 - `data/generated/data.json` (Atlantic) and `<basin>-data.json` (the others): the
@@ -75,8 +82,11 @@ nothing to run by hand.
   percentiles the season summary draws against go in beside them as `storms.ace` / `storms.normals` with `merge_data.mjs --storms`),
   `tools/storm_mc.mjs` runs whole seasons through the built page (any number of parameter sets at once, same weather),
   `tools/storm_opt.mjs` calibrates the intensity law and the environmental coupling with CMA-ES, `tools/storm_validate.mjs`
-  checks tracks, landfalls and genesis against the real best track, and `tools/storm_mutants.mjs` breaks the storm code in 73 ways, one at a time, and runs the
-  checks that should notice (all 73 are caught; `docs/roadmap.md` has what the passes found and how the checks were changed).
+  checks tracks, landfalls and genesis against the real best track, and `tools/storm_mutants.mjs` breaks the storm code in 97 ways, one at a time, and runs the
+  checks that should notice (all 97 are caught; `docs/roadmap.md` has what the passes found and how the checks were changed).
+  The other eight basins' storm climatology is made by the same chain with a basin name: `tools/tc_basins.json` (the table: page, season, grid, hemisphere ...), `tools/storm_region.mjs`
+  (which cells of a page are inside its basin and land for a storm), `tools/make_tc_basin.py` (the real targets and maps of the storms that form inside a page, by wind), `tools/storm_fit.mjs --basin`,
+  `tools/storm_basin.mjs` (whole seasons of any basin against its reference) and `HF_DIST=<dir> npm run build` for a lab build beside a test run.
 
 ## How the simulation works (keep these ideas when changing things)
 - Grid: 0.25° over lon -110..40, lat -40..72 (601×449). Time: 1 sim hour per 60 ms
@@ -308,9 +318,11 @@ nothing to run by hand.
   Ocean, see the caveat in `docs/roadmap.md`), highs a day within a few tenths of the real count month by month,
   the El Niño response in the sign the real data have. The ribbon and the per-latitude statistics are measured on an
   analysis box wider than the displayed one (most boxes do not contain the jet), like the shear jet.
-- Storms (Atlantic only, the test basin; step 1 of the 7-step storm roadmap in `docs/storms-plan.md`). `src/storms.js` is
-  the engine (pure JS, no DOM) and the block between `/* ==== STORM HOOKS BEGIN/END ==== */` in `src/template.html` is
-  everything that connects it to the page. **Systems:** the precursors are one lifecycle: a tropical wave (dashed line) or a
+- Storms (step 1 of the 7-step storm roadmap in `docs/storms-plan.md`; the Atlantic was the test basin and is switched on, the
+  other eight pages carry the same code and switch on, basin by basin, when their data file holds the climatology the engine is
+  anchored to (`storms.maps`, `STORMS_READY` in `src/storm-hooks.js`): until then they show none of the storm controls and run the
+  plain simulation). `src/storms.js` is the engine (pure JS, no DOM) and `src/storm-hooks.js` / `src/storm-late.js` (see Layout)
+  are everything that connects it to the page. **Systems:** the precursors are one lifecycle: a tropical wave (dashed line) or a
   low (a red `L`) that has the potential to become a cyclone turns into a *disturbance* (an X in a dashed ring), which turns into a
   depression; then tropical depressions / storms / hurricanes (circles coloured by Saffir-Simpson category), subtropical depressions /
   storms (squares) and extratropical / post-tropical cyclones (grey triangles), each with a track of advisory dots every three hours

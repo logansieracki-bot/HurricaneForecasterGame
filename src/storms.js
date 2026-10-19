@@ -109,6 +109,68 @@ function nameFor(year, index) {                            // index 0-based: the
   return index < list.length ? list[index] : NAME_SUPPLEMENTAL[(index - list.length) % NAME_SUPPLEMENTAL.length];
 }
 
+/* ---- the nine basins -------------------------------------------------------------------------------------------------------------------
+   What differs from one basin to the next in the engine itself: the season (a calendar year in the northern hemisphere, July to June in the southern: the season is named for the year it
+   starts in), the way storms are named, the word for a hurricane-strength cyclone, and a patch of the parameters (the physics is the Atlantic's, calibrated; a basin's patch holds what its
+   real record asks to be different, see docs/roadmap.md). The climatology maps (where and when disturbances develop, how storms drift) are data, not code: they come with the page.
+   Name lists: the Atlantic and the Eastern Pacific are the WMO / NHC tables as I remember them (the 2026 lists high confidence, later years and the replacements less); the other lists are
+   the real names in the order I remember them or, where I do not, plausible names in their style -- all of them are flagged `verified: false` and can be edited here. */
+const EP_SETS = [
+  ['Amanda', 'Boris', 'Cristina', 'Douglas', 'Elida', 'Fausto', 'Genevieve', 'Hernan', 'Iselle', 'Julio', 'Karina', 'Lowell', 'Marie', 'Norbert', 'Odalys', 'Polo', 'Rachel', 'Simon', 'Trudy', 'Vance', 'Winnie', 'Xavier', 'Yolanda', 'Zeke'],
+  ['Andres', 'Blanca', 'Carlos', 'Dolores', 'Enrique', 'Felicia', 'Guillermo', 'Hilda', 'Ignacio', 'Jimena', 'Kevin', 'Linda', 'Marty', 'Nora', 'Olaf', 'Pamela', 'Rick', 'Sandra', 'Terry', 'Vivian', 'Waldo', 'Xina', 'York', 'Zelda'],
+  ['Agatha', 'Blas', 'Celia', 'Darby', 'Estelle', 'Frank', 'Georgette', 'Howard', 'Ivette', 'Javier', 'Kay', 'Lester', 'Madeline', 'Newton', 'Orlene', 'Paine', 'Roslyn', 'Seymour', 'Tina', 'Virgil', 'Winifred', 'Xavier', 'Yolanda', 'Zeke'],
+  ['Adrian', 'Beatriz', 'Calvin', 'Dora', 'Eugene', 'Fernanda', 'Greg', 'Hilary', 'Irwin', 'Jova', 'Kenneth', 'Lidia', 'Max', 'Norma', 'Otis', 'Pilar', 'Ramon', 'Selma', 'Todd', 'Veronica', 'Wiley', 'Xina', 'York', 'Zelda'],
+  ['Aletta', 'Bud', 'Carlotta', 'Daniel', 'Emilia', 'Fabio', 'Gilma', 'Hector', 'Ileana', 'John', 'Kristy', 'Lane', 'Miriam', 'Norman', 'Olivia', 'Paul', 'Rosa', 'Sergio', 'Tara', 'Vicente', 'Willa', 'Xavier', 'Yolanda', 'Zeke'],
+  ['Alvin', 'Barbara', 'Cosme', 'Dalila', 'Erick', 'Flossie', 'Gil', 'Henriette', 'Ivo', 'Juliette', 'Kiko', 'Lorena', 'Mario', 'Narda', 'Octave', 'Priscilla', 'Raymond', 'Sonia', 'Tico', 'Velma', 'Wallis', 'Xina', 'York', 'Zelda'],
+];
+const EP_EXTRA = ['Alexa', 'Brent', 'Celeste', 'Dario', 'Esmeralda', 'Fabian', 'Galen', 'Hollis', 'Iris', 'Jovan', 'Kaleo', 'Leona'];
+const CP_NAMES = ['Akoni', 'Ema', 'Hone', 'Iona', 'Keli', 'Lala', 'Moke', 'Nolo', 'Olana', 'Pena', 'Ulana', 'Wale', 'Aka', 'Ekeka', 'Hene', 'Iolana', 'Keoni', 'Lino', 'Mele', 'Nona', 'Oliwa', 'Pama', 'Upana', 'Wene',
+  'Alika', 'Ele', 'Huko', 'Iopa', 'Kika', 'Lana', 'Maka', 'Neki', 'Omeka', 'Pewa', 'Unala', 'Wali', 'Ana', 'Ela', 'Halola', 'Iune', 'Kilo', 'Loke', 'Malia', 'Niala', 'Oka', 'Peke', 'Uleki', 'Wila'];
+const WP_NAMES = ['Damrey', 'Haikui', 'Kirogi', 'Yun-yeung', 'Koinu', 'Bolaven', 'Sanba', 'Jelawat', 'Ewiniar', 'Maliksi', 'Gaemi', 'Prapiroon', 'Maria', 'Son-Tinh', 'Ampil', 'Wukong', 'Jongdari', 'Shanshan', 'Yagi', 'Leepi',
+  'Bebinca', 'Pulasan', 'Soulik', 'Cimaron', 'Jebi', 'Krathon', 'Barijat', 'Trami', 'Kong-rey', 'Yinxing', 'Toraji', 'Man-yi', 'Usagi', 'Pabuk', 'Wutip', 'Sepat', 'Mun', 'Danas', 'Nari', 'Wipha', 'Francisco', 'Co-may', 'Krosa', 'Bailu',
+  'Podul', 'Lingling', 'Kajiki', 'Nongfa', 'Peipah', 'Tapah', 'Mitag', 'Ragasa', 'Neoguri', 'Bualoi', 'Matmo', 'Halong', 'Nakri', 'Fengshen', 'Kalmaegi', 'Fung-wong', 'Koto', 'Nokaen', 'Penha', 'Nuri', 'Sinlaku', 'Hagupit', 'Jangmi',
+  'Mekkhala', 'Higos', 'Bavi', 'Maysak', 'Haishen', 'Noul', 'Dolphin', 'Kujira', 'Chan-hom', 'Peilou', 'Nangka', 'Saudel', 'Narra', 'Gaenari', 'Atsani', 'Etau', 'Bang-lang', 'Krovanh', 'Dujuan', 'Surigae', 'Choi-wan', 'Koguma', 'Champi',
+  'In-fa', 'Cempaka', 'Nepartak', 'Lupit', 'Mirinae', 'Nida', 'Omais', 'Luc-binh', 'Chanthu', 'Dianmu', 'Mindulle', 'Lionrock', 'Kompasu', 'Namtheun', 'Malou', 'Nyatoh', 'Sarbul', 'Amuyao', 'Gosari', 'Chaba', 'Aere', 'Songda', 'Trases',
+  'Mulan', 'Meari', 'Ma-on', 'Tokage', 'Hinnamnor', 'Muifa', 'Merbok', 'Nanmadol', 'Talas', 'Noru', 'Kulap', 'Roke', 'Sonca', 'Nesat', 'Haitang', 'Nalgae', 'Banyan', 'Yamaneko', 'Pakhar', 'Sanvu', 'Mawar', 'Guchol', 'Talim', 'Duksuri', 'Khanun', 'Lan', 'Saola'];
+const NI_NAMES = ['Nisarga', 'Gati', 'Nivar', 'Burevi', 'Tauktae', 'Yaas', 'Gulab', 'Shaheen', 'Jawad', 'Asani', 'Sitrang', 'Mandous', 'Mocha', 'Biparjoy', 'Tej', 'Hamoon', 'Midhili', 'Michaung', 'Remal', 'Asna', 'Dana', 'Fengal', 'Shakhti', 'Montha',
+  'Senyar', 'Ditwah', 'Arnab', 'Murasu', 'Akvan', 'Kaani', 'Ngamann', 'Sail', 'Sahab', 'Lulu', 'Ghazeer', 'Gigum', 'Thianyot', 'Afoor', 'Diksam'];
+const AU_NAMES = ['Anika', 'Billy', 'Charlotte', 'Darian', 'Ellie', 'Freddy', 'Gabrielle', 'Herman', 'Ilsa', 'Jasper', 'Kirrily', 'Lincoln', 'Megan', 'Neville', 'Olga', 'Paul', 'Robyn', 'Sean', 'Tatiana', 'Vince', 'Alessia', 'Bart', 'Caleb', 'Dianne',
+  'Errol', 'Fiona', 'Gregg', 'Hayley', 'Ian', 'Jenna', 'Kevin', 'Linda', 'Marcus', 'Nora', 'Owen', 'Pat', 'Quinn', 'Ralph', 'Selwyn', 'Tessa'];
+const SW_SETS = [
+  ['Ana', 'Batsirai', 'Cliff', 'Dumako', 'Emnati', 'Fezile', 'Gombe', 'Halima', 'Issa', 'Jobo', 'Kamba', 'Lola', 'Mondo', 'Nakisha', 'Olwen', 'Pesho', 'Quincy', 'Rumbi', 'Soraya', 'Tula', 'Uriel', 'Vana', 'Waldo', 'Xola'],
+  ['Ashley', 'Balita', 'Cheneso', 'Dingani', 'Enala', 'Freddy', 'Gamane', 'Herold', 'Iris', 'Jude', 'Kofi', 'Lavina', 'Mawa', 'Noa', 'Orson', 'Paza', 'Rando', 'Sakina', 'Tambo', 'Uzuri', 'Venu', 'Wala', 'Xiomara', 'Yoli'],
+  ['Alvaro', 'Belal', 'Candice', 'Djoungou', 'Eleanor', 'Fabrice', 'Garance', 'Hidaya', 'Ikoro', 'Jabulani', 'Kena', 'Lindiwe', 'Moana', 'Nandi', 'Oscar', 'Pamba', 'Rafael', 'Saba', 'Teddy', 'Umar', 'Vincent', 'Wilma', 'Xaver', 'Yanis'],
+  ['Alinta', 'Boris', 'Cyril', 'Dalia', 'Elias', 'Fana', 'Gerald', 'Hasina', 'Ivan', 'Jade', 'Kiki', 'Lamar', 'Mina', 'Naomi', 'Omar', 'Pili', 'Ravo', 'Sofia', 'Thabo', 'Ulrika', 'Valo', 'Wenda', 'Xander', 'Yara'],
+  ['Amara', 'Bruno', 'Chedza', 'Dadou', 'Eloise', 'Faraji', 'Gaston', 'Hawa', 'Idrissa', 'Joyce', 'Kassim', 'Layla', 'Mikael', 'Nia', 'Oliver', 'Penda', 'Rado', 'Salima', 'Tiago', 'Unity', 'Vero', 'Wassim', 'Xena', 'Yves'],
+  ['Alima', 'Bakari', 'Chido', 'Dikeledi', 'Elton', 'Faith', 'Gugu', 'Hamisi', 'Ines', 'Jamal', 'Kelvin', 'Lerato', 'Malik', 'Nasra', 'Odile', 'Pierre', 'Roya', 'Sidi', 'Tendai', 'Una', 'Viola', 'Winston', 'Xavi', 'Yasmin'],
+];
+const SP_NAMES = ['Ana', 'Bina', 'Cody', 'Dovi', 'Eva', 'Fili', 'Gina', 'Hale', 'Irene', 'Judy', 'Kevin', 'Lola', 'Mal', 'Nat', 'Olo', 'Pita', 'Rae', 'Sera', 'Tam', 'Uesi', 'Vania', 'Wesi', 'Yani', 'Zita'];
+const SA_NAMES = ['Arani', 'Bapo', 'Cari', 'Deni', 'Ecai', 'Guara', 'Iba', 'Jaguar', 'Kurumi', 'Mani', 'Oquira', 'Potira', 'Raoni', 'Sepe', 'Tupa', 'Uba', 'Vitoria', 'Waima', 'Yara', 'Zeca'];
+const MED_NAMES = ['Zorbas', 'Ianos', 'Daniel', 'Apollo', 'Celeno', 'Numa', 'Leucosia', 'Rolf', 'Elaina', 'Quirinus', 'Trixie', 'Cassilda', 'Helios', 'Medea', 'Nostos', 'Oceanis', 'Pontos', 'Selene'];
+const BASINS = {
+  atlantic:    { label: 'Atlantic', menu: 'atlantic', seasonMonth: 0, waves: true, hurricane: 'hurricane', lowLat0: 18, mdr: { lat: [10, 20], lon: [-80, -20] }, names: { type: 'yearly', base: 2021, lists: NAME_SETS, extra: NAME_SUPPLEMENTAL, verified: false }, params: {} },
+  eastpacific: { label: 'Eastern Pacific', menu: 'epac', seasonMonth: 0, waves: false, hurricane: 'hurricane', lowLat0: 8, mdr: { lat: [8, 18], lon: [-125, -95] }, names: { type: 'yearly', base: 2020, lists: EP_SETS, extra: EP_EXTRA, west: { lon: -140, seq: CP_NAMES, start: 5 }, verified: false }, params: {} },
+  westpacific: { label: 'Western Pacific', menu: 'wpac', seasonMonth: 0, waves: false, hurricane: 'typhoon', lowLat0: 5, mdr: { lat: [8, 20], lon: [130, 165] }, names: { type: 'seq', list: WP_NAMES, start: 61, verified: false }, params: {} },
+  nio:         { label: 'North Indian Ocean', menu: 'nio', seasonMonth: 0, waves: false, hurricane: 'cyclone', lowLat0: 5, mdr: { lat: [8, 18], lon: [60, 95] }, names: { type: 'seq', list: NI_NAMES, start: 26, verified: false }, params: {} },
+  aus:         { label: 'Australian Region', menu: 'aus', seasonMonth: 6, waves: false, hurricane: 'cyclone', lowLat0: 5, mdr: { lat: [-18, -8], lon: [105, 150] }, names: { type: 'seq', list: AU_NAMES, start: 0, verified: false }, params: {} },
+  swio:        { label: 'South-West Indian Ocean', menu: 'swio', seasonMonth: 6, waves: false, hurricane: 'cyclone', lowLat0: 5, mdr: { lat: [-20, -8], lon: [50, 90] }, names: { type: 'yearly', base: 2021, lists: SW_SETS, extra: NAME_SUPPLEMENTAL, verified: false }, params: {} },
+  spac:        { label: 'South Pacific', menu: 'spac', seasonMonth: 6, waves: false, hurricane: 'cyclone', lowLat0: 5, mdr: { lat: [-20, -8], lon: [160, 210] }, names: { type: 'seq', list: SP_NAMES, start: 0, verified: false }, params: {} },
+  satl:        { label: 'South Atlantic', menu: 'satl', seasonMonth: 6, waves: false, hurricane: 'cyclone', lowLat0: 15, mdr: { lat: [-32, -20], lon: [-50, -30] }, names: { type: 'seq', list: SA_NAMES, start: 12, verified: false }, params: {} },
+  med:         { label: 'Mediterranean', menu: 'med', seasonMonth: 6, waves: false, hurricane: 'medicane', lowLat0: 30, mdr: { lat: [34, 40], lon: [0, 25] }, names: { type: 'seq', list: MED_NAMES, start: 0, verified: false }, params: {} },
+};
+const basinOf = (id) => BASINS[id] || BASINS.atlantic;
+/* the next name for a storm that has just reached 34 kt: a yearly basin takes the index-th name of the season's list (a supplemental list after the last), a sequential one the next in a list that goes on
+   from season to season and wraps; the Eastern Pacific names a storm west of 140W from the Central Pacific list */
+function stormName(basin, seasonYear, index, cursors, lon) {
+  const N = basinOf(basin).names;
+  if (N.west && lon != null && lon > -180 && lon < N.west.lon) { const k = cursors.west = (cursors.west == null ? N.west.start : cursors.west + 1); return N.west.seq[k % N.west.seq.length]; }
+  if (N.type === 'seq') { const k = cursors.seq = (cursors.seq == null ? N.start : cursors.seq + 1); return N.list[k % N.list.length]; }
+  const list = N.lists[(((seasonYear - N.base) % N.lists.length) + N.lists.length) % N.lists.length];
+  return index < list.length ? list[index] : N.extra[(index - list.length) % N.extra.length];
+}
+/* the year a hand-made calendar date belongs to in a basin whose season starts in month `m` (0 = January): a southern-hemisphere season is named for the year it begins in */
+const seasonYearOf = (ms, m) => { const d = new Date(ms), y = d.getUTCFullYear(); return d.getUTCMonth() < m ? y - 1 : y; };
+
 /* ---- parameters (every tunable number in one place; the calibration scripts and the tests override them) ------------- */
 // The calibrated values: what the lab (tools/storm_mc.mjs: the same simulated weather run through many parameter sets) and tools/storm_opt.mjs (CMA-ES, then structured scans
 // of the parameters the optimiser could not separate: tools/storm_opt.mjs describes the loss) settled on against the real Atlantic best track, with the climatology maps of
@@ -153,8 +215,9 @@ const CALIBRATED = {
   seedFloor: 3,                                                                // disturbances over the whole box, a year (see structureParams): the Great Lakes, the Mediterranean and the rest of the water the maps know nothing about stay possible
 };
 let useCalibrated = true;                                                      // the node tests switch it off to check the structure of the physics against its own plain defaults
-function defaultParams() {
-  return useCalibrated ? mergeParams(structureParams(), CALIBRATED) : structureParams();
+function defaultParams(basin) {                                                // the calibrated Atlantic physics, patched by the basin's own entry (BASINS[basin].params) when one is asked for
+  const base = useCalibrated ? mergeParams(structureParams(), CALIBRATED) : structureParams(), B = basin && BASINS[basin];
+  return useCalibrated && B && B.params ? mergeParams(base, B.params) : base;
 }
 function structureParams() {
   return {
@@ -180,6 +243,7 @@ function structureParams() {
     sstGate: [25.0, 27.5], rhGate: [38, 62], latGate: [4, 11], shearScale: 15, shearPow: 3, shearVMod: 0.6,
     gCrit: 0.33, matureBoost: 0.30, kUp: 0.022, kDn: 0.016, vEqLo: 0.40, rRelax: 0.02, vFloor: 12,
     etaMin: 0.55, etaLo: 23, etaHi: 28,                   // cool-water efficiency of the empirical MPI
+    vpScale: 1,                                           // a basin's own scale of the potential wind (the empirical MPI is the Atlantic's upper envelope; a basin whose warm layer is thinner, or whose page runs warm, takes a little less): BASINS[..].params
     // subtropical systems (relaxed gates, capped intensity)
     sub: { sstGate: [22.0, 25.0], rhGate: [30, 55], shearScale: 26, gCrit: 0.30, kUp: 0.012, vCap: 62 },
     // rapid intensification
@@ -369,7 +433,7 @@ function devGateAt(par, env, sub, lat, sst, rh, shear, doy, dSst) {
   return smooth01(devGrowth(par, env, sub, lat, sst, rh, shear, doy, dSst), G.gCrit + par.devGate[0], G.gCrit + par.devGate[1]);
 }
 
-/* the activity factor (see par.act): 1 on average, a pure function of the seed, the calendar year and the hour */
+/* the activity factor (see par.act): 1 on average, a pure function of the seed, the season's year (the calendar year where the season is one; a southern season is named for the year it starts in, so it does not change in January) and the hour */
 function activityFactor(par, seed, year, h) {
   const A = par.act; if (!A || (A.seasSd === 0 && A.intraSd === 0)) return 1;
   let zt = 0; const d = h / 24;
@@ -409,7 +473,7 @@ function landFraction(env, lat, lon, d) {
 }
 function vPot(sstE, par) {                                  // kt: the DeMaria-Kaplan empirical Atlantic MPI (m/s), made an upper envelope cooler than ~25 degC
   const ms = 28.2 + 55.8 * Math.exp(0.1813 * (sstE - 30));
-  return MS_KT * ms * (par.etaMin + (1 - par.etaMin) * smooth01(sstE, par.etaLo, par.etaHi));
+  return MS_KT * ms * par.vpScale * (par.etaMin + (1 - par.etaMin) * smooth01(sstE, par.etaLo, par.etaHi));
 }
 
 /* the growth gate of the intensity law: how well the environment supports a system of wind V, 0..1 (before the seed's own quality and the mature-storm boost). The same function the
@@ -517,7 +581,7 @@ function stepSystem(S, env, h, seed, par, doy, ctx) {
   }
   if (M) steerRing(env, lat, lon, M.ring != null ? M.ring : par.steerRing, BUF); else env.steer(lat, lon, BUF);          // the ring the maps' mean steering was measured with, so that anomaly and mean are made the same way
   const us = BUF[0], vs = BUF[1], um = BUF[2], vm = BUF[3], ud = BUF[4], vd = BUF[5];
-  const V = S.v, th = S.th, alat = Math.abs(lat);
+  const V = S.v, th = S.th, alat = Math.abs(lat), hs = lat < 0 ? -1 : 1;      // hs: poleward is south in the southern hemisphere
   const spd0 = Math.hypot(S.cx, S.cy);
   let perf = 0;                                                                  // how perfectly tropical the environment is, 0-1 (set from the growth gate below): relieves the latitude terms
 
@@ -548,7 +612,7 @@ function stepSystem(S, env, h, seed, par, doy, ctx) {
       tau = par.lagBase + par.lagVMod * Math.min(1, V / 110); wobSd = par.wobbleSd * (0.6 + 0.4 * Math.min(1, V / 80));
     } else if (th === 'ex') {
       wm = 0.3; wd = 0.7; gain = par.driftGain.ex; addDrift(M, 'ex', 1, tw, lat, lon, DACC); tau = 8; wobSd = 1.5;
-      if (S.etAt >= 0) { const X = par.exAge, a = h - S.etAt; DACC[0] += tableAt(X.t, X.du, a); DACC[1] += tableAt(X.t, X.dv, a); }       // the map is the mean over all ages of post-tropical cyclones: a fresh one runs faster than that, an old one slower
+      if (S.etAt >= 0) { const X = par.exAge, a = h - S.etAt; DACC[0] += tableAt(X.t, X.du, a); DACC[1] += (lat < 0 ? -1 : 1) * tableAt(X.t, X.dv, a); }       // (dv is poleward: south in the southern hemisphere)       // the map is the mean over all ages of post-tropical cyclones: a fresh one runs faster than that, an old one slower
     } else {
       const e = smooth01(alat, 25, 35);
       wm = 0.5; wd = 0.5; gain = par.driftGain.nl; addDrift(M, 'weak', 1 - e, tw, lat, lon, DACC); addDrift(M, 'ex', e, tw, lat, lon, DACC); tau = 8; wobSd = 1.2;
@@ -562,14 +626,14 @@ function stepSystem(S, env, h, seed, par, doy, ctx) {
   } else if (th === 'tc') {
     const a = smooth01(V, par.deepV[0], par.deepV[1]), vi = Math.min(1, V / 100), ramp = smooth01(alat, 4, 12);
     tx = par.steerScale * ((1 - a) * um + a * ud) + (par.driftU[0] + par.driftU[1] * vi) * ramp;
-    ty = par.steerScale * ((1 - a) * vm + a * vd) + (par.driftV[0] + par.driftV[1] * vi) * ramp;
+    ty = par.steerScale * ((1 - a) * vm + a * vd) + hs * (par.driftV[0] + par.driftV[1] * vi) * ramp;
     tau = par.lagBase + par.lagVMod * Math.min(1, V / 110);
     wobSd = par.wobbleSd * (0.6 + 0.4 * Math.min(1, V / 80));
   } else if (th === 'sc') {
     const a = smooth01(V, 12, 38), b = 0.35;
     tx = (1 - a) * us + a * ((1 - b) * um + b * ud); ty = (1 - a) * vs + a * ((1 - b) * vm + b * vd);
     const beta = (par.betaBase + par.betaVMod * Math.min(1, V / 110)) * smooth01(alat, 4, 12);
-    tx -= beta * 0.7071; ty += beta * 0.7071;
+    tx -= beta * 0.7071; ty += hs * beta * 0.7071;
     tau = par.lagBase + par.lagVMod * Math.min(1, V / 110);
     wobSd = par.wobbleSd * (0.6 + 0.4 * Math.min(1, V / 80));
   } else if (th === 'ex') {
@@ -699,7 +763,7 @@ function stepSystem(S, env, h, seed, par, doy, ctx) {
       if (S.lowCount >= 12) { S.alive = false; S.endReason = 'moved over land'; S.end = h + 1; }
       else {
         // a disturbance that is not developing is carried off by cold water, by too high a latitude and by old age: hazards with a mean life of par.endH hours where the rule is fully on, not walls
-        const age = h + 1 - S.born, cold = S.sub && M ? 17 : 22, latW = M && S.dev < 0 ? smooth01(S.lat - (S.kind === 'W' ? par.waveLatMax : par.seedLatMax), -2, 2) : 0;
+        const age = h + 1 - S.born, cold = S.sub && M ? 17 : 22, latW = M && S.dev < 0 ? smooth01(Math.abs(S.lat) - (S.kind === 'W' ? par.waveLatMax : par.seedLatMax), -2, 2) : 0;
         const wend = 1 - (1 - smooth01(cold - sst, -1, 1)) * (1 - smooth01(age, par.waveLife - 96, par.waveLife + 96)) * (1 - latW);
         const own = M && S.dev < 0 && S.life > 0 && age > S.life;                          // a seed's own drawn life, the end of a disturbance that never organised
         if (own || rnd(seed, id, h, ST.ENDH) < wend / par.endH) { S.alive = false; S.endReason = 'dissipated'; S.end = h + 1; }
@@ -789,7 +853,10 @@ function summarize(S) {
 function Manager(o) {
   this.seed = (o.seed >>> 0) || 1;
   this.startMs = o.startMs;
-  this.par = mergeParams(defaultParams(), o.params);
+  this.basin = BASINS[o.basin] ? o.basin : 'atlantic';
+  this.seasonMonth = BASINS[this.basin].seasonMonth;                           // 0: the season is the calendar year; 6: July to June, named for the year it starts in
+  this.nameCur = {};                                                           // where each sequential name list stands (it goes on from season to season)
+  this.par = mergeParams(defaultParams(this.basin), o.params);
   this.hour = o.hour0 || 0;
   this.systems = []; this.byId = {};
   this.n = { W: 0, N: 0, M: 0, F: 0 };
@@ -798,18 +865,18 @@ function Manager(o) {
   this.lows = new LowTracker();
   this.maps = prepareMaps(o.maps);                                             // the climatology the host supplied (null: the plain steering model)
   this.ctx = { maps: this.maps, tw: null, diag: null };                          // what a step needs besides the system: maps, the time weights of the hour, the calibration lab's accumulators
-  const d0 = new Date(this.startMs + this.hour * HOUR_MS);
-  this.season = newSeason(d0.getUTCFullYear()); this.season.from = this.doyAt(this.hour); this.prev = null; this.archive = [];
+  this.season = newSeason(seasonYearOf(this.startMs + this.hour * HOUR_MS, this.seasonMonth)); this.season.from = this.seasonDay(this.hour); this.prev = null; this.archive = [];
   this.yearEndH = this._hourOfYearStart(this.season.year + 1);
   this.prevEntry = null;
 }
-Manager.prototype._hourOfYearStart = function (y) { return (Date.UTC(y, 0, 1) - this.startMs) / HOUR_MS; };
+Manager.prototype._hourOfYearStart = function (y) { return (Date.UTC(y, this.seasonMonth, 1) - this.startMs) / HOUR_MS; };      // the hour season y begins
 Manager.prototype.dateAt = function (h) { return new Date(this.startMs + h * HOUR_MS); };
-Manager.prototype.doyAt = function (h) { const d = this.dateAt(h), y = d.getUTCFullYear(); return Math.floor((d.getTime() - Date.UTC(y, 0, 1)) / 86400000); };
+Manager.prototype.doyAt = function (h) { const d = this.dateAt(h), y = d.getUTCFullYear(); return Math.floor((d.getTime() - Date.UTC(y, 0, 1)) / 86400000); };      // the day of the calendar year: what the climatology is a function of
+Manager.prototype.seasonDay = function (h) { const t = this.dateAt(h).getTime(); return Math.floor((t - Date.UTC(seasonYearOf(t, this.seasonMonth), this.seasonMonth, 1)) / 86400000); };      // the day of the season (the ACE graph's axis)
 
 Manager.prototype._aceDay = function (year, h) {                        // the day index of the ACE curve of `year` that hour h falls on (the last day for a fix after the turn of the year)
-  const d = this.dateAt(h);
-  return d.getUTCFullYear() === year ? clamp(this.doyAt(h), 0, 365) : Math.round((Date.UTC(year + 1, 0, 1) - Date.UTC(year, 0, 1)) / 86400000) - 1;
+  const t = this.dateAt(h).getTime();
+  return seasonYearOf(t, this.seasonMonth) === year ? clamp(this.seasonDay(h), 0, 365) : Math.round((Date.UTC(year + 1, this.seasonMonth, 1) - Date.UTC(year, this.seasonMonth, 1)) / 86400000) - 1;
 };
 Manager.prototype._add = function (S) { S.season = this.season.year; this.systems.push(S); this.byId[S.id] = S; return S; };
 Manager.prototype._seedSystem = function (ns, th, lat, lon, v, h, origin, sub, kind) {
@@ -842,9 +909,9 @@ Manager.prototype._waveSchedule = function (from) {                      // next
 };
 Manager.prototype._spawn = function (h, env) {
   const par = this.par, seed = this.seed, doy = this.doyAt(h);
-  // African easterly waves
-  if (this.sched.waveT == null) { const s = this._waveSchedule(h); this.sched.waveT = s.t; this.sched.waveSpawn = s.spawn; }
-  while (h >= this.sched.waveT) {
+  // African easterly waves (only a basin with a wave train of its own has them: the Atlantic. The others' disturbances are the local seeds of the fitted supply and the tracked lows)
+  if (basinOf(this.basin).waves && this.sched.waveT == null) { const s = this._waveSchedule(h); this.sched.waveT = s.t; this.sched.waveSpawn = s.spawn; }
+  while (basinOf(this.basin).waves && h >= this.sched.waveT) {
     if (this.sched.waveSpawn) {
       const k = this.sched.waveK++;
       const sw = clamp((doy - 140) / 100, 0, 1), latC = par.waveLat0 + 2.5 * Math.sin(Math.PI * sw);
@@ -907,7 +974,7 @@ Manager.prototype._updateLows = function (h, env) {
     const M = this.maps, tw = this.ctx.tw, ctx = this.ctx, sstRef = env.sstRef ? env.sstRef() + par.sstOffset : null;
     for (const t of this.lows.tracks) {
       if (!t.alive || h - t.born < 6 || env.isLand(t.lat, t.lon)) continue;
-      const lw = lowWeight(par, t.lat); if (lw <= 0) continue;
+      const lw = lowWeight(par, Math.abs(t.lat)); if (lw <= 0) continue;
       const sst = env.sst(t.lat, t.lon) + par.sstOffset, sh = env.shear(t.lat, t.lon) + par.shearOffset, rh = env.rh(t.lat, t.lon) + par.rhOffset;
       if (!(sst === sst) || !(sh === sh) || !(rh === rh)) continue;
       const act = ctx.act || 1, doy = this.doyAt(h);
@@ -948,7 +1015,7 @@ Manager.prototype._record = function (h, env) {                             // t
     // a system put on the map as a cyclone is a numbered depression even if it changes class before its first fix (a 70-kt storm placed at 41N is post-tropical within six hours one time in three)
     if ((isTC || S.origin === 'placed:td' || S.origin === 'placed:sd') && S.depNum === 0) { S.depNum = ++rec.dep; if (S.tdHour < 0) S.tdHour = h; rec.storms.push(S.id); }
     if (isTC && S.name === '' && rv >= par.namedV) {
-      S.name = nameFor(rec.year, rec.namedIdx++); S.namedHour = h; rec.named++;
+      S.name = stormName(this.basin, rec.year, rec.namedIdx++, this.nameCur, S.lon); S.namedHour = h; rec.named++;
     }
     let add = 0;
     if (isTC && rv >= 34 && h % 6 === 0) { add = aceOf(rv); S.ace += add; rec.ace += add; rec.aceDaily[this._aceDay(rec.year, h)] += add; }       // ACE: the synoptic 00 / 06 / 12 / 18Z fixes only, as the real definition has it
@@ -1001,7 +1068,7 @@ Manager.prototype.advanceTo = function (target, envSrc) {
     if (env && env.beginHour) env.beginHour(h);                                // an environment that carries its keyframes forward in time is told the hour it is about to be asked about
     if (h >= this.yearEndH) this._rollover(h);
     const doy = this.doyAt(h);
-    if (this.maps) { this.ctx.tw = timeWeights(doy + (((h % 24) + 24) % 24) / 24); this.ctx.act = activityFactor(this.par, this.seed, this.dateAt(h).getUTCFullYear(), h); }
+    if (this.maps) { this.ctx.tw = timeWeights(doy + (((h % 24) + 24) % 24) / 24); this.ctx.act = activityFactor(this.par, this.seed, seasonYearOf(this.startMs + h * HOUR_MS, this.seasonMonth), h); }
     if (this.auto) this._spawn(h, env);
     for (const S of this.systems) if (S.alive) stepSystem(S, env, h, this.seed, this.par, doy, this.ctx);
     this.hour = h + 1;
@@ -1019,7 +1086,7 @@ Manager.prototype.forecast = function (spec, envSrc, horizonH) {
   for (let k = 0; k < horizonH && S.alive; k++) {
     const env = envSrc && typeof envSrc.at === 'function' ? envSrc.at(h) : envSrc;
     const doy = this.doyAt(h);
-    if (this.maps) { ctx.tw = timeWeights(doy + (((h % 24) + 24) % 24) / 24); ctx.act = activityFactor(par, this.seed, this.dateAt(h).getUTCFullYear(), h); }
+    if (this.maps) { ctx.tw = timeWeights(doy + (((h % 24) + 24) % 24) / 24); ctx.act = activityFactor(par, this.seed, seasonYearOf(this.startMs + h * HOUR_MS, this.seasonMonth), h); }
     stepSystem(S, env, h, this.seed, par, doy, ctx); h++;
     if (h % 3 === 0 || !S.alive) {
       const rv = round5(S.vr), isTC = S.th === 'tc' || S.th === 'sc';
@@ -1040,7 +1107,7 @@ Manager.prototype.seasonRecord = function (year) {
   const live = (y) => this.systems.filter((S) => S.season === y && S.depNum > 0).map(summarize);
   const rec = (q, o) => Object.assign({ year: q.year, from: q.from || 0, dep: q.dep, named: q.named, hurr: q.hurr, major: q.major, cat5: q.cat5, ace: r1(q.ace), aceDaily: q.aceDaily.slice() }, o);
   const cur = this.season;
-  if (year === cur.year) return rec(cur, { current: true, open: true, day: this.doyAt(this.hour), storms: live(year).sort(byDep) });
+  if (year === cur.year) return rec(cur, { current: true, open: true, day: this.seasonDay(this.hour), storms: live(year).sort(byDep) });
   const e = this.archive.find((x) => x.year === year);
   if (!e) return null;
   if (e.open && this.prev && this.prev.year === year) return rec(this.prev, { current: false, open: true, day: 365, storms: e.storms.concat(live(year)).sort(byDep) });
@@ -1052,7 +1119,7 @@ Manager.prototype.active = function () { return this.systems.filter((S) => S.ali
 Manager.prototype.stats = function () { const s = this.season; return { year: s.year, dep: s.dep, named: s.named, hurr: s.hurr, major: s.major, cat5: s.cat5, ace: Math.round(s.ace * 10) / 10 }; };
 
 Manager.prototype.serialize = function () {
-  return { v: VERSION, seed: this.seed, startMs: this.startMs, hour: this.hour, par: this.par, n: this.n, auto: this.auto, autoRate: this.autoRate, sched: this.sched,
+  return { v: VERSION, basin: this.basin, nameCur: this.nameCur, seed: this.seed, startMs: this.startMs, hour: this.hour, par: this.par, n: this.n, auto: this.auto, autoRate: this.autoRate, sched: this.sched,
     season: this.season, prev: this.prev, prevEntry: this.prevEntry, archive: this.archive, yearEndH: this.yearEndH, systems: this.systems, lows: { tracks: this.lows.tracks, next: this.lows.next, done: this.lows.done } };
 };
 Manager.prototype.enableDiag = function () { if (this.maps) this.ctx.diag = newDiag(this.maps); return !!this.ctx.diag; };
@@ -1062,8 +1129,9 @@ Manager.prototype.diagPacked = function () {                              // the
   return out;
 };
 Manager.restore = function (o, extra) {                                  // a parameter added since the save is filled in with its default
-  const m = new Manager({ seed: o.seed, startMs: o.startMs, params: {}, hour0: o.hour, auto: o.auto, autoRate: o.autoRate, maps: extra && extra.maps });
-  m.par = mergeParams(defaultParams(), o.par); m.n = Object.assign({ W: 0, N: 0, M: 0, F: 0 }, o.n); m.sched = o.sched; m.season = o.season; m.prev = o.prev; m.prevEntry = o.prevEntry || null; m.archive = o.archive; m.yearEndH = o.yearEndH;
+  const m = new Manager({ seed: o.seed, startMs: o.startMs, params: {}, hour0: o.hour, auto: o.auto, autoRate: o.autoRate, maps: extra && extra.maps, basin: o.basin });
+  m.nameCur = o.nameCur || {};
+  m.par = mergeParams(defaultParams(m.basin), o.par); m.n = Object.assign({ W: 0, N: 0, M: 0, F: 0 }, o.n); m.sched = o.sched; m.season = o.season; m.prev = o.prev; m.prevEntry = o.prevEntry || null; m.archive = o.archive; m.yearEndH = o.yearEndH;
   m.systems = o.systems; m.byId = {}; for (const S of m.systems) m.byId[S.id] = S;
   m.lows.tracks = o.lows.tracks; m.lows.next = o.lows.next; m.lows.done = o.lows.done || [];
   return m;
@@ -1079,7 +1147,7 @@ function describe(S, fix) {                                                // wh
 root.HFStorms = {
   VERSION, create: (o) => new Manager(o), restore: (o, extra) => Manager.restore(o, extra), defaultParams, mergeParams,
   prepareMaps, timeWeights, mapAt, driftAt, climAt, steerRing, envFactor, activityFactor, structureParams, CALIBRATED, calibrated: (on) => { const was = useCalibrated; if (on != null) useCalibrated = !!on; return was; },
-  category, ktToMph, aceOf, round5, gustKt, compass, pressureFromWind, windFromPressure, WP, vPot, statusOf, describe, nameFor, NAME_SETS, NAME_SUPPLEMENTAL,
+  category, ktToMph, aceOf, round5, gustKt, compass, pressureFromWind, windFromPressure, WP, vPot, statusOf, describe, nameFor, NAME_SETS, NAME_SUPPLEMENTAL, BASINS, basinInfo: basinOf, stormName, seasonYearOf,
   smooth01, rnd, rndn, hash5, idNum, stepSystem, newSystem, makeFix, seasonalWeight, WAVE_SEASON, LowTracker, etHazard6, disHazard6, baroclinicV, satur, softMin, lowWeight, sstGateAt, growthG, decayLimit,
 };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

@@ -141,7 +141,7 @@ function showSave() {
   save = readSave();
   $('shell').classList.toggle('has-save', !!save); $('continue').hidden = !save;
   if (save) {
-    $('rs-name').textContent = save.name + ' ' + save.year;
+    $('rs-name').textContent = save.name + ' ' + (save.season || save.year);
     $('rs-desc').textContent = 'Simulation · ' + save.date + ' · ' + save.named + ' named, ' + save.hurr + ' hurricane' + (save.hurr === 1 ? '' : 's') + ' · ACE ' + save.ace.toFixed(1);
     $('rs-when').textContent = 'Saved ' + ago(save.savedAt);
   }
@@ -170,7 +170,7 @@ function update() {
   renderGrid($('modes'), MODES, mode, (id) => { mode = id; update(); });
   const ready = basin && mode;
   $('start').disabled = !ready;
-  $('hint').textContent = ready ? (save ? 'Ready. Starting a new game replaces your saved ' + save.name + ' ' + save.year + ' season.' : 'Ready.') : 'Choose a basin and a mode.';
+  $('hint').textContent = ready ? (save ? 'Ready. Starting a new game replaces your saved ' + save.name + ' ' + (save.season || save.year) + ' season.' : 'Ready.') : 'Choose a basin and a mode.';
 }
 function $(id) { return document.getElementById(id); }
 

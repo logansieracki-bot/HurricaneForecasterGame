@@ -1,6 +1,7 @@
 // Node-only tests of the storm engine (src/storms.js): no browser, no build. Run by `npm test` before the Playwright suite.
 // The engine is exercised on synthetic environments (tests/storms_env.mjs) so one physical response can be checked at a time;
 // the statistics of whole seasons against the real best track are a separate, calibrated job (tools/make_tc_ref.py).
+import { readFileSync } from 'node:fs';
 import '../src/storms.js';
 import { makeEnv, climateEnv, defaultSteer } from './storms_env.mjs';
 
@@ -826,6 +827,70 @@ const LAND = (la, lo) => (lo > -16.3 && lo < 38 && la > 4 && la < 30) || (lo < -
     check(`a supply of disturbances over the whole box (600 a year here): ${withF.n.F} born in 60 days (about 54 expected: 600 a year is 99 in 60 days and 45 % of the box is land here), all over water (the first fix east of 61W), all of the kind of a local seed, and no automatic system's id or place moves because they exist (${locals(withF).length} local seeds with them, ${locals(withoutF).length} without)`,
       withF.n.F >= 35 && withF.n.F <= 80 && fl.length > 20 && fl.every((x) => x[2] > -61.5 && x[3] === 'N') && withoutF.n.F === 0 && JSON.stringify(locals(withF)) === JSON.stringify(locals(withoutF)) && locals(withoutF).length > 20); }
   H.calibrated(false);
+}
+
+/* ---- the nine basins: the season, the names, the words, the waves, the southern hemisphere ----------------------------------------------------------------------- */
+{
+  const ids = ['atlantic', 'eastpacific', 'westpacific', 'nio', 'aus', 'swio', 'spac', 'satl', 'med'], B = Object.fromEntries(ids.map((k) => [k, H.basinInfo(k)]));
+  check('all nine basins are in the table with a label, a menu id, a season start (January or July), a word for hurricane strength, a main development region and a naming scheme',
+    ids.every((k) => { const b = B[k]; return b.label && b.menu && (b.seasonMonth === 0 || b.seasonMonth === 6) && b.hurricane && b.mdr && b.mdr.lat.length === 2 && b.mdr.lon.length === 2 && b.names && (b.names.type === 'yearly' || b.names.type === 'seq') && typeof b.waves === 'boolean'; }));
+  { const menu = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+    check('the menu ids of the table are the main menu\'s own (' + ids.map((k) => B[k].menu).join(', ') + ')', ids.every((k) => menu.includes(`id: '${B[k].menu}'`)) && new Set(ids.map((k) => B[k].menu)).size === 9); }
+  check('seasons: January in the Atlantic, East and West Pacific and North Indian; July (named for the year it starts in) in the Australian, south-west Indian, South Pacific, South Atlantic and the Mediterranean',
+    ['atlantic', 'eastpacific', 'westpacific', 'nio'].every((k) => B[k].seasonMonth === 0) && ['aus', 'swio', 'spac', 'satl', 'med'].every((k) => B[k].seasonMonth === 6));
+  check('the word for hurricane strength: hurricane, hurricane, typhoon, cyclone x5, medicane', ids.map((k) => B[k].hurricane).join() === 'hurricane,hurricane,typhoon,cyclone,cyclone,cyclone,cyclone,cyclone,medicane');
+  check('only the Atlantic has a wave train of its own (the other basins\' disturbances are local seeds and tracked lows)', ids.every((k) => B[k].waves === (k === 'atlantic')));
+  check('the year of a season: a calendar year where it starts in January, July to June (named for the year it starts in) where it starts in July',
+    H.seasonYearOf(Date.UTC(2027, 0, 15), 0) === 2027 && H.seasonYearOf(Date.UTC(2027, 11, 31, 23), 0) === 2027 && H.seasonYearOf(Date.UTC(2027, 0, 15), 6) === 2026 && H.seasonYearOf(Date.UTC(2027, 5, 30, 23), 6) === 2026 && H.seasonYearOf(Date.UTC(2027, 6, 1), 6) === 2027 && H.seasonYearOf(Date.UTC(2026, 10, 1), 6) === 2026);
+
+  // names
+  const all = (k) => { const N = B[k].names; return N.type === 'yearly' ? N.lists.flat() : N.list; };
+  check('every name list has only distinct names inside a list (no storm of a season shares a name), every yearly basin six lists of at least 21 names, every sequential list at least 18',
+    ids.every((k) => { const N = B[k].names; return N.type === 'yearly' ? N.lists.length === 6 && N.lists.every((l) => l.length >= 21 && new Set(l).size === l.length) : N.list.length >= 18 && new Set(N.list).size === N.list.length; }));
+  check('the yearly lists are alphabetical (each name begins with the next letter of the alphabet, skipping Q U X Y Z only where a list does)', ids.filter((k) => B[k].names.type === 'yearly').every((k) => B[k].names.lists.every((l) => l.every((n, i) => i === 0 || n[0] > l[i - 1][0]))));
+  { const nm = (k, y, n, cur) => Array.from({ length: n }, (_, i) => H.stormName(k, y, i, cur, -100));
+    check('a yearly basin names the i-th storm of a season from that season\'s list and goes on to the supplemental list after the last (Atlantic 2026: Arthur, Bertha, Cristobal; the 22nd is Adria; 2027 uses the 2021 list)',
+      nm('atlantic', 2026, 3, {}).join() === 'Arthur,Bertha,Cristobal' && H.stormName('atlantic', 2026, 21, {}, -50) === 'Adria' && H.stormName('atlantic', 2027, 0, {}, -50) === 'Ana' && H.stormName('atlantic', 2032, 0, {}, -50) === 'Arthur');
+    const cur = {}, first = Array.from({ length: 4 }, () => H.stormName('aus', 2026, 0, cur, 120)), L = B.aus.names.list;
+    check(`a sequential basin goes on down its list from one storm and one season to the next, without reading the year (Australian region: ${first.join(', ')}), and wraps to the first name after the last`,
+      first.join() === L.slice(B.aus.names.start, B.aus.names.start + 4).join() && H.stormName('aus', 2031, 0, cur, 120) === L[(B.aus.names.start + 4) % L.length] && (() => { const c = { seq: L.length - 1 }; return H.stormName('aus', 2026, 0, c, 120) === L[0]; })());
+    const cE = {}, west = H.stormName('eastpacific', 2026, 0, cE, -150), east = H.stormName('eastpacific', 2026, 0, cE, -110), west2 = H.stormName('eastpacific', 2026, 5, cE, -170);
+    check(`the East Pacific names a storm west of 140W from the Central Pacific list, with a cursor of its own (${west}, then ${west2}), and one east of it from the season's list (${east})`,
+      B.eastpacific.names.west.seq.includes(west) && west2 === B.eastpacific.names.west.seq[B.eastpacific.names.west.start + 1] && B.eastpacific.names.lists.some((l) => l[0] === east)); }
+
+  // the southern season: July to June
+  { const env = makeEnv({ sst: 28, shear: 8, rh: 60 }), st = Date.UTC(2026, 10, 1), m = H.create({ seed: 5, startMs: st, basin: 'aus', auto: false }), n = H.create({ seed: 5, startMs: Date.UTC(2026, 11, 20), basin: 'eastpacific', auto: false });
+    const hAt = (y, mo, d) => (Date.UTC(y, mo, d) - st) / 3600000;
+    check('a southern season is named for the year it starts in: begun on Nov 1 2026 it is the 2026 season, its day count is 123 (since Jul 1) and it is still the 2026 season on Jan 15 2027 and Jun 30 2027',
+      m.season.year === 2026 && m.seasonDay(0) === 123 && (m.advanceTo(hAt(2027, 0, 15), env), m.season.year === 2026 && m.archive.length === 0 && m.seasonDay(m.hour) === 198) && (m.advanceTo(hAt(2027, 5, 30), env), m.season.year === 2026 && m.archive.length === 0));
+    m.advanceTo(hAt(2027, 6, 2), env);
+    check(`the southern season turns over on Jul 1, not on Jan 1: on Jul 2 2027 it is the 2027 season (${m.season.year}), the 2026 season is in the archive (${m.archive.map((a) => a.year).join()}) and the day count started again (${m.seasonDay(m.hour)})`,
+      m.season.year === 2027 && m.archive.length === 1 && m.archive[0].year === 2026 && m.seasonDay(m.hour) === 1);
+    n.advanceTo((Date.UTC(2027, 0, 3) - Date.UTC(2026, 11, 20)) / 3600000, env);
+    check('and a northern season does turn over on Jan 1 (East Pacific: the 2026 season is in the archive on Jan 3 2027)', n.season.year === 2027 && n.archive.length === 1 && n.archive[0].year === 2026);
+    m.nameCur = { seq: 7, west: 2 }; const r = H.restore(JSON.parse(JSON.stringify(m.serialize())));
+    check('a checkpoint keeps the basin, the day its season started and where its name list stands', r.basin === 'aus' && r.seasonMonth === 6 && r.season.year === 2027 && r.nameCur.seq === 7 && r.nameCur.west === 2 && r.seasonDay(r.hour) === m.seasonDay(m.hour)); }
+
+  // no waves outside the Atlantic
+  { const waves = (k) => { const m = H.create({ seed: 3, startMs: Date.UTC(2026, 7, 1), basin: k, auto: true }); m.advanceTo(24 * 40, makeEnv({ sst: 28.5, shear: 8, rh: 62 })); return m.n.W; };
+    const a = waves('atlantic'), e = waves('eastpacific'), s = waves('aus');
+    check(`the easterly-wave generator runs in the Atlantic only (40 days from Aug 1: ${a} waves; East Pacific ${e}, Australian region ${s})`, a >= 5 && e === 0 && s === 0); }
+
+  // the activity of a season is one draw per SEASON (the year a southern season starts in), so it does not jump on Jan 1 mid-season
+  { const GR = { lon0: 90, lat0: -50, res: 5, nx: 19, ny: 11 }, z = () => Array.from({ length: 12 }, () => Array.from({ length: GR.ny }, () => Array(GR.nx).fill(0))), cls = () => ({ u: z(), v: z() });
+    const maps = { grid: GR, drift: { weak: cls(), strong: cls(), sub: cls(), ex: cls() }, steerClim: Array.from({ length: 6 }, z), haz: { T: z(), S: z() } }, env = makeEnv({ sst: 28, shear: 8, rh: 60 });
+    const actAt = (k, start, h) => { const m = H.create({ seed: 11, startMs: start, basin: k, auto: false, maps }); m.advanceTo(h, env); return [m.ctx.act, m, m.hour - 1]; };
+    const expect = (k, start, h) => { const m = actAt(k, start, h)[1]; return H.activityFactor(m.par, m.seed, H.seasonYearOf(start + (h - 1) * 3600000, H.basinInfo(k).seasonMonth), h - 1); };
+    const t0 = Date.UTC(2026, 11, 28), hJan = (Date.UTC(2027, 0, 1) - t0) / 3600000;
+    const aus = [actAt('aus', t0, hJan - 1)[0], actAt('aus', t0, hJan + 1)[0]], epac = [actAt('eastpacific', t0, hJan - 1)[0], actAt('eastpacific', t0, hJan + 1)[0]];
+    check(`the activity factor follows the season's year: across Jan 1 it moves only with the intraseasonal part in the Australian region (${aus[0].toFixed(3)} to ${aus[1].toFixed(3)}), and by the new year's draw in the East Pacific (${epac[0].toFixed(3)} to ${epac[1].toFixed(3)}); it is the factor of that year's draw`,
+      Math.abs(aus[1] - aus[0]) < 0.02 && Math.abs(epac[1] - epac[0]) > 0.05 && near(aus[1], expect('aus', t0, hJan + 1), 1e-12) && near(epac[1], expect('eastpacific', t0, hJan + 1), 1e-12)); }
+
+  // the southern hemisphere is the northern one in the mirror: a tropical cyclone in no steering drifts westward and poleward (south in the south), a subtropical one likewise
+  { const drift = (lat, th) => { const S = system(th, lat, -50, th === 'tc' ? 45 : 35, 3), e = makeEnv({ sst: 29, shear: 4, rh: 70, steer: () => [0, 0, 0, 0, 0, 0], box: { lat0: -65, lat1: 65, lon0: -105, lon1: -5 } }); const lat0 = S.lat, lon0 = S.lon; run(S, e, 36, 3); return [S.lat - lat0, S.lon - lon0]; };
+    const [n, s, nsc, ssc] = [drift(16, 'tc'), drift(-16, 'tc'), drift(28, 'sc'), drift(-28, 'sc')];
+    check(`in no steering a tropical cyclone drifts west by the same in both hemispheres and poleward (the northern one ends further north than the southern one) (36 h: ${n.map((x) => x.toFixed(2)).join('/')} north, ${s.map((x) => x.toFixed(2)).join('/')} south), a subtropical one too (${nsc.map((x) => x.toFixed(2)).join('/')} and ${ssc.map((x) => x.toFixed(2)).join('/')})`,
+      n[0] > s[0] + 0.5 && n[1] < -1 && s[1] < -1 && near(n[1], s[1], 0.2) && nsc[0] > ssc[0] + 0.5 && nsc[1] < -1 && ssc[1] < -1 && near(nsc[1], ssc[1], 0.2)); }       // (the wobble is the same draw in both, so the north-south sum is the noise and the difference is twice the poleward drift)
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);
