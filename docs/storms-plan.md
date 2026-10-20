@@ -355,5 +355,5 @@ Continue card (9fc40aa), M7 the mutation checks and this pass (130923b) M8 the l
   with hysteresis (not a relative rate), is between 2.5 and 18 degrees and shrinks as the disturbance comes to the place that is good; the page draws the X and the arrow in the colour of the chance, makes the wave or the L the X (with its title beside it), makes the issues one after another (`olEager`) and lets a click on a
   disturbance show it alone with a card (`#aoi-card`).
 - **As planned, not built:** impacts (the cards show a dash for them), the cone, wind fields, the autosave switch and the GIF export.
-- **Mutation checks** (`tools/storm_mutants.mjs`): the 24 edits of milestone 1 on the node tests, and 155 edits over milestones 3-11 on the node and browser checks, all caught after the checks were tightened where
+- **Mutation checks** (`tools/storm_mutants.mjs`): the 24 edits of milestone 1 on the node tests, and 186 edits over milestones 3-11 on the node and browser checks, all caught after the checks were tightened where
   the first pass found a gap (`docs/roadmap.md`, milestones 7 to 9).
