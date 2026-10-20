@@ -625,7 +625,7 @@ function olTip(a, S) {                                                          
   if (S && a.x) { const mv = olMotion(S); lines.push(what + ' near ' + fmtLL(S.lat, S.lon) + (mv ? ', moving ' + mv : '')); }
   else if (a.x) lines.push(what + ' near ' + fmtLL(a.x[0], a.x[1]));
   if (a.kind === 'unborn') lines.push('No system yet: a disturbance is expected to form here ' + olWhen(Math.max(0, a.birth - (olShown ? olShown.hour : stormMgr.hour))));
-  else if (a.arrow) lines.push('Not yet in favourable conditions: it is expected to reach them ' + olWhen(a.t0));
+  else if (a.arrow) lines.push('Not yet in favourable conditions: nothing is expected in 2 days, the chance starts to build up ' + olWhen(a.t0));
   else lines.push('In or near favourable conditions: most of the chance comes within ' + (a.t1 <= 30 ? 'a day or so' : Math.ceil(a.t1 / 24) + ' days'));
   lines.push('Click to look at it alone');
   return [olTitle(a), lines];

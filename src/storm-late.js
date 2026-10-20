@@ -132,6 +132,7 @@ const STORM_API = {
     stormsDirty = true; drawStorms(); return stormMgr.lows.tracks.length;
   },
   stormLowsDrawn() { return stormHits.filter((h) => h.low).map((h) => [h.low.lat, h.low.lon]); },
+  stormEnvAt(name, lat, lon) { return stormEnv[name](lat, lon); },                                       // the page's own sea temperature / humidity / shear at a place and the hour of the last keyframe (tools and tests)
   outlook() { return outlookNow(); }, outlookFresh() { if (stormMgr) stormMgr._ol = null; olHeld = null; olEagerSlot = -1e9; const t = performance.now(), r = outlookNow(); return { ms: performance.now() - t, areas: r ? r.areas.length : -1 }; }, outlookForce(res) { olForced = res || null; stormsDirty = true; drawStorms(); return !!olForced; },        // the areas of interest the page shows (tests: force a list of areas to draw, null puts the engine's back)
   outlookMemSlot() { return stormMgr && stormMgr.olMem ? stormMgr.olMem.slot : null; },                                   // the six-hour slot of the last issue the engine made (tests: the issues are made by the clock)
   outlookMem() { const c = stormMgr && stormMgr.olMem ? stormMgr.olMem.cur : {}; return Object.fromEntries(Object.entries(c).map(([k, v]) => [k, [v.p2, v.p7]])); },        // what the last issue said of every disturbance it knows, drawn or not: [2-day, 7-day] (tests: how a chance moves from issue to issue)

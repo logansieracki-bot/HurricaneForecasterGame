@@ -418,7 +418,7 @@ function structureParams() {
       anomTau: { sst: 720, rh: 480, shear: 480, steer: 72 },                      // hours: the anomaly of a field from its own climate that the forecast keeps, decaying to the climate (a persistence forecast: the weather beyond the next keyframe is not known to it; the places where conditions are good stay where they are as a disturbance moves toward them)
       lowLife: 60,                                                                // hours: the mean remaining life of a tracked low
       r0: 1.2, r1: 0.6, rUnborn: 1.5,                                             // the area's radius (degrees of latitude): at the start, per day ahead, and extra for a system that does not exist yet
-      win: [0.1, 0.9], maxSpan: 96, maxLen: 14, gap: 0.5, minArea: 4, favGate: [0.4, 0.6], arrowMin: 2.5, arrowMax: [18, 24],   // the area covers the 10th to 90th percentile of the formation time but no more than maxSpan hours and maxLen degrees of track; two areas keep gap degrees apart (the younger gives way) and none is drawn smaller than minArea square degrees; the X sits inside it while the growth gate is open, and an arrow (at least arrowMin and at most arrowMax degrees long) points to where the gate opens while it is shut (below the first value of favGate turns the arrow on, above the second turns it off; the same for the two lengths of arrowMax)
+      win: [0.1, 0.9], maxSpan: 96, maxLen: 14, gap: 0.5, minArea: 4, favP2: [0.015, 0.03], onsetP: 0.025, cred: [6, 0.5, 12], arrowMin: 2.5, arrowMax: [30, 36],   // the area covers the 10th to 90th percentile of the formation time but no more than maxSpan hours and maxLen degrees of track; two areas keep gap degrees apart (the younger gives way) and none is drawn smaller than minArea square degrees; the X sits inside the area only while the 2-day chance is not 0 -- nothing is expected from it in two days is a disturbance not yet in favourable conditions, and it is not in its shape yet -- (the chance of formation in 2 days, as a share, below the first value of favP2 takes the X out of its shape, above the second puts it back: a hysteresis), and then an arrow (at least arrowMin and at most arrowMax degrees long, the second value of arrowMax once there is one) points from it to where the chance starts to build up, the place of its track when the chance of formation has reached onsetP; an arrow that stays for more than cred[0] issues in a row has said that conditions will improve ahead of the disturbance for that long and has not been right (on the real engine, after 9 issues the 7-day chance it gave was 0.46 and what happened 0.24): its chances are multiplied by a credibility that falls to cred[1] over the next cred[2] issues
       rise: 20, fall: 20, firstP7: 40, firstP2: 30, morph: 0.3, maxMove: 2, maxGrow: 0.5, memH: 30,   // between two issues a chance moves by no more than rise / fall (percent), a shape the share morph of the way to the new forecast (the rest is the last issue's, carried with its disturbance) and at most maxMove degrees (its radius maxGrow); a disturbance seen for the first time starts no higher than firstP7 / firstP2; an issue older than memH hours is not what the next one moves on from
       lead: { W: [48, 168, 0], N: [12, 120, 0.3], F: [12, 120, 0.3] },           // how many hours before it exists a forecaster sees a system coming: shortest, longest, and the share nobody sees coming
       cls: [35, 60],                                                              // an area is low (yellow) up to this 7-day chance, medium (orange) up to the next, high (red) above
@@ -1313,7 +1313,7 @@ function outlookEnd(par, c, alat, sst, lf, age) {
    exists and has not yet developed (surv) falling by what ends it. c: { kind, lat, lon, h0 (first hour on the path), born, life, ux, uy, q (its quality now, when known), vx, vy (a tracked low's motion), low, dev } */
 function outlookFollow(mgr, F, c) {
   const par = mgr.par, O = par.outlook, M = F.M, env = F.env, A = O.anomTau, dt = O.step, H0 = F.H0, end = H0 + O.horizon, box = env.box;
-  const out = { t: [], lat: [], lon: [], dt: [], dly: [], rate: [], mass: [], surv: [], gate: [], lf: [] };
+  const out = { t: [], lat: [], lon: [], dt: [], dly: [], rate: [], mass: [], surv: [], lf: [] };
   let lat = c.lat, lon = c.lon, ux = c.ux || 0, uy = c.uy || 0, h = c.h0, surv = 1, lastSst = 27, lastRh = 50, lastShear = 15;
   const rq = Math.exp(-1 / par.qTau), al = 1 - Math.exp(-dt / 5), sub = c.kind !== 'W' && c.kind !== 'M';
   while (h < end) {
@@ -1354,7 +1354,6 @@ function outlookFollow(mgr, F, c) {
     const sustP = (g, G) => { if (!(par.tdMargin > 0)) return 1; if (!(g > 0)) return 0; if (!(par.qSd > 0)) return g >= G.gCrit + par.tdMargin ? 1 : 0; return 1 - normCdf((Math.log((G.gCrit + par.tdMargin) / g) / par.qSd - mq) / sd); };
     const door = (1 - smooth01(lf, 0.4, 0.8)) * smooth01(alat, 3, 6);
     const convT = O.tdShare * door * smooth01(sst, 23, 24) * sustP(gT, par), convS = lamS > 0 ? O.tdShare * door * smooth01(sst, par.subSstOK - 1, par.subSstOK) * sustP(gS, par.sub) : 0;
-    const gate = Math.max(devGateOf(par, false, gT), gS > 0 ? devGateOf(par, true, gS) : 0) * door;     // how open the growth gate is here (0-1): could a depression live in this place -- what an X means by favourable conditions
     const rate = lamT * convT + lamS * convS;
     // the hours from the event to the depression: the wind rises from where the disturbance's environment holds it to devV (devVSub for a subtropical one) at devRate, then holds tdHold hours
     const vPre = c.low ? 22 : par.distV[0] + (par.distV[1] - par.distV[0]) * smooth01(eT, 0.3, 2.0), dlyT = Math.max(0, par.devV - vPre) / par.devRate + O.tdHold, dlyS = Math.max(0, par.devVSub - vPre) / par.devRate + O.tdHold;
@@ -1364,7 +1363,7 @@ function outlookFollow(mgr, F, c) {
     if (left <= 0) break;
     step = Math.min(step, left);
     const tot = rate + hE, mass = surv * (tot > 1e-12 ? (rate / tot) * (1 - Math.exp(-tot * step)) : rate * step);
-    out.t.push(h); out.lat.push(lat); out.lon.push(lon); out.dt.push(step); out.dly.push(dly); out.rate.push(rate); out.mass.push(mass); out.surv.push(surv); out.gate.push(gate); out.lf.push(lf);
+    out.t.push(h); out.lat.push(lat); out.lon.push(lon); out.dt.push(step); out.dly.push(dly); out.rate.push(rate); out.mass.push(mass); out.surv.push(surv); out.lf.push(lf);
     surv *= Math.exp(-tot * step);
     // the mean motion over the step
     if (c.low) {
@@ -1411,9 +1410,11 @@ Manager.prototype._outlookCompute = function (env) {
   const lim = (v, p) => Math.max(p - O.fall * gap, Math.min(p + O.rise * gap, v)), items = [];
   for (const c of cands) {
     const pr = fresh ? mem.prev[c.ck] : null, r = this._outlookRaw(F, c, pr); if (!r) continue;
-    let p7 = round5(100 * r.P7), p2 = Math.min(round5(100 * r.P2), p7);
+    const ar = r.mode === 'arrow' ? (pr && pr.mode === 'arrow' ? pr.ar || 0 : 0) + (fresh ? gap : 1) : 0, cr = 1 - (1 - O.cred[1]) * clamp((ar - O.cred[0]) / O.cred[2], 0, 1);          // (the issues in a row it has pointed an arrow at where conditions will be right, and how much its chances are believed after that)
+    let p7 = round5(100 * r.P7 * cr), p2 = Math.min(round5(100 * r.P2 * cr), p7);
     if (fresh) { if (pr) { p7 = lim(p7, pr.p7); p2 = lim(p2, pr.p2); } else if (c.kind !== 'M' || H0 - c.born >= 6) { p7 = Math.min(p7, O.firstP7); p2 = Math.min(p2, O.firstP2); } }          // (a hand-placed disturbance is shown at the chance it has the first time: it did not appear out of nowhere)
     p2 = Math.min(p2, p7);
+    if (r.mode === 'in' && r.x && r.P2 >= O.favP2[0] && r.P2 < O.favP2[1] && p2 < 5) p2 = Math.min(5, p7);          // (in its shape means a 2-day chance: 0 is outside it, so the X that the band between the two values of favP2 keeps where it was has the 5 % it rounds up from)
     if (r.light) { if (p7 >= 5) mem.cur[c.ck] = { p2, p7 }; continue; }
     let chain = r.chain;
     if (pr && pr.chain && pr.chain.length === chain.length) {                          // the shape of the last issue, carried with the disturbance (while the X is inside its area), moved a share of the way to the new one
@@ -1425,15 +1426,17 @@ Manager.prototype._outlookCompute = function (env) {
         return [la + dla, lo + dlo, o[2] + clamp(morph * (q[2] - o[2]), -O.maxGrow * gap, O.maxGrow * gap)];
       });
     }
-    let arrow = null, arrowR = 0, mode = r.mode, shown = chain;
-    if (mode === 'arrow') {                                                           // an arrow only while the shape is far enough from its X; when it is not yet (it moves a share of the way each issue) or no longer, the X is drawn in its shape -- and the shape on its way stays what is remembered
-      const to = chain[0], dl = Math.hypot(to[0] - r.x[0], (to[1] - r.x[1]) * Math.cos(r.x[0] * DEG));
-      if (dl >= O.arrowMin) { arrow = [r1(to[0]), r1(to[1])]; arrowR = to[2]; } else { mode = 'in'; shown = chain.map((q, i) => (i ? q : [r.x[0], r.x[1], q[2]])); }
+    let arrow = null, arrowR = 0;
+    const mode = r.mode;
+    if (mode === 'arrow') {                                                           // the X is outside its shape, an arrow of arrowMin degrees at the least to it: a shape still on its way from the X (it moves a share of the way each issue) has its head put that far from it, on the line it is moving away along
+      const kx = Math.cos(r.x[0] * DEG), dl = Math.hypot(chain[0][0] - r.x[0], (chain[0][1] - r.x[1]) * kx);
+      if (dl < O.arrowMin) { const dy = r.chain[0][0] - r.x[0], dx = (r.chain[0][1] - r.x[1]) * kx, L = Math.hypot(dy, dx) || 1; chain = chain.map((q, i) => (i ? q : [r.x[0] + (dy / L) * O.arrowMin, r.x[1] + (dx / L) * O.arrowMin / kx, q[2]])); }
+      arrow = [r1(chain[0][0]), r1(chain[0][1])]; arrowR = chain[0][2];
     }
-    chain = capChain(chain, O.maxLen * 1.25); shown = shown === chain ? chain : capChain(shown, O.maxLen * 1.25);          // (a shape that was drawn far from the disturbance it now belongs to is not stretched from one to the other for long)
-    mem.cur[c.ck] = { p2, p7, mode: r.mode, x: r.x, chain: chain.map((q) => [Math.round(q[0] * 100) / 100, Math.round(q[1] * 100) / 100, Math.round(q[2] * 100) / 100]) };
+    chain = capChain(chain, O.maxLen * 1.25);                                          // (a shape that was drawn far from the disturbance it now belongs to is not stretched from one to the other for long)
+    mem.cur[c.ck] = { p2, p7, mode: r.mode, ar, x: r.x, chain: chain.map((q) => [Math.round(q[0] * 100) / 100, Math.round(q[1] * 100) / 100, Math.round(q[2] * 100) / 100]) };
     if (p7 < O.minP7) continue;
-    items.push({ c, r, chain: shown, mode, arrow, arrowR, p2, p7 });
+    items.push({ c, r, chain, mode, arrow, arrowR, p2, p7 });
   }
   // the shapes, the oldest disturbance first (a system that exists, then the ones still to be born in the order of their births): each is drawn clear of the ones before it, so that no two areas overlap and none has an outline
   // running through another -- its swath stops where it would come within O.gap degrees of a shape already drawn (the way a wave's area ends before the area of the wave ahead of it); an X always keeps the disc round it
@@ -1523,9 +1526,12 @@ Manager.prototype._outlookRaw = function (F, c, pr) {
     for (let i = 0; i < n; i++) { const e = fo.t[i] + fo.dt[i]; if (x < e) { const w = (x - fo.t[i]) / fo.dt[i], la1 = i + 1 < n ? fo.lat[i + 1] : fo.endLat, lo1 = i + 1 < n ? fo.lon[i + 1] : fo.endLon; return [fo.lat[i] + w * (la1 - fo.lat[i]), fo.lon[i] + w * (lo1 - fo.lon[i])]; } }
     return [fo.endLat, fo.endLon]; };
   let mode = c.unborn ? 'none' : 'in', ts = c.unborn ? tq0 : H0;
-  if (!c.unborn && fo.gate[0] < (pr && pr.mode === 'arrow' ? O.favGate[1] : O.favGate[0])) {   // the growth gate is shut where it is: an arrow to where it opens, if it does within the week and the disturbance is still likely to be there
-    let k0 = 0; for (let i = 1; i < n; i++) if (fo.gate[i] >= O.favGate[1] && fo.surv[i] >= 0.3) { k0 = i; break; }
-    if (k0 > 0) { const t = fo.t[k0] + fo.dly[k0], to = pos(t), dl = Math.hypot(to[0] - c.lat, (to[1] - c.lon) * Math.cos(c.lat * DEG)); if (dl >= O.arrowMin && dl <= (pr && pr.mode === 'arrow' ? O.arrowMax[1] : O.arrowMax[0])) { mode = 'arrow'; ts = t; } }
+  if (!c.unborn && P2 < (pr && pr.mode === 'in' ? O.favP2[0] : O.favP2[1])) {         // nothing is expected in the next two days (a 2-day chance of 0): the disturbance is not in favourable conditions yet, so it is not in its shape -- an arrow runs from it to where the chance starts to build up
+    const away = (q) => Math.hypot(q[0] - c.lat, (q[1] - c.lon) * Math.cos(c.lat * DEG)), cap = pr && pr.mode === 'arrow' ? O.arrowMax[1] : O.arrowMax[0];
+    let t = Math.max(timeAt(Math.min(O.onsetP, 0.5 * P7)), H0 + 3), d = away(pos(t));
+    while (d < O.arrowMin && t < H0 + R) { t += 3; d = away(pos(t)); }                 // (a slow disturbance: the shape starts as far from it as an arrow is long at the least)
+    if (d > cap) return { ck: c.ck, P2, P7, light: true };                              // (the chance builds up too far ahead to point to: the area is not drawn until it is nearer, its chance is kept)
+    if (d >= O.arrowMin) { mode = 'arrow'; ts = t; }
   }
   let te = Math.min(Math.max(tq1, ts + 6), ts + O.maxSpan);                            // no more than maxSpan hours of track, and not on past the coast
   for (let i = 0; i < n; i++) if (fo.t[i] > ts && fo.lf[i] >= 0.6) { te = Math.min(te, Math.max(ts + 6, fo.t[i])); break; }
