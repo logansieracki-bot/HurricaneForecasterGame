@@ -5,10 +5,10 @@ document.querySelectorAll('#place-menu button').forEach((b) => { b.onclick = () 
 $('stwaves').onchange = $('stlows').onchange = $('stdist').onchange = $('stlabels').onchange = () => { stormsDirty = true; drawStorms(); };
 $('st-auto').onchange = () => { stormAuto = $('st-auto').checked; if (stormMgr) stormMgr.auto = stormAuto; markDirty(); };
 $('p-stact').oninput = () => { stormActivity = parseFloat($('p-stact').value); $('p-stact-o').textContent = stormActivity.toFixed(1) + '×'; if (stormMgr) stormMgr.autoRate = stormActivity; markDirty(); };
-$('sc-close').onclick = closeStormCard;
+$('sc-close').onclick = closeStormCard; $('ac-close').onclick = closeStormCard;
 window.addEventListener('keydown', (e) => {                                      // the storm keys (the page's own handler has the clock's)
   if (e.target && /INPUT|TEXTAREA/.test(e.target.tagName) && e.target.type !== 'range' && e.target.type !== 'checkbox') return;
-  if (e.key === 'Escape') { if (placeMode) placeSet(false); else if (!$('storm-card').hidden) closeStormCard(); else if (sumOpen) closeSummary(); }
+  if (e.key === 'Escape') { if (placeMode) placeSet(false); else if (!$('storm-card').hidden || !$('aoi-card').hidden) closeStormCard(); else if (sumOpen) closeSummary(); }
   else if (e.key === 'p' || e.key === 'P') placeSet(!placeMode);
 });
 
@@ -63,7 +63,7 @@ function applySave(s) {
   initSim(P.seed);                                                                // the static structure of this seed (waves, jet modes ...) and a throw-away new season
   simRestoreLight(s.weather);
   stormMgr = HFStorms.restore(JSON.parse(s.storms), { maps: stormMapsNow() });
-  stormLab = null; shadow = null; stormSel = null; stormHot = null; stormHits = []; olHeld = null; olHits = []; stormsDirty = true; sumArch = stormMgr.archive.length; if (sumOpen) closeSummary();
+  stormLab = null; shadow = null; stormSel = null; olSel = null; $('aoi-card').hidden = true; stormHot = null; stormHits = []; olHeld = null; olEagerSlot = -1e9; olHits = []; stormsDirty = true; sumArch = stormMgr.archive.length; if (sumOpen) closeSummary();
   lowsStamp = -1; kfBreak = true; stormKeyframe(true); stormFieldsDirty = false;      // fresh keyframes of the steering and the fields at the restored hour
   if (s.kf0 && simHour === kfHour) { for (let i = 0; i < 3; i++) { b64f32(s.kf0.u[i], kfU0[i]); b64f32(s.kf0.v[i], kfV0[i]); } kfHour0 = s.kf0.h; wkHour = -1e9; stormEnv.beginHour(simHour); }
   seasonText = ''; acc = 0; lastClock = ''; updateClock(); updateSeasonBar(); refresh();
@@ -92,7 +92,7 @@ $('b-menu').addEventListener('click', () => { if (saveStamp !== savedStamp) save
 const STORM_API = {
   storms(on) { return on === undefined ? stormsOn : stormsSwitch(on); }, stormsForce(on) { return stormsSwitch(on, true); },      // (the lab and the region dump of a page whose climatology is not made yet)
   stormState() { return stormMgr ? { on: stormsOn, hour: stormMgr.hour, stats: stormMgr.stats(), lows: stormMgr.lows.tracks.filter((t) => t.alive).length, seeds: Object.assign({}, stormMgr.n), systems: stormMgr.systems.map((S) => ({ id: S.id, name: S.name, th: S.th, st: HFStorms.statusOf(S), lat: S.lat, lon: S.lon, v: S.v, vr: S.vr, p: S.p, alive: S.alive, depNum: S.depNum, peakV: S.peakV, ace: S.ace, fixes: S.fixes.length, end: S.endReason, origin: S.origin, invest: S.invest })) } : null; },
-  stormJSON() { return JSON.stringify(stormMgr.serialize()); },
+  stormJSON() { const o = stormMgr.serialize(); delete o.olMem; return JSON.stringify(o); },           // the storms (without what the outlook remembers of its last issue: that depends on which issues were made, the page's speed among it)
   stormLabStart(sets, opts) { stormLab = sets.map((p) => { const m = HFStorms.create({ seed: stormSeed(), startMs: START_MS, hour0: simHour, auto: true, autoRate: stormActivity, params: p, maps: stormMapsNow(), basin: STORM_BASIN }); if (opts && opts.diag) m.enableDiag(); return m; }); return stormLab.length; },
   stormLabCalendar(month, day) { START_MS = Date.UTC(START_YEAR, month, day || 1, 0, 0, 0); return START_MS; },   // the calibration lab starts a basin's whole season on its first day (call it before applySeed, which starts the clock): the page itself starts where its template says
   stormMaps(raw) { stormMapsOverride = raw || null; return !!stormMapsNow(); }, stormMapsKeys() { const m = stormMapsNow(); return m ? Object.keys(m) : null; },
@@ -132,7 +132,11 @@ const STORM_API = {
     stormsDirty = true; drawStorms(); return stormMgr.lows.tracks.length;
   },
   stormLowsDrawn() { return stormHits.filter((h) => h.low).map((h) => [h.low.lat, h.low.lon]); },
-  outlook() { return outlookNow(); }, outlookFresh() { if (stormMgr) stormMgr._ol = null; olHeld = null; const t = performance.now(), r = outlookNow(); return { ms: performance.now() - t, areas: r ? r.areas.length : -1 }; }, outlookForce(res) { olForced = res || null; stormsDirty = true; drawStorms(); return !!olForced; },        // the areas of interest the page shows (tests: force a list of areas to draw, null puts the engine's back)
+  outlook() { return outlookNow(); }, outlookFresh() { if (stormMgr) stormMgr._ol = null; olHeld = null; olEagerSlot = -1e9; const t = performance.now(), r = outlookNow(); return { ms: performance.now() - t, areas: r ? r.areas.length : -1 }; }, outlookForce(res) { olForced = res || null; stormsDirty = true; drawStorms(); return !!olForced; },        // the areas of interest the page shows (tests: force a list of areas to draw, null puts the engine's back)
+  outlookMemSlot() { return stormMgr && stormMgr.olMem ? stormMgr.olMem.slot : null; },                                   // the six-hour slot of the last issue the engine made (tests: the issues are made by the clock)
+  outlookMem() { const c = stormMgr && stormMgr.olMem ? stormMgr.olMem.cur : {}; return Object.fromEntries(Object.entries(c).map(([k, v]) => [k, [v.p2, v.p7]])); },        // what the last issue said of every disturbance it knows, drawn or not: [2-day, 7-day] (tests: how a chance moves from issue to issue)
+  aoiSelect(key) { if (key == null) { closeStormCard(); return null; } const OL = outlookNow(), a = OL && OL.areas.find((q) => q.key === key); if (!a) return null; openAoiCard(a); return olSel ? olSel.key : null; },
+  aoiState() { const c = $('aoi-card'), g = (id) => $(id).textContent; return { sel: olSel ? olSel.key : null, hidden: c.hidden, name: g('ac-name'), type: g('ac-type'), p2: g('ac-p2'), p7: g('ac-p7'), cls: g('ac-cls'), clsBg: $('ac-cls').style.background, cond: g('ac-cond'), mv: g('ac-mv'), pos: g('ac-pos'), sh: g('ac-sh'), sst: g('ac-sst'), iss: g('ac-iss'), win: g('ac-win'), tc: stormSel ? stormSel.id : null }; },
   outlookHits() { return { marks: stormHits.filter((h) => h.aoi).map((h) => ({ x: h.x, y: h.y, r: h.r, key: h.aoi.key })), areas: olHits.map((h) => ({ key: h.a.key, bbox: [h.x0, h.y0, h.x1, h.y1] })) }; },
   stormFieldCheck() {                                                  // the storm grid's fields against the map's fine fields at the nodes it keeps: the largest difference of each (they must be 0) and the nodes where only one is missing
     const a = new Float32Array(NSF), b = new Float32Array(NSF), c = new Float32Array(NSF);

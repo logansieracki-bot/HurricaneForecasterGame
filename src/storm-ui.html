@@ -15,7 +15,7 @@
 <div id="ol-legend" class="card" aria-label="Areas of interest: the chance of formation in 7 days">
   <b>7-day chance of formation</b>
   <div><i class="low"></i>Low · 0–30 %</div><div><i class="medium"></i>Medium · 40–60 %</div><div><i class="high"></i>High · 70–100 %</div>
-  <small><u>✕</u> a disturbance · <u>→</u> where it may form · labels: 2-day · 7-day chance</small>
+  <small><u>✕</u> a disturbance · <u>→</u> where it may form · labels: 2-day · 7-day chance · click one to look at it alone</small>
   <small id="ol-issued"></small>
 </div>
 <aside id="storm-card" class="card" hidden aria-label="Storm details">
@@ -29,6 +29,18 @@
     <div><span>Damage</span><b>—</b></div><div><span>Formed</span><b id="sc-formed">–</b><small id="sc-invest"></small></div>
   </div>
   <p id="sc-note">Showing only this system. Click the empty map or press Esc to show all.</p>
+</aside>
+<aside id="aoi-card" class="card" hidden aria-label="Disturbance details">
+  <button id="ac-close" aria-label="Close disturbance details" title="Close (Esc)">&times;</button>
+  <b id="ac-name">–</b><span id="ac-type"></span>
+  <div class="sc-main"><div><b id="ac-p2">0</b><small>% in 2 days</small></div><div><b id="ac-p7">0</b><small>% in 7 days</small></div><span id="ac-cls">Low</span></div>
+  <div class="sc-grid">
+    <div><span>Conditions</span><b id="ac-cond">–</b></div><div><span>Movement</span><b id="ac-mv">–</b></div>
+    <div><span>Position</span><b id="ac-pos">–</b></div><div><span>Issued</span><b id="ac-iss">–</b></div>
+    <div><span>Shear</span><b id="ac-sh">–</b></div><div><span>SST</span><b id="ac-sst">–</b></div>
+    <div class="wide"><span>Formation most likely</span><b id="ac-win">–</b></div>
+  </div>
+  <p id="ac-note">Showing only this disturbance and its area. Click the empty map or press Esc to show all.</p>
 </aside>
 <aside id="sum-card" class="card" hidden role="dialog" aria-label="Season summary">
   <button id="sum-close" aria-label="Close season summary" title="Close (Esc)">&times;</button>

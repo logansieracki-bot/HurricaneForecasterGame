@@ -265,9 +265,9 @@ function labRecord(m) {
 }
 function stormsReset() {
   stormMgr = HFStorms.create({ seed: stormSeed(), startMs: START_MS, hour0: simHour, auto: stormAuto, autoRate: stormActivity, maps: stormMapsNow(), basin: STORM_BASIN });
-  stormLab = null; shadow = null; stormFieldsDirty = true; kfBreak = true; kfFieldHour = -1; stormSel = null; stormHot = null; stormHits = []; olHeld = null; olHits = []; stormsDirty = true;
+  stormLab = null; shadow = null; stormFieldsDirty = true; kfBreak = true; kfFieldHour = -1; stormSel = null; olSel = null; stormHot = null; stormHits = []; olHeld = null; olEagerSlot = -1e9; olHits = []; stormsDirty = true;
   sumArch = 0; if (sumOpen) closeSummary();
-  const card = $('storm-card'), tip = $('storm-tip'); if (card) card.hidden = true; if (tip) tip.style.display = 'none';
+  const card = $('storm-card'), tip = $('storm-tip'), acard = $('aoi-card'); if (card) card.hidden = true; if (acard) acard.hidden = true; if (tip) tip.style.display = 'none';
   updateSeasonBar();
 }
 function stormEnvChanged() { stormFieldsDirty = true; kfBreak = true; shadowStale(); markDirty(); }             // a slider / ENSO / seed change: the storms see the new weather at the next keyframe (the steering is not carried across the change)
@@ -288,14 +288,25 @@ function stormsAdvance(n) {
       const midnight = simHour % 24 === 0;
       if (midnight) { const d = Math.floor(simHour / 24); advanceSynDraws(d); advanceShearSynDraws(d); }
       stormKeyframe(midnight || stormFieldsDirty);
+      olEager();
     }
   }
   dirty = true; stormsDirty = true; updateSeasonBar(); markDirty();
+}
+/* The outlook is issued every six hours, and each issue moves on from the one before it (a chance by a few points, a shape by a share of the way), so the issues are made one after another as the clock goes by, not only when the map
+   happens to be drawn. At the fast speeds a clock hour is a few milliseconds, so only every few issues are made (the engine lets a chance and a shape move further when issues were skipped, and starts again when the gap is over 30 h). */
+let olEagerSlot = -1e9;
+function olEager() {
+  if (!stormsOn || !stormMgr || typeof stormMgr.outlook !== 'function' || !$('stdist').checked) return;
+  const slot = Math.floor(simHour / 6), stride = Math.max(1, Math.round((playing ? SPEEDS[speedIdx] : 1) / 4));
+  if (slot - olEagerSlot < stride) return;
+  olEagerSlot = slot; olHeld = stormMgr.outlook(stormEnv); olHeldAt = performance.now();
 }
 function stormsSwitch(on, force) {
   if (!STORMS_READY && !force) return false;                        // a page without its climatology yet can not be switched on by a visitor (the fitting tools force it: they are what makes the climatology)
   if (on === stormsOn) return stormsOn;
   stormsOn = !!on;
+  if (!stormsOn) { stormSel = null; olSel = null; for (const id of ['storm-card', 'aoi-card']) { const c = $(id); if (c) c.hidden = true; } }          // (no card of a system that is not on the map)
   if (!stormsOn && typeof placeSet === 'function') placeSet(false);
   if (stormsOn) stormsReset();                                     // storms resume from the current hour with a fresh season
   stormsDirty = true; drawStorms(); updateSeasonBar();
@@ -512,7 +523,7 @@ const shapeOf = (th) => (th === 'sc' ? 'square' : th === 'ex' || th === 'nl' ? '
 /* ---- the outlook: areas of interest, X's and arrows (the engine's Manager.prototype.outlook makes them, the same for every basin; this block only draws, picks and describes) ---- */
 const OL_COL = { low: '#ffe24d', medium: '#ff9d2e', high: '#ff3b30' }, OL_NAME = { low: 'Low', medium: 'Medium', high: 'High' };      // the National Hurricane Center's yellow, orange and red
 const OL_HATCH = { low: [9, 1.4], medium: [7.5, 1.7], high: [6, 2.0] };                                                              // diagonal lines inside the shape: tile size and line width in px, closer and thicker for a higher chance
-let olForced = null, olHeld = null, olHeldAt = 0, olShown = null, olHits = [], olIssuedText = '';           // olShown: the issue on the map now (what a tooltip talks about)
+let olForced = null, olHeld = null, olHeldAt = 0, olShown = null, olHits = [], olIssuedText = '', olSel = null, lastAoiCardAt = 0;           // olShown: the issue on the map now (what a tooltip talks about); olSel: the disturbance picked to look at alone ({ key, id })
 function outlookNow() {
   if (olForced) return olForced;
   if (!stormsOn || !stormMgr || typeof stormMgr.outlook !== 'function' || kfFieldHour < 0) return null;
@@ -554,7 +565,9 @@ function drawOutlookAreas(g, toPx, OL, names) {
   if (names) {                                                                         // the chances on the shapes: 2-day, then 7-day (the Storm names box turns them off with the other labels)
     g.save(); g.font = '600 11px system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
     for (const h of olHits) {
-      let cx = 0, cy = 0; for (const q of h.pts) { cx += q.x; cy += q.y; } cx /= h.pts.length; cy /= h.pts.length;
+      let cx = 0, cy = 0;
+      if (h.a.pole) { const p = toPx(h.a.pole[0], h.a.pole[1]); cx = p.x; cy = p.y; }                // the point of the shape farthest from its edge (the engine's pole), so the label is inside a curved or cut shape
+      else { for (const q of h.pts) { cx += q.x; cy += q.y; } cx /= h.pts.length; cy /= h.pts.length; }
       const txt = h.a.p2 + '% · ' + h.a.p7 + '%', w = g.measureText(txt).width + 12;
       g.fillStyle = 'rgba(10,14,24,.86)'; g.beginPath(); g.roundRect(cx - w / 2, cy - 8, w, 16, 8); g.fill(); g.lineWidth = 1.5; g.strokeStyle = OL_COL[h.a.cls]; g.stroke();
       g.fillStyle = '#fff'; g.fillText(txt, cx, cy + 0.5);
@@ -562,18 +575,18 @@ function drawOutlookAreas(g, toPx, OL, names) {
     g.restore();
   }
 }
-function olGlyphX(g, p) {
+function olGlyphX(g, p, col) {                                                        // the X in the colour of its chance, in a dark outline
   g.save(); g.lineCap = 'round';
-  for (const [w, c] of [[7.6, 'rgba(255,255,255,.92)'], [4, '#0c0f16']]) { g.lineWidth = w; g.strokeStyle = c; g.beginPath(); g.moveTo(p.x - 6.5, p.y - 6.5); g.lineTo(p.x + 6.5, p.y + 6.5); g.moveTo(p.x + 6.5, p.y - 6.5); g.lineTo(p.x - 6.5, p.y + 6.5); g.stroke(); }
+  for (const [w, c] of [[9.6, 'rgba(8,10,16,.94)'], [5.4, col]]) { g.lineWidth = w; g.strokeStyle = c; g.beginPath(); g.moveTo(p.x - 6.5, p.y - 6.5); g.lineTo(p.x + 6.5, p.y + 6.5); g.moveTo(p.x + 6.5, p.y - 6.5); g.lineTo(p.x - 6.5, p.y + 6.5); g.stroke(); }
   g.restore();
 }
-function olGlyphArrow(g, from, to, rpx) {                                             // from the X toward the area, stopping at its edge
+function olGlyphArrow(g, from, to, rpx, col) {                                        // from the X toward the area, stopping at its edge, in the colour of the chance
   const dx = to.x - from.x, dy = to.y - from.y, L = Math.hypot(dx, dy); if (L < 30) return;
   const ux = dx / L, uy = dy / L, ex = to.x - ux * Math.min(rpx * 0.7, L * 0.4), ey = to.y - uy * Math.min(rpx * 0.7, L * 0.4), sx = from.x + ux * 12, sy = from.y + uy * 12;
   g.save(); g.lineCap = 'round'; g.lineJoin = 'round';
-  for (const [w, c] of [[7, 'rgba(255,255,255,.92)'], [3.4, '#0c0f16']]) { g.lineWidth = w; g.strokeStyle = c; g.beginPath(); g.moveTo(sx, sy); g.lineTo(ex - ux * 3, ey - uy * 3); g.stroke(); }
+  for (const [w, c] of [[8.2, 'rgba(8,10,16,.94)'], [4.4, col]]) { g.lineWidth = w; g.strokeStyle = c; g.beginPath(); g.moveTo(sx, sy); g.lineTo(ex - ux * 3, ey - uy * 3); g.stroke(); }
   g.beginPath(); g.moveTo(ex, ey); g.lineTo(ex - ux * 13 - uy * 7, ey - uy * 13 + ux * 7); g.lineTo(ex - ux * 13 + uy * 7, ey - uy * 13 - ux * 7); g.closePath();
-  g.lineWidth = 2.6; g.strokeStyle = 'rgba(255,255,255,.92)'; g.stroke(); g.fillStyle = '#0c0f16'; g.fill();
+  g.lineWidth = 3.4; g.strokeStyle = 'rgba(8,10,16,.94)'; g.stroke(); g.fillStyle = col; g.fill();
   g.restore();
 }
 function olMarks(OL) {                                                                // [{ a, S, lat, lon }]: the X's, at the live position of their disturbance
@@ -581,26 +594,41 @@ function olMarks(OL) {                                                          
   for (const a of OL.areas) { if (!a.x || olFormed(a)) continue; const S = olSystem(a); out.push({ a, S, lat: S ? S.lat : a.x[0], lon: S ? S.lon : a.x[1], live: !!S }); }
   return out;
 }
-function drawOutlookMarks(g, toPx, marks) {
+const OL_KIND = { wave: 'Tropical wave', low: 'Low-pressure area', seed: 'Disturbance', placed: 'Tropical wave (placed)', unborn: 'Area of interest' };
+const olTitle = (a) => (a.invest ? 'Invest ' + a.invest : OL_KIND[a.kind] || 'Disturbance');            // what the hover and the card call it
+const olLabel = (a) => (a.invest ? 'Invest ' + a.invest : { wave: 'Wave', low: 'Low', seed: 'Disturbance', placed: 'Placed wave' }[a.kind] || 'Disturbance');       // the short title next to the X
+function drawOutlookMarks(g, toPx, marks, names) {
   for (const m of marks) {
     const p = toPx(m.lat, m.lon); if (p.x < -20 || p.y < -20 || p.x > W + 20 || p.y > H + 20) continue;
-    if (m.a.arrow) { const to = toPx(m.a.arrow[0], m.a.arrow[1]), e = toPx(m.a.arrow[0] + m.a.arrowR, m.a.arrow[1]); olGlyphArrow(g, p, to, Math.hypot(e.x - to.x, e.y - to.y)); }
-    olGlyphX(g, p);
+    const col = OL_COL[m.a.cls]; let shapeLon = m.lon;
+    if (m.a.arrow) { const to = toPx(m.a.arrow[0], m.a.arrow[1]), e = toPx(m.a.arrow[0] + m.a.arrowR, m.a.arrow[1]); olGlyphArrow(g, p, to, Math.hypot(e.x - to.x, e.y - to.y), col); shapeLon = m.a.arrow[1]; }
+    else if (m.a.poly.length) shapeLon = m.a.poly.reduce((t, q) => t + q[1], 0) / m.a.poly.length;
+    olGlyphX(g, p, col);
+    if (olSel && olSel.key === m.a.key) { g.save(); g.lineWidth = 2.4; g.strokeStyle = '#ffffff'; g.beginPath(); g.arc(p.x, p.y, 15, 0, 7); g.stroke(); g.restore(); }
+    if (names) {                                                                      // its title beside it, on the side away from its area (like a cyclone's name), under the same Storm names switch
+      const txt = olLabel(m.a), right = shapeLon <= m.lon;
+      g.save(); g.font = '600 12.5px system-ui, sans-serif'; g.textAlign = right ? 'left' : 'right'; g.textBaseline = 'middle';
+      g.lineWidth = 3.5; g.lineJoin = 'round'; g.strokeStyle = 'rgba(8,10,16,.85)'; g.strokeText(txt, p.x + (right ? 15 : -15), p.y); g.fillStyle = '#fff'; g.fillText(txt, p.x + (right ? 15 : -15), p.y);
+      g.restore();
+    }
     stormHits.push({ x: p.x, y: p.y, r: 12, aoi: m.a, sys: m.S });
   }
 }
 const olWhen = (hrs) => (hrs < 18 ? 'within a day' : 'in about ' + Math.round(hrs / 24) + (Math.round(hrs / 24) === 1 ? ' day' : ' days'));
+const olMotion = (S) => {                                                             // "W at 12 kt" of a wave or seed (its own motion) or of a tracked low (its last six hours)
+  if (S.low) { const t = S.low, k = 111.2 / 6 / 1.852, ux = t.dx * Math.cos(t.lat * DEG) * k, uy = t.dy * k, sp = Math.hypot(ux, uy); return sp < 1 ? '' : HFStorms.compass((Math.atan2(ux, uy) / DEG + 360) % 360) + ' at ' + Math.round(sp) + ' kt'; }
+  return HFStorms.compass((Math.atan2(S.cx, S.cy) / DEG + 360) % 360) + ' at ' + Math.round(Math.hypot(S.cx, S.cy)) + ' kt';
+};
 function olTip(a, S) {                                                                // [title, lines] of an area of interest or its X
-  const what = { wave: 'Tropical wave', low: 'Low-pressure area', seed: 'Disturbance', placed: 'Tropical wave (placed)', unborn: 'Area of interest' }[a.kind] || 'Disturbance';
+  const what = OL_KIND[a.kind] || 'Disturbance';
   const lines = ['2-day ' + a.p2 + ' % · 7-day ' + a.p7 + ' % (' + OL_NAME[a.cls] + ')'];
-  if (S && a.x) {
-    const mv = S.low ? '' : HFStorms.compass((Math.atan2(S.cx, S.cy) / DEG + 360) % 360) + ' at ' + Math.round(Math.hypot(S.cx, S.cy)) + ' kt';
-    lines.push(what + ' near ' + fmtLL(S.lat, S.lon) + (mv ? ', moving ' + mv : ''));
-  } else if (a.x) lines.push(what + ' near ' + fmtLL(a.x[0], a.x[1]));
+  if (S && a.x) { const mv = olMotion(S); lines.push(what + ' near ' + fmtLL(S.lat, S.lon) + (mv ? ', moving ' + mv : '')); }
+  else if (a.x) lines.push(what + ' near ' + fmtLL(a.x[0], a.x[1]));
   if (a.kind === 'unborn') lines.push('No system yet: a disturbance is expected to form here ' + olWhen(Math.max(0, a.birth - (olShown ? olShown.hour : stormMgr.hour))));
   else if (a.arrow) lines.push('Not yet in favourable conditions: it is expected to reach them ' + olWhen(a.t0));
   else lines.push('In or near favourable conditions: most of the chance comes within ' + (a.t1 <= 30 ? 'a day or so' : Math.ceil(a.t1 / 24) + ' days'));
-  return [a.invest ? 'Invest ' + a.invest : (a.kind === 'unborn' ? 'Area of interest' : what), lines];
+  lines.push('Click to look at it alone');
+  return [olTitle(a), lines];
 }
 function olAreaAt(cx, cy) {                                                           // the area (highest chance first) whose shape holds the point
   for (let i = olHits.length - 1; i >= 0; i--) {
@@ -610,6 +638,38 @@ function olAreaAt(cx, cy) {                                                     
     if (c) return h.a;
   }
   return null;
+}
+function olFormedSystem(key) { return stormMgr.systems.find((S) => (S.ck || S.id) === key && S.th !== 'wv' && S.depNum > 0) || null; }
+function olSelCheck() {                                                               // the disturbance picked to look at alone must still be an area of interest: if it formed, the cyclone is picked instead; if it is gone or too unlikely to be drawn, the pick is dropped
+  if (!olSel) return;
+  if (!stormsOn || !stormMgr || !$('stdist').checked) { olSel = null; $('aoi-card').hidden = true; return; }
+  const OL = outlookNow(); if (!OL) return;
+  const a = OL.areas.find((q) => q.key === olSel.key);
+  if (a && !olFormed(a)) { olSel.id = a.id; return; }
+  const S = olFormedSystem(olSel.key);
+  olSel = null; $('aoi-card').hidden = true; stormsDirty = true;
+  if (S) openStormCard(S, HFStorms.makeFix(S, stormMgr.hour, S.ace), true);
+}
+function fillAoiCard() {
+  const card = $('aoi-card'); if (!card || !olSel) return;
+  const OL = outlookNow(), a = OL && OL.areas.find((q) => q.key === olSel.key); if (!a) { card.hidden = true; return; }
+  const S = olSystem(a), at = S ? [S.lat, S.lon] : a.x || a.pole, lat = at ? at[0] : null, lon = at ? at[1] : null, abs = (h) => stormDate(OL.hour + h);       // (where it is, or for one that does not exist yet the middle of its shape)
+  $('ac-name').textContent = olTitle(a);
+  $('ac-type').textContent = a.invest ? OL_KIND[a.kind] : a.kind === 'unborn' ? 'no system yet' : '';
+  $('ac-p2').textContent = a.p2; $('ac-p7').textContent = a.p7;
+  const cls = $('ac-cls'); cls.textContent = OL_NAME[a.cls]; cls.style.background = OL_COL[a.cls];
+  $('ac-cond').textContent = a.kind === 'unborn' ? 'No system yet' : S && S.dev >= 0 ? 'Developing' : a.arrow ? 'Not yet favourable' : 'Favourable';
+  $('ac-mv').textContent = S ? olMotion(S) || 'Stationary' : '–';
+  $('ac-pos').textContent = lat == null ? '–' : fmtLL(lat, lon);
+  $('ac-sh').textContent = lat == null ? '–' : Math.round(stormEnv.shear(lat, lon)) + ' kt';
+  $('ac-sst').textContent = lat == null ? '–' : (stormEnv.sst(lat, lon) * 9 / 5 + 32).toFixed(1) + ' °F';
+  $('ac-iss').textContent = stormDate(OL.issued);
+  $('ac-win').textContent = a.kind === 'unborn' ? 'Forms ' + abs(Math.max(0, a.birth - OL.hour)) + ' or later' : (a.t0 <= 1 ? 'Now' : abs(a.t0)) + ' – ' + abs(a.t1);
+  card.hidden = false;
+}
+function openAoiCard(a) {
+  stormSel = null; $('storm-card').hidden = true; $('storm-tip').style.display = 'none';
+  olSel = { key: a.key, id: a.id }; lastAoiCardAt = 0; fillAoiCard(); stormsDirty = true; drawStorms();
 }
 function updateOutlookLegend(on, OL) {
   const el = $('ol-legend'); if (!el) return;
@@ -625,8 +685,9 @@ function drawStorms() {
   stormHits = [];
   if (!stormsOn || !stormMgr) { updateOutlookLegend(false, null); return; }              // (storms off: no legend of the outlook either)
   const toPx = (lat, lon) => map.latLngToContainerPoint([lat, lon]);
-  const only = stormSel ? stormSel.id : null;                       // a selected system is shown alone: every other path, wave and low disappears until it is deselected
-  const showWaves = $('stwaves').checked && !only, showLows = $('stlows').checked && !only, showDist = $('stdist').checked && !only, showNames = $('stlabels').checked;
+  olSelCheck();                                                     // (a disturbance picked to look at alone that has formed becomes a cyclone pick here)
+  const only = stormSel ? stormSel.id : null, aoiKey = olSel ? olSel.key : null, solo = only || aoiKey;       // a selected system is shown alone: every other path, wave, low and area disappears until it is deselected
+  const showWaves = $('stwaves').checked && !solo, showLows = $('stlows').checked && !solo, showDist = $('stdist').checked && !only, showNames = $('stlabels').checked;
   // precursors are one lifecycle: a wave (dashed line) or a low (L) that has the potential to become a cyclone turns into a disturbance (X in a dashed ring), then a depression
   const drawLow = (p, hPa) => {
     g.beginPath(); g.arc(p.x, p.y, 10, 0, 7); g.fillStyle = '#d6532f'; g.fill(); g.lineWidth = 2; g.strokeStyle = '#fff'; g.stroke();
@@ -635,27 +696,30 @@ function drawStorms() {
     g.fillStyle = 'rgba(10,14,24,.82)'; g.beginPath(); g.roundRect(p.x - tw / 2, p.y + 12, tw, 16, 8); g.fill(); g.fillStyle = '#fff'; g.fillText(tx, p.x, p.y + 20.5);
   };
   // the outlook first: the areas under everything, then (after the waves and lows) the X's and arrows over them
-  const OL = olShown = showDist ? outlookNow() : null, marks = OL ? olMarks(OL) : [], xIds = new Set(marks.map((m) => m.a.id));       // a disturbance that has its X is not drawn as an L as well
+  const OLall = showDist ? outlookNow() : null, OL = olShown = OLall && aoiKey ? { issued: OLall.issued, hour: OLall.hour, areas: OLall.areas.filter((a) => a.key === aoiKey) } : OLall;       // (picked: that one area alone)
+  const marks = OL ? olMarks(OL) : [], xIds = new Set(marks.map((m) => m.a.id));          // a disturbance that has its X is the X: it is not drawn as a wave or an L as well
   olHits = [];
   if (OL) drawOutlookAreas(g, toPx, OL, showNames);
-  updateOutlookLegend(showDist && stormsOn, OL);
+  updateOutlookLegend(showDist && stormsOn, OLall);
   if (showLows) for (const t of stormMgr.lows.tracks) {
     if (!t.alive || t.fixes.length < 3 || HFStorms.lowWeight(stormMgr.par, t.lat) < 0.05 || isLand(t.lat, t.lon) || xIds.has(t.id)) continue;      // only the lows over water where a depression could still form (the engine weighs a low by its latitude: a ramp, not a window)
     const p = toPx(t.lat, t.lon); if (p.x < -20 || p.y < -20 || p.x > W + 20 || p.y > H + 20) continue;
     drawLow(p, t.p);
     stormHits.push({ x: p.x, y: p.y, r: 12, low: t });
   }
-  if (showWaves || showLows) for (const S of stormMgr.systems) {
+  if (showWaves || showLows || aoiKey) for (const S of stormMgr.systems) {
     if (!S.alive || S.th !== 'wv') continue;
-    const stage = S.kind === 'N' ? 'low' : 'wave';                                   // a wave is a dashed line, anything else a low (the X of an area of interest goes over either)
-    if (stage === 'low' ? !showLows : !showWaves) continue;
+    if (aoiKey && (S.ck || S.id) !== aoiKey) continue;                              // (looking at one disturbance: only its own trail)
+    const stage = S.kind === 'N' ? 'low' : 'wave';                                   // a wave is a dashed line, anything else a low (an area of interest turns either into its X)
+    if (!aoiKey && (stage === 'low' ? !showLows : !showWaves)) continue;
     const p = toPx(S.lat, S.lon); if (p.x < -20 || p.y < -30 || p.x > W + 20 || p.y > H + 30) continue;
     const col = '#ffa24d';
     if (S.fixes.length > 1) {                                                // where it came from: the faint dotted trail that becomes the depression's own if it develops
       g.save(); g.setLineDash([2, 4]); g.lineWidth = 1.5; g.strokeStyle = 'rgba(255,255,255,.3)'; g.beginPath();
       S.fixes.forEach((f, i) => { const q = toPx(f.lat, f.lon); if (i) g.lineTo(q.x, q.y); else g.moveTo(q.x, q.y); }); g.lineTo(p.x, p.y); g.stroke(); g.restore();
     }
-    if (stage === 'low') { if (!xIds.has(S.id)) drawLow(p, S.p); }
+    if (xIds.has(S.id)) continue;                                                    // it is an area of interest: the X is the disturbance now (it goes back to a wave or an L when the area is gone)
+    if (stage === 'low') drawLow(p, S.p);
     else {
       g.save(); g.lineCap = 'round'; g.setLineDash([5, 4]);
       g.lineWidth = 4; g.strokeStyle = 'rgba(20,12,4,.55)'; g.beginPath(); g.moveTo(p.x, p.y - 15); g.lineTo(p.x, p.y + 15); g.stroke();
@@ -663,8 +727,8 @@ function drawStorms() {
     }
     stormHits.push({ x: p.x, y: p.y, r: 13, wave: S });
   }
-  drawOutlookMarks(g, toPx, marks);
-  const list = stormMgr.systems.filter((S) => (only ? S.id === only : S.depNum > 0 || (S.alive && S.th !== 'wv'))).sort((a, b) => (a.alive - b.alive) || (a.tdHour - b.tdHour) || (a.born - b.born));
+  drawOutlookMarks(g, toPx, marks, showNames);
+  const list = stormMgr.systems.filter((S) => (aoiKey ? false : only ? S.id === only : S.depNum > 0 || (S.alive && S.th !== 'wv'))).sort((a, b) => (a.alive - b.alive) || (a.tdHour - b.tdHour) || (a.born - b.born));
   g.lineJoin = 'round'; g.lineCap = 'round';
   for (const S of list) {
     const fx = S.fixes, pts = fx.map((f) => { const p = toPx(f.lat, f.lon); return { x: p.x, y: p.y, f }; });
@@ -708,6 +772,7 @@ function drawStorms() {
     if (hit) { g.lineWidth = 2.4; g.strokeStyle = '#ffffff'; g.beginPath(); g.arc(hit.x, hit.y, hit.r + 3, 0, 7); g.stroke(); }
   }
   if (stormSel && stormSel.h < 0 && performance.now() - lastStormCardAt > 400) { lastStormCardAt = performance.now(); fillStormCard(); }
+  if (olSel && performance.now() - lastAoiCardAt > 400) { lastAoiCardAt = performance.now(); fillAoiCard(); }
 }
 function fillStormCard() {
   const card = $('storm-card'); if (!card || !stormSel) return;
@@ -729,21 +794,21 @@ function fillStormCard() {
   $('sc-time').textContent = stormDate(f.h);
   card.hidden = false;
 }
-function openStormCard(S, f, live) { stormSel = { id: S.id, h: live ? -1 : f.h }; lastStormCardAt = 0; fillStormCard(); stormsDirty = true; drawStorms(); }
-function closeStormCard() { stormSel = null; $('storm-card').hidden = true; stormsDirty = true; drawStorms(); }
+function openStormCard(S, f, live) { olSel = null; $('aoi-card').hidden = true; stormSel = { id: S.id, h: live ? -1 : f.h }; lastStormCardAt = 0; fillStormCard(); stormsDirty = true; drawStorms(); }
+function closeStormCard() { stormSel = null; olSel = null; $('storm-card').hidden = true; $('aoi-card').hidden = true; stormsDirty = true; drawStorms(); }
 function stormPick(cx, cy) {
   let best = null, bd = 1e9;
   for (const h of stormHits) { const d = Math.hypot(cx - h.x, cy - h.y) - (h.live ? 0.75 : 0) - (h.aoi ? 1.5 : 0); if (d + (h.live ? 0.75 : 0) + (h.aoi ? 1.5 : 0) <= h.r && d < bd) { bd = d; best = h; } }       // (the live head wins over the advisory dot under it: the last fix is where the storm is, to a fraction of a pixel; the X of an area of interest wins over the wave or low it is drawn on)
   return best;
 }
-const only_ = () => !!stormSel;                                       // (a selected system is shown alone: no areas to point at)
+const only_ = () => !!stormSel;                                       // (a selected cyclone is shown alone: no areas to point at)
 function stormHover(cx, cy) {
   const tip = $('storm-tip'), h = stormsOn ? stormPick(cx, cy) : null;
   const area = h || only_() ? null : olAreaAt(cx, cy);
   const key = h ? (h.S ? h.S.id + ':' + (h.live ? 'live' : h.f.h) : h.low ? h.low.id : h.aoi ? 'aoi:' + h.aoi.key : h.wave.id) : area ? 'area:' + area.key : null;
   if (key !== stormHot) { stormHot = key; stormCanvas.style.cursor = ''; }
   if (!h && !area) { tip.style.display = 'none'; map.getContainer().style.cursor = ''; return false; }
-  map.getContainer().style.cursor = h ? 'pointer' : '';
+  map.getContainer().style.cursor = h || area ? 'pointer' : '';         // (an area can be clicked too)
   let title, lines;
   if (area) [title, lines] = olTip(area, null);
   else if (h.aoi) [title, lines] = olTip(h.aoi, h.sys);
@@ -762,7 +827,9 @@ function stormHover(cx, cy) {
 function stormClick(cx, cy) {
   const h = stormsOn ? stormPick(cx, cy) : null;
   if (h && h.S) openStormCard(h.S, h.f, !!h.live);
-  else if (stormSel) closeStormCard();
+  else if (h && h.aoi) openAoiCard(h.aoi);                          // the X of a disturbance: look at it and its area alone
+  else if (stormsOn && !h && !stormSel && olAreaAt(cx, cy)) openAoiCard(olAreaAt(cx, cy));        // the area itself (a cyclone, wave or L under the pointer wins over it)
+  else if (stormSel || olSel) closeStormCard();
 }
 let seasonText = '';
 function updateSeasonBar() {
@@ -795,7 +862,7 @@ function sumStep(dir) {
 }
 function seasonEnded() {
   const n = stormMgr.archive.length, e = stormMgr.archive[n - 1]; sumArch = n;
-  stormSel = null; $('storm-card').hidden = true; stormHot = null; $('storm-tip').style.display = 'none'; stormsDirty = true;
+  stormSel = null; olSel = null; $('storm-card').hidden = true; $('aoi-card').hidden = true; stormHot = null; $('storm-tip').style.display = 'none'; stormsDirty = true;
   openSummary(e.year);
 }
 function fillSummary() {

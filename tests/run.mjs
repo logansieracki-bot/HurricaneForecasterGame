@@ -510,12 +510,21 @@ async function checkStorms(page, label) {
       const m = (k) => (opaque.length ? opaque.reduce((t, c) => t + c[k], 0) / opaque.length : 0); return { frac: opaque.length / a.length, wash: wash.length / a.length, runs, rgb: [m(0), m(1), m(2)] }; };
     const edge = (la, lo) => { const p = at(la, lo), w = p.x - at(la, lo - 3 / Math.cos(la * Math.PI / 180)).x; let col = false, dark = false; for (let dx = -w - 7; dx <= -w + 7; dx++) { const c = rgba(p.x + dx, p.y); if (c[3] > 200 && c[0] > 200) col = true; if (c[3] > 80 && c[0] < 45 && c[1] < 45 && c[2] < 55) dark = true; } return { col, dark }; };
     const dk = (p, dx, dy) => { const c = rgba(p.x + dx, p.y + dy); return c[3] > 200 && c[0] < 60 && c[1] < 60 && c[2] < 70; }, empty = (p, dx, dy) => rgba(p.x + dx, p.y + dy)[3] < 60;
+    const CL = { low: [255, 226, 77], medium: [255, 157, 46], high: [255, 59, 48] }, colr = (p, dx, dy, k) => { const c = rgba(p.x + dx, p.y + dy); return c[3] > 200 && CL[k].every((v, i) => Math.abs(c[i] - v) < 30); };
     const marks = () => { const pA = at(24, -48), pB = at(24, -34), L = at(24, -27).x - pB.x, rpx = Math.abs(at(27, -27).y - at(24, -27).y), tip = L - Math.min(0.7 * rpx, 0.4 * L);       // (the arrow's length and where its head ends, from the page's own projection)
-      return { xa: [[-3, -3], [3, 3], [-3, 3], [3, -3]].filter(([x, y]) => dk(pA, x, y)).length, ea: [[-6, 0], [6, 0]].filter(([x, y]) => !dk(pA, x, y)).length, xb: [[-3, -3], [3, 3], [-3, 3], [3, -3]].filter(([x, y]) => dk(pB, x, y)).length, shaftA: dk(pA, 25, 0), shaftB: dk(pB, 25, 0), head: (() => { let n = 0; for (let x = Math.round(tip) - 11; x <= Math.round(tip) - 1; x++) for (let y = -5; y <= 5; y++) if (dk(pB, x, y)) n++; return n; })() }; };
+      const n4 = (p, k) => [[-3, -3], [3, 3], [-3, 3], [3, -3]].filter(([x, y]) => colr(p, x, y, k)).length, ring = (p) => [[-6, 0], [6, 0], [0, -6], [0, 6]].filter(([x, y]) => dk(p, x, y)).length;
+      return { xa: n4(pA, 'medium'), ra: ring(pA), xb: n4(pB, 'high'), rb: ring(pB), shaftA: [16, 18, 20, 22, 24].filter((x) => colr(pA, x, 0, 'medium')).length, shaftB: Array.from({ length: 11 }, (_, k) => 16 + k).filter((x) => colr(pB, x, 0, 'high')).length, edgeB: [18, 20, 22].filter((x) => (dk(pB, x, -4) || dk(pB, x, -5)) && (dk(pB, x, 3) || dk(pB, x, 4))).length,
+        head: (() => { let n = 0, d = 0; for (let x = Math.round(tip) - 11; x <= Math.round(tip) - 1; x++) for (let y = -6; y <= 6; y++) { if (colr(pB, x, y, 'high')) n++; if (dk(pB, x, y)) d++; } return [n, d]; })() }; };
+    const axisPx = (la, lo) => { const p = at(la, lo); let n = 0; for (const k of [-15, -14, -13, -12, 12, 13, 14, 15]) { const c = rgba(p.x, p.y + k); if (c[3] > 240 && c[0] > 240 && Math.abs(c[1] - 162) < 8 && Math.abs(c[2] - 77) < 12) n++; } return n; };       // (a wave's dashed axis, in its own colour, beyond the reach of an X: the hatch is another orange)
+    const labelPx = (la, lo, side, far = 96) => { const p = at(la, lo); let n = 0; for (let x = 14; x <= far; x++) for (let y = -8; y <= 8; y++) { const c = rgba(p.x + side * x, p.y + y); if (c[3] > 200 && c[0] > 235 && c[1] > 235 && c[2] > 235) n++; } return n; };       // (white text pixels beside an X)
     S.outlookForce({ issued: 144, hour: 150, areas: [A, B, C] }); S.stormDraw();
     const pa = probe(24, -62), pb = probe(24, -48), pc = probe(24, -26), out = { pa, pb, pc, ea: edge(24, -62), eb: edge(24, -48), outside: probe(10, -100).frac + probe(36, -100).wash, mk: marks() };
     const hits = S.outlookHits(); out.hits = { marks: hits.marks.map((m) => m.key).sort().join(), areas: hits.areas.map((a) => a.key).sort().join() };
     const lg = document.getElementById('ol-legend'); out.legend = { shown: getComputedStyle(lg).display !== 'none', text: lg.innerText.replace(/\s+/g, ' ') }; out.label = document.getElementById('stdist').parentElement.innerText.trim();
+    out.axisX = axisPx(24, -48); out.xcol = ['low', 'medium', 'high'].map((k) => { S.outlookForce({ issued: 144, hour: 150, areas: [Object.assign({}, B, { cls: k })] }); S.stormDraw(); return colr(at(24, -48), 0, 0, k) && colr(at(24, -48), 3, 3, k); });
+    S.outlookForce({ issued: 144, hour: 150, areas: [A, C] }); S.stormDraw(); out.axisNoX = axisPx(24, -48);       // (the wave is a dashed line again when its area is gone: "it can devolve back")
+    S.outlookForce({ issued: 144, hour: 150, areas: [A, B, C] }); document.getElementById('stlabels').checked = true; S.stormDraw(); out.lab = { b: labelPx(24, -48, 1), c: labelPx(24, -34, -1), cWrong: labelPx(24, -34, 1, 48) };       // titles beside the X's, on the side away from the area ("Wave", "Invest 92L")
+    document.getElementById('stlabels').checked = false; S.stormDraw(); out.labOff = { b: labelPx(24, -48, 1), c: labelPx(24, -34, -1) };
     const pill = (on) => { document.getElementById('stlabels').checked = on; S.stormDraw(); const c = at(24, -62); return dk(c, -12, 6) && dk(c, 12, -6) && dk(c, 0, 6) && !dk(c, 0, 14) && !dk(c, 0, -14); };      // the chances written on the shape: a dark pill at its middle (the Storm names box)
     out.pill = { on: pill(true), off: pill(false) };
     const hover = (la, lo) => { const p = at(la, lo), ok = S.stormHover(p.x, p.y), t = document.getElementById('storm-tip'); return { ok, shown: t.style.display === 'block', title: t.querySelector('b').textContent, text: t.querySelector('div').innerText.replace(/\n/g, ' | ') }; };
@@ -531,8 +540,10 @@ async function checkStorms(page, label) {
   const near = (c, k) => ({ low: [255, 226, 77], medium: [255, 157, 46], high: [255, 59, 48] })[k].every((v, i) => Math.abs(c.rgb[i] - v) < 45);
   check(`[${label}] a hatched area is diagonal lines over a faint wash, not a fill (opaque share of a probe line ${ol.pa.frac.toFixed(2)} / ${ol.pb.frac.toFixed(2)} / ${ol.pc.frac.toFixed(2)} for low / medium / high, ${ol.pa.runs} / ${ol.pb.runs} / ${ol.pc.runs} lines crossed, wash ${ol.pa.wash.toFixed(2)}), closer and thicker for a higher chance, in yellow, orange and red (${ol.pa.rgb.map(Math.round)} / ${ol.pb.rgb.map(Math.round)} / ${ol.pc.rgb.map(Math.round)}), with a coloured outline on a dark halo (${ol.ea.col && ol.ea.dark} / ${ol.eb.col && ol.eb.dark}) and nothing outside it (${ol.outside.toFixed(2)})`,
     ol.pa.frac > 0.1 && ol.pa.frac < 0.4 && ol.pb.frac > ol.pa.frac && ol.pc.frac > ol.pb.frac && ol.pc.frac < 0.7 && ol.pa.runs >= 5 && ol.pb.runs >= 5 && ol.pc.runs >= 5 && ol.pa.wash > 0.3 && near(ol.pa, 'low') && near(ol.pb, 'medium') && near(ol.pc, 'high') && ol.ea.col && ol.ea.dark && ol.eb.col && ol.eb.dark && ol.outside < 0.02);
-  check(`[${label}] a disturbance that exists has an X (dark core on a white halo: ${ol.mk.xa}/4 diagonal pixels, ${ol.mk.ea}/2 not dark on the axis), the one not yet in favourable conditions an arrow to its area as well (shaft ${ol.mk.shaftB}, head ${ol.mk.head} pixels), the one inside its area none (${ol.mk.shaftA}); an area with no system has neither, and a low that has its X is not drawn as an L (${ol.lowUnderX}) until the X is gone (${ol.lowNoX})`,
-    ol.mk.xa === 4 && ol.mk.ea === 2 && ol.mk.xb === 4 && ol.mk.shaftB && ol.mk.head >= 30 && !ol.mk.shaftA && !ol.lowUnderX && ol.lowNoX && ol.hits.marks === 'b,c' && ol.hits.areas === 'a,b,c');
+  check(`[${label}] a disturbance that exists has an X in the colour of its chance on a dark outline (${ol.mk.xa}/4 diagonal pixels orange, ${ol.mk.xb}/4 red, the outline ${ol.mk.ra}/4 and ${ol.mk.rb}/4; yellow, orange and red X's: ${ol.xcol.join(' ')}), the one not yet in favourable conditions an arrow to its area in that colour as well (shaft ${ol.mk.shaftB}/11 red pixels, outline ${ol.mk.edgeB}/3, head ${ol.mk.head[0]} red and ${ol.mk.head[1]} dark pixels), the one inside its area none (${ol.mk.shaftA}); an area with no system has neither, and a low that has its X is not drawn as an L (${ol.lowUnderX}) until the X is gone (${ol.lowNoX})`,
+    ol.mk.xa === 4 && ol.mk.xb === 4 && ol.mk.ra === 4 && ol.mk.rb === 4 && ol.xcol.every(Boolean) && ol.mk.shaftB >= 10 && ol.mk.edgeB >= 2 && ol.mk.head[0] >= 22 && ol.mk.head[1] >= 20 && ol.mk.shaftA === 0 && !ol.lowUnderX && ol.lowNoX && ol.hits.marks === 'b,c' && ol.hits.areas === 'a,b,c');
+  check(`[${label}] a wave that has an X is the X, not a dashed line with an X on top (${ol.axisX} of 8 axis pixels beyond the X) and goes back to the wave when its area is gone (${ol.axisNoX} of 8); the titles stand beside the X's with the Storm names box -- "Wave" on the right of the X of the area on its west side (${ol.lab.b} white pixels), "Invest 92L" on the left of the one whose area is to the east (${ol.lab.c}, none on the other side ${ol.lab.cWrong}) -- and are gone without it (${ol.labOff.b}, ${ol.labOff.c})`,
+    ol.axisX === 0 && ol.axisNoX >= 6 && ol.lab.b >= 20 && ol.lab.c >= 40 && ol.lab.cWrong === 0 && ol.labOff.b === 0 && ol.labOff.c === 0);
   check(`[${label}] hovering an X or an area says the chances and what it is: "${ol.hx.title}" / "${ol.hc.title}" / "${ol.ha.title}" (${ol.hx.text}) (${ol.hc.text}) (${ol.ha.text}), and nothing over open water (${ol.hn.ok})`,
     ol.hx.ok && ol.hx.title === 'Tropical wave' && /2-day 20 % · 7-day 50 % \(Medium\)/.test(ol.hx.text) && /near 24\.0°N 48\.0°W|24°N 48°W|24\.0° ?N 48\.0° ?W/.test(ol.hx.text) && /most of the chance comes within 4 days/.test(ol.hx.text)
     && ol.hc.ok && ol.hc.title === 'Invest 92L' && /7-day 80 % \(High\)/.test(ol.hc.text) && /Not yet in favourable conditions: it is expected to reach them in about 1 day/.test(ol.hc.text)
@@ -553,6 +564,41 @@ async function checkStorms(page, label) {
   });
   check(`[${label}] without forcing anything, ${e2e.n} of seven waves put in the main development region have an area of interest from the engine (best chance ${e2e.best} %, ${e2e.marks} X's and ${e2e.drawn} of ${e2e.areas} areas drawn with ink), valid, issued at a synoptic time, and a fresh issue costs ${e2e.ms.toFixed(1)} ms`,
     e2e.n >= 1 && e2e.ok && e2e.issued && e2e.marks >= e2e.n && e2e.drawn >= 1 && e2e.ms < 60);
+
+  // looking at one disturbance: a click on its X or on its area shows that disturbance and its area alone, with a card of its own; Escape, the cross, an empty click, Place or a depression
+  // formed from it put everything back (a depression: the cyclone's card). Forced to three known areas whose keys are the systems' own.
+  const selSetup = await ev(() => {
+    const S = window.SSTSIM, c0 = S.map.getCenter(), z0 = S.map.getZoom(); S.map.setView([24, -48], 4, { animate: false }); document.getElementById('stlabels').checked = true;
+    const wA = S.stormPlace({ kind: 'wave', lat: 24, lon: -48 }), wB = S.stormPlace({ kind: 'wave', lat: 24, lon: -34 });
+    const ring = (la, lo, r) => Array.from({ length: 40 }, (_, k) => { const a = 2 * Math.PI * k / 40; return [la + r * Math.sin(a), lo + r * Math.cos(a) / Math.cos(la * Math.PI / 180)]; });
+    const area = (key, cls, la, lo, extra) => Object.assign({ key, id: null, kind: 'unborn', x: null, arrow: null, arrowR: 0, p2: 20, p7: { low: 30, medium: 50, high: 80 }[cls], cls, poly: ring(la, lo, 3), t0: 30, t1: 90, birth: 200, invest: '' }, extra);
+    window.__selAreas = [area('a', 'low', 24, -62), area(wA, 'medium', 24, -48, { id: wA, kind: 'wave', x: [24, -48], birth: null }), area(wB, 'high', 24, -26, { id: wB, kind: 'wave', x: [24, -34], arrow: [24, -27], arrowR: 3, birth: null, invest: '92L' })];
+    S.outlookForce({ issued: 144, hour: 150, areas: window.__selAreas }); S.stormDraw();
+    return { wA, wB, c0: [c0.lat, c0.lng], z0, before: S.stormDrawn().length };
+  });
+  const aoiPx = (la, lo) => ev(([la, lo]) => window.SSTSIM.placePx(la, lo), [la, lo]);
+  const aoiNow = () => ev(() => { const S = window.SSTSIM, st = S.aoiState(), h = S.outlookHits(), cv = document.getElementById('storm-canvas'), g = cv.getContext('2d'), d = cv.width / cv.clientWidth, p = S.placePx(24, -62);
+    let inkA = 0; for (let x = -30; x <= 30; x++) if (g.getImageData(Math.round((p.x + x) * d), Math.round((p.y + 22) * d), 1, 1).data[3] > 100) inkA++;
+    return { st, areas: h.areas.map((a) => a.key).join(), marks: h.marks.map((a) => a.key).join(), drawn: S.stormDrawn(), inkA, cardHidden: document.getElementById('storm-card').hidden, sc: document.getElementById('sc-name').textContent, tip: document.getElementById('storm-tip').style.display }; });
+  let qp = await aoiPx(24, -34); await page.mouse.move(qp.x - 25, qp.y - 25); await page.mouse.click(qp.x, qp.y); await page.waitForTimeout(150);
+  const sl1 = await aoiNow(); await page.keyboard.press('Escape'); await page.waitForTimeout(100); const sl1e = await aoiNow();
+  qp = await aoiPx(24, -62); await page.mouse.click(qp.x, qp.y + 20); await page.waitForTimeout(150); const sl2 = await aoiNow();
+  qp = await aoiPx(18, -75); await page.mouse.click(qp.x, qp.y); await page.waitForTimeout(100); const sl2e = await aoiNow();
+  qp = await aoiPx(24, -48); await page.mouse.click(qp.x, qp.y); await page.waitForTimeout(100); const sl3 = await aoiNow(); await page.click('#ac-close'); await page.waitForTimeout(100); const sl3e = await aoiNow();
+  await page.mouse.click(qp.x, qp.y); await page.waitForTimeout(100);
+  const sl4 = await ev(() => { const S = window.SSTSIM; S.place(true); const a = S.aoiState(); S.place(false); return { hidden: a.hidden, sel: a.sel }; });
+  const sl5 = await ev(({ wA, wB }) => { const S = window.SSTSIM; S.aoiSelect(wB); const before = S.aoiState(); S.stormForce(wB, { th: 'tc', v: 35, vr: 35, depNum: 1 }); S.stormDraw(); const after = S.aoiState();
+    const r = { before: { sel: before.sel, hidden: before.hidden }, after: { sel: after.sel, hidden: after.hidden, tc: after.tc }, card: !document.getElementById('storm-card').hidden, name: document.getElementById('sc-name').textContent };
+    S.aoiSelect(null); S.stormForce(wB, { alive: false }); S.stormForce(wA, { alive: false }); S.outlookForce(null); S.map.setView([14, -45], 4, { animate: false }); S.stormDraw(); return r; }, selSetup);
+  check(`[${label}] clicking the X of a disturbance shows it alone with its card (${sl1.st.name}, ${sl1.st.p2} % / ${sl1.st.p7} % ${sl1.st.cls}, ${sl1.st.cond}, ${sl1.st.pos}, window ${sl1.st.win}): the other systems (${selSetup.before} before, ${sl1.drawn.length} now) and areas (${sl1.areas}) go, the area and X stay (${sl1.marks}); Escape puts everything back (${sl1e.st.hidden}, ${sl1e.areas})`,
+    selSetup.before >= 1 && !sl1.st.hidden && sl1.st.sel === selSetup.wB && sl1.st.name === 'Invest 92L' && sl1.st.p2 === '20' && sl1.st.p7 === '80' && sl1.st.cls === 'High' && /rgb\(255, 59, 48\)/.test(sl1.st.clsBg) && sl1.st.cond === 'Not yet favourable' && /24\.0°N 34\.0°W/.test(sl1.st.pos)
+    && /\d\dZ [A-Z][a-z]{2} \d+ – \d\dZ [A-Z][a-z]{2} \d+/.test(sl1.st.win) && sl1.areas === selSetup.wB && sl1.marks === selSetup.wB && sl1.drawn.length === 0 && sl1.inkA === 0 && sl1.cardHidden && sl1.tip === 'none'
+    && sl1e.st.hidden && sl1e.st.sel === null && sl1e.areas === 'a,' + selSetup.wA + ',' + selSetup.wB && sl1e.drawn.length >= 1);
+  check(`[${label}] clicking an area itself selects it (an area with no system yet: "${sl2.st.name}", ${sl2.st.type}, ${sl2.st.cond}), an empty click puts everything back (${sl2e.st.hidden}, ${sl2e.areas}), the X of a wave shows "${sl3.st.name}" and its cross closes the card (${sl3e.st.hidden}), and so does Place (${sl4.hidden}); the card keeps showing the same disturbance as the issues go by`,
+    !sl2.st.hidden && sl2.st.sel === 'a' && sl2.st.name === 'Area of interest' && sl2.st.type === 'no system yet' && sl2.st.cond === 'No system yet' && sl2.st.cls === 'Low' && sl2.areas === 'a' && sl2.marks === '' && sl2e.st.hidden && sl2e.areas.split(',').length === 3
+    && !sl3.st.hidden && sl3.st.sel === selSetup.wA && sl3.st.name === 'Tropical wave' && sl3.st.cond === 'Favourable' && sl3.st.cls === 'Medium' && sl3e.st.hidden && sl3e.st.sel === null && sl4.hidden && sl4.sel === null);
+  check(`[${label}] a disturbance that becomes a depression while it is looked at hands the card to the cyclone (card of the disturbance ${sl5.after.hidden ? 'closed' : 'open'}, the storm card ${sl5.card ? 'open' : 'closed'} as "${sl5.name}", selected ${sl5.after.tc})`,
+    !sl5.before.hidden && sl5.before.sel === selSetup.wB && sl5.after.hidden && sl5.after.sel === null && sl5.card && sl5.after.tc === selSetup.wB && sl5.name.length > 0);
 
   // lows are drawn only where a depression could still form: over water between 18 and 45N
   const lows = await ev(() => {
@@ -640,6 +686,14 @@ async function checkStorms(page, label) {
   });
   check(`[${label}] one seed gives the same storms and the same SST / humidity / shear / ENSO whether the page redrew every 6 h, the clock ran in 1-h steps, or it moved in one call (${(det.len / 1024).toFixed(0)} KB of storm state; SST ${det.sst.map((x) => x.toFixed(4)).join(' / ')}, shear ${det.shear.map((x) => x.toFixed(3)).join(' / ')})`, det.ab && det.ac);
   check(`[${label}] a different seed gives different storms`, det.diff);
+  // the issues of the outlook are made by the clock, not by looking: nothing here draws the map or asks for the outlook, and after the days ticked by the engine has made its issue of that hour -- again in a new season (the issue
+  // clock starts again with it) and not at all with the Areas of interest box off
+  const eager = await ev(() => { const S = window.SSTSIM, now = () => [S.outlookMemSlot(), Math.floor(S.state().simHour / 6)], out = {};
+    S.applySeed(9001); S.setPlaying(false); S.storms(true); S.stormAuto(true); S.tick(24 * 40); out.a = now();
+    S.applySeed(9002); S.setPlaying(false); S.stormAuto(true); S.tick(24 * 3); out.b = now();
+    document.getElementById('stdist').checked = false; S.tick(24); out.off = now(); document.getElementById('stdist').checked = true; S.stormAuto(false); return out; });
+  check(`[${label}] the outlook's issues are made as the clock goes by (issue ${eager.a[0]} of ${eager.a[1]} after 40 days nobody looked at it, ${eager.b[0]} of ${eager.b[1]} after three days of a new season), and not with the Areas of interest box off (${eager.off[0]} while the clock is at ${eager.off[1]})`,
+    eager.a[0] === eager.a[1] && eager.b[0] === eager.b[1] && eager.b[1] === 12 && eager.off[0] === eager.b[0] && eager.off[1] === eager.b[1] + 4);
   // the transition on the live page: hurricanes put into the westerlies over cold water (20 seeds) become post-tropical (a grey triangle) within three days, most of them, and keep their wind through the change
   // (a storm that changes class before its first six-hourly fix leaves no record, as a wave that never developed does: it is not counted either way)
   const et = await ev(() => {
@@ -739,6 +793,15 @@ async function checkStorms(page, label) {
   } finally { await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 }); await cdp.detach(); }
   check(`[${label}] on a slow machine (processor throttled to a third) the page at 16x still draws ${slow['16×'].frames} frames in 3 s while the clock runs behind (${slow['16×'].adv} hours in them), and it owes the clock only ${slow['16×'].owed} hours (capped at 24); at 64x ${slow['64×'].frames} frames, ${slow['64×'].adv} hours, owing ${slow['64×'].owed}`,
     slow['16×'].frames >= 12 && slow['16×'].adv >= 30 && slow['16×'].owed <= 25 && slow['64×'].frames >= 12 && slow['64×'].adv >= 100 && slow['64×'].owed <= 25);
+  // the issues are made one after another as the clock goes by (not only when the map is drawn), so each moves on from the last: ten days in six-hour steps on the real engine (last, as it moves the clock)
+  const walk = await ev(() => { const S = window.SSTSIM; S.map.setView([14, -45], 4, { animate: false }); let prev = {}, worst = 0, steps = 0, first = 0, keys = new Set(), issues = new Set();
+    const ids = [[12, -30], [13, -38], [14, -46], [12, -54], [11, -34], [15, -26], [13, -42], [10, -36], [16, -34], [12, -44], [14, -52], [11, -26]].map(([la, lo]) => S.stormPlace({ kind: 'wave', lat: la, lon: lo }));       // (waves put in the main development region: the engine's own areas for them, an issue every six hours)
+    for (let k = 0; k < 40; k++) { S.tick(6); S.advance(0); const o = S.outlook(); issues.add(o.issued); const cur = S.outlookMem();       // (what the issue said of every disturbance it knows, drawn or not: an area that a neighbour hides is still moving on)
+      for (const [key, v] of Object.entries(cur)) { keys.add(key); if (key in prev) { worst = Math.max(worst, Math.abs(v[1] - prev[key][1]), Math.abs(v[0] - prev[key][0])); steps++; } else if (k && v[1] >= 10) first = Math.max(first, v[1]); } prev = cur; }
+    ids.forEach((id) => { if (S.stormPx(id)) S.stormForce(id, { alive: false }); }); S.stormDraw();          // (the ones that have already ended are gone)
+    return { worst, steps, first, keys: keys.size, issues: issues.size }; });
+  check(`[${label}] over ten days of six-hour steps on the real engine (${walk.issues} issues, ${walk.keys} disturbances, ${walk.steps} steps) the chance of a disturbance (2-day or 7-day) never moves more than ${walk.worst} points between two issues and one that shows up is at ${walk.first} % at most`, walk.issues >= 39 && walk.steps >= 15 && walk.worst <= 20 && walk.first <= 40);
+
   await ev(() => { window.SSTSIM.storms(false); window.SSTSIM.restart(); });   // leave the page without storms for anything after this
 }
 

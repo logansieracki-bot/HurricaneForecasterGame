@@ -1025,9 +1025,9 @@ const LAND = (la, lo) => (lo > -16.3 && lo < 38 && la > 4 && la < 30) || (lo < -
     const cl = (env, tau) => { const m = mk(2, MP, { params: { outlook: { anomTau: { sst: tau, rh: tau, shear: tau, steer: tau } } } }); placeWave(m); const A = m.outlook(env).areas[0]; return A ? A.raw[1] : 0; };
     check(`a forecast that lets the anomaly decay to the climate regresses to the mean: over a poor environment its 7-day chance is higher than persistence's (${cl(dry, 48).toFixed(2)} against ${cl(dry, 1e9).toFixed(2)}), over a good one lower (${cl(wet, 48).toFixed(2)} against ${cl(wet, 1e9).toFixed(2)})`, cl(dry, 48) > cl(dry, 1e9) + 0.02 && cl(wet, 48) < cl(wet, 1e9) - 0.02); }
   // ---- what is drawn: percent in fives, 2-day not above 7-day, three classes by the NHC's cut-offs (yellow up to 35, orange 40 to 60, red 65 and over), a closed outline, at most ten areas, highest chance first
-  const gradient = makeEnv({ sst: 28.5, rh: 60, shear: (la, lo) => 5 + 0.7 * Math.max(0, la - 12) + (lo > -50 ? 8 : 0) + (lo < -75 ? 6 : 0), steer: STEER });
+  const gradient = makeEnv({ sst: 28.5, rh: 60, shear: (la, lo) => 5 + 0.7 * Math.max(0, la - 12) + (lo > -38 && lo < -24 ? 20 : 0) + (lo < -75 ? 6 : 0), steer: STEER });
   const SP = olMaps({ haz: 0.006, spawn: (mo, la, lo) => (mo === 7 && la >= 10 && la <= 35 && lo >= -90 && lo <= -30 ? 0.15 : 0) });
-  const seasonOf = (seed, params) => { const m = mk(seed, SP, { auto: true, params: Object.assign({ waveRate0: 0.46, outlook: { minP7: 10 } }, params || {}) }), seen = []; for (let h = 6; h <= 24 * 14; h += 6) { m.advanceTo(h, gradient); seen.push([h, m.outlook(gradient), m]); } return { m, seen }; };
+  const seasonOf = (seed, params) => { const m = mk(seed, SP, { auto: true, params: Object.assign({ waveRate0: 0.46, outlook: { minP7: 10 } }, params || {}) }), seen = []; for (let h = 6; h <= 24 * 14; h += 6) { m.advanceTo(h, gradient); const r = m.outlook(gradient); seen.push([h, r, m, JSON.parse(JSON.stringify(m.olMem.cur))]); } return { m, seen }; };       // (each issue with the memory it left: what it said of every disturbance, drawn or not)
   const S1 = seasonOf(5), areas = S1.seen.flatMap(([, r]) => r.areas), inPoly = (pt, P) => { let c = false; for (let k = 0, j = P.length - 1; k < P.length; j = k++) if ((P[k][0] > pt[0]) !== (P[j][0] > pt[0]) && pt[1] < (P[j][1] - P[k][1]) * (pt[0] - P[k][0]) / (P[j][0] - P[k][0]) + P[k][1]) c = !c; return c; };
   const cls = (p) => (p <= 35 ? 'low' : p <= 60 ? 'medium' : 'high');
   check(`${areas.length} areas over two synthetic weeks (every six hours): chances in steps of 5, from 10 to 100, the 2-day never above the 7-day, class low / medium / high by the 7-day chance (${['low', 'medium', 'high'].map((c) => c + ' ' + areas.filter((a) => a.cls === c).length).join(', ')}), at least 10 % drawn`,
@@ -1035,9 +1035,9 @@ const LAND = (la, lo) => (lo > -16.3 && lo < 38 && la > 4 && la < 30) || (lo < -
   check('the class cut-offs are the NHC\'s: 35 is yellow, 40 and 60 orange, 65 red', H.outlookClass(H.defaultParams().outlook, 35) === 'low' && H.outlookClass(H.defaultParams().outlook, 40) === 'medium' && H.outlookClass(H.defaultParams().outlook, 60) === 'medium' && H.outlookClass(H.defaultParams().outlook, 65) === 'high');
   check('every area is a closed outline of finite points with a window of formation that starts now or later and lasts, at most ten per issue, highest chance first, and an issue is at 00, 06, 12 or 18Z',
     S1.seen.every(([h, r]) => r.issued === h && r.issued % 6 === 0 && r.areas.length <= 10 && r.areas.every((a, i) => i === 0 || r.areas[i - 1].p7 >= a.p7)) && areas.every((a) => a.poly.length >= 24 && a.poly.every((q) => Number.isFinite(q[0]) && Number.isFinite(q[1])) && a.t0 >= 0 && a.t1 > a.t0 && a.t1 <= 168 + 1e-9));
-  check('areas without a disturbance (not formed yet) have neither an X nor an arrow; one that exists has its X, and an arrow only when it is not in favourable conditions yet (X outside its area, the arrow pointing from it to the area, at least 2.5 degrees long)',
+  check('areas without a disturbance (not formed yet) have neither an X nor an arrow; one that exists has its X, and an arrow only when it is not in favourable conditions yet (X outside its area, the arrow ending in the area, at least 2.5 degrees long)',
     areas.filter((a) => a.kind === 'unborn').length > 20 && areas.filter((a) => a.kind === 'unborn').every((a) => a.x === null && a.arrow === null && a.id === null && a.birth >= 0)
-    && areas.filter((a) => a.kind !== 'unborn').every((a) => a.x && a.id) && areas.filter((a) => a.arrow).length > 5 && areas.filter((a) => a.arrow).every((a) => !inPoly(a.x, a.poly) && inPoly(a.arrow, a.poly) === inPoly(a.arrow, a.poly) && Math.hypot(a.arrow[0] - a.x[0], (a.arrow[1] - a.x[1]) * Math.cos(a.x[0] * Math.PI / 180)) >= 2.5 - 1e-9)
+    && areas.filter((a) => a.kind !== 'unborn').every((a) => a.x && a.id) && areas.filter((a) => a.arrow).every((a) => !inPoly(a.x, a.poly) && inPoly(a.arrow, a.poly) && Math.hypot(a.arrow[0] - a.x[0], (a.arrow[1] - a.x[1]) * Math.cos(a.x[0] * Math.PI / 180)) >= 2.5 - 1e-9)
     && areas.filter((a) => a.kind !== 'unborn' && !a.arrow).length > 20 && areas.filter((a) => a.kind !== 'unborn' && !a.arrow).every((a) => inPoly(a.x, a.poly)));
   // ---- the X sits in its area when the conditions are good now, and an arrow points to where they get good when they are not (a front of high shear that the wave leaves behind it, and the reverse)
   { const front = (west) => makeEnv({ sst: 28.5, rh: 60, shear: (la, lo) => ((lo > -50) === west ? 24 : 5), steer: STEER });            // west: high shear east of 50W, low to the west
@@ -1047,8 +1047,120 @@ const LAND = (la, lo) => (lo > -16.3 && lo < 38 && la > 4 && la < 30) || (lo < -
       a1 && a1.arrow && a1.arrow[1] < a1.x[1] - 2 && a1.t0 > 12 && a2 && !a2.arrow && a2.t0 === 0 && a3 && !a3.arrow && a3.t0 === 0 && inPoly(a3.x, a3.poly) && inPoly(a2.x, a2.poly) && !inPoly(a1.x, a1.poly));
     const len = Math.hypot(a1.arrow[0] - a1.x[0], (a1.arrow[1] - a1.x[1]) * Math.cos(a1.x[0] * Math.PI / 180));
     check(`an arrow is only drawn when it is long enough to mean something: the ${len.toFixed(1)}-degree arrow of that wave is an X inside its area when the least length is raised to 20 degrees (${long.arrow === null ? 'inside' : 'arrow'}, window from ${Math.round(long.t0)} h)`, long.arrow === null && long.t0 === 0 && inPoly(long.x, long.poly) && len > 2.5 && len < 20); }
+  // ---- an issue moves on from the last one: a chance changes by at most 20 points, a disturbance seen for the first time starts low, a shape keeps most of itself, an outline is one simple loop
+  const iouOf = (A, B) => { const all = A.concat(B), la0 = Math.min(...all.map((q) => q[0])), la1 = Math.max(...all.map((q) => q[0])), lo0 = Math.min(...all.map((q) => q[1])), lo1 = Math.max(...all.map((q) => q[1])); let i = 0, u = 0;
+    for (let la = la0; la <= la1; la += 0.3) for (let lo = lo0; lo <= lo1; lo += 0.3) { const a = inPoly([la, lo], A), b = inPoly([la, lo], B); if (a && b) i++; if (a || b) u++; } return u ? i / u : 1; };
+  const streamOf = (R, stride = 1) => { const out = { dp7: [], dp2: [], iou: [], first: [], firstP2: [] }; let prevMem = null, prevAreas = {};
+    R.seen.forEach(([h, r, , mem], k) => { if (stride > 1 && k % stride) return;
+      for (const [key, v] of Object.entries(mem)) { const p = prevMem && prevMem[key]; if (p) { out.dp7.push(Math.abs(v.p7 - p.p7)); out.dp2.push(Math.abs(v.p2 - p.p2)); } else if (prevMem && v.p7 >= 10) { out.first.push(v.p7); out.firstP2.push(v.p2); } }      // (the chance of every disturbance the issue before knew, and what a new one starts at)
+      const cur = {};
+      for (const a of r.areas) { cur[a.key] = a; const p = prevAreas[a.key]; if (p) { const sh = a.x && p.x && !a.arrow && !p.arrow ? [a.x[0] - p.x[0], a.x[1] - p.x[1]] : [0, 0]; out.iou.push(iouOf(a.poly, p.poly.map((q) => [q[0] + sh[0], q[1] + sh[1]]))); } }       // (a shape against the one before it, carried along with its X)
+      prevMem = mem; prevAreas = cur; });
+    out.iou.sort((a, b) => a - b); return out; };
+  const S2 = seasonOf(6), S3 = seasonOf(7), NOMEM = { outlook: { minP7: 10, rise: 1e3, fall: 1e3, firstP7: 1e3, firstP2: 1e3, morph: 1, maxMove: 1e9, maxGrow: 1e9 } };
+  { const T = [S1, S2, S3].map((R) => streamOf(R)), all = { dp7: T.flatMap((t) => t.dp7), dp2: T.flatMap((t) => t.dp2), iou: T.flatMap((t) => t.iou).sort((a, b) => a - b), first: T.flatMap((t) => t.first), firstP2: T.flatMap((t) => t.firstP2) };
+    const q = (a, f) => a[Math.floor((a.length - 1) * f)], ctl = streamOf(seasonOf(5, NOMEM));
+    check(`no chance jumps: over ${all.dp7.length} issue-to-issue steps of three synthetic weeks the 7-day chance never moves more than ${Math.max(...all.dp7)} points and the 2-day chance ${Math.max(...all.dp2)} (at most 20), and a disturbance's first chance is at most ${Math.max(...all.first)} (7-day, cap 40) and ${Math.max(...all.firstP2)} (2-day, cap 30); with the memory off the same season jumps by ${Math.max(...ctl.dp7)}`,
+      all.dp7.length > 300 && Math.max(...all.dp7) <= 20 && Math.max(...all.dp2) <= 20 && all.first.length > 10 && Math.max(...all.first) <= 40 && Math.max(...all.firstP2) <= 30 && Math.max(...ctl.dp7) >= 40);
+    const share = (a, x) => a.filter((v) => v < x).length / a.length;
+    check(`no shape changes in one issue: a shape and the one before it (carried along with its X) overlap by ${q(all.iou, 0.5).toFixed(2)} in the median and ${q(all.iou, 0.1).toFixed(2)} at the 10th percentile, ${(100 * share(all.iou, 0.5)).toFixed(1)} % of them by less than half and none by less than ${all.iou[0].toFixed(2)}; with the memory off ${(100 * share(ctl.iou, 0.5)).toFixed(1)} % by less than half and some by ${ctl.iou[0].toFixed(2)}`,
+      q(all.iou, 0.5) >= 0.85 && q(all.iou, 0.1) >= 0.65 && share(all.iou, 0.5) <= 0.02 && all.iou[0] >= 0.25 && share(ctl.iou, 0.5) >= 0.04 && ctl.iou[0] < 0.1);
+    const st2 = [S1, S2].map((R) => streamOf(R, 2)); const d2 = st2.flatMap((t) => t.dp7), f2 = st2.flatMap((t) => t.first);
+    check(`and when an issue is skipped (every second one is made, as the page does at high speed) the limit is for the 12 hours: at most ${Math.max(...d2)} points (40)`, d2.length > 100 && Math.max(...d2) <= 40 && Math.max(...f2) <= 40); }
+  { let seedr = 20260214; const rand = () => (seedr = (Math.imul(seedr, 1664525) + 1013904223) >>> 0) / 4294967296;
+    const cr = (a, b, c) => (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+    const simple = (P) => { const n = P.length; for (let i = 0; i < n; i++) for (let j = i + 2; j < n; j++) { if (i === 0 && j === n - 1) continue; const a = P[i], b = P[(i + 1) % n], c = P[j], d = P[(j + 1) % n]; if (cr(a, b, c) * cr(a, b, d) < 0 && cr(c, d, a) * cr(c, d, b) < 0) return false; } return true; };
+    let n = 0, notSimple = 0, lost = 0, tiny = 0, pts = 0, mx = 0, crossed = 0;
+    const fixed = [[[20, -40, 2], [20, -50, 2], [20, -40.5, 2], [20, -50.5, 2.5], [20, -41, 3], [20, -51, 3], [20, -41.5, 3], [20, -51.5, 4], [20, -42, 4]],            // out and back along the same line
+      [[20, -40, 1], [24, -40, 1.5], [24, -46, 2], [20, -46, 2.5], [20, -41, 3], [23, -41, 3.5], [23, -44, 4], [21, -44, 4.5], [21, -43, 5]],                                  // a spiral that closes on itself
+      [[15, -30, 5], [15.2, -31, 0.8], [15, -32, 5], [15.2, -33, 0.8], [15, -34, 5], [15.1, -35, 0.8], [15, -36, 5], [15.1, -37, 0.8], [15, -38, 5]],                          // radii that swing from wide to narrow
+      ...[0.2, 0.35, 0.5].map((gap) => [[20, -40, 1], [20, -43, 1], [20, -46, 1], [20 + 2 + gap, -46, 1], [20 + 2 + gap, -43, 1], [20 + 2 + gap, -40, 1], [20 + 2 + gap, -37, 1], [20 + 2 + gap, -34, 1], [20 + 2 + gap, -31, 1]])];   // a hairpin whose two lanes leave a slot of a few tenths of a degree between them (the grid's saddles)
+    const chains = fixed.map((c) => [c, 2.5]);
+    for (let k = 0; k < 360; k++) { const south = k % 4 === 3, near = k % 4 === 2; let la = near ? 3 + 2 * rand() : 8 + 20 * rand(), lo = -80 + 40 * rand(), dir = 6.28 * rand(); const ch = [];
+      for (let i = 0; i < 9; i++) { ch.push([south ? -la : la, lo, 1 + 5 * rand()]); dir += (rand() < 0.3 ? Math.PI : 1.4) * (rand() - 0.5) * 2; const st = 4 * rand(); la = Math.max(2.6, la + st * Math.sin(dir)); lo += st * Math.cos(dir); }
+      chains.push([ch, 2.5]); }
+    for (const [ch, eq] of chains) { const P = H.swath(ch, eq); n++; pts += P.length; mx = Math.max(mx, P.length); if (!simple(P)) notSimple++; if (!ch.every((q) => inPoly([q[0], q[1]], P))) lost++; if (P.length < 20) tiny++;
+      if (ch[0][0] > 0 ? P.some((q) => q[0] <= 0) : P.some((q) => q[0] >= 0)) crossed++; }
+    check(`an outline is one simple loop whatever the chain does: ${n} chains (out and back, a spiral, swinging radii, hairpins with a slot of 0.2 to 0.5 degrees between their lanes, 360 random walks with turns of any size, some at the equator and some in the south), none with a stray inner outline (${notSimple} that cross themselves), none that leaves a disc outside (${lost}), none too coarse (${tiny}), none across the equator (${crossed}), at most ${mx} points`,
+      n === 366 && notSimple === 0 && lost === 0 && tiny === 0 && crossed === 0 && mx <= 220 && pts / n >= 40);
+    const bad = S1.seen.concat(S2.seen).flatMap(([, r]) => r.areas).filter((a) => !simple(a.poly));
+    check(`and so is every outline the outlook drew over the ${S1.seen.length + S2.seen.length} issues of two synthetic weeks (${bad.length} that cross themselves)`, bad.length === 0 && S1.seen.concat(S2.seen).some(([, r]) => r.areas.length > 3)); }
+  // ---- no two areas overlap (a shape stops short of the shape of the disturbance before it), no area is longer than the least a forecaster would draw, a label has a place inside its shape
+  { const cr = (a, b, c) => (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+    const cross = (A, B) => { for (let i = 0; i < A.length; i++) { const a = A[i], b = A[(i + 1) % A.length]; for (let j = 0; j < B.length; j++) { const c = B[j], d = B[(j + 1) % B.length]; if (cr(a, b, c) * cr(a, b, d) < 0 && cr(c, d, a) * cr(c, d, b) < 0) return true; } } return false; };
+    const overlap = (A, B) => A.some((q) => inPoly(q, B)) || B.some((q) => inPoly(q, A)) || cross(A, B);
+    const tally = (Rs) => { let pairs = 0, ov = 0, withX = 0, poles = 0, polesIn = 0, longest = 0; for (const R of Rs) for (const [, r, , mem] of R.seen) {
+        for (let i = 0; i < r.areas.length; i++) { const a = r.areas[i]; poles++; if (a.pole && inPoly(a.pole, a.poly)) polesIn++;
+          for (let j = i + 1; j < r.areas.length; j++) { pairs++; if (overlap(a.poly, r.areas[j].poly)) { ov++; if ((a.x && inPoly(a.x, r.areas[j].poly)) || (r.areas[j].x && inPoly(r.areas[j].x, a.poly))) withX++; } } }
+        for (const v of Object.values(mem)) if (v.chain) { let L = 0; for (let q = 1; q < v.chain.length; q++) L += Math.hypot(v.chain[q][0] - v.chain[q - 1][0], (v.chain[q][1] - v.chain[q - 1][1]) * Math.cos(v.chain[q][0] * Math.PI / 180)); longest = Math.max(longest, L); } }
+      return { pairs, ov, withX, poles, polesIn, longest }; };
+    const t = tally([S1, S2, S3]), ctl = tally([seasonOf(5, { outlook: { minP7: 10, gap: -100 } })]);
+    check(`no two areas overlap: of ${t.pairs} pairs of areas in three synthetic weeks ${t.ov} overlap (${t.withX} of them because the X of one is inside the other), against ${ctl.ov} of ${ctl.pairs} when the shapes are not kept apart`, t.pairs > 300 && t.ov <= 0.03 * t.pairs && ctl.ov >= 0.2 * ctl.pairs);
+    check(`every area has the pole of its shape for a label, inside the shape (${t.polesIn} of ${t.poles}), and no swath is longer than ${H.defaultParams().outlook.maxLen} degrees (the longest ${t.longest.toFixed(1)}, before it is made to keep clear of its neighbours)`, t.poles > 100 && t.polesIn === t.poles && t.longest <= H.defaultParams().outlook.maxLen * 1.35);
+    const hull = (P) => { const p = P.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]), c = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]), lo = [], up = []; for (const q of p) { while (lo.length >= 2 && c(lo[lo.length - 2], lo[lo.length - 1], q) <= 0) lo.pop(); lo.push(q); } for (const q of p.slice().reverse()) { while (up.length >= 2 && c(up[up.length - 2], up[up.length - 1], q) <= 0) up.pop(); up.push(q); } return lo.slice(0, -1).concat(up.slice(0, -1)); };
+    const ar = (P) => { let A = 0; for (let k = 0, m = P.length - 1; k < P.length; m = k++) A += P[m][0] * P[k][1] - P[k][0] * P[m][1]; return Math.abs(A) / 2; };
+    const sol = [S1, S2, S3].flatMap((R) => R.seen.flatMap(([, r]) => r.areas.map((a) => { const P = a.poly.map((q) => [q[1] * Math.cos(q[0] * Math.PI / 180), q[0]]); return ar(P) / ar(hull(P)); })));
+    check(`every shape is a compact oval, not a crescent or a dumbbell: the least share of its convex hull that it fills is ${Math.min(...sol).toFixed(2)} (over ${sol.length} shapes, at least 0.85)`, sol.length > 300 && Math.min(...sol) >= 0.85); }
+  // ---- an arrow does not run away from its disturbance: in a band of shear that the wave is leaving behind, the arrow shrinks as the wave comes toward the place where the conditions are good, its far end stays where it was, and the X is in the shape once the wave is there
+  { const band = makeEnv({ sst: 28.5, rh: 60, shear: (la, lo) => 5 + (lo > -38 && lo < -22 ? 20 : 0), steer: STEER }), dflt = H.defaultParams().outlook.anomTau;
+    const m = mk(3, MP, { params: { outlook: { anomTau: dflt } } }); m.place({ kind: 'wave', lat: 14, lon: -26 });
+    const rows = []; for (let h = 0; h <= 96; h += 6) { m.advanceTo(h, band); const a = m.outlook(band).areas[0]; rows.push(a ? { h, a, len: a.arrow ? Math.hypot(a.arrow[0] - a.x[0], (a.arrow[1] - a.x[1]) * Math.cos(a.x[0] * Math.PI / 180)) : 0, east: Math.max(...a.poly.map((q) => q[1])) } : { h }); }
+    const arr = rows.filter((r) => r.a && r.a.arrow), tail = rows.filter((r) => r.a && !r.a.arrow && r.h >= 54);
+    const lens = arr.map((r) => r.len), lons = arr.map((r) => r.a.arrow[1]), dl = lens.map((l, i) => (i ? l - lens[i - 1] : 0));
+    check(`an arrow shrinks as the disturbance comes toward it and does not run away: ${arr.length} issues with an arrow, lengths ${lens.map((l) => l.toFixed(1)).join(' ')} degrees (never over 18, no step up of more than 0.3), its tip between ${Math.min(...lons).toFixed(1)} and ${Math.max(...lons).toFixed(1)}W`,
+      arr.length >= 6 && Math.max(...lens) <= 18 && Math.min(...lens) >= 2.5 && dl.every((d) => d <= 0.3) && lens[0] - lens[lens.length - 1] > 5 && Math.max(...lons) - Math.min(...lons) < 3.5);
+    check(`and once the wave is in the good conditions the X is inside the shape with no arrow (${tail.length} issues, ${tail.filter((r) => inPoly(r.a.x, r.a.poly)).length} with the X inside), and the shape does not jump when the arrow goes (east edge ${arr.length ? arr[arr.length - 1].east.toFixed(1) : '-'} to ${tail.length ? tail[0].east.toFixed(1) : '-'}W)`,
+      tail.length >= 6 && tail.every((r) => inPoly(r.a.x, r.a.poly)) && Math.abs(arr[arr.length - 1].east - tail[0].east) < 3.5);
+    const m2 = mk(3, MP, { params: { outlook: { anomTau: dflt } } }); m2.place({ kind: 'wave', lat: 14, lon: -60 }); const ctr = [];
+    for (let h = 0; h <= 96; h += 6) { m2.advanceTo(h, good); const a = m2.outlook(good).areas[0]; if (a) { const c = a.poly.reduce((t, q) => [t[0] + q[0] / a.poly.length, t[1] + q[1] / a.poly.length], [0, 0]); ctr.push({ a, d: Math.hypot(c[0] - a.x[0], (c[1] - a.x[1]) * Math.cos(a.x[0] * Math.PI / 180)) }); } }
+    check(`a disturbance in good conditions stays in its shape and the shape follows it: ${ctr.length} issues over four days, the X inside the shape every time (${ctr.filter((r) => inPoly(r.a.x, r.a.poly) && !r.a.arrow).length}), the shape's centre ${Math.min(...ctr.map((r) => r.d)).toFixed(1)} to ${Math.max(...ctr.map((r) => r.d)).toFixed(1)} degrees from the X (it does not drift away)`,
+      ctr.length === 17 && ctr.every((r) => inPoly(r.a.x, r.a.poly) && !r.a.arrow) && Math.max(...ctr.map((r) => r.d)) - Math.min(...ctr.map((r) => r.d)) < 3); }
+  // ---- the arrow does not flicker (once there, it stays while the gate is only half open) and does not point farther than a forecaster would (18 degrees)
+  { const dflt = H.defaultParams().outlook.anomTau, band = (sh, edge = -44) => makeEnv({ sst: 28.5, rh: 60, shear: (la, lo) => (lo > edge ? sh : 8), steer: STEER });
+    const length = (a) => (a && a.arrow ? Math.hypot(a.arrow[0] - a.x[0], (a.arrow[1] - a.x[1]) * Math.cos(a.x[0] * Math.PI / 180)) : 0);
+    const mkw = (lon, o) => { const m = mk(3, MP, { params: { outlook: Object.assign({ anomTau: dflt }, o || {}) } }); m.place({ kind: 'wave', lat: 14, lon }); return m; };
+    const m = mkw(-40); const a1 = m.outlook(band(25)).areas[0]; m.advanceTo(6, band(17.5)); const a2 = m.outlook(band(17.5)).areas[0];                     // (17.5 kt of shear: the growth gate is 0.49, half open)
+    const m2 = mkw(-40); m2.advanceTo(6, band(17.5)); const a3 = m2.outlook(band(17.5)).areas[0];
+    check(`an arrow that is there stays while the growth gate is half open (${length(a1).toFixed(1)} degrees in a band of 25 kt of shear, ${length(a2).toFixed(1)} six hours later with 17.5 kt, gate 0.49), and a disturbance that starts in half-open conditions has its X inside (${length(a3).toFixed(1)}): it comes and goes at 0.6, not at 0.4`,
+      length(a1) > 2.5 && length(a2) > 2.5 && !a3.arrow && inPoly(a3.x, a3.poly));
+    const near = mkw(-20).outlook(band(25, -34)).areas[0], far = mkw(-20).outlook(band(25, -36)).areas[0], free = mkw(-20, { arrowMax: [40, 40] }).outlook(band(25, -36)).areas[0];
+    check(`an arrow is never longer than 18 degrees: where the good water is 14 degrees west of the wave it points there (${length(near).toFixed(1)} degrees), 16 degrees west it does not (${length(far).toFixed(1)}: the X stays in its shape), and it would if the cap were raised (${length(free).toFixed(1)})`,
+      length(near) > 10 && length(near) <= 18 && length(far) === 0 && inPoly(far.x, far.poly) && length(free) > 18); }
+  // ---- a disturbance seen for the first time starts low whatever its chance is, an old memory is not used, and a shape moves at most 3.5 degrees in an issue
+  { const HOT = olMaps({ haz: 0.03, spawn: (mo, la, lo) => (mo === 7 && la >= 10 && la <= 35 && lo >= -90 && lo <= -30 ? 0.15 : 0) }), mkh = (params) => mk(11, HOT, { auto: true, params: Object.assign({ waveRate0: 0.46 }, params || {}) });
+    const run = (params) => { const m = mkh(params), first = []; for (let h = 0; h < 24 * 20; h += 6) { m.advanceTo(h + 6, good); const r = m.outlook(good); if (h) for (const a of r.areas) if (!(a.key in m.olMem.prev)) first.push([a.p7, a.p2]); } return first; };
+    const a = run(), c = run({ outlook: { firstP7: 1000, firstP2: 1000 } }), mx = (l, k) => Math.max(0, ...l.map((v) => v[k]));
+    check(`a disturbance seen for the first time starts low however good its chances are: in a very favourable environment the first chance of ${a.length} of them is at most ${mx(a, 0)} % (7-day) and ${mx(a, 1)} % (2-day), against ${mx(c, 0)} % and ${mx(c, 1)} % when the cap is off`, a.length >= 3 && mx(a, 0) <= 40 && mx(a, 1) <= 30 && mx(c, 0) >= 60 && mx(c, 1) >= 45);
+    const stale = (params) => { const m = mkh(params); for (let h = 6; h <= 24 * 6; h += 6) { m.advanceTo(h, good); m.outlook(good); } m.advanceTo(24 * 10, good); return m; };
+    const S4 = stale(), kept = JSON.stringify(S4.outlook(good).areas), none = H.restore(JSON.parse(JSON.stringify(stale().serialize())), { maps: HOT }), cleared = (none.olMem = null, JSON.stringify(none.outlook(good).areas)), used = JSON.stringify(stale({ outlook: { memH: 1e6 } }).outlook(good).areas);
+    check(`after more than 30 hours without an issue the old memory is not used: the issue four days after the last is exactly the one an engine with no memory makes (${kept.length === cleared.length && kept === cleared ? 'same' : 'different'}, ${S4.outlook(good).areas.length} areas), and it would not be if the memory were kept (${used === kept ? 'same' : 'different'})`, kept === cleared && used !== kept && S4.outlook(good).areas.length >= 2);
+    const dflt = H.defaultParams().outlook.anomTau, band = makeEnv({ sst: 28.5, rh: 60, shear: (la, lo) => (lo > -44 ? 25 : 8), steer: STEER });
+    const mkw = (o) => { const m = mk(3, MP, { params: { outlook: Object.assign({ anomTau: dflt }, o || {}) } }); m.place({ kind: 'wave', lat: 14, lon: -30 }); return m; };
+    const len = (a) => (a && a.arrow ? Math.hypot(a.arrow[0] - a.x[0], (a.arrow[1] - a.x[1]) * Math.cos(a.x[0] * Math.PI / 180)) : 0);
+    const m = mkw(); m.outlook(good); m.advanceTo(6, band); const lim1 = m.outlook(band).areas[0], X1 = { lat: m.systems[0].lat, lon: m.systems[0].lon }, head1 = m.olMem.cur.M1.chain[0], raw = (() => { const m2 = mkw(); m2.advanceTo(6, band); return m2.outlook(band).areas[0]; })();
+    const away = (h, X) => Math.hypot(h[0] - X.lat, (h[1] - X.lon) * Math.cos(X.lat * Math.PI / 180)); m.advanceTo(12, band); const lim2 = m.outlook(band).areas[0];
+    const mm = H.defaultParams().outlook.maxMove;
+    check(`a shape moves no further than ${mm} degrees in one issue: when the gate shuts and the good water is ${len(raw).toFixed(1)} degrees away the head of the shape is ${away(head1, X1).toFixed(1)} degrees from the X after one issue (no arrow yet: ${lim1.arrow ? 'drawn' : 'none'}), the arrow of the next is ${len(lim2).toFixed(1)} degrees long, and it grows from there`,
+      len(raw) > 10 && away(head1, X1) <= mm + 0.2 && !lim1.arrow && inPoly(lim1.x, lim1.poly) && lim2.arrow && len(lim2) >= 2.5 && len(lim2) <= 2 * mm + 1 && inPoly(lim2.arrow, lim2.poly)); }
+  // ---- a shape that a neighbour held short grows back by no more than a degree or two an issue (the older wave's area goes: the younger's grows from 8 degrees to its full 14 in steps, not at once)
+  { const m = mk(3, MP, { params: { outlook: { anomTau: H.defaultParams().outlook.anomTau } } }), A = m.place({ kind: 'wave', lat: 14, lon: -45 }), B = m.place({ kind: 'wave', lat: 14, lon: -33 }), lens = [];
+    m.outlook(good); lens.push(m.olMem.cur[B.id].len); m.advanceTo(6, good); m.outlook(good); lens.push(m.olMem.cur[B.id].len);
+    m.advanceTo(12, good); A.alive = false; A.end = 12; for (let h = 12; h <= 36; h += 6) { m.advanceTo(h, good); m.outlook(good); lens.push(m.olMem.cur[B.id].len); }
+    const steps = lens.slice(2).map((l, i) => l - lens[i + 1]), mm = H.defaultParams().outlook.maxMove;
+    check(`a shape that a neighbour held short grows back by at most ${mm} degrees an issue: the younger wave's swath is ${lens.map((l) => l.toFixed(1)).join(', ')} degrees long over six issues, the older wave's area gone at the third (steps ${steps.map((v) => v.toFixed(1)).join(', ')})`,
+      lens[1] < 10 && steps.every((v) => v <= mm + 0.1) && steps[0] > 1 && lens[lens.length - 1] > 13); }
+  // ---- a disturbance keeps its identity from the time it is only an area to the time it is a wave or a seed with an X (the same key), and its chance goes on from where it was
+  { let linked = 0, linkedW = 0, linkedN = 0, worst = 0, ids = 0, born = 0;
+    for (const R of [S1, S2, S3]) {
+      R.seen.forEach(([h, , m, mem], k) => { if (!k) return; const before = R.seen[k - 1][3];
+        for (const S of m.systems) if (S.ck && S.ck[0] === 'u' && S.born > h - 6 && S.born <= h) { born++; if (before[S.ck] && mem[S.ck]) { linked++; if (S.ck[1] === 'W') linkedW++; else linkedN++; worst = Math.max(worst, Math.abs(mem[S.ck].p7 - before[S.ck].p7)); } } });
+      for (const S of R.m.systems) if (S.ck && S.ck[0] === 'u') ids++; }
+    check(`the area of a system that is not born yet and the one it becomes after the birth are one thing: of ${born} systems born in three synthetic weeks ${linked} were known before the birth (${linkedW} waves, ${linkedN} seeds) and came out of it with the same key and a chance that went on from where it was (at most ${worst} points off; ${ids} systems carry the key of their birth)`, linkedW >= 3 && linkedN >= 3 && worst <= 20 && ids >= 4 && born >= linked); }
+  { const m = mk(2, MP, { auto: true }), seen = []; m.advanceTo(30, good); const first = m.outlook(good); placeWave(m); const r1 = m.outlook(good), A = r1.areas.find((a) => a.id === 'M1');
+    const hostile = makeEnv({ sst: 28.5, shear: 40, rh: 40, steer: STEER }), m3 = mk(2, MP, { auto: true, params: { outlook: { minP7: 10 } } }); m3.advanceTo(30, hostile); placeWave(m3); const none = m3.outlook(hostile).areas.length; m3.advanceTo(36, good); const late = m3.outlook(good).areas.find((a) => a.id === 'M1');
+    check(`a hand-placed wave in good conditions shows the chance it has, not the cap of a newcomer: ${A.p7} % (the cap of a disturbance that shows up is ${m.par.outlook.firstP7}); one that was no area at its first issue (${none} areas in 40 kt of shear) is held to the cap when it shows up six hours later (${late ? late.p7 : '-'} % of the ${A.p7} it would have)`, A.p7 > m.par.outlook.firstP7 && first.areas.every((a) => a.id !== 'M1') && none === 0 && late && late.p7 <= m.par.outlook.firstP7); }
   // ---- a high chance soon is a short area, a thin chance spread over days a long one
-  { const w = (haz) => { const m = mk(1, olMaps({ haz })); placeWave(m); const A = m.outlook(good).areas[0]; return A ? { len: A.t1 - A.t0, p7: A.p7, ext: Math.max(...A.poly.map((q) => q[1])) - Math.min(...A.poly.map((q) => q[1])) } : null; };
+  { const w = (haz) => { const m = mk(1, olMaps({ haz }), { params: { outlook: { maxSpan: 1e4, maxLen: 1e4 } } }); placeWave(m); const A = m.outlook(good).areas[0]; return A ? { len: A.t1 - A.t0, p7: A.p7, ext: Math.max(...A.poly.map((q) => q[1])) - Math.min(...A.poly.map((q) => q[1])) } : null; };
     const hi = w(0.03), lo = w(0.0035);
     check(`the window of formation (and the area with it) is short when the chance is high and long when it is thin: ${hi.len.toFixed(0)} h and ${hi.ext.toFixed(1)} degrees of longitude at ${hi.p7} % against ${lo.len.toFixed(0)} h and ${lo.ext.toFixed(1)} degrees at ${lo.p7} %`, hi.p7 > lo.p7 && hi.len < lo.len - 20 && hi.ext < lo.ext); }
   { const m = mk(1, MP); m.advanceTo(12, good); const S = placeWave(m); S.dev = m.hour - 2; S.sust = true; const A = m.outlook(good).areas[0];
@@ -1081,9 +1193,17 @@ const LAND = (la, lo) => (lo > -16.3 && lo < 38 && la > 4 && la < 30) || (lo < -
     check(`a hand-placed disturbance is in the outlook at once, without waiting for the next issue (${n} areas, then ${r3.areas.length}: ${r3.areas.map((a) => a.id).join(' ')})`, r3 !== r2 && r3.areas.some((a) => a.id === 'M1' && a.kind === 'placed' && a.x)); }
   { const run = (steps) => { const m = mk(9, SP, { auto: true }); let h = 0; for (const k of steps) { h += k; m.advanceTo(h, gradient); } return JSON.stringify(m.outlook(gradient)); };
     const a = run(new Array(120).fill(1)), b = run([7, 50, 3, 60]), c = run([120]);
-    check('the outlook is the same however the clock was chunked (1 h, mixed, all at once): ' + (a.length / 1024).toFixed(1) + ' KB of areas', a === b && b === c && a.length > 500); }
-  { const m = mk(6, SP, { auto: true }); m.advanceTo(24 * 9, gradient); const r = H.restore(JSON.parse(JSON.stringify(m.serialize())), { maps: SP }); r.par.outlook.minP7 = 0; m.par.outlook.minP7 = 0;
-    check('a restored engine gives the same outlook as the one it was saved from', JSON.stringify(r.outlook(gradient)) === JSON.stringify(m.outlook(gradient)) && m.outlook(gradient).areas.length > 0); }
+    check('the outlook of one hour is the same however the clock was chunked (1 h, mixed, all at once): ' + (a.length / 1024).toFixed(1) + ' KB of areas', a === b && b === c && a.length > 500);
+    const stream = (step) => { const m = mk(9, SP, { auto: true }); let out = ''; for (let h = step; h <= 24 * 6; h += step) { m.advanceTo(h, gradient); if (h % 6 === 0) out += JSON.stringify(m.outlook(gradient)); } return out; };
+    const s1 = stream(1), s2 = stream(2), s3 = stream(3), s6 = stream(6);
+    check('and so are the issues one after another, which move on from each other (the clock run by 1, 2, 3 and 6 hours, an issue every six: ' + (s1.length / 1024).toFixed(0) + ' KB of areas)', s1 === s2 && s2 === s3 && s3 === s6 && s1.length > 5000); }
+  { const m = mk(6, SP, { auto: true }); for (let h = 6; h <= 24 * 9; h += 6) { m.advanceTo(h, gradient); m.outlook(gradient); }
+    const save = JSON.parse(JSON.stringify(m.serialize())), r = H.restore(save, { maps: SP }), old = JSON.parse(JSON.stringify(save)); delete old.olMem; const r0 = H.restore(old, { maps: SP });
+    const same = [JSON.stringify(m.outlook(gradient)) === JSON.stringify(r.outlook(gradient))]; let n = m.outlook(gradient).areas.length;
+    for (let h = 24 * 9 + 6; h <= 24 * 12; h += 6) { m.advanceTo(h, gradient); r.advanceTo(h, gradient); const A = m.outlook(gradient); same.push(JSON.stringify(A) === JSON.stringify(r.outlook(gradient))); n += A.areas.length; }
+    r0.advanceTo(24 * 9 + 6, gradient);
+    check(`a restored engine goes on with the outlook exactly as the one it was saved from, because the memory of the last issue is saved with it (${same.filter(Boolean).length} of ${same.length} issues alike, over three days after the save; ${n} areas); a save with no memory of the outlook (older) restores and goes on (${r0.outlook(gradient).areas.length} areas)`,
+      same.every(Boolean) && n > 20 && !!save.olMem && Object.keys(save.olMem.cur).length > 0 && r0.outlook(gradient).areas.length > 0); }
   // ---- tracked lows are candidates too (an X on the low, the L is not drawn under it), only over water where a depression could still form
   { const lowsAt = (lat, lon) => makeEnv({ sst: 28.5, shear: 8, rh: 60, steer: STEER, lows: () => [{ lat, lon, p: 1003, prom: 4 }] });
     const run = (lat, lon) => { const m = mk(2, olMaps({ haz: 0.006, hazS: 0.004 }), { auto: true }), e = lowsAt(lat, lon); m.advanceTo(30, e); return m.outlook(e).areas.filter((a) => a.kind === 'low'); };
@@ -1095,6 +1215,11 @@ const LAND = (la, lo) => (lo > -16.3 && lo < 38 && la > 4 && la < 30) || (lo < -
     check(`an outline stays on its side of the equator (northern: lowest latitude ${Math.min(...c.map((q) => q[0])).toFixed(2)}, southern: highest ${Math.max(...cs.map((q) => q[0])).toFixed(2)}; without the floor ${Math.min(...raw.map((q) => q[0])).toFixed(2)}), and is the plain chain of discs where it does not come near it (${far.length} points, the same as without the floor: ${JSON.stringify(far) === JSON.stringify(near0)})`,
       c.every((q) => q[0] > 0) && cs.every((q) => q[0] < 0) && Math.min(...raw.map((q) => q[0])) < 0 && JSON.stringify(far) === JSON.stringify(near0) && far.length === 96); }
   // ---- invests: the letter of the region, 90 to 99 from the first of a season, the same however the clock was run, kept in a save, handed on by a low that becomes a depression
+  // ---- an outline is round on the map: a disc (swath of one point) is 1 / cos(latitude) times as wide in longitude as it is high, in the north and in the south, and a swath along a parallel is that much longer in degrees of longitude
+  { const ext = (P, k) => Math.max(...P.map((q) => q[k])) - Math.min(...P.map((q) => q[k])), ratio = (lat, chain) => { const P = H.swath(chain, 2.5); return ext(P, 1) / ext(P, 0); };
+    const w60 = ratio(60, [[60, -40, 3]]), w20 = ratio(20, [[20, -40, 3]]), wS = ratio(-60, [[-60, -40, 3]]), c60 = 1 / Math.cos(Math.PI / 3), c20 = 1 / Math.cos(Math.PI / 9);
+    check(`an outline is round on the map, not on the grid of degrees: a disc is ${w60.toFixed(2)} times as wide in longitude as it is high at 60N (1 / cos latitude: ${c60.toFixed(2)}), ${w20.toFixed(2)} at 20N (${c20.toFixed(2)}) and ${wS.toFixed(2)} at 60S`,
+      Math.abs(w60 / c60 - 1) < 0.05 && Math.abs(w20 / c20 - 1) < 0.05 && Math.abs(wS / c60 - 1) < 0.05); }
   { const L = H.investLetter;
     check('the invest letter is the basin\'s: L Atlantic, E East Pacific (C west of 140W), W West Pacific, A Arabian Sea and B Bay of Bengal (78E), S Indian and Australian west of 135E, P east of it, S South-West Indian, P South Pacific, Q South Atlantic, M Mediterranean',
       L('atlantic', -50) === 'L' && L('eastpacific', -110) === 'E' && L('eastpacific', -150) === 'C' && L('westpacific', 140) === 'W' && L('nio', 70) === 'A' && L('nio', 88) === 'B' && L('aus', 120) === 'S' && L('aus', 150) === 'P' && L('swio', 60) === 'S' && L('spac', 170) === 'P' && L('satl', -40) === 'Q' && L('med', 15) === 'M');
@@ -1113,11 +1238,11 @@ const LAND = (la, lo) => (lo > -16.3 && lo < 38 && la > 4 && la < 30) || (lo < -
     const before = T.invest; y.advanceTo(18, good); const U = y._seedSystem('N', 'wv', 14, -46, 20, y.hour, 'seed', false); U.dist = true; U.life = 1e6; y.advanceTo(24, good);
     check(`a new season numbers its invests from 90 again (${before} on Dec 31, ${U.invest} on Jan 1)`, before === '90L' && U.invest === '90L' && y.season.year === 2027); }
   { const lowEnv = makeEnv({ sst: 28.5, shear: 6, rh: 66, steer: STEER, lows: () => [{ lat: 27, lon: -65, p: 1002, prom: 5 }] });
-    let withInv = 0, handed = 0, made = 0;
+    let withInv = 0, handed = 0, made = 0, keyed = 0;
     for (let sd = 1; sd <= 30; sd++) { const m = mk(sd, olMaps({ haz: 0.03, hazS: 0.02 }), { auto: true, params: { distOnE: 0.1, distOffE: 0.05 } }), seen = new Set();
       for (let h = 6; h <= 24 * 8; h += 6) { m.advanceTo(h, lowEnv);
-        for (const S of m.systems) if (S.origin === 'low' && !seen.has(S.id)) { seen.add(S.id); made++; const t = m.lows.tracks.find((q) => q.became && q.end === S.born && q.lat === S.lat && q.lon === S.lon); if (t && t.invest) { withInv++; if (S.invest === t.invest) handed++; } } } }
-    check(`a low with an invest that becomes a depression keeps its number (${handed} of ${withInv} of the ${made} that developed from a tracked low)`, made >= 3 && withInv === made && handed === made); }
+        for (const S of m.systems) if (S.origin === 'low' && !seen.has(S.id)) { seen.add(S.id); made++; const t = m.lows.tracks.find((q) => q.became && q.end === S.born && q.lat === S.lat && q.lon === S.lon); if (t && t.invest) { withInv++; if (S.invest === t.invest) handed++; } if (t && S.ck === t.id) keyed++; } } }
+    check(`a low with an invest that becomes a depression keeps its number (${handed} of ${withInv} of the ${made} that developed from a tracked low) and the key its area had (${keyed} of ${made})`, made >= 3 && withInv === made && handed === made && keyed === made); }
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

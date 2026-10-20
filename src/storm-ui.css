@@ -30,18 +30,19 @@ body.placing .leaflet-container, body.placing #storm-canvas{cursor:crosshair}
 #ol-legend i.high{border-color:#ff3b30;background:repeating-linear-gradient(135deg,#ff3b30 0 2px,rgba(255,59,48,.1) 2px 4.2px)}
 #ol-legend small{display:block;font-size:11px;color:var(--dim);margin-top:3px;line-height:1.35}
 #ol-legend u{text-decoration:none;color:var(--text);font-weight:700}
-#storm-card{right:324px;top:50%;transform:translateY(-50%);width:262px;padding:12px 14px}
-#storm-card[hidden]{display:none}
-#panel.collapsed ~ #storm-card{right:14px}
-#sc-close{position:absolute;right:8px;top:8px;width:26px;height:26px;border:0;background:transparent;color:var(--dim);border-radius:6px;cursor:pointer;font-size:17px;line-height:1}
-#sc-close:hover{background:rgba(255,255,255,.09);color:var(--text)}
-#sc-name{font-size:17px;font-weight:600;display:block;padding-right:26px}
-#sc-note{margin:10px 0 0;padding-top:8px;border-top:1px solid var(--line);font-size:11px;line-height:1.4;color:var(--dim)}
-#sc-cat{font-size:12.5px;color:var(--dim)}
+#storm-card, #aoi-card{right:324px;top:50%;transform:translateY(-50%);width:262px;padding:12px 14px}
+#storm-card[hidden], #aoi-card[hidden]{display:none}
+#panel.collapsed ~ #storm-card, #panel.collapsed ~ #aoi-card{right:14px}
+#sc-close, #ac-close{position:absolute;right:8px;top:8px;width:26px;height:26px;border:0;background:transparent;color:var(--dim);border-radius:6px;cursor:pointer;font-size:17px;line-height:1}
+#sc-close:hover, #ac-close:hover{background:rgba(255,255,255,.09);color:var(--text)}
+#sc-name, #ac-name{font-size:17px;font-weight:600;display:block;padding-right:26px}
+#sc-note, #ac-note{margin:10px 0 0;padding-top:8px;border-top:1px solid var(--line);font-size:11px;line-height:1.4;color:var(--dim)}
+#sc-cat, #ac-type{font-size:12.5px;color:var(--dim)}
 .sc-main{display:flex;align-items:flex-end;gap:18px;margin:10px 0 9px}
 .sc-main b{font-size:30px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1}
 .sc-main small{display:block;font-size:11px;color:var(--dim);margin-top:3px}
-#sc-peak{margin-left:auto;font-size:11px;font-weight:600;color:#141414;background:var(--ice);border-radius:6px;padding:2px 7px}
+#sc-peak, #ac-cls{margin-left:auto;font-size:11px;font-weight:600;color:#141414;background:var(--ice);border-radius:6px;padding:2px 7px}
+.sc-grid .wide{grid-column:1/-1}
 .sc-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px 14px;border-top:1px solid var(--line);padding-top:9px}
 .sc-grid span{display:block;font-size:11px;color:var(--dim)}
 .sc-grid b{font-size:13px;font-weight:600;font-variant-numeric:tabular-nums}
@@ -83,13 +84,13 @@ body.placing .leaflet-container, body.placing #storm-canvas{cursor:crosshair}
   #season span:first-child{grid-column:1/3;padding:0 12px 4px}
   #season button{grid-column:3;grid-row:1;justify-self:end;margin:0 8px 4px 0}
   #season span:nth-child(2),#season span:nth-child(5){border-left:0}
-  #storm-card{right:14px;top:auto;bottom:130px;transform:none}
+  #storm-card, #aoi-card{right:14px;top:auto;bottom:130px;transform:none}
   #sum-card{top:14px;max-height:none;width:min(492px,calc(100% - 28px))}
 }
 @media (max-width:640px){
   #ol-legend{bottom:112px;width:208px}
   #season{top:192px;font-size:11.5px}
-  #storm-card{left:14px;right:14px;width:auto;bottom:120px}
+  #storm-card, #aoi-card{left:14px;right:14px;width:auto;bottom:120px}
   #sum-card{left:14px;right:14px;width:auto;transform:none;padding:12px 12px 8px}
   #sum-tot b{font-size:16px}
   #sum-tot small{font-size:9.5px}
@@ -102,5 +103,5 @@ body.placing .leaflet-container, body.placing #storm-canvas{cursor:crosshair}
   #place-menu{bottom:96px}
 }
 /* a basin whose page has no storm climatology yet (STORMS_READY, src/storm-hooks.js) shows none of the storm controls */
-body.no-storms .st-only, body.no-storms #season, body.no-storms #storm-tip, body.no-storms #ol-legend, body.no-storms #storm-card, body.no-storms #sum-card, body.no-storms #b-place, body.no-storms #place-menu { display: none !important; }
+body.no-storms .st-only, body.no-storms #season, body.no-storms #storm-tip, body.no-storms #ol-legend, body.no-storms #storm-card, body.no-storms #aoi-card, body.no-storms #sum-card, body.no-storms #b-place, body.no-storms #place-menu { display: none !important; }
 body.no-waves .st-waves { display: none; }      /* a basin without a wave train of its own (BASINS[..].waves in src/storms.js) has no waves to show or hide */

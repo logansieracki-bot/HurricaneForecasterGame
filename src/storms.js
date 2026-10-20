@@ -415,10 +415,11 @@ function structureParams() {
     outlook: {
       horizon: 168, step: 3, minP7: 10, maxAreas: 10,                              // hours ahead, the time step of the forecast track (hours), the least 7-day chance drawn (percent), the most areas
       tdShare: 0.92, tdHold: 7,                                                   // the share of development events that become a depression, and the hours the new depression's wind must hold (genHold) on top of the time it takes to rise to devV
-      anomTau: { sst: 300, rh: 96, shear: 96, steer: 72 },                        // hours: the anomaly of a field from its own climate that the forecast keeps, decaying to the climate (a persistence forecast: the weather beyond the next keyframe is not known to it)
+      anomTau: { sst: 720, rh: 480, shear: 480, steer: 72 },                      // hours: the anomaly of a field from its own climate that the forecast keeps, decaying to the climate (a persistence forecast: the weather beyond the next keyframe is not known to it; the places where conditions are good stay where they are as a disturbance moves toward them)
       lowLife: 60,                                                                // hours: the mean remaining life of a tracked low
       r0: 1.2, r1: 0.6, rUnborn: 1.5,                                             // the area's radius (degrees of latitude): at the start, per day ahead, and extra for a system that does not exist yet
-      win: [0.1, 0.9], fav: 0.5, arrowMin: 2.5,                                   // the area covers the 10th to 90th percentile of the formation time; the X sits inside it when the rate now is at least `fav` of the best ahead, else an arrow (at least arrowMin degrees long) points to it
+      win: [0.1, 0.9], maxSpan: 96, maxLen: 14, gap: 0.5, minArea: 4, favGate: [0.4, 0.6], arrowMin: 2.5, arrowMax: [18, 24],   // the area covers the 10th to 90th percentile of the formation time but no more than maxSpan hours and maxLen degrees of track; two areas keep gap degrees apart (the younger gives way) and none is drawn smaller than minArea square degrees; the X sits inside it while the growth gate is open, and an arrow (at least arrowMin and at most arrowMax degrees long) points to where the gate opens while it is shut (below the first value of favGate turns the arrow on, above the second turns it off; the same for the two lengths of arrowMax)
+      rise: 20, fall: 20, firstP7: 40, firstP2: 30, morph: 0.3, maxMove: 2, maxGrow: 0.5, memH: 30,   // between two issues a chance moves by no more than rise / fall (percent), a shape the share morph of the way to the new forecast (the rest is the last issue's, carried with its disturbance) and at most maxMove degrees (its radius maxGrow); a disturbance seen for the first time starts no higher than firstP7 / firstP2; an issue older than memH hours is not what the next one moves on from
       lead: { W: [48, 168, 0], N: [12, 120, 0.3], F: [12, 120, 0.3] },           // how many hours before it exists a forecaster sees a system coming: shortest, longest, and the share nobody sees coming
       cls: [35, 60],                                                              // an area is low (yellow) up to this 7-day chance, medium (orange) up to the next, high (red) above
     },
@@ -602,7 +603,7 @@ function newSystem(o) {
   return {
     id: o.id, num: o.num, origin: o.origin || '', born: o.hour, th: o.th, sub: !!o.sub, dev: -1, life: o.life || 0, kind: o.kind || '',
     lat: o.lat, lon: o.lon, v: o.v, vr: o.v, p: 1008, cx: o.cx || 0, cy: o.cy || 0, wx: 0, wy: 0, zv: 0, zp: 0,
-    q: o.q || 0, dist: false, invest: '', shSm: null, rhSm: null, cw: 0, ri: null, riCoolUntil: -1, riTotal: 0, onLand: false, genCount: 0, lowCount: 0, landLow: 0, convCount: 0, nlTill: -1,
+    q: o.q || 0, dist: false, invest: '', ck: '', shSm: null, rhSm: null, cw: 0, ri: null, riCoolUntil: -1, riTotal: 0, onLand: false, genCount: 0, lowCount: 0, landLow: 0, convCount: 0, nlTill: -1,
     exDeep: 0, exEp: null, exLift: 0, ux: 0, uy: 0, etAt: -1, remnant: false, alive: true, end: null, endReason: '', depNum: 0, name: '', tdHour: -1, namedHour: -1,
     peakV: 0, peakP: 1020, peakHour: -1, ace: 0, season: 0, fixes: [], st: 'WV', lastShear: 15, lastRh: 50, lastSst: 27, lastLf: 0, kill: false,
   };
@@ -975,6 +976,7 @@ function Manager(o) {
   this.auto = o.auto !== false; this.autoRate = o.autoRate == null ? 1 : o.autoRate;
   this.sched = { waveT: null, waveK: 0, waveSpawn: false };
   this.invN = {};                                                              // invests given so far this season, per letter (the next is 90 + n mod 10)
+  this.olMem = null;                                                           // what the last outlook issue said about every disturbance (the next one moves on from it)
   this.lows = new LowTracker();
   this.maps = prepareMaps(o.maps);                                             // the climatology the host supplied (null: the plain steering model)
   this.ctx = { maps: this.maps, tw: null, diag: null };                          // what a step needs besides the system: maps, the time weights of the hour, the calibration lab's accumulators
@@ -1058,7 +1060,7 @@ Manager.prototype._spawn = function (h, env) {
   while (basinOf(this.basin).waves && h >= this.sched.waveT) {
     if (this.sched.waveSpawn) {
       const k = this.sched.waveK++, w = this._waveBirth(k, h);
-      this._seedSystem('W', 'wv', w.lat, w.lon, w.v0, h, 'wave', false);
+      this._seedSystem('W', 'wv', w.lat, w.lon, w.v0, h, 'wave', false).ck = 'uW' + k + ':' + h;           // (the key the outlook gave it before it existed: its record goes on)
     }
     const s = this._waveSchedule(this.sched.waveT); this.sched.waveT = s.t; this.sched.waveSpawn = s.spawn;
   }
@@ -1068,11 +1070,11 @@ Manager.prototype._spawn = function (h, env) {
     for (const k of M.spawnCells || []) {
       const b = this._localSeed(k, h, tw, this.ctx.shift, env); if (!b) continue;
       const S = this._seedSystem('N', 'wv', b.lat, b.lon, b.v0, h, 'seed', false);
-      S.life = b.life;
+      S.life = b.life; S.ck = 'uN' + (1000 + k) + ':' + h;
       if (diag) diag['spawn.N'][(tw.t < 0.5 ? tw.m0 : tw.m1) * M.n + k] += 1;
     }
     const f = this._floorSeed(h, env);
-    if (f) { const S = this._seedSystem('F', 'wv', f.lat, f.lon, f.v0, h, 'seed', false, 'N'); S.life = f.life; }
+    if (f) { const S = this._seedSystem('F', 'wv', f.lat, f.lon, f.v0, h, 'seed', false, 'N'); S.life = f.life; S.ck = 'uF90001:' + h; }
     return;
   }
   // regional sources
@@ -1116,7 +1118,7 @@ Manager.prototype._updateLows = function (h, env) {
         this.lows._finish(t, h); t.became = true;
         if (!t.invest) this._invest(t);                                          // (a depression that grows from a low was an invest first, whether or not the six-hourly look saw it flagged)
         const S = this._seedSystem('N', 'wv', t.lat, t.lon, 22, h, 'low', u >= hT);
-        S.dev = h; S.invest = t.invest;
+        S.dev = h; S.invest = t.invest; S.ck = t.id;
         S.fixes = t.fixes.map(([hh, la, lo, pp]) => ({ h: hh, lat: la, lon: lo, v: 20, p: pp, st: 'LO', th: 'wv', dir: 0, spd: 0, sst: 0, sh: 0, rh: 0, ace: 0, land: false }));      // the low's own path leads into the depression's
         if (ctx.diag) diagGenesis(ctx, 'L', S.sub, tw, t.lat, t.lon);
       }
@@ -1232,24 +1234,73 @@ const normCdf = (x) => {                                                       /
   const z = Math.abs(x) / Math.SQRT2, t = 1 / (1 + 0.3275911 * z), y = 1 - ((((1.061405429 * t - 1.453152027) * t + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-z * z);
   return x >= 0 ? 0.5 * (1 + y) : 0.5 * (1 - y);
 };
-/* the outline of a chain of discs (centres [lat, lon], radii in degrees of latitude): the two offset curves, a half circle at each end, smoothed twice (Chaikin); a single disc is a circle. Lengths in degrees of longitude are scaled by the
-   cosine of latitude so that a disc is round on the map. An outline never crosses the equator any more than a system does: its latitudes go through the same soft floor (eq: par.eqSoft) on the side of the first centre */
-function capsule(pts, rad, eq) {
-  const n = pts.length, k = Math.max(0.2, Math.cos(pts.reduce((a, q) => a + q[0], 0) / n * DEG)), P = pts.map((q) => [q[1] * k, q[0]]);
-  let poly = [];
-  if (n === 1) for (let i = 0; i < 24; i++) { const a = 2 * Math.PI * i / 24; poly.push([P[0][0] + rad[0] * Math.cos(a), P[0][1] + rad[0] * Math.sin(a)]); }
+/* the outline of a swath: a chain of discs [lat, lon, radius in degrees of latitude] joined by tapered capsules, as the zero line of their distance field (marching squares). It is one closed outline whatever the chain does -- a chain that
+   doubles back, a sharp turn, a radius larger than the bend: the two offset curves of the capsule this replaces crossed each other and an outline showed up inside the outline. Longitudes are scaled by the cosine of latitude so that a disc is
+   round on the map; the outline never crosses the equator any more than a system does (its latitudes go through the same soft floor, eq = par.eqSoft, on the side of the first disc).
+   Returns { poly, area (square degrees), pole: the point of the swath farthest from its edge, where a label goes } */
+function swathFull(chain, eq) {
+  const n = chain.length, kx = Math.max(0.2, Math.cos(chain.reduce((a, q) => a + q[0], 0) / n * DEG));
+  let P = chain.map((q) => [q[1] * kx, q[0], q[2]]), poly = [], its = 1, area = 0, pole = null;
+  if (n === 1) { for (let i = 0; i < 24; i++) { const a = 2 * Math.PI * i / 24; poly.push([P[0][0] + P[0][2] * Math.cos(a), P[0][1] + P[0][2] * Math.sin(a)]); } its = 2; area = Math.PI * P[0][2] * P[0][2]; pole = [P[0][0], P[0][1]]; }
   else {
-    const T = P.map((q, i) => { const a = P[Math.max(0, i - 1)], b = P[Math.min(n - 1, i + 1)], dx = b[0] - a[0], dy = b[1] - a[1], d = Math.hypot(dx, dy) || 1; return [dx / d, dy / d]; });
-    for (let i = 0; i < n; i++) poly.push([P[i][0] - rad[i] * T[i][1], P[i][1] + rad[i] * T[i][0]]);                            // the left side, start to end
-    let phi = Math.atan2(T[n - 1][1], T[n - 1][0]);
-    for (let j = 1; j < 8; j++) { const a = phi + Math.PI / 2 - Math.PI * j / 8; poly.push([P[n - 1][0] + rad[n - 1] * Math.cos(a), P[n - 1][1] + rad[n - 1] * Math.sin(a)]); }          // round the end
-    for (let i = n - 1; i >= 0; i--) poly.push([P[i][0] + rad[i] * T[i][1], P[i][1] - rad[i] * T[i][0]]);                      // the right side, end to start
-    phi = Math.atan2(T[0][1], T[0][0]);
-    for (let j = 1; j < 8; j++) { const a = phi - Math.PI / 2 - Math.PI * j / 8; poly.push([P[0][0] + rad[0] * Math.cos(a), P[0][1] + rad[0] * Math.sin(a)]); }                // round the start
+    let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
+    for (const q of P) { x0 = Math.min(x0, q[0] - q[2]); x1 = Math.max(x1, q[0] + q[2]); y0 = Math.min(y0, q[1] - q[2]); y1 = Math.max(y1, q[1] + q[2]); }
+    const cell = Math.max(0.3, Math.max(x1 - x0, y1 - y0) / 70), X0 = x0 - 2 * cell, Y0 = y0 - 2 * cell, nx = Math.ceil((x1 - x0) / cell) + 5, ny = Math.ceil((y1 - y0) / cell) + 5, f = new Float32Array(nx * ny);
+    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+      const px = X0 + i * cell, py = Y0 + j * cell; let best = 1e9;
+      for (let k = 0; k + 1 < n; k++) {
+        const a = P[k], b = P[k + 1], dx = b[0] - a[0], dy = b[1] - a[1], L2 = dx * dx + dy * dy, t = L2 > 0 ? Math.min(1, Math.max(0, ((px - a[0]) * dx + (py - a[1]) * dy) / L2)) : 0;
+        const d = Math.hypot(px - (a[0] + t * dx), py - (a[1] + t * dy)) - (a[2] + t * (b[2] - a[2]));
+        if (d < best) best = d;
+      }
+      f[j * nx + i] = best;
+    }
+    const pts = new Map(), adj = new Map(), inside = (i, j) => f[j * nx + i] < 0;
+    const edge = (h, i, j) => {                                                 // the point where the zero line crosses the grid edge from (i, j) to (i + 1, j) (h) or to (i, j + 1)
+      const id = (j * nx + i) * 2 + (h ? 0 : 1); if (!pts.has(id)) { const a = f[j * nx + i], b = h ? f[j * nx + i + 1] : f[(j + 1) * nx + i], t = a / (a - b); pts.set(id, h ? [X0 + (i + t) * cell, Y0 + j * cell] : [X0 + i * cell, Y0 + (j + t) * cell]); }
+      return id;
+    };
+    const link = (u, v) => { if (!adj.has(u)) adj.set(u, []); if (!adj.has(v)) adj.set(v, []); adj.get(u).push(v); adj.get(v).push(u); };
+    for (let j = 0; j + 1 < ny; j++) for (let i = 0; i + 1 < nx; i++) {
+      const c = (inside(i, j) ? 1 : 0) | (inside(i + 1, j) ? 2 : 0) | (inside(i + 1, j + 1) ? 4 : 0) | (inside(i, j + 1) ? 8 : 0);
+      if (c === 0 || c === 15) continue;
+      const B = () => edge(true, i, j), T = () => edge(true, i, j + 1), L = () => edge(false, i, j), R = () => edge(false, i + 1, j);
+      if (c === 1 || c === 14) link(L(), B()); else if (c === 2 || c === 13) link(B(), R()); else if (c === 3 || c === 12) link(L(), R()); else if (c === 4 || c === 11) link(R(), T());
+      else if (c === 6 || c === 9) link(B(), T()); else if (c === 7 || c === 8) link(L(), T());
+      else { const cv = (f[j * nx + i] + f[j * nx + i + 1] + f[(j + 1) * nx + i + 1] + f[(j + 1) * nx + i]) / 4; if ((c === 5) === (cv < 0)) { link(L(), T()); link(B(), R()); } else { link(L(), B()); link(R(), T()); } }       // (the two saddles: the centre says which way the zero line goes)
+    }
+    const seen = new Set(); let best = null, bestA = 0, bestId = -1;
+    for (const s0 of adj.keys()) {                                              // the closed loops of the zero line: the biggest is the outline (a hole or an island of the swath is left out)
+      if (seen.has(s0)) continue;
+      const loop = []; let prev = -1, cur = s0;
+      for (let g = 0; g < 100000; g++) { seen.add(cur); loop.push(pts.get(cur)); const nb = adj.get(cur); if (nb.length < 2) break; const nxt = nb[0] !== prev ? nb[0] : nb[1]; if (nxt === s0 || seen.has(nxt)) break; prev = cur; cur = nxt; }
+      let Ar = 0; for (let k = 0, m = loop.length - 1; k < loop.length; m = k++) Ar += loop[m][0] * loop[k][1] - loop[k][0] * loop[m][1];
+      if (Math.abs(Ar) / 2 > bestA) { bestA = Math.abs(Ar) / 2; best = loop; bestId = s0; }
+    }
+    area = best ? bestA : 0;
+    const step = best ? Math.max(1, Math.round(best.length / 50)) : 1;
+    poly = best ? best.filter((_, k) => k % step === 0) : [[P[0][0], P[0][1]]];
+    if (best) {                                                                 // the pole: the deepest node of that outline (a flood fill from a node inside it)
+      const e = bestId >> 1, a = e, b = (bestId & 1) === 0 ? e + 1 : e + nx, seed = f[a] < 0 ? a : b, vis = new Uint8Array(nx * ny), st = [seed]; vis[seed] = 1; let pb = seed;
+      while (st.length) { const k = st.pop(); if (f[k] < f[pb]) pb = k; const i = k % nx, j = (k - i) / nx; for (const q of [i > 0 ? k - 1 : -1, i + 1 < nx ? k + 1 : -1, j > 0 ? k - nx : -1, j + 1 < ny ? k + nx : -1]) if (q >= 0 && !vis[q] && f[q] < 0) { vis[q] = 1; st.push(q); } }
+      pole = [X0 + (pb % nx) * cell, Y0 + Math.floor(pb / nx) * cell];
+    }
   }
-  for (let it = 0; it < 2; it++) { const q = []; for (let i = 0; i < poly.length; i++) { const a = poly[i], b = poly[(i + 1) % poly.length]; q.push([0.75 * a[0] + 0.25 * b[0], 0.75 * a[1] + 0.25 * b[1]], [0.25 * a[0] + 0.75 * b[0], 0.25 * a[1] + 0.75 * b[1]]); } poly = q; }
-  const hs = pts[0][0] < 0 ? -1 : 1;
-  return poly.map((q) => [r1(eq > 0 ? hs * softFloor(hs * q[1], eq) : q[1]), r1(q[0] / k)]);
+  for (let it = 0; it < its && poly.length > 2; it++) { const q = []; for (let i = 0; i < poly.length; i++) { const a = poly[i], b = poly[(i + 1) % poly.length]; q.push([0.75 * a[0] + 0.25 * b[0], 0.75 * a[1] + 0.25 * b[1]], [0.25 * a[0] + 0.75 * b[0], 0.25 * a[1] + 0.75 * b[1]]); } poly = q; }
+  const hs = chain[0][0] < 0 ? -1 : 1, fold = (q) => [r1(eq > 0 ? hs * softFloor(hs * q[1], eq) : q[1]), r1(q[0] / kx)];
+  return { poly: poly.map(fold), area, pole: pole ? fold(pole) : null };
+}
+const swath = (chain, eq) => swathFull(chain, eq).poly;
+function capsule(pts, rad, eq) { return swath(pts.map((q, i) => [q[0], q[1], rad[i]]), eq); }
+/* the chain cut to cap degrees of length and spread again over nine discs, the first one where it was */
+function capChain(chain, cap) {
+  const cum = [0]; for (let i = 1; i < chain.length; i++) cum.push(cum[i - 1] + Math.hypot(chain[i][0] - chain[i - 1][0], (chain[i][1] - chain[i - 1][1]) * Math.cos((chain[i][0] + chain[i - 1][0]) / 2 * DEG)));
+  if (cum[cum.length - 1] <= cap) return chain;
+  return chain.map((_, k) => {
+    const d = cap * k / (chain.length - 1); let i = 1; while (i < chain.length - 1 && cum[i] < d) i++;
+    const a = chain[i - 1], b = chain[i], w = cum[i] > cum[i - 1] ? (d - cum[i - 1]) / (cum[i] - cum[i - 1]) : 0;
+    return [a[0] + w * (b[0] - a[0]), a[1] + w * (b[1] - a[1]), a[2] + w * (b[2] - a[2])];
+  });
 }
 const outlookClass = (O, p7) => (p7 <= O.cls[0] ? 'low' : p7 <= O.cls[1] ? 'medium' : 'high');          // the NHC's three colours by the 7-day chance
 /* what ends a disturbance that has not developed, per hour: cold water, too high a latitude, old age (hazards with a mean life of endH hours), the land (twelve hours over it ends a seed), and for a tracked low its own life */
@@ -1262,7 +1313,7 @@ function outlookEnd(par, c, alat, sst, lf, age) {
    exists and has not yet developed (surv) falling by what ends it. c: { kind, lat, lon, h0 (first hour on the path), born, life, ux, uy, q (its quality now, when known), vx, vy (a tracked low's motion), low, dev } */
 function outlookFollow(mgr, F, c) {
   const par = mgr.par, O = par.outlook, M = F.M, env = F.env, A = O.anomTau, dt = O.step, H0 = F.H0, end = H0 + O.horizon, box = env.box;
-  const out = { t: [], lat: [], lon: [], dt: [], dly: [], rate: [], mass: [], surv: [] };
+  const out = { t: [], lat: [], lon: [], dt: [], dly: [], rate: [], mass: [], surv: [], gate: [], lf: [] };
   let lat = c.lat, lon = c.lon, ux = c.ux || 0, uy = c.uy || 0, h = c.h0, surv = 1, lastSst = 27, lastRh = 50, lastShear = 15;
   const rq = Math.exp(-1 / par.qTau), al = 1 - Math.exp(-dt / 5), sub = c.kind !== 'W' && c.kind !== 'M';
   while (h < end) {
@@ -1280,21 +1331,20 @@ function outlookFollow(mgr, F, c) {
     sst += par.sstOffset; rh += par.rhOffset; shear += par.shearOffset;
     const age = h - c.born, act = activityFactor(par, mgr.seed, seasonYearOf(mgr.startMs + h * HOUR_MS, mgr.seasonMonth), h) * F.ensoMul;
     const gT = devGrowth(par, env, false, lat, sst, rh, shear, doy, par.sstOffset);
-    let eT, eS = 0, lamT, lamS = 0, Qm = 1;
+    let eT, eS = 0, lamT, lamS = 0, Qm = 1, gS = 0;
     if (c.low) {                                                                     // a tracked low develops at six-hourly draws (see _updateLows), weighted by its latitude
-      const lw = lowWeight(par, alat), gS = devGrowth(par, env, true, lat, sst, rh, shear, doy, par.sstOffset);
+      const lw = lowWeight(par, alat); gS = devGrowth(par, env, true, lat, sst, rh, shear, doy, par.sstOffset);
       eT = lw * envFactor(par, M, tw, lat, lon, sst, rh, shear, F.sstRef, false) * devGateOf(par, false, gT) * act;
       eS = lw * envFactor(par, M, tw, lat, lon, sst, rh, shear, F.sstRef, true) * devGateOf(par, true, gS) * act;
       lamT = satur(6 * par.hazMul * hazAt(par, M, M.haz.T, tw, lat, lon, F.shift) * eT * mgr.autoRate, par.hazMax) / 6;
       lamS = satur(6 * par.hazMul * hazAt(par, M, M.haz.S, tw, lat, lon, F.shift) * eS * mgr.autoRate, par.hazMax) / 6;
-      c.gS = gS;
     } else {
       const water = (1 - smooth01(lf, 0.2, 0.5)) * smooth01(alat, 2, 4);
       if (c.q != null) Qm = Math.exp(par.qSd * Math.pow(rq, dh) * c.q - 0.5 * par.qSd * par.qSd * Math.pow(rq, 2 * dh));        // the mean of exp(qSd q) given the quality now (it relaxes to a unit-mean draw)
       eT = water > 0 ? water * envFactor(par, M, tw, lat, lon, sst, rh, shear, F.sstRef, false) * devGateOf(par, false, gT) * Qm * act : 0;
       lamT = satur(par.hazMul * hazAt(par, M, M.haz.T, tw, lat, lon, F.shift) * eT, par.hazMax);
       if (sub && water > 0) {
-        const gS = devGrowth(par, env, true, lat, sst, rh, shear, doy, par.sstOffset); c.gS = gS;
+        gS = devGrowth(par, env, true, lat, sst, rh, shear, doy, par.sstOffset);
         eS = water * envFactor(par, M, tw, lat, lon, sst, rh, shear, F.sstRef, true) * devGateOf(par, true, gS) * Qm * act;
         lamS = satur(par.hazMul * hazAt(par, M, M.haz.S, tw, lat, lon, F.shift) * eS, par.hazMax);
       }
@@ -1303,7 +1353,8 @@ function outlookFollow(mgr, F, c) {
     const sd = c.q != null ? Math.sqrt(Math.max(0.0025, 1 - Math.pow(rq, 2 * dh))) : 1, mq = c.q != null ? Math.pow(rq, dh) * c.q : 0;
     const sustP = (g, G) => { if (!(par.tdMargin > 0)) return 1; if (!(g > 0)) return 0; if (!(par.qSd > 0)) return g >= G.gCrit + par.tdMargin ? 1 : 0; return 1 - normCdf((Math.log((G.gCrit + par.tdMargin) / g) / par.qSd - mq) / sd); };
     const door = (1 - smooth01(lf, 0.4, 0.8)) * smooth01(alat, 3, 6);
-    const convT = O.tdShare * door * smooth01(sst, 23, 24) * sustP(gT, par), convS = lamS > 0 ? O.tdShare * door * smooth01(sst, par.subSstOK - 1, par.subSstOK) * sustP(c.gS, par.sub) : 0;
+    const convT = O.tdShare * door * smooth01(sst, 23, 24) * sustP(gT, par), convS = lamS > 0 ? O.tdShare * door * smooth01(sst, par.subSstOK - 1, par.subSstOK) * sustP(gS, par.sub) : 0;
+    const gate = Math.max(devGateOf(par, false, gT), gS > 0 ? devGateOf(par, true, gS) : 0) * door;     // how open the growth gate is here (0-1): could a depression live in this place -- what an X means by favourable conditions
     const rate = lamT * convT + lamS * convS;
     // the hours from the event to the depression: the wind rises from where the disturbance's environment holds it to devV (devVSub for a subtropical one) at devRate, then holds tdHold hours
     const vPre = c.low ? 22 : par.distV[0] + (par.distV[1] - par.distV[0]) * smooth01(eT, 0.3, 2.0), dlyT = Math.max(0, par.devV - vPre) / par.devRate + O.tdHold, dlyS = Math.max(0, par.devVSub - vPre) / par.devRate + O.tdHold;
@@ -1313,7 +1364,7 @@ function outlookFollow(mgr, F, c) {
     if (left <= 0) break;
     step = Math.min(step, left);
     const tot = rate + hE, mass = surv * (tot > 1e-12 ? (rate / tot) * (1 - Math.exp(-tot * step)) : rate * step);
-    out.t.push(h); out.lat.push(lat); out.lon.push(lon); out.dt.push(step); out.dly.push(dly); out.rate.push(rate); out.mass.push(mass); out.surv.push(surv);
+    out.t.push(h); out.lat.push(lat); out.lon.push(lon); out.dt.push(step); out.dly.push(dly); out.rate.push(rate); out.mass.push(mass); out.surv.push(surv); out.gate.push(gate); out.lf.push(lf);
     surv *= Math.exp(-tot * step);
     // the mean motion over the step
     if (c.low) {
@@ -1341,18 +1392,89 @@ Manager.prototype.outlook = function (env) {
   return res;
 };
 Manager.prototype._outlookCompute = function (env) {
-  const par = this.par, O = par.outlook, M = this.maps, H0 = this.hour, res = { issued: Math.floor(H0 / 6) * 6, hour: H0, areas: [] };
+  const par = this.par, O = par.outlook, M = this.maps, H0 = this.hour, slot = Math.floor(H0 / 6), res = { issued: slot * 6, hour: H0, areas: [] };
   if (!M || !M.haz || !env || !O) return res;
+  // what the issue before this one said about every disturbance (this.olMem): this issue moves on from it -- a chance by no more than O.rise / O.fall, a shape O.morph of the way to the new forecast, an arrow only after the gate has been shut for
+  // a while -- and a disturbance seen for the first time starts low. Asked again within the same six hours (a placed system), the issue is made from the same last issue
+  let mem = this.olMem;
+  if (!mem || mem.slot !== slot) mem = this.olMem = { slot, prevSlot: mem ? mem.slot : -1e6, prev: mem ? mem.cur : {}, cur: {} }; else mem.cur = {};
+  const gap = Math.max(1, slot - mem.prevSlot), fresh = gap * 6 <= O.memH, morph = 1 - Math.pow(1 - O.morph, gap);
   const ens = { act: 1 }; ensoOf(par, env, ens);
   const F = { M, env, H0, tw0: timeWeights(this.doyAt(H0) + (((H0 % 24) + 24) % 24) / 24), ring: M.ring != null ? M.ring : par.steerRing, sstRef: env.sstRef ? env.sstRef() + par.sstOffset : null, ensoMul: ens.act, shift: ens.shift };
   const cands = [];
-  for (const S of this.systems) if (S.alive && S.th === 'wv') cands.push({ kind: S.kind || 'N', id: S.id, sys: S, lat: S.lat, lon: S.lon, ux: S.ux, uy: S.uy, q: S.q, h0: H0, born: S.born, life: S.life || 0, dev: S.dev, sust: S.sust, invest: S.invest });
+  for (const S of this.systems) if (S.alive && S.th === 'wv') cands.push({ kind: S.kind || 'N', id: S.id, ck: S.ck || S.id, sys: S, lat: S.lat, lon: S.lon, ux: S.ux, uy: S.uy, q: S.q, h0: H0, born: S.born, life: S.life || 0, dev: S.dev, sust: S.sust, invest: S.invest });
   if (this.auto) for (const t of this.lows.tracks) {
     if (!t.alive || t.n < 3 || H0 - t.born < 6 || lowWeight(par, Math.abs(t.lat)) < 0.05 || env.isLand(t.lat, t.lon)) continue;
-    cands.push({ kind: 'L', low: true, id: t.id, track: t, lat: t.lat, lon: t.lon, vx: t.dx / 6, vy: t.dy / 6, h0: H0, born: t.born, life: 0, dev: -1, invest: t.invest });
+    cands.push({ kind: 'L', low: true, id: t.id, ck: t.id, track: t, lat: t.lat, lon: t.lon, vx: t.dx / 6, vy: t.dy / 6, h0: H0, born: t.born, life: 0, dev: -1, invest: t.invest });
   }
   if (this.auto) for (const b of this._peekBirths(env, F)) cands.push(b);
-  for (const c of cands) { const a = this._outlookArea(F, c); if (a) res.areas.push(a); }
+  const lim = (v, p) => Math.max(p - O.fall * gap, Math.min(p + O.rise * gap, v)), items = [];
+  for (const c of cands) {
+    const pr = fresh ? mem.prev[c.ck] : null, r = this._outlookRaw(F, c, pr); if (!r) continue;
+    let p7 = round5(100 * r.P7), p2 = Math.min(round5(100 * r.P2), p7);
+    if (fresh) { if (pr) { p7 = lim(p7, pr.p7); p2 = lim(p2, pr.p2); } else if (c.kind !== 'M' || H0 - c.born >= 6) { p7 = Math.min(p7, O.firstP7); p2 = Math.min(p2, O.firstP2); } }          // (a hand-placed disturbance is shown at the chance it has the first time: it did not appear out of nowhere)
+    p2 = Math.min(p2, p7);
+    if (r.light) { if (p7 >= 5) mem.cur[c.ck] = { p2, p7 }; continue; }
+    let chain = r.chain;
+    if (pr && pr.chain && pr.chain.length === chain.length) {                          // the shape of the last issue, carried with the disturbance (while the X is inside its area), moved a share of the way to the new one
+      const sh = pr.mode === 'in' && pr.x && r.x ? [r.x[0] - pr.x[0], r.x[1] - pr.x[1]] : [0, 0];                 // (a shape that was round its X rides with it, whatever it becomes: the arrow grows out of the X, not out of where the X was)
+      chain = chain.map((q, i) => {
+        if (i === 0 && r.mode === 'in' && r.x) return q;
+        const o = pr.chain[i], la = o[0] + sh[0], lo = o[1] + sh[1]; let dla = morph * (q[0] - la), dlo = morph * (q[1] - lo);
+        const dm = Math.hypot(dla, dlo * Math.cos(la * DEG)), mx = O.maxMove * gap; if (dm > mx) { dla *= mx / dm; dlo *= mx / dm; }          // (a shape never moves further than maxMove degrees in one issue)
+        return [la + dla, lo + dlo, o[2] + clamp(morph * (q[2] - o[2]), -O.maxGrow * gap, O.maxGrow * gap)];
+      });
+    }
+    let arrow = null, arrowR = 0, mode = r.mode, shown = chain;
+    if (mode === 'arrow') {                                                           // an arrow only while the shape is far enough from its X; when it is not yet (it moves a share of the way each issue) or no longer, the X is drawn in its shape -- and the shape on its way stays what is remembered
+      const to = chain[0], dl = Math.hypot(to[0] - r.x[0], (to[1] - r.x[1]) * Math.cos(r.x[0] * DEG));
+      if (dl >= O.arrowMin) { arrow = [r1(to[0]), r1(to[1])]; arrowR = to[2]; } else { mode = 'in'; shown = chain.map((q, i) => (i ? q : [r.x[0], r.x[1], q[2]])); }
+    }
+    chain = capChain(chain, O.maxLen * 1.25); shown = shown === chain ? chain : capChain(shown, O.maxLen * 1.25);          // (a shape that was drawn far from the disturbance it now belongs to is not stretched from one to the other for long)
+    mem.cur[c.ck] = { p2, p7, mode: r.mode, x: r.x, chain: chain.map((q) => [Math.round(q[0] * 100) / 100, Math.round(q[1] * 100) / 100, Math.round(q[2] * 100) / 100]) };
+    if (p7 < O.minP7) continue;
+    items.push({ c, r, chain: shown, mode, arrow, arrowR, p2, p7 });
+  }
+  // the shapes, the oldest disturbance first (a system that exists, then the ones still to be born in the order of their births): each is drawn clear of the ones before it, so that no two areas overlap and none has an outline
+  // running through another -- its swath stops where it would come within O.gap degrees of a shape already drawn (the way a wave's area ends before the area of the wave ahead of it); an X always keeps the disc round it
+  items.sort((a, b) => a.c.born - b.c.born || (a.c.ck < b.c.ck ? -1 : a.c.ck > b.c.ck ? 1 : 0));
+  const placed = [];
+  const clearOf = (chain, keepHead) => {
+    if (!placed.length) return chain;
+    const free = (la, lo, r) => {                                                      // is the disc [la, lo, r] at least O.gap clear of every shape drawn?
+      const kx = Math.max(0.2, Math.cos(la * DEG));
+      for (const CH of placed) for (let k = 0; k < Math.max(1, CH.length - 1); k++) {
+        const a = CH[k], b = CH[Math.min(k + 1, CH.length - 1)], ax = a[1] * kx, bx = b[1] * kx, dx = bx - ax, dy = b[0] - a[0], px = lo * kx, L2 = dx * dx + dy * dy, t = L2 > 0 ? clamp(((px - ax) * dx + (la - a[0]) * dy) / L2, 0, 1) : 0;
+        if (Math.hypot(px - (ax + t * dx), la - (a[0] + t * dy)) - (a[2] + t * (b[2] - a[2])) < r + O.gap) return false;
+      }
+      return true;
+    };
+    if (!free(chain[0][0], chain[0][1], chain[0][2])) return keepHead ? [chain[0]] : null;
+    const out = [chain[0]];
+    for (let i = 1; i < chain.length; i++) {
+      const a = chain[i - 1], b = chain[i]; let ok = a;
+      for (let q = 1; q <= 6; q++) { const u = q / 6, s2 = [a[0] + u * (b[0] - a[0]), a[1] + u * (b[1] - a[1]), a[2] + u * (b[2] - a[2])]; if (!free(s2[0], s2[1], s2[2])) { if (ok !== a || q > 1) out.push(ok); return out; } ok = s2; }
+      out.push(b);
+    }
+    return out;
+  };
+  const arcLen = (ch) => { let L = 0; for (let i = 1; i < ch.length; i++) L += Math.hypot(ch[i][0] - ch[i - 1][0], (ch[i][1] - ch[i - 1][1]) * Math.cos((ch[i][0] + ch[i - 1][0]) / 2 * DEG)); return L; };
+  const cutAt = (ch, L) => {                                                         // the chain cut where its length is L degrees
+    const out = [ch[0]]; let run = 0;
+    for (let i = 1; i < ch.length; i++) { const d = arcLen([ch[i - 1], ch[i]]); if (run + d >= L) { const w = d > 0 ? (L - run) / d : 0; out.push([ch[i - 1][0] + w * (ch[i][0] - ch[i - 1][0]), ch[i - 1][1] + w * (ch[i][1] - ch[i - 1][1]), ch[i - 1][2] + w * (ch[i][2] - ch[i - 1][2])]); return out; } out.push(ch[i]); run += d; }
+    return out;
+  };
+  for (const { c, r, chain, mode, arrow, arrowR, p2, p7 } of items) {
+    let ch = clearOf(chain, mode === 'in' && !!r.x); const rec = mem.cur[c.ck], pp = fresh ? mem.prev[c.ck] : null, pl = pp && pp.mode === r.mode ? pp.len : null;
+    if (!ch) { rec.len = 0; continue; }
+    if (pl != null && ch.length > 1) { const L = arcLen(ch), mx = pl + O.maxMove * gap; if (L > mx) ch = cutAt(ch, Math.max(mx, 0.01)); }          // (a shape that was held short by a neighbour grows back by no more than maxMove degrees an issue, as it moves by no more)
+    const S = swathFull(ch, par.eqSoft);
+    if (S.area < O.minArea) { rec.len = 0; continue; }
+    rec.len = Math.round(arcLen(ch) * 100) / 100;
+    placed.push(ch);
+    res.areas.push({ key: c.ck, id: c.unborn ? null : c.id, kind: c.unborn ? 'unborn' : c.low ? 'low' : c.kind === 'W' ? 'wave' : c.kind === 'M' ? 'placed' : 'seed', x: r.x, arrow, arrowR, p2, p7, raw: [r.P2, r.P7], cls: outlookClass(O, p7),
+      poly: S.poly, pole: S.pole, t0: r.t0, t1: r.t1, birth: c.unborn ? c.birth : null, invest: c.invest || '' });
+  }
   res.areas.sort((a, b) => b.p7 - a.p7 || b.p2 - a.p2);
   res.areas.length = Math.min(res.areas.length, O.maxAreas);
   return res;
@@ -1361,7 +1483,7 @@ Manager.prototype._outlookCompute = function (env) {
 Manager.prototype._peekBirths = function (env, F) {
   const par = this.par, O = par.outlook, H0 = F.H0, end = H0 + O.horizon, M = this.maps, out = [];
   const lead = (kind, key, hb) => { const L = O.lead[kind]; if (rnd(this.seed, key, hb, ST.LEAD) < L[2]) return -1; return L[0] + (L[1] - L[0]) * rnd(this.seed, key, hb + 1, ST.LEAD); };
-  const add = (kind, key, hb, b, extra) => { const ld = lead(kind === 'F' ? 'F' : kind, key, hb); if (hb - H0 <= ld) out.push(Object.assign({ kind: kind === 'F' ? 'N' : kind, unborn: true, id: 'u' + kind + key + ':' + hb, lat: b.lat, lon: b.lon, h0: hb, born: hb, life: b.life || 0, dev: -1, ux: 0, uy: 0, q: null, birth: hb }, extra)); };
+  const add = (kind, key, hb, b, extra) => { const ld = lead(kind === 'F' ? 'F' : kind, key, hb); if (hb - H0 <= ld) out.push(Object.assign({ kind: kind === 'F' ? 'N' : kind, unborn: true, id: 'u' + kind + key + ':' + hb, ck: 'u' + kind + key + ':' + hb, lat: b.lat, lon: b.lon, h0: hb, born: hb, life: b.life || 0, dev: -1, ux: 0, uy: 0, q: null, birth: hb }, extra)); };
   if (basinOf(this.basin).waves) {
     let t = this.sched.waveT, spawn = this.sched.waveSpawn, k = this.sched.waveK;
     if (t == null) { const s = this._waveNext(H0, k); t = s.t; spawn = s.spawn; }
@@ -1377,47 +1499,41 @@ Manager.prototype._peekBirths = function (env, F) {
   }
   return out;
 };
-/* the area of one candidate, or null when its 7-day chance rounds to less than par.outlook.minP7 */
-Manager.prototype._outlookArea = function (F, c) {
-  const par = this.par, O = par.outlook, H0 = F.H0, R = O.horizon, round5p = (x) => round5(x * 100);
-  let p2, p7, t0, t1, ax = null, arrow = null, arrowR = 0, centres = [], radii = [], raw = null;
+/* what the forecast says about one candidate, before the last issue is taken into account (pr: the last issue's record of it, or null): the chances of formation within 2 and 7 days (P2, P7), whether its X sits in the area ('in') or points to
+   it ('arrow'; 'none': no X, it does not exist yet), the swath as nine discs (chain) over the window of formation, and the window in hours from now. Null when nothing is worth recording; { light: true } when the chance is too low to be drawn
+   and only the chances are kept */
+Manager.prototype._outlookRaw = function (F, c, pr) {
+  const par = this.par, O = par.outlook, H0 = F.H0, R = O.horizon, N9 = 9;
   const radius = (t) => O.r0 + O.r1 * Math.max(0, t - H0) / 24 + (c.unborn ? O.rUnborn : 0);
   if (c.dev >= 0) {                                                                    // developing: the event has happened, the depression is a few hours off
     const S = c.sys, tf = Math.max(0, c.dev + (par.devV - Math.min(par.devV, S.v)) / par.devRate + O.tdHold - H0), sustF = c.sust === false ? 0.3 : 1, spd = [S.cx || 0, S.cy || 0];
-    const hE = outlookEnd(par, Object.assign({}, c, { kind: S.kind }), Math.abs(c.lat), F.env.sst(c.lat, c.lon) + par.sstOffset, landFraction(F.env, c.lat, c.lon, par.landSample), H0 - c.born), P = Math.min(0.995, O.tdShare * sustF * Math.exp(-hE * tf));
-    p2 = p7 = round5p(P); if (p7 < O.minP7) return null; raw = [P, P];
-    t0 = 0; t1 = Math.max(6, tf);
-    const n = 3; for (let i = 0; i < n; i++) { const t = t1 * i / (n - 1); centres.push([keepSide(c.lat, (spd[1] * KT_KMH * t) / KM_DEG, par.eqSoft), c.lon + (spd[0] * KT_KMH * t) / (KM_DEG * Math.max(0.2, Math.cos(c.lat * DEG)))]); radii.push(radius(H0 + t)); }
-    ax = [c.lat, c.lon];
-  } else {
-    const fo = outlookFollow(this, F, c), n = fo.t.length; if (!n) return null;
-    const tBeg = (i) => fo.t[i] + fo.dly[i];                                           // the depression forms `dly` hours after the event
-    const cumAt = (X) => { let s = 0; for (let i = 0; i < n; i++) s += fo.mass[i] * clamp((X - tBeg(i)) / fo.dt[i], 0, 1); return s; };
-    const P7 = cumAt(H0 + R), P2 = cumAt(H0 + 48); p7 = round5p(P7); if (p7 < O.minP7) return null;
-    p2 = round5p(P2); raw = [P2, P7];
-    const timeAt = (x) => { let lo = H0, hi = H0 + R; for (let it = 0; it < 24; it++) { const mid = (lo + hi) / 2; if (cumAt(mid) >= x) hi = mid; else lo = mid; } return hi; };
-    const tq0 = timeAt(O.win[0] * P7), tq1 = timeAt(O.win[1] * P7);
-    const pos = (x) => {                                                                // the place of the mean track at hour x
-      if (x <= fo.t[0]) return [fo.lat[0], fo.lon[0]];
-      for (let i = 0; i < n; i++) { const e = fo.t[i] + fo.dt[i]; if (x < e) { const w = (x - fo.t[i]) / fo.dt[i], la1 = i + 1 < n ? fo.lat[i + 1] : fo.endLat, lo1 = i + 1 < n ? fo.lon[i + 1] : fo.endLon; return [fo.lat[i] + w * (la1 - fo.lat[i]), fo.lon[i] + w * (lo1 - fo.lon[i])]; } }
-      return [fo.endLat, fo.endLon]; };
-    let ts = tq0, te = tq1;
-    if (!c.unborn) {                                                                   // the X of a disturbance that exists: inside its area when the rate now is a good share of the best ahead, else an arrow to where it gets there
-      let fmax = 0; for (let i = 0; i < n; i++) fmax = Math.max(fmax, fo.rate[i] * fo.surv[i]);
-      let k0 = 0; if (fmax > 0 && fo.rate[0] < O.fav * fmax) { while (k0 < n - 1 && fo.rate[k0] * fo.surv[k0] < O.fav * fmax) k0++; }
-      ax = [c.lat, c.lon];
-      if (k0 > 0) {
-        ts = Math.max(tq0, fo.t[k0] + fo.dly[k0]);
-        const to = pos(ts), dl = Math.hypot(to[0] - c.lat, (to[1] - c.lon) * Math.cos(c.lat * DEG));
-        if (dl >= O.arrowMin) { arrow = to; arrowR = radius(ts); } else ts = H0;
-      } else ts = H0;
-    }
-    te = Math.max(te, ts + 6);
-    t0 = ts - H0; t1 = te - H0;
-    const m = Math.max(2, Math.min(14, Math.ceil((te - ts) / 6) + 1));
-    for (let i = 0; i < m; i++) { const t = ts + (te - ts) * i / (m - 1); centres.push(pos(t)); radii.push(radius(t)); }
+    const hE = outlookEnd(par, Object.assign({}, c, { kind: S.kind }), Math.abs(c.lat), F.env.sst(c.lat, c.lon) + par.sstOffset, landFraction(F.env, c.lat, c.lon, par.landSample), H0 - c.born), P = Math.min(0.995, O.tdShare * sustF * Math.exp(-hE * tf)), t1 = Math.max(6, tf), chain = [];
+    for (let i = 0; i < N9; i++) { const t = t1 * i / (N9 - 1); chain.push([keepSide(c.lat, (spd[1] * KT_KMH * t) / KM_DEG, par.eqSoft), c.lon + (spd[0] * KT_KMH * t) / (KM_DEG * Math.max(0.2, Math.cos(c.lat * DEG))), radius(H0 + t)]); }
+    return { ck: c.ck, P2: P, P7: P, mode: 'in', x: [c.lat, c.lon], chain, t0: 0, t1 };
   }
-  return { key: c.id, id: c.unborn ? null : c.id, kind: c.unborn ? 'unborn' : c.low ? 'low' : c.kind === 'W' ? 'wave' : c.kind === 'M' ? 'placed' : 'seed', x: ax, arrow, arrowR, p2, p7, raw, cls: outlookClass(O, p7), poly: capsule(centres, radii, par.eqSoft), t0, t1, birth: c.unborn ? c.birth : null, invest: c.invest || '' };
+  const fo = outlookFollow(this, F, c), n = fo.t.length; if (!n) return null;
+  const tBeg = (i) => fo.t[i] + fo.dly[i];                                             // the depression forms `dly` hours after the event
+  const cumAt = (X) => { let s = 0; for (let i = 0; i < n; i++) s += fo.mass[i] * clamp((X - tBeg(i)) / fo.dt[i], 0, 1); return s; };
+  const P7 = cumAt(H0 + R), P2 = cumAt(H0 + 48), p7r = round5(100 * P7);
+  if (p7r < O.minP7 && !(pr && pr.p7 >= O.minP7)) return p7r >= 5 || pr ? { ck: c.ck, P2, P7, light: true } : null;
+  const timeAt = (x) => { let lo = H0, hi = H0 + R; for (let it = 0; it < 24; it++) { const mid = (lo + hi) / 2; if (cumAt(mid) >= x) hi = mid; else lo = mid; } return hi; };
+  const tq0 = timeAt(O.win[0] * P7), tq1 = timeAt(O.win[1] * P7);
+  const pos = (x) => {                                                                 // the place of the mean track at hour x
+    if (x <= fo.t[0]) return [fo.lat[0], fo.lon[0]];
+    for (let i = 0; i < n; i++) { const e = fo.t[i] + fo.dt[i]; if (x < e) { const w = (x - fo.t[i]) / fo.dt[i], la1 = i + 1 < n ? fo.lat[i + 1] : fo.endLat, lo1 = i + 1 < n ? fo.lon[i + 1] : fo.endLon; return [fo.lat[i] + w * (la1 - fo.lat[i]), fo.lon[i] + w * (lo1 - fo.lon[i])]; } }
+    return [fo.endLat, fo.endLon]; };
+  let mode = c.unborn ? 'none' : 'in', ts = c.unborn ? tq0 : H0;
+  if (!c.unborn && fo.gate[0] < (pr && pr.mode === 'arrow' ? O.favGate[1] : O.favGate[0])) {   // the growth gate is shut where it is: an arrow to where it opens, if it does within the week and the disturbance is still likely to be there
+    let k0 = 0; for (let i = 1; i < n; i++) if (fo.gate[i] >= O.favGate[1] && fo.surv[i] >= 0.3) { k0 = i; break; }
+    if (k0 > 0) { const t = fo.t[k0] + fo.dly[k0], to = pos(t), dl = Math.hypot(to[0] - c.lat, (to[1] - c.lon) * Math.cos(c.lat * DEG)); if (dl >= O.arrowMin && dl <= (pr && pr.mode === 'arrow' ? O.arrowMax[1] : O.arrowMax[0])) { mode = 'arrow'; ts = t; } }
+  }
+  let te = Math.min(Math.max(tq1, ts + 6), ts + O.maxSpan);                            // no more than maxSpan hours of track, and not on past the coast
+  for (let i = 0; i < n; i++) if (fo.t[i] > ts && fo.lf[i] >= 0.6) { te = Math.min(te, Math.max(ts + 6, fo.t[i])); break; }
+  { let len = 0, last = pos(ts);                                                       // and no more than maxLen degrees of it
+    for (let t = ts + 3; t <= te + 1e-9; t += 3) { const q = pos(t); len += Math.hypot(q[0] - last[0], (q[1] - last[1]) * Math.cos(q[0] * DEG)); last = q; if (len > O.maxLen) { te = Math.max(ts + 6, t); break; } } }
+  const chain = []; for (let i = 0; i < N9; i++) { const t = ts + (te - ts) * i / (N9 - 1), q = pos(t); chain.push([q[0], q[1], radius(t)]); }
+  if (mode === 'in' && !c.unborn) chain[0] = [c.lat, c.lon, radius(H0)];
+  return { ck: c.ck, P2, P7, mode, x: c.unborn ? null : [c.lat, c.lon], chain, t0: ts - H0, t1: te - H0 };
 };
 
 /* a forecast / preview: the same physics through an environment source, on a copy, with the noise the placed storm would have */
@@ -1462,7 +1578,7 @@ Manager.prototype.active = function () { return this.systems.filter((S) => S.ali
 Manager.prototype.stats = function () { const s = this.season; return { year: s.year, dep: s.dep, named: s.named, hurr: s.hurr, major: s.major, cat5: s.cat5, ace: Math.round(s.ace * 10) / 10 }; };
 
 Manager.prototype.serialize = function () {
-  return { v: VERSION, basin: this.basin, nameCur: this.nameCur, seed: this.seed, startMs: this.startMs, hour: this.hour, par: this.par, n: this.n, auto: this.auto, autoRate: this.autoRate, sched: this.sched, invN: this.invN,
+  return { v: VERSION, basin: this.basin, nameCur: this.nameCur, seed: this.seed, startMs: this.startMs, hour: this.hour, par: this.par, n: this.n, auto: this.auto, autoRate: this.autoRate, sched: this.sched, invN: this.invN, olMem: this.olMem,
     season: this.season, prev: this.prev, prevEntry: this.prevEntry, archive: this.archive, yearEndH: this.yearEndH, systems: this.systems, lows: { tracks: this.lows.tracks, next: this.lows.next, done: this.lows.done } };
 };
 Manager.prototype.enableDiag = function () { if (this.maps) this.ctx.diag = newDiag(this.maps); return !!this.ctx.diag; };
@@ -1474,7 +1590,7 @@ Manager.prototype.diagPacked = function () {                              // the
 Manager.restore = function (o, extra) {                                  // a parameter added since the save is filled in with its default
   const m = new Manager({ seed: o.seed, startMs: o.startMs, params: {}, hour0: o.hour, auto: o.auto, autoRate: o.autoRate, maps: extra && extra.maps, basin: o.basin });
   m.nameCur = o.nameCur || {};
-  m.par = mergeParams(defaultParams(m.basin), o.par); m.n = Object.assign({ W: 0, N: 0, M: 0, F: 0 }, o.n); m.sched = o.sched; m.invN = o.invN || {}; m.season = o.season; m.prev = o.prev; m.prevEntry = o.prevEntry || null; m.archive = o.archive; m.yearEndH = o.yearEndH;
+  m.par = mergeParams(defaultParams(m.basin), o.par); m.n = Object.assign({ W: 0, N: 0, M: 0, F: 0 }, o.n); m.sched = o.sched; m.invN = o.invN || {}; m.olMem = o.olMem || null; m.season = o.season; m.prev = o.prev; m.prevEntry = o.prevEntry || null; m.archive = o.archive; m.yearEndH = o.yearEndH;
   m.systems = o.systems; m.byId = {}; for (const S of m.systems) m.byId[S.id] = S;
   m.lows.tracks = o.lows.tracks; m.lows.next = o.lows.next; m.lows.done = o.lows.done || [];
   return m;
@@ -1491,7 +1607,7 @@ root.HFStorms = {
   VERSION, create: (o) => new Manager(o), restore: (o, extra) => Manager.restore(o, extra), defaultParams, mergeParams,
   prepareMaps, timeWeights, mapAt, driftAt, climAt, steerRing, envFactor, activityFactor, structureParams, CALIBRATED, calibrated: (on) => { const was = useCalibrated; if (on != null) useCalibrated = !!on; return was; },
   category, ktToMph, aceOf, round5, gustKt, compass, pressureFromWind, windFromPressure, WP, vPot, statusOf, describe, nameFor, NAME_SETS, NAME_SUPPLEMENTAL, BASINS, basinInfo: basinOf, stormName, seasonYearOf,
-  smooth01, rnd, rndn, hash5, idNum, stepSystem, newSystem, makeFix, seasonalWeight, WAVE_SEASON, LowTracker, etHazard6, disHazard6, baroclinicV, satur, softMin, lowWeight, keepSide, SCALES, scaleOf, classOf, investLetter, capsule, outlookClass, sstGateAt, growthG, decayLimit,
+  smooth01, rnd, rndn, hash5, idNum, stepSystem, newSystem, makeFix, seasonalWeight, WAVE_SEASON, LowTracker, etHazard6, disHazard6, baroclinicV, satur, softMin, lowWeight, keepSide, SCALES, scaleOf, classOf, investLetter, capsule, swath, swathFull, outlookClass, outlookFollow, sstGateAt, growthG, decayLimit,
 };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
 /* ==== STORMS ENGINE END ==== */
