@@ -811,7 +811,7 @@ async function checkStorms(page, label) {
 // preview moves smoothly as the pointer does.
 async function checkPlace(page, label) {
   const ev = (fn, arg) => page.evaluate(fn, arg);
-  await ev(() => { const S = window.SSTSIM; S.storms(true); S.setPlaying(false); S.applySeed(11); S.setPlaying(false); S.stormAuto(false); S.tick(24 * 70); S.advance(0); document.getElementById('detail').checked = false; });
+  await ev(() => { const S = window.SSTSIM; S.storms(true); S.setPlaying(false); S.applySeed(11); S.setPlaying(false); S.stormAuto(false); S.tick(24 * 70); S.advance(0); document.getElementById('detail').checked = false; S.map.setView([25.95, -55], 4.5, { animate: false }); });          // (on the page's own view, whatever the checks before this one left: the picker covers the middle of the bottom of the map, and the pointer must be clear of it)
   const ui = await ev(() => { const b = document.getElementById('b-place'); return { exists: !!b, inDock: !!b && document.getElementById('dock').contains(b), pressed: b && b.getAttribute('aria-pressed'), menuHidden: document.getElementById('place-menu').hidden, kinds: [...document.querySelectorAll('#place-menu button')].map((x) => x.dataset.kind).join() }; });
   check(`[${label}] the dock has a Place button (not pressed) and its picker (wave, td, sd, low) is closed until it is pressed`, ui.exists && ui.inDock && ui.pressed === 'false' && ui.menuHidden && ui.kinds === 'wave,td,sd,low');
 
