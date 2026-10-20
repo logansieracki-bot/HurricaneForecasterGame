@@ -216,6 +216,7 @@ const mutants = [
   M('Z117', S, [E('let t = Math.max(timeAt(Math.min(O.onsetP, 0.5 * P7)), H0 + 3)', 'let t = Math.max(timeAt(0.5 * P7), H0 + 3)')], ['node'], 'the shape starts where half the chance has built up, not where it starts to'),
   M('Z118', S, [E("(pr && pr.mode === 'arrow' ? pr.ar || 0 : 0) + (fresh ? gap : 1)", '1')], ['node'], 'the number of issues in a row with an arrow does not count up'),
   M('Z119', S, [E("&& r.P2 >= O.favP2[0] && r.P2 < O.favP2[1] && p2 < 5)", "&& r.P2 >= O.favP2[0] && p2 < 5)")], ['node'], 'the 5 % of a disturbance kept in its shape is also given to one that is not'),
+  M('Z120', H, [E("nothing is expected in 2 days, the chance starts to build up '", "it is expected to reach them '")], ['storms'], 'the tip of an arrow does not say that nothing is expected in 2 days'),
   M('Z100', H, [E('[[9.6, \'rgba(8,10,16,.94)\'], [5.4, col]]', '[[9.6, \'rgba(8,10,16,.94)\'], [5.4, \'#ffffff\']]')], ['storms'], 'the X is white, not the colour of its chance'),
   M('Z101', H, [E('[[8.2, \'rgba(8,10,16,.94)\'], [4.4, col]]', '[[8.2, \'rgba(8,10,16,.94)\'], [4.4, \'#ffffff\']]')], ['storms'], 'the arrow is white, not the colour of its chance'),
   M('Z102', H, [E("const txt = olLabel(m.a), right = shapeLon <= m.lon;", "const txt = olLabel(m.a), right = true;")], ['storms'], 'the title of an X is always on its right, over its arrow'),
