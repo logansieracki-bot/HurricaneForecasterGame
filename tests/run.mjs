@@ -431,6 +431,7 @@ async function checkExperiment(page, label) {
 const SEASON_BANDS = { dep: [10, 23], named: [8, 20], hurr: [3, 11], major: [1, 6.5], ace: [50, 220] };
 async function checkStorms(page, label) {
   const ev = (fn, arg) => page.evaluate(fn, arg);
+  const view0 = await ev(() => { const c = window.SSTSIM.map.getCenter(); return [c.lat, c.lng, window.SSTSIM.map.getZoom()]; });          // (the view the page starts on: the checks below move the map to look at things and put it back at the end, for the Place checks that follow)
   const a = await ev(() => {
     const S = window.SSTSIM; S.setPlaying(false); S.applySeed(4242); S.setPlaying(false); S.storms(true); S.stormAuto(false);
     const bar = document.getElementById('season');
@@ -587,9 +588,9 @@ async function checkStorms(page, label) {
   qp = await aoiPx(24, -48); await page.mouse.click(qp.x, qp.y); await page.waitForTimeout(100); const sl3 = await aoiNow(); await page.click('#ac-close'); await page.waitForTimeout(100); const sl3e = await aoiNow();
   await page.mouse.click(qp.x, qp.y); await page.waitForTimeout(100);
   const sl4 = await ev(() => { const S = window.SSTSIM; S.place(true); const a = S.aoiState(); S.place(false); return { hidden: a.hidden, sel: a.sel }; });
-  const sl5 = await ev(({ wA, wB }) => { const S = window.SSTSIM; S.aoiSelect(wB); const before = S.aoiState(); S.stormForce(wB, { th: 'tc', v: 35, vr: 35, depNum: 1 }); S.stormDraw(); const after = S.aoiState();
+  const sl5 = await ev(({ wA, wB, c0, z0 }) => { const S = window.SSTSIM; S.aoiSelect(wB); const before = S.aoiState(); S.stormForce(wB, { th: 'tc', v: 35, vr: 35, depNum: 1 }); S.stormDraw(); const after = S.aoiState();
     const r = { before: { sel: before.sel, hidden: before.hidden }, after: { sel: after.sel, hidden: after.hidden, tc: after.tc }, card: !document.getElementById('storm-card').hidden, name: document.getElementById('sc-name').textContent };
-    S.aoiSelect(null); S.stormForce(wB, { alive: false }); S.stormForce(wA, { alive: false }); S.outlookForce(null); S.map.setView([14, -45], 4, { animate: false }); S.stormDraw(); return r; }, selSetup);
+    S.aoiSelect(null); S.stormForce(wB, { alive: false }); S.stormForce(wA, { alive: false }); S.outlookForce(null); S.map.setView(c0, z0, { animate: false }); S.stormDraw(); return r; }, selSetup);          // (the view the page had: the Place checks that follow put the pointer where it is clear of the picker)
   check(`[${label}] clicking the X of a disturbance shows it alone with its card (${sl1.st.name}, ${sl1.st.p2} % / ${sl1.st.p7} % ${sl1.st.cls}, ${sl1.st.cond}, ${sl1.st.pos}, window ${sl1.st.win}): the other systems (${selSetup.before} before, ${sl1.drawn.length} now) and areas (${sl1.areas}) go, the area and X stay (${sl1.marks}); Escape puts everything back (${sl1e.st.hidden}, ${sl1e.areas})`,
     selSetup.before >= 1 && !sl1.st.hidden && sl1.st.sel === selSetup.wB && sl1.st.name === 'Invest 92L' && sl1.st.p2 === '20' && sl1.st.p7 === '80' && sl1.st.cls === 'High' && /rgb\(255, 59, 48\)/.test(sl1.st.clsBg) && sl1.st.cond === 'Not yet favourable' && /24\.0°N 34\.0°W/.test(sl1.st.pos)
     && /\d\dZ [A-Z][a-z]{2} \d+ – \d\dZ [A-Z][a-z]{2} \d+/.test(sl1.st.win) && sl1.areas === selSetup.wB && sl1.marks === selSetup.wB && sl1.drawn.length === 0 && sl1.inkA === 0 && sl1.cardHidden && sl1.tip === 'none'
@@ -794,7 +795,7 @@ async function checkStorms(page, label) {
   check(`[${label}] on a slow machine (processor throttled to a third) the page at 16x still draws ${slow['16×'].frames} frames in 3 s while the clock runs behind (${slow['16×'].adv} hours in them), and it owes the clock only ${slow['16×'].owed} hours (capped at 24); at 64x ${slow['64×'].frames} frames, ${slow['64×'].adv} hours, owing ${slow['64×'].owed}`,
     slow['16×'].frames >= 12 && slow['16×'].adv >= 30 && slow['16×'].owed <= 25 && slow['64×'].frames >= 12 && slow['64×'].adv >= 100 && slow['64×'].owed <= 25);
   // the issues are made one after another as the clock goes by (not only when the map is drawn), so each moves on from the last: ten days in six-hour steps on the real engine (last, as it moves the clock)
-  const walk = await ev(() => { const S = window.SSTSIM; S.map.setView([14, -45], 4, { animate: false }); let prev = {}, worst = 0, steps = 0, first = 0, keys = new Set(), issues = new Set();
+  const walk = await ev(() => { const S = window.SSTSIM; let prev = {}, worst = 0, steps = 0, first = 0, keys = new Set(), issues = new Set();
     const ids = [[12, -30], [13, -38], [14, -46], [12, -54], [11, -34], [15, -26], [13, -42], [10, -36], [16, -34], [12, -44], [14, -52], [11, -26]].map(([la, lo]) => S.stormPlace({ kind: 'wave', lat: la, lon: lo }));       // (waves put in the main development region: the engine's own areas for them, an issue every six hours)
     for (let k = 0; k < 40; k++) { S.tick(6); S.advance(0); const o = S.outlook(); issues.add(o.issued); const cur = S.outlookMem();       // (what the issue said of every disturbance it knows, drawn or not: an area that a neighbour hides is still moving on)
       for (const [key, v] of Object.entries(cur)) { keys.add(key); if (key in prev) { worst = Math.max(worst, Math.abs(v[1] - prev[key][1]), Math.abs(v[0] - prev[key][0])); steps++; } else if (k && v[1] >= 10) first = Math.max(first, v[1]); } prev = cur; }
@@ -802,7 +803,7 @@ async function checkStorms(page, label) {
     return { worst, steps, first, keys: keys.size, issues: issues.size }; });
   check(`[${label}] over ten days of six-hour steps on the real engine (${walk.issues} issues, ${walk.keys} disturbances, ${walk.steps} steps) the chance of a disturbance (2-day or 7-day) never moves more than ${walk.worst} points between two issues and one that shows up is at ${walk.first} % at most`, walk.issues >= 39 && walk.steps >= 15 && walk.worst <= 20 && walk.first <= 40);
 
-  await ev(() => { window.SSTSIM.storms(false); window.SSTSIM.restart(); });   // leave the page without storms for anything after this
+  await ev((v) => { window.SSTSIM.map.setView([v[0], v[1]], v[2], { animate: false }); window.SSTSIM.storms(false); window.SSTSIM.restart(); }, view0);   // leave the page as it was found (its view) and without storms for anything after this
 }
 
 // Place mode: the button and picker, the white dot and the forecast line that follow the pointer, Esc, a click that places, the preview being exactly what the
