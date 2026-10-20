@@ -3,7 +3,7 @@
 // of the suite that should notice. A mutant that no check fails on is a gap in the tests (or an equivalent mutant: the edit changes nothing the
 // program does, which docs/roadmap.md names). Needs a clean tree and Chromium for the browser drivers:
 //   PLAYWRIGHT_CHROMIUM_PATH=/path/to/chromium node tools/storm_mutants.mjs [--dry] [--base] [--only X1,S4] [--drivers node,save] [--jobs 3]
-// --dry   only checks that every edit anchor occurs exactly once; --base runs every driver on the unmodified tree (all must pass first);
+// --dry   only checks that every edit anchor occurs exactly once and that the mutated file still parses; --base runs every driver on the unmodified tree (all must pass first);
 // --only  a comma list of mutant ids; --drivers  restricts the drivers to run (node, storms, summary, place, save, gate, env); --jobs  how many mutants run at once (default 3; each builds into its own directory under $MUT_DIR or the
 //         temp directory). It changes src/storms.js, src/template.html or index.html for the few seconds a build takes and puts them back itself;
 //         if it is killed in between, `git checkout -- src index.html` restores them. The drivers are the check functions cut out of tests/run.mjs
@@ -13,6 +13,7 @@ import { readFileSync, writeFileSync, mkdirSync, copyFileSync, rmSync, existsSyn
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
+import { Script } from 'node:vm';
 
 const REPO = dirname(dirname(fileURLToPath(import.meta.url)));
 const OUT = join(process.env.MUT_DIR || join(tmpdir(), 'hf-mutants'), 'run');
@@ -213,7 +214,7 @@ const mutants = [
   M('Z102', H, [E("const txt = olLabel(m.a), right = shapeLon <= m.lon;", "const txt = olLabel(m.a), right = true;")], ['storms'], 'the title of an X is always on its right, over its arrow'),
   M('Z103', H, [E('    if (names) {                                                                      // its title beside it', '    if (true) {                                                                      // its title beside it')], ['storms'], 'the titles of the X\'s ignore the Storm names box'),
   M('Z104', H, [E('(aoiKey ? false : only ? S.id === only :', '(only ? S.id === only :')], ['storms'], 'looking at one disturbance leaves the cyclones on the map'),
-  M('Z105', H, [E('else if (stormsOn && !h && !stormSel && olAreaAt(cx, cy)) openAoiCard(olAreaAt(cx, cy));', ';')], ['storms'], 'an area can only be picked by its X'),
+  M('Z105', H, [E('else if (stormsOn && !h && !stormSel && olAreaAt(cx, cy)) openAoiCard(olAreaAt(cx, cy));', '')], ['storms'], 'an area can only be picked by its X'),
   M('Z106', H, [E('  if (S) openStormCard(S, HFStorms.makeFix(S, stormMgr.hour, S.ace), true);', ';')], ['storms'], 'a disturbance that becomes a depression just closes the card'),
   M('Z107', H, [E('      olEager();\n', '')], ['storms'], 'the issues are made only when the map is drawn'),
   M('Z108', H, [E('stormSel = null; olSel = null; stormHot = null; stormHits = []; olHeld = null; olEagerSlot = -1e9;', 'stormSel = null; olSel = null; stormHot = null; stormHits = []; olHeld = null;')], ['storms'], 'the issue clock of a new season is the one of the old'),
@@ -249,6 +250,12 @@ function applyEdits(text, edits, id) {
     }
   }
   return text;
+}
+
+// a mutant whose source does not parse is "killed" by the crash alone, which says nothing about the checks: --dry parses every mutated file (a .js file as it is, a page's inline scripts one by one)
+function parses(file, text) {
+  if (file.endsWith('.js')) { new Script(text, { filename: file }); return; }
+  for (const m of text.matchAll(/<script(\s[^>]*)?>([\s\S]*?)<\/script>/g)) if (!/\bsrc=|type=["'](?!text\/javascript|module)/.test(m[1] || '') && m[2].trim()) new Script(m[2], { filename: file });
 }
 
 // the driver: the real check functions of tests/run.mjs, cut out of it by their markers
@@ -338,7 +345,7 @@ async function runMutant(m, results) {
 // ---------------------------------------------------------------------------------------------------------------------------------
 let list = base ? [M('base', S, [], ['node', 'storms', 'summary', 'place', 'save', 'gate', 'env'], 'unmutated')] : (only ? mutants.filter((m) => only.includes(m.id)) : mutants);
 if (drivers) list = list.map((m) => ({ ...m, drivers: m.drivers.filter((d) => drivers.includes(d)) })).filter((m) => m.drivers.length);
-if (dry) { let bad = 0; for (const m of mutants) { try { applyEdits(readFileSync(join(REPO, m.file), 'utf8'), m.edits, m.id); } catch (e) { bad++; console.log(e.message); } } console.log(bad ? bad + ' of ' + mutants.length + ' anchors broken' : 'all ' + mutants.length + ' anchors found exactly once'); process.exit(bad ? 1 : 0); }
+if (dry) { let bad = 0; for (const m of mutants) { try { parses(m.file, applyEdits(readFileSync(join(REPO, m.file), 'utf8'), m.edits, m.id)); } catch (e) { bad++; console.log(m.id + ': ' + e.message); } } console.log(bad ? bad + ' of ' + mutants.length + ' mutants broken (an anchor that is not found exactly once, or a mutated file that does not parse)' : 'all ' + mutants.length + ' anchors found exactly once and every mutated file parses'); process.exit(bad ? 1 : 0); }
 mkdirSync(OUT, { recursive: true });
 const results = [], running = new Set();
 for (const m of list) {
