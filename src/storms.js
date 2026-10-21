@@ -1278,7 +1278,7 @@ function swathFull(chain, eq) {
       if (Math.abs(Ar) / 2 > bestA) { bestA = Math.abs(Ar) / 2; best = loop; bestId = s0; }
     }
     area = best ? bestA : 0;
-    const step = best ? Math.max(1, Math.round(best.length / 50)) : 1;
+    const step = best ? Math.max(1, Math.ceil(best.length / 110)) : 1;
     poly = best ? best.filter((_, k) => k % step === 0) : [[P[0][0], P[0][1]]];
     if (best) {                                                                 // the pole: the deepest node of that outline (a flood fill from a node inside it)
       const e = bestId >> 1, a = e, b = (bestId & 1) === 0 ? e + 1 : e + nx, seed = f[a] < 0 ? a : b, vis = new Uint8Array(nx * ny), st = [seed]; vis[seed] = 1; let pb = seed;
@@ -1287,7 +1287,7 @@ function swathFull(chain, eq) {
     }
   }
   for (let it = 0; it < its && poly.length > 2; it++) { const q = []; for (let i = 0; i < poly.length; i++) { const a = poly[i], b = poly[(i + 1) % poly.length]; q.push([0.75 * a[0] + 0.25 * b[0], 0.75 * a[1] + 0.25 * b[1]], [0.25 * a[0] + 0.75 * b[0], 0.25 * a[1] + 0.75 * b[1]]); } poly = q; }
-  const hs = chain[0][0] < 0 ? -1 : 1, fold = (q) => [r1(eq > 0 ? hs * softFloor(hs * q[1], eq) : q[1]), r1(q[0] / kx)];
+  const hs = chain[0][0] < 0 ? -1 : 1, r2 = (x) => Math.round(x * 100) / 100, fold = (q) => [r2(eq > 0 ? hs * softFloor(hs * q[1], eq) : q[1]), r2(q[0] / kx)];          // (hundredths of a degree: tenths show as steps in an outline zoomed in)
   return { poly: poly.map(fold), area, pole: pole ? fold(pole) : null };
 }
 const swath = (chain, eq) => swathFull(chain, eq).poly;
