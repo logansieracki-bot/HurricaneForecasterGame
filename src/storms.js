@@ -427,12 +427,15 @@ function structureParams() {
     ens: {
       n: 24, horizon: 168,                                                         // members and hours ahead (the look-ahead of the page's own weather is 174 h)
       f: [1.3, 0.5, 25, 80],                                                      // predictability factor: for a wave or low, for a hurricane, and the wind (kt) between which it falls from one to the other (a strong storm is steered by the deep flow and is the better forecast)
+      common: 0.8,                                                                 // every member also shares one forecast error (the analysis and the model are wrong the same way for all of them): its size in members' sizes -- a fan's centre is sometimes wrong
       pos: 0.1, dv: 5,                                                            // the error of the starting position (degrees) and wind (kt) of a member
       disp: [0.4, 5, 1.2],                                                      // the features the steering is read from are shifted by a member-specific amount: sd (degrees) at the start, and the growth to a week with lead (power of lead / 168 h)
       vec: [1.3, 0.6],                                                             // the steering error (kt, a speed and direction error that changes slowly): sd at the start and growth to a week
       shear: 0.25, sst: 0.4, rh: 4, ramp: 48,                                      // the weather the storm feels: shear x (1 + e), sea temperature (C) and humidity (points), reaching full size after ramp hours
       foot: [0.6, 1.4],                                                            // the track density: the radius (degrees) round a member's track that counts as "there", at the start and at a week
     },
+    // the cone of uncertainty (coneOf): the NHC's mean track errors (nautical miles) by hour, a circle of that size round each forecast point; the points; how far a new cone moves from the last one
+    cone: { h: [0, 12, 24, 36, 48, 60, 72, 96, 120], nmi: [8, 26, 41, 55, 70, 88, 102, 151, 220], pts: [12, 24, 36, 48, 72, 96, 120], blend: [6, 36, 0.5], minAlive: 0.5 },
   };
 }
 // a parameter set with some entries replaced: plain objects merge key by key, arrays and numbers replace (the calibration lab and the tests pass partial sets)
@@ -1586,7 +1589,12 @@ function ensCoef(seed, tid, k) {
   const z = (j) => rndn(seed, tid, k * 32 + j, ST.ENS);
   return { dla: z(0), dlo: z(1), dla2: z(2), dlo2: z(3), eu: z(4), ev: z(5), eu2: z(6), ev2: z(7), ph: 6.2832 * rnd(seed, tid, k * 32 + 8, ST.ENS), shr: z(9), sst: z(10), rh: z(11), pla: z(12), plo: z(13), pv: z(14), salt: hash5(seed, tid, k, ST.ENS, 99) };
 }
-function ensEnv(E, f, C) {                                                   // the weather one member sees: the base environment with its own errors, a wrapper whose `at(base, lead)` sets the hour
+function ensCommon(seed, tid, H0) {                                          // the error all members share: drawn per 48-hour epoch and interpolated, so it drifts from one issue to the next instead of being drawn again
+  const ep = Math.floor(H0 / 48), u = (H0 - ep * 48) / 48, a = ensCoef(seed, tid, 100000 + ep), b = ensCoef(seed, tid, 100001 + ep), n = Math.sqrt((1 - u) * (1 - u) + u * u), C = {};
+  for (const k of Object.keys(a)) C[k] = k === 'salt' ? a[k] : ((1 - u) * a[k] + u * b[k]) / n;
+  return C;
+}
+function ensEnv(E, f, C, Cc) {                                                   // the weather one member sees: the base environment with its own errors, a wrapper whose `at(base, lead)` sets the hour
   const W = { base: null, box: null, ds: 0, dr: 0, sm: 0, dla: 0, dlo: 0, eu: 0, ev: 0, sstRef: undefined, enso: undefined };
   W.isLand = (la, lo) => W.base.isLand(la, lo);
   W.sst = (la, lo) => W.base.sst(la, lo) + W.ds; W.rh = (la, lo) => W.base.rh(la, lo) + W.dr; W.shear = (la, lo) => W.base.shear(la, lo) * (1 + W.sm);
@@ -1596,11 +1604,11 @@ function ensEnv(E, f, C) {                                                   // 
   };
   W.at = (base, lead) => {
     const u = Math.min(Math.max(lead, 0), 192) / 168, ramp = Math.min(1, lead / E.ramp), sw = Math.sin(lead / 41 + C.ph);
-    const sd = f * (E.disp[0] + E.disp[1] * Math.pow(u, E.disp[2])), vs = f * (E.vec[0] + E.vec[1] * u);
+    const sd = f * (E.disp[0] + E.disp[1] * Math.pow(u, E.disp[2])), vs = f * (E.vec[0] + E.vec[1] * u), g = E.common;
     W.base = base; W.box = base.box; W.sstRef = base.sstRef ? () => base.sstRef() : undefined; W.enso = base.enso ? () => base.enso() : undefined;
-    W.dla = sd * (C.dla + 0.5 * C.dla2 * sw); W.dlo = sd * (C.dlo + 0.5 * C.dlo2 * sw);
-    W.eu = vs * (C.eu + 0.5 * C.eu2 * sw); W.ev = vs * (C.ev + 0.5 * C.ev2 * sw);
-    W.sm = f * E.shear * C.shr * ramp; W.ds = f * E.sst * C.sst * ramp; W.dr = f * E.rh * C.rh * ramp;
+    W.dla = sd * (C.dla + 0.5 * C.dla2 * sw + g * (Cc.dla + 0.5 * Cc.dla2 * sw)); W.dlo = sd * (C.dlo + 0.5 * C.dlo2 * sw + g * (Cc.dlo + 0.5 * Cc.dlo2 * sw));
+    W.eu = vs * (C.eu + 0.5 * C.eu2 * sw + g * (Cc.eu + 0.5 * Cc.eu2 * sw)); W.ev = vs * (C.ev + 0.5 * C.ev2 * sw + g * (Cc.ev + 0.5 * Cc.ev2 * sw));
+    W.sm = f * E.shear * (C.shr + g * Cc.shr) * ramp; W.ds = f * E.sst * (C.sst + g * Cc.sst) * ramp; W.dr = f * E.rh * (C.rh + g * Cc.rh) * ramp;
     return W;
   };
   return W;
@@ -1621,21 +1629,52 @@ Manager.prototype.ensemble = function (target, envSrc, opts) {
     if (this.maps) { ctx.tw = timeWeights(doy + (((h % 24) + 24) % 24) / 24); ctx.act = activityFactor(par, this.seed, seasonYearOf(this.startMs + h * HOUR_MS, this.seasonMonth), h); ensoOf(par, base, ctx); }
     ctxAt.push({ base, tw: ctx.tw, act: ctx.act, shift: ctx.shift, doy });
   }
-  const members = [], labels = []; for (const F of ENS_FAM) for (let i = 0; i < F[2]; i++) labels.push([F[0], F[1] + String(i + 1).padStart(2, '0')]);
+  const Cc = ensCommon(this.seed, tid, H0), members = [], labels = []; for (const F of ENS_FAM) for (let i = 0; i < F[2]; i++) labels.push([F[0], F[1] + String(i + 1).padStart(2, '0')]);
   for (let k = 0; k < n; k++) {
-    const L = labels[k % labels.length], C = ensCoef(this.seed, tid, k), W = ensEnv(E, f, C), S = cloneSystem(S0);
-    S.lat += E.pos * f * C.pla; S.lon += (E.pos * f * C.plo) / Math.max(0.3, Math.cos(S.lat * DEG)); S.v = Math.max(5, S.v + E.dv * f * C.pv); S.vr = Math.max(5, S.vr + E.dv * f * C.pv);
-    const ctx = { maps: this.maps, tw: null, diag: null }, pts = [[S.lat, S.lon, Math.round(S.vr), S.th]]; let peak = S.vr;
+    const L = labels[k % labels.length], C = ensCoef(this.seed, tid, k), W = ensEnv(E, f, C, Cc), S = cloneSystem(S0);
+    S.lat += E.pos * f * (C.pla + E.common * Cc.pla); S.lon += (E.pos * f * (C.plo + E.common * Cc.plo)) / Math.max(0.3, Math.cos(S.lat * DEG)); { const dv = E.dv * f * (C.pv + E.common * Cc.pv); S.v = Math.max(5, S.v + dv); S.vr = Math.max(5, S.vr + dv); }
+    const ctx = { maps: this.maps, tw: null, diag: null }, pts = [[S.lat, S.lon, Math.round(S.vr), S.th, Math.round(S.p)]]; let peak = S.vr;
     for (let q = 0; q < horizon && S.alive; q++) {
       const c = ctxAt[q], h = H0 + q; ctx.tw = c.tw; ctx.act = c.act; ctx.shift = c.shift;
       stepSystem(S, W.at(c.base, q), h, C.salt, par, c.doy, ctx);
       if (S.vr > peak) peak = S.vr;
-      if ((q + 1) % 3 === 0 || !S.alive) pts.push([S.lat, S.lon, Math.round(S.vr), S.th]);
+      if ((q + 1) % 3 === 0 || !S.alive) pts.push([S.lat, S.lon, Math.round(S.vr), S.th, Math.round(S.p)]);
     }
     members.push({ k, name: L[0] + ' ' + L[1], fam: L[0], pts, peak: Math.round(peak), hours: Math.min(horizon, (pts.length - 1) * 3), alive: S.alive });
   }
   return { init: H0, id: S0.id || target, factor: f, start: [S0.lat, S0.lon], members };
 };
+/* the cone of uncertainty: the consensus of a fan (the mean of the members still alive) every three hours, with a circle round each point as big as the NHC's mean track error at that lead (par.cone: 26 nmi at 12 h
+   to 220 at 120 h), so the cone is the same size for every storm whatever the fan looks like; its points at 12, 24, 36, 48, 72, 96 and 120 h carry the wind, pressure and the class letter (D, S, H, M; grey when most
+   members are post-tropical). A new cone is blended with the last one by valid time -- all the way to the new forecast near the start (it must begin at the storm), half way beyond a day and a half -- so it moves part of the way to a changed
+   forecast and never jumps. */
+function coneRadius(K, lead) {                                               // degrees of latitude
+  const h = K.h, r = K.nmi; if (lead <= h[0]) return r[0] / 60; for (let i = 1; i < h.length; i++) if (lead <= h[i]) return (r[i - 1] + (r[i] - r[i - 1]) * (lead - h[i - 1]) / (h[i] - h[i - 1])) / 60; return r[r.length - 1] / 60;
+}
+const coneLetter = (v) => (v < 34 ? 'D' : v < 64 ? 'S' : v < 96 ? 'H' : 'M');
+function coneOf(E, par, prev) {
+  if (!E || !E.members.length) return null;
+  const K = par.cone, N = E.members.length, track = [], rows = [];
+  for (let i = 0; i < 41; i++) {
+    const A = E.members.filter((m) => m.pts.length > i); if (A.length < K.minAlive * N) break;
+    const med = (j) => { const v = A.map((m) => m.pts[i][j]).sort((a, b) => a - b); return v[Math.floor((v.length - 1) / 2)]; };
+    const la = A.reduce((t, m) => t + m.pts[i][0], 0) / A.length, lo = A.reduce((t, m) => t + m.pts[i][1], 0) / A.length, post = A.filter((m) => m.pts[i][3] === 'ex' || m.pts[i][3] === 'nl').length > A.length / 2;
+    const th = post ? (A.filter((m) => m.pts[i][3] === 'nl').length > A.filter((m) => m.pts[i][3] === 'ex').length ? 'nl' : 'ex') : (A.some((m) => m.pts[i][3] === 'wv') && A.filter((m) => m.pts[i][3] === 'wv').length > A.length / 2 ? 'wv' : A.filter((m) => m.pts[i][3] === 'sc').length > A.length / 2 ? 'sc' : 'tc');
+    rows.push({ lat: la, lon: lo, v: med(2), p: med(4), th });
+  }
+  const gapOk = prev && prev.init < E.init && E.init - prev.init <= 24;
+  rows.forEach((q, i) => {
+    q.lead = i * 3; q.t = E.init + i * 3;
+    const j = gapOk ? (q.t - prev.init) / 3 : -1;
+    if (j >= 0 && j < prev.track.length && Number.isInteger(j)) {
+      const w = 1 - (1 - K.blend[2]) * smooth01(q.lead, K.blend[0], K.blend[1]), o = prev.track[j];
+      q.lat = o.lat + w * (q.lat - o.lat); q.lon = o.lon + w * (q.lon - o.lon); q.v = Math.round(o.v + w * (q.v - o.v)); q.p = Math.round(o.p + w * (q.p - o.p));
+    }
+    track.push({ lat: q.lat, lon: q.lon, v: q.v, p: q.p, th: q.th });
+  });
+  const pts = K.pts.filter((h) => rows[h / 3]).map((h) => { const q = rows[h / 3], v = Math.max(5, Math.round(q.v)); return { lead: h, t: q.t, lat: q.lat, lon: q.lon, v, p: q.p, th: q.th, letter: coneLetter(v), post: q.th === 'ex' || q.th === 'nl' }; });
+  return { init: E.init, id: E.id, track, rows, pts, chain: rows.map((q) => [q.lat, q.lon, coneRadius(K, q.lead)]) };
+}
 /* the track density: the share of the members that pass within a footprint of each cell of a grid in (longitude, Mercator y), both in degrees, so that it lands exactly on the page's projection */
 const mercY = (lat) => (Math.log(Math.tan(Math.PI / 4 + Math.min(85, Math.max(-85, lat)) * DEG / 2)) / DEG);
 function ensDensity(members, o) {
@@ -1716,7 +1755,7 @@ root.HFStorms = {
   VERSION, create: (o) => new Manager(o), restore: (o, extra) => Manager.restore(o, extra), defaultParams, mergeParams,
   prepareMaps, timeWeights, mapAt, driftAt, climAt, steerRing, envFactor, activityFactor, structureParams, CALIBRATED, calibrated: (on) => { const was = useCalibrated; if (on != null) useCalibrated = !!on; return was; },
   category, ktToMph, aceOf, round5, gustKt, compass, pressureFromWind, windFromPressure, WP, vPot, statusOf, describe, nameFor, NAME_SETS, NAME_SUPPLEMENTAL, BASINS, basinInfo: basinOf, stormName, seasonYearOf,
-  smooth01, rnd, rndn, hash5, idNum, stepSystem, newSystem, makeFix, seasonalWeight, WAVE_SEASON, LowTracker, etHazard6, disHazard6, baroclinicV, satur, softMin, lowWeight, keepSide, SCALES, scaleOf, classOf, investLetter, capsule, swath, swathFull, outlookClass, outlookFollow, cloneSystem, ensFactor, ensDensity, mercY, sstGateAt, growthG, decayLimit,
+  smooth01, rnd, rndn, hash5, idNum, stepSystem, newSystem, makeFix, seasonalWeight, WAVE_SEASON, LowTracker, etHazard6, disHazard6, baroclinicV, satur, softMin, lowWeight, keepSide, SCALES, scaleOf, classOf, investLetter, capsule, swath, swathFull, outlookClass, outlookFollow, cloneSystem, ensFactor, ensDensity, mercY, coneOf, coneRadius, coneLetter, sstGateAt, growthG, decayLimit,
 };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
 /* ==== STORMS ENGINE END ==== */
