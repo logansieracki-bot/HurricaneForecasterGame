@@ -428,7 +428,7 @@ function structureParams() {
       n: 24, horizon: 168,                                                         // members and hours ahead (the look-ahead of the page's own weather is 174 h)
       f: [1.3, 0.5, 25, 80],                                                      // predictability factor: for a wave or low, for a hurricane, and the wind (kt) between which it falls from one to the other (a strong storm is steered by the deep flow and is the better forecast)
       pos: 0.1, dv: 5,                                                            // the error of the starting position (degrees) and wind (kt) of a member
-      disp: [0.25, 2.6, 1.2],                                                      // the features the steering is read from are shifted by a member-specific amount: sd (degrees) at the start, and the growth to a week with lead (power of lead / 168 h)
+      disp: [0.4, 5, 1.2],                                                      // the features the steering is read from are shifted by a member-specific amount: sd (degrees) at the start, and the growth to a week with lead (power of lead / 168 h)
       vec: [1.3, 0.6],                                                             // the steering error (kt, a speed and direction error that changes slowly): sd at the start and growth to a week
       shear: 0.25, sst: 0.4, rh: 4, ramp: 48,                                      // the weather the storm feels: shear x (1 + e), sea temperature (C) and humidity (points), reaching full size after ramp hours
       foot: [0.6, 1.4],                                                            // the track density: the radius (degrees) round a member's track that counts as "there", at the start and at a week
