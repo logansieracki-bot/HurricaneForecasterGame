@@ -15,6 +15,15 @@
 <!--[cards]-->
 <div id="season" class="card" role="status" aria-label="Season totals"><span id="se-year">{{BASIN_LABEL}}</span><span><b id="se-dep">0</b>DEP</span><span><b id="se-named">0</b>NAMED</span><span><b id="se-hurr">0</b>HURR</span><span><b id="se-major">0</b>MAJOR</span><span><b id="se-c5">0</b>CAT 5</span><span><b id="se-ace">0.0</b>ACE</span><button id="se-sum" type="button" aria-expanded="false" aria-controls="sum-card" title="Season summary: totals against the real normals, the ACE graph and every storm of the season">Summary</button></div>
 <div id="storm-tip" class="card" role="tooltip"><b></b><div></div></div>
+<div id="lyr-dock" role="group" aria-label="Map layers">
+  <button class="lyr st-only" data-l="stens" aria-pressed="false" title="A fan of ensemble tracks for the system you select"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20C6 13 9 8 12 4M5 20C8 14 13 10 19 8M5 20C9 17 15 15 20 15"/></svg><span>Ensembles</span></button>
+  <button class="lyr st-only" data-l="stcone" aria-pressed="false" title="The cone of uncertainty of the cyclone you select"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12 20 5v14z"/></svg><span>Cones</span></button>
+  <button class="lyr st-only" data-l="stdens" aria-pressed="false" title="Where the ensembles agree (red) and spread" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="10.5"/></svg><span>Track density</span></button>
+  <button class="lyr" data-l="jetline" aria-pressed="false" title="The jet stream: the axis of strongest shear"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 15c4-8 9 4 13-4 2-3 4-3 5-2M3 19c4-6 9 3 13-3"/></svg><span>Jet stream</span></button>
+  <button class="lyr" data-l="hl" aria-pressed="false" title="Highs (H) and lows (L) with their sea-level pressure"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5v8M5 9h5M10 5v8M15 15v4h5"/></svg><span>Highs &amp; lows</span></button>
+  <button class="lyr st-only" data-l="nhc" aria-pressed="false" title="The NHC-style outlook: tropical waves, areas of interest and invests"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5l14 14M19 5 5 19"/></svg><span>NHC disturbances</span></button>
+  <button class="lyr" data-l="steer" aria-pressed="false" title="Streamlines: the steering flow, colour = speed"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8h13l-3-3M3 13h18l-3-3M3 18h11l-3-3"/></svg><span>Streamlines</span></button>
+</div>
 <div id="ol-legend" class="card" aria-label="Areas of interest: the chance of formation in 7 days">
   <b>7-day chance of formation</b>
   <div><i class="low"></i>Low · 0–30 %</div><div><i class="medium"></i>Medium · 40–60 %</div><div><i class="high"></i>High · 70–100 %</div>

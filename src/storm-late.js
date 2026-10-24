@@ -7,6 +7,18 @@ $('stens').onchange = () => { $('stdens').disabled = !$('stens').checked; ensPac
 $('st-auto').onchange = () => { stormAuto = $('st-auto').checked; if (stormMgr) stormMgr.auto = stormAuto; markDirty(); };
 $('p-stact').oninput = () => { stormActivity = parseFloat($('p-stact').value); $('p-stact-o').textContent = stormActivity.toFixed(1) + '×'; if (stormMgr) stormMgr.autoRate = stormActivity; markDirty(); };
 $('sc-close').onclick = closeStormCard; $('ac-close').onclick = closeStormCard;
+/* the layer buttons: each is the face of one or two of the checkboxes in the panel (kept there, hidden), so everything that reads or sets those checkboxes still works */
+const LYR = { stens: ['stens'], stcone: ['stcone'], stdens: ['stdens'], jetline: ['jetline'], hl: ['highs', 'stlows'], nhc: ['stwaves', 'stdist'], steer: ['steerarrows'] };
+function lyrSync() {
+  document.querySelectorAll('#lyr-dock .lyr').forEach((b) => { const ids = LYR[b.dataset.l]; b.setAttribute('aria-pressed', ids.every((id) => $(id).checked) ? 'true' : 'false'); b.disabled = ids.some((id) => $(id).disabled); });
+  const jn = $('jet-note'); if (jn) $('lyr-dock').querySelector('[data-l="jetline"]').title = 'The jet stream: the axis of strongest shear' + (jn.textContent ? ' ' + jn.textContent.trim() : '');
+}
+document.querySelectorAll('#lyr-dock .lyr').forEach((b) => {
+  const ids = LYR[b.dataset.l];
+  ids.forEach((id) => { const el = $(id); if (!el) return; el.closest('label').classList.add('lyr-src'); el.addEventListener('change', () => setTimeout(lyrSync, 0)); });
+  b.onclick = () => { const on = !ids.every((id) => $(id).checked); ids.forEach((id) => { const el = $(id); if (el.checked !== on) el.click(); }); lyrSync(); };
+});
+lyrSync();
 window.addEventListener('keydown', (e) => {                                      // the storm keys (the page's own handler has the clock's)
   if (e.target && /INPUT|TEXTAREA/.test(e.target.tagName) && e.target.type !== 'range' && e.target.type !== 'checkbox') return;
   if (e.key === 'Escape') { if (placeMode) placeSet(false); else if (!$('storm-card').hidden || !$('aoi-card').hidden || plainSel) closeStormCard(); else if (sumOpen) closeSummary(); }

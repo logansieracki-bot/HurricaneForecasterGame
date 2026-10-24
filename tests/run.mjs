@@ -7,6 +7,7 @@ import { pathToFileURL } from 'node:url';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+const lyrSet = (page, id, on) => page.evaluate(([i, o]) => { const el = document.getElementById(i); if (el.checked !== o) el.click(); }, [id, on]);          // (the layer checkboxes are hidden behind the layer buttons: set them the way a button does)
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const ATLANTIC_DIST = join(ROOT, 'dist/atlantic-sst-simulator.html');
 const EPAC_DIST = join(ROOT, 'dist/eastpacific-sst-simulator.html');
@@ -258,7 +259,7 @@ async function checkShear(page, label, S) {
   check(`[${label}] "Jet stream line" checkbox exists and starts unchecked`, await ev(() => { const c = document.getElementById('jetline'); return !!c && !c.checked; }));
   const lineOff = await jetLineSeen();
   check(`[${label}] nothing is drawn along the axis while the checkbox is off (${lineOff.hits} of ${lineOff.n} on-screen probes)`, lineOff.n >= S.line.minProbes && lineOff.hits === 0);
-  await page.check('#jetline');
+  await lyrSet(page, 'jetline', true);
   for (const v of ['sst', 'anom', 'humid', 'shear']) {
     await ev((vv) => window.SSTSIM.setView(vv), v);
     await page.waitForTimeout(300);
@@ -270,7 +271,7 @@ async function checkShear(page, label, S) {
   const noField = await jetLineSeen();
   check(`[${label}] jet line still draws with "Show sea temperature" off (${noField.hits} of ${noField.n} probes)`, noField.n >= S.line.minProbes && noField.hits === noField.n);
   await page.check('#show-sst');
-  await page.uncheck('#jetline');
+  await lyrSet(page, 'jetline', false);
   await page.waitForTimeout(300);
   const lineGone = await jetLineSeen();
   check(`[${label}] unchecking the box removes the line again (${lineGone.hits} of ${lineGone.n} probes)`, lineGone.hits === 0);
@@ -279,20 +280,20 @@ async function checkShear(page, label, S) {
   // ---- the "outside this area" note: a basin that sits beside the jet says so instead of showing an empty map
   const noteFor = async (seed) => {
     await ev((sd) => { window.SSTSIM.applySeed(sd); window.SSTSIM.setPlaying(false); window.SSTSIM.advance(24 * 12); }, seed);
-    await page.check('#jetline');
+    await lyrSet(page, 'jetline', true);
     await page.waitForTimeout(300);
     const r = await ev(() => document.getElementById('jet-note').textContent);
-    await page.uncheck('#jetline');
+    await lyrSet(page, 'jetline', false);
     return r;
   };
   check(`[${label}] with the axis across the map, the jet line option carries no "outside this area" note`, (await noteFor(S.line.seed)) === '');
   if (S.noteSeed) check(`[${label}] with the whole axis ${S.noteSeed[1]} of the map, the option says so ("${S.noteSeed[1]} of this area today")`, (await noteFor(S.noteSeed[0])).includes(S.noteSeed[1] + ' of this area'));
   // ...and the same when the axis is inside the box but not on screen: zoomed in away from it, it is north (south) of what is shown
   await ev(([sd, c]) => { window.SSTSIM.applySeed(sd); window.SSTSIM.setPlaying(false); window.SSTSIM.advance(24 * 12); window.SSTSIM.map.setView(c, 6, { animate: false }); }, [S.offscreen.seed ?? S.line.seed, S.offscreen.center]);
-  await page.check('#jetline');
+  await lyrSet(page, 'jetline', true);
   await page.waitForTimeout(300);
   const offNote = await ev(() => document.getElementById('jet-note').textContent);
-  await page.uncheck('#jetline');
+  await lyrSet(page, 'jetline', false);
   check(`[${label}] zoomed in away from the axis, the option says it is ${S.offscreen.dir} of what is on screen`, offNote.includes(S.offscreen.dir + ' of what is on screen'));
 
   // ---- the bottom-left readout's own Shear branch
@@ -658,6 +659,46 @@ async function checkStorms(page, label) {
   await page.keyboard.press('Escape'); await page.waitForTimeout(100);
   const en4 = await ev(() => window.SSTSIM.ensState());
   check(`[${label}] nothing is drawn once the storm is deselected (${JSON.stringify(en4)})`, en4 === null);
+  // ---- the cone of uncertainty of the picked cyclone: the cone, the forecast points with their letters, hover for winds, gusts and pressure
+  await ev(() => { if (document.getElementById('stens').checked) document.getElementById('stens').click(); document.querySelector('#lyr-dock [data-l="stcone"]').click(); });
+  await page.mouse.click(px.x, px.y); await page.waitForFunction(() => window.SSTSIM.coneState() !== null, null, { timeout: 15000 }); await page.waitForTimeout(300);
+  const cn1 = await ev(() => { const S = window.SSTSIM, cs = S.coneState(), c = document.getElementById('storm-canvas'), d = c.width / c.clientWidth, rd = (p) => { const a = c.getContext('2d').getImageData(Math.round(p.x * d), Math.round(p.y * d), 1, 1).data; return [a[0], a[1], a[2], a[3]]; };
+    const pts = cs.pts.map((q) => ({ lead: q.lead, letter: q.letter, v: q.v, px: S.conePoint(q.lead) })); return { cs, ink: pts.filter((q) => q.px && rd(q.px)[3] > 200).length, n: pts.length, pressed: document.querySelector('#lyr-dock [data-l="stcone"]').getAttribute('aria-pressed'), tid: cs.tid, leads: cs.pts.map((q) => q.lead).join(), ok: cs.pts.every((q) => q.letter === (q.v < 34 ? 'D' : q.v < 64 ? 'S' : q.v < 96 ? 'H' : 'M')) }; });
+  check(`[${label}] with Cones on, the picked cyclone gets its cone: ${cn1.n} forecast points at +${cn1.leads} h with letters by the wind (${cn1.cs.pts.map((q) => q.letter).join('')}), painted on the map (${cn1.ink} of ${cn1.n}), the outline drawn (${cn1.cs.poly}) and the button lit (${cn1.pressed})`,
+    cn1.tid === i1 && cn1.n >= 4 && cn1.leads.startsWith('12,24,36,48') && cn1.ok && cn1.ink === cn1.n && cn1.cs.poly && cn1.pressed === 'true');
+  const cp = await ev(() => window.SSTSIM.conePoint(24));
+  await page.mouse.move(cp.x + 50, cp.y + 50); await page.mouse.move(cp.x, cp.y, { steps: 5 }); await page.waitForTimeout(200);
+  const cn2 = await ev(() => { const t = document.getElementById('storm-tip'); return { shown: t.style.display === 'block', title: t.querySelector('b').textContent, body: t.querySelector('div').innerText.replace(/\n/g, ' | '), hot: window.SSTSIM.coneState().hot }; });
+  check(`[${label}] hovering a forecast point shows its winds, gusts and pressure (${cn2.title} | ${cn2.body}) and rings the point`, cn2.shown && cn2.hot === 24 && /^\+24 h( · Post-tropical)? · \d+ mph \(1-min\)$/.test(cn2.title) && /gusts \d+ mph · \d+ hPa/.test(cn2.body) && /\d\dz [A-Z][a-z]{2} \d+ \d{4}/.test(cn2.body));
+  await page.mouse.move(cp.x - 250, cp.y + 250); await page.waitForTimeout(150);
+  const cn3 = await ev(() => { const a = window.SSTSIM.coneState(); return a && a.hot; });
+  await page.keyboard.press('Escape'); await page.waitForTimeout(100);
+  const cn4 = await ev(() => { const S = window.SSTSIM; const r = { cone: S.coneState(), ens: S.ensState() }; document.querySelector('#lyr-dock [data-l="stcone"]').click(); return r; });
+  check(`[${label}] moving off the point un-rings it (${cn3}) and with nothing picked there is no cone and no fan (${JSON.stringify(cn4.cone)}, ${JSON.stringify(cn4.ens)})`, cn3 === -1 && cn4.cone === null && cn4.ens === null);
+
+  // ---- the layer buttons: seven pills at the bottom right standing for the checkboxes (kept in the panel, hidden)
+  const ld = await ev(() => { const S = document, btn = (l) => S.querySelector('#lyr-dock [data-l="' + l + '"]'), st = (l) => btn(l).getAttribute('aria-pressed'), el = (id) => S.getElementById(id);
+    const labels = [...S.querySelectorAll('#lyr-dock .lyr')].map((b) => b.innerText.trim()), before = { hl: st('hl'), nhc: st('nhc'), steer: st('steer'), jet: st('jetline'), dens: btn('stdens').disabled };
+    btn('hl').click(); const hl1 = { b: st('hl'), highs: el('highs').checked, lows: el('stlows').checked }; btn('hl').click(); const hl2 = { b: st('hl'), highs: el('highs').checked, lows: el('stlows').checked };
+    btn('nhc').click(); const n1 = { b: st('nhc'), w: el('stwaves').checked, d: el('stdist').checked }; btn('nhc').click(); const n2 = { b: st('nhc'), w: el('stwaves').checked, d: el('stdist').checked };
+    btn('steer').click(); const s1 = { b: st('steer'), c: el('steerarrows').checked }; btn('steer').click(); btn('jetline').click(); const j1 = { b: st('jetline'), c: el('jetline').checked }; btn('jetline').click();
+    btn('stens').click(); const e1 = { b: st('stens'), c: el('stens').checked, densOff: btn('stdens').disabled }; btn('stens').click(); const e2 = { c: el('stens').checked, densOff: btn('stdens').disabled };
+    const hidden = ['jetline', 'steerarrows', 'highs', 'stlows', 'stwaves', 'stdist', 'stens', 'stdens', 'stcone'].every((id) => el(id).closest('label').offsetParent === null), kept = ['cities', 'l265', 'l2', 'stlabels', 'show-sst', 'borders'].every((id) => el(id).closest('label').offsetParent !== null);
+    return { labels, before, hl1, hl2, n1, n2, s1, j1, e1, e2, hidden, kept }; });
+  check(`[${label}] the seven layer buttons (${ld.labels.join(', ')}): Highs & lows drives both the highs and the lows, NHC disturbances both the waves and the areas, Streamlines the steering arrows, Jet stream the jet line, Ensembles lights and frees Track density (${ld.e1.densOff ? 'still disabled' : 'enabled'}, disabled again ${ld.e2.densOff}); the panel keeps the rest and hides these`,
+    ld.labels.join() === 'Ensembles,Cones,Track density,Jet stream,Highs & lows,NHC disturbances,Streamlines' && ld.before.dens === true && ld.hl1.b === 'true' && ld.hl1.highs && ld.hl1.lows && ld.hl2.b === 'false' && !ld.hl2.highs && !ld.hl2.lows && ld.n1.b === 'false' && !ld.n1.w && !ld.n1.d && ld.n2.b === 'true' && ld.n2.w && ld.n2.d
+    && ld.s1.b === 'true' && ld.s1.c && ld.j1.b === 'true' && ld.j1.c && ld.e1.b === 'true' && ld.e1.c && ld.e1.densOff === false && ld.e2.c === false && ld.e2.densOff === true && ld.hidden && ld.kept);
+  const dl = [];
+  for (const [w, h, steer] of [[1280, 800, false], [1280, 800, true], [900, 700, false], [390, 844, false], [390, 844, true]]) {
+    await page.setViewportSize({ width: w, height: h }); await lyrSet(page, 'steerarrows', steer); await page.waitForTimeout(200);
+    dl.push(await ev(({ w, h, steer }) => { const rect = (e) => { const b = e.getBoundingClientRect(); return { l: b.left, t: b.top, r: b.right, b: b.bottom }; }, hit = (p, q) => p.l < q.r - 0.5 && q.l < p.r - 0.5 && p.t < q.b - 0.5 && q.t < p.b - 0.5;
+      const btns = [...document.querySelectorAll('#lyr-dock .lyr')].filter((b) => b.offsetParent), others = ['clock', 'panel', 'dock', 'legend', 'season', 'readout'].concat(steer ? ['steer-legend'] : []).map((id) => [id, document.getElementById(id)]).filter(([, e]) => e && e.offsetParent !== null);
+      const bad = []; for (const b of btns) { const r = rect(b); if (r.l < -0.5 || r.t < 0 || r.b > h + 0.5) { if (!(w <= 640 && r.l < w)) bad.push(b.innerText.trim() + ' off screen'); } for (const [id, e] of others) if (hit(r, rect(e))) bad.push(b.innerText.trim() + ' over ' + id); }
+      const pr = rect(document.getElementById('panel')); return { w, h, steer, n: btns.length, bad, panelInside: pr.t >= 0 && pr.b <= h && pr.r <= w }; }, { w, h, steer }));
+  }
+  await lyrSet(page, 'steerarrows', false); await page.setViewportSize({ width: 1280, height: 800 }); await page.waitForTimeout(150);
+  check(`[${label}] the layer buttons fit and overlap nothing (the clock, panel, playback dock, colour bars, season bar) at 1280, 900 and 390 px wide, with the steering legend on and off (${dl.map((x) => x.w + (x.steer ? '+steer' : '') + ': ' + x.n + ' buttons' + (x.bad.length ? ' ' + x.bad.join(', ') : ' ok')).join('; ')})`, dl.every((x) => x.n === 7 && x.bad.length === 0 && x.panelInside));
+
   // a plain wave (no area of interest) can be picked, alone, and gets a fan too
   const pw = await ev(() => { const S = window.SSTSIM; document.getElementById('stdist').click(); S.stormAuto(false); const id = S.stormPlace({ kind: 'wave', lat: 17, lon: -42 }); S.stormDraw(); return { id, px: S.stormPx(id), hits: S.stormDrawn() }; });
   await page.mouse.move(pw.px.x + 40, pw.px.y + 40); await page.mouse.move(pw.px.x, pw.px.y, { steps: 3 }); await page.mouse.click(pw.px.x, pw.px.y); await page.waitForFunction(() => window.SSTSIM.ensState() !== null, null, { timeout: 15000 }); await page.waitForTimeout(300);
@@ -1465,11 +1506,11 @@ async function checkSteering(page, label, S) {
   check(`[${label}] the storm-strength selector lives in Experimentation > Advanced (not in Customization), always shown there whether or not the arrows are on`, await ev(() => { const r = document.getElementById('steer-depth-row'); return !!r && !!r.closest('#xp-adv') && !r.closest('#sec-custom') && getComputedStyle(r).display !== 'none'; }));
   // the selector sits in the Advanced tab: show it (a real click on a hidden button would wait forever) before using it
   const pickDepth = async (d) => { await ev(() => { document.getElementById('sec-exp').classList.remove('collapsed'); window.SSTSIM.setXpTab('adv'); }); await page.click(`#seg-depth button[data-d="${d}"]`); };
-  await page.check('#highs');
+  await lyrSet(page, 'highs', true);
   const uH = await ui();
   check(`[${label}] ticking only "Highs" does not bring up the steering legend`, uH.highs && !uH.legend);
-  await page.uncheck('#highs');
-  await page.check('#steerarrows');
+  await lyrSet(page, 'highs', false);
+  await lyrSet(page, 'steerarrows', true);
   const uA = await ui();
   check(`[${label}] ticking "Steering arrows" shows the speed legend, and Strong is the storm strength selected`, uA.legend && uA.pressed === 'shallow:false,medium:false,deep:true');
   check(`[${label}] the legend names the layer and unit, and runs 0 to 70+ kt ("${uA.cap}"; ticks ${uA.ticks})`, uA.cap === 'Steering speed, strong storms (850–200 hPa), kt' && uA.ticks === '0 10 20 30 40 50 60 70+');
@@ -1487,10 +1528,10 @@ async function checkSteering(page, label, S) {
   // ---- 2. the arrows on the real pixels of their canvas
   await ev((view) => { window.SSTSIM.map.fitBounds(view, { animate: false }); }, S.view);
   const inkOf = () => ev(() => { const c = document.getElementById('steer-canvas'), d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 40) n++; return n; });
-  await page.uncheck('#steerarrows'); await page.waitForTimeout(150);
+  await lyrSet(page, 'steerarrows', false); await page.waitForTimeout(150);
   const ink0 = await inkOf();
   check(`[${label}] nothing is drawn on the steering canvas while both boxes are off (${ink0} painted pixels)`, ink0 === 0);
-  await page.check('#steerarrows'); await page.waitForTimeout(250);
+  await lyrSet(page, 'steerarrows', true); await page.waitForTimeout(250);
   const arrows = await ev(() => window.SSTSIM.steerArrows());
   const ink1 = await inkOf();
   check(`[${label}] arrows fill the map once ticked (${arrows.length} arrows, ${ink1} painted pixels)`, arrows.length >= 60 && arrows.length <= 600 && ink1 > 20000);
@@ -1549,7 +1590,7 @@ async function checkSteering(page, label, S) {
   await ev((view) => window.SSTSIM.map.fitBounds(view, { animate: false }), S.view); await page.waitForTimeout(200);
 
   // the arrows follow the clock while the sim plays and hold still when it is paused
-  await page.check('#steerarrows');
+  await lyrSet(page, 'steerarrows', true);
   const hashOf = () => ev(() => { const c = document.getElementById('steer-canvas'), d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let h = 0; for (let i = 0; i < d.length; i += 4) h = (h * 31 + d[i] + 3 * d[i + 1] + 7 * d[i + 2] + 11 * d[i + 3]) | 0; return h; });
   await ev(() => window.SSTSIM.setPlaying(true));
   const h0 = await hashOf(), tA = await ev(() => window.SSTSIM.state().simHour);
@@ -1574,9 +1615,9 @@ async function checkSteering(page, label, S) {
   hv = { ...hv, text: await ev(() => document.getElementById('readout').textContent) };
   let rs = readSteer(hv.text);
   check(`[${label}] the readout gives the steering heading (as a compass bearing) and speed at the pointer ("${hv.text.replace(/\s+/g, ' ').slice(-60)}")`, rs && Math.abs(rs.kt - want2.deep.speed) <= 1 && Math.min(Math.abs(rs.dir - want2.deep.toward), 360 - Math.abs(rs.dir - want2.deep.toward)) <= 2);
-  await page.uncheck('#highs');
+  await lyrSet(page, 'highs', false);
   check(`[${label}] with only the arrows on, the readout has no pressure line`, !/Sea-level pressure/.test(await ev(() => document.getElementById('readout').textContent)));
-  await page.check('#highs');
+  await lyrSet(page, 'highs', true);
   await page.mouse.move(hv.p.x + 2, hv.p.y); await page.mouse.move(hv.p.x, hv.p.y); await page.waitForTimeout(100);
   const pm = (await ev(() => document.getElementById('readout').textContent)).match(/Sea-level pressure (\d+) hPa/);
   check(`[${label}] with Highs on, the readout also gives the sea-level pressure there (${pm && pm[1]} hPa; the model has ${want2.p.toFixed(1)})`, pm && Math.abs(+pm[1] - want2.p) <= 0.6);
@@ -1584,10 +1625,10 @@ async function checkSteering(page, label, S) {
   const rsw = readSteer(await ev(() => document.getElementById('readout').textContent));
   check(`[${label}] choosing weak storms makes the readout (and arrows) follow the shallow layer (${rsw && rsw.kt} kt vs ${want2.deep.speed.toFixed(0)} kt strong there)`, rsw && Math.abs(rsw.kt - want2.shallow.speed) <= 1 && Math.abs(want2.shallow.speed - want2.deep.speed) > 2);
   await pickDepth('deep');
-  await page.uncheck('#steerarrows'); await page.mouse.move(hv.p.x + 2, hv.p.y); await page.mouse.move(hv.p.x, hv.p.y); await page.waitForTimeout(100);
+  await lyrSet(page, 'steerarrows', false); await page.mouse.move(hv.p.x + 2, hv.p.y); await page.mouse.move(hv.p.x, hv.p.y); await page.waitForTimeout(100);
   const onlyHighs = await ev(() => document.getElementById('readout').textContent);
   check(`[${label}] with only Highs on, the readout has the pressure but no steering line`, /Sea-level pressure/.test(onlyHighs) && !/Steering/.test(onlyHighs));
-  await page.uncheck('#highs'); await page.mouse.move(hv.p.x + 2, hv.p.y); await page.mouse.move(hv.p.x, hv.p.y); await page.waitForTimeout(100);
+  await lyrSet(page, 'highs', false); await page.mouse.move(hv.p.x + 2, hv.p.y); await page.mouse.move(hv.p.x, hv.p.y); await page.waitForTimeout(100);
   const none = await ev(() => document.getElementById('readout').textContent);
   check(`[${label}] with both off, the readout has neither`, !/Steering|Sea-level pressure/.test(none));
 
@@ -1899,7 +1940,7 @@ async function checkSteering(page, label, S) {
     if (n >= iconMin) { scene = [seed, day, n]; break; }
   }
   if (iconMin) check(`[${label}] there is a state with ${iconMin >= 3 ? 'several' : 'a couple of'} highs in view to check the icons on (seed ${scene && scene[0]}, day ${scene && scene[1]}: ${scene && scene[2]} on screen)`, !!scene);
-  await page.check('#highs'); await page.waitForTimeout(250);
+  await lyrSet(page, 'highs', true); await page.waitForTimeout(250);
   const ic = await ev(() => {
     const X = window.SSTSIM, hs = X.highs(), icons = X.highIcons(), c = document.getElementById('steer-canvas'), g = c.getContext('2d'), s = c.width / c.clientWidth;
     const px = (lat, lon, dx, dy) => { const p = X.map.latLngToContainerPoint([lat, lon]); return { in: p.x > 24 && p.y > 24 && p.x < c.clientWidth - 24 && p.y < c.clientHeight - 40, c: [...g.getImageData(Math.round((p.x + dx) * s), Math.round((p.y + dy) * s), 1, 1).data] }; };
@@ -1908,7 +1949,7 @@ async function checkSteering(page, label, S) {
   const seen = ic.samples.filter((q) => q.left.in), blue = (c) => Math.abs(c[0] - 27) < 40 && Math.abs(c[1] - 79) < 40 && Math.abs(c[2] - 224) < 40 && c[3] > 230;
   if (iconMin) check(`[${label}] with Highs ticked there is one icon per high, at its position and pressure, fully drawn (${ic.icons} icons, ${ic.highs} highs)`, ic.highs >= Math.min(2, iconMin) && ic.icons === ic.highs && ic.match);
   if (iconMin) check(`[${label}] each icon on screen is a blue disc with a white rim on its canvas (${seen.filter((q) => blue(q.left.c) && blue(q.right.c) && q.ring.c[0] > 230 && q.ring.c[1] > 230).length} of ${seen.length} icons checked)`, seen.length >= iconMin && seen.every((q) => blue(q.left.c) && blue(q.right.c) && q.ring.c[0] > 230 && q.ring.c[1] > 230));
-  await page.uncheck('#highs'); await page.waitForTimeout(150);
+  await lyrSet(page, 'highs', false); await page.waitForTimeout(150);
   const gone = await ev(() => ({ icons: window.SSTSIM.highIcons().length, ink: (() => { const c = document.getElementById('steer-canvas'), d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 40) n++; return n; })() }));
   check(`[${label}] unticking Highs removes every icon (${gone.icons} left, ${gone.ink} painted pixels)`, gone.icons === 0 && gone.ink === 0);
   await ev(() => { window.SSTSIM.setView('sst'); window.SSTSIM.setPlaying(true); window.SSTSIM.restart(); });   // leave the page in its default state for the checks after this one
@@ -2397,7 +2438,7 @@ await checkBasin('Atlantic', ATLANTIC_DIST, async (page, label) => {
   check(`[${label}] "Jet stream line" checkbox exists and starts unchecked`, await page.evaluate(() => { const c = document.getElementById('jetline'); return !!c && !c.checked; }));
   const lineOff = await jetLineSeen();
   check(`[${label}] nothing is drawn along the axis while the checkbox is off (${lineOff.hits} of ${lineOff.n} on-screen probes)`, lineOff.n >= 8 && lineOff.hits === 0);
-  await page.check('#jetline');
+  await lyrSet(page, 'jetline', true);
   for (const v of ['sst', 'anom', 'humid', 'shear']) {
     await page.evaluate((vv) => window.SSTSIM.setView(vv), v);
     await page.waitForTimeout(300);
@@ -2424,16 +2465,16 @@ await checkBasin('Atlantic', ATLANTIC_DIST, async (page, label) => {
   // earlier probes, so fewer of the original longitudes may still be on screen -- re-probing the
   // axis here could come up short for reasons that have nothing to do with the checkbox).
   const drawnAt = movedIdx.map((i) => ptsAfter[i]).filter((_, j) => newHits[j] === true);
-  await page.uncheck('#jetline');
+  await lyrSet(page, 'jetline', false);
   await page.waitForTimeout(300);
   const goneAt = await magentaNear(drawnAt);
   check(`[${label}] unchecking the box removes the line again`, drawnAt.length >= 2 && goneAt.every((h) => h === false));
   // Not on screen is not the same as not there: zoomed in on the tropics, the jet is north of what is shown, and the option says so.
   await page.evaluate(() => window.SSTSIM.map.setView([-10, -45], 6, { animate: false }));
-  await page.check('#jetline');
+  await lyrSet(page, 'jetline', true);
   await page.waitForTimeout(300);
   check(`[${label}] zoomed in away from the axis, the jet line option says it is north of what is on screen`, (await page.evaluate(() => document.getElementById('jet-note').textContent)).includes('north of what is on screen'));
-  await page.uncheck('#jetline');
+  await lyrSet(page, 'jetline', false);
   await page.evaluate(() => { window.SSTSIM.setPlaying(true); window.SSTSIM.setView('sst'); window.SSTSIM.restart(); });   // leave the page in its default state for the checks after this one
 
   // The bottom-left readout's own Shear branch (Atlantic-only, so checked here rather than in
