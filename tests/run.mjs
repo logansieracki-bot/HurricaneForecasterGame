@@ -1109,6 +1109,24 @@ const STORM_SPECS = {
   satl: { td: [-24, -40], sd: [-28, -45], low: [-34, -40], day: 215, start: [10, 1], seeds: [903, 918, 913] },
   med: { td: [37, 12], sd: [38, 10], low: [41, 6], day: 92, start: [8, 1], seeds: [903, 947, 901] },
 };
+// the basin's own palette and letters: the head of a 105-kt storm is the colour of its class in the region's scheme, the card has the class in its letters on that colour, and the cone's points are lettered the region's way
+async function checkLook(page, label, prefix) {
+  const ev = (fn, arg) => page.evaluate(fn, arg);
+  await import('../src/storms.js');
+  const H = globalThis.HFStorms, SC = H.scaleOf(prefix), sp = prefix === 'atlantic' ? { td: [15, -45], day: 200 } : STORM_SPECS[prefix];
+  const LOOK105 = { atlantic: ['#ff4d3d', 'C3'], eastpacific: ['#ff4d3d', 'C3'], westpacific: ['#ff5900', 'ST'], nio: ['#ff738a', 'ESCS'], aus: ['#ff738a', 'C4'], swio: ['#ff738a', 'ITC'], spac: ['#ff738a', 'C4'], satl: ['#ff4d3d', 'C3'], med: ['#ff4d3d', 'C3'] }[prefix];
+  const r = await ev((q) => { const S = window.SSTSIM; S.setPlaying(false); S.applySeed(4242); S.setPlaying(false); S.storms(true); S.stormAuto(false); S.tick(24 * q.day);
+    const id = S.stormPlace({ kind: 'td', lat: q.td[0], lon: q.td[1], v: 60 }); S.tick(12); S.advance(0); const st = S.stormState().systems.find((x) => x.id === id);
+    S.map.setView([st.lat, st.lon], 4, { animate: false }); S.stormForce(id, { th: 'tc', v: 105, vr: 105, p: 946 }); S.stormDraw(); return { id, px: S.stormPx(id) }; }, sp);
+  await page.mouse.click(r.px.x, r.px.y); await page.waitForTimeout(300);
+  const lk = await ev(({ x, y }) => { const c = document.getElementById('storm-canvas'), d = c.width / c.clientWidth, a = c.getContext('2d').getImageData(Math.round(x * d), Math.round(y * d), 1, 1).data, hex = '#' + [a[0], a[1], a[2]].map((v) => v.toString(16).padStart(2, '0')).join(''), t = document.getElementById('sc-tag'), rgb = getComputedStyle(t).backgroundColor.match(/\d+/g).map(Number), thex = '#' + rgb.slice(0, 3).map((v) => v.toString(16).padStart(2, '0')).join('');
+    return { head: hex, a: a[3], tag: t.textContent, tagBg: thex, shown: t.offsetParent !== null }; }, r.px);
+  await lyrSet(page, 'stcone', true); await page.waitForFunction(() => window.SSTSIM.coneState() !== null, null, { timeout: 15000 }); await page.waitForTimeout(200);
+  const lc = await ev(() => { const cs = window.SSTSIM.coneState(); return cs ? cs.pts.map((q) => [q.v, q.letter, q.post]) : null; });
+  await lyrSet(page, 'stcone', false); await page.keyboard.press('Escape'); await page.waitForTimeout(100);
+  check(`[${label}] the 105-kt storm is drawn in this region's colour (${lk.head}, expected ${LOOK105[0]}), its card shows the class ${lk.tag} on ${lk.tagBg} (expected ${LOOK105[1]} on ${LOOK105[0]}) and the cone's letters are the region's (${lc ? lc.map((q) => q[1]).join(' ') : 'no cone'})`,
+    lk.head === LOOK105[0] && lk.a === 255 && lk.shown && lk.tag === LOOK105[1] && lk.tagBg === LOOK105[0] && !!lc && lc.length >= 4 && lc.every((q) => q[1] === SC.tag[H.classOf(prefix, q[0], 'tc').idx]));
+}
 async function checkStormsBasin(page, label, prefix) {
   const ev = (fn, arg) => page.evaluate(fn, arg);
   const sp = STORM_SPECS[prefix];
@@ -1204,6 +1222,7 @@ async function checkStormsBasin(page, label, prefix) {
     return { same: a === b, ha, mid, kb: Math.round(a.length / 1024) };
   }, { sm: BI.seasonMonth, start: sp.start, day: Math.min(sp.day, 120), td: sp.td });
   check(`[${label}] a season saved at a midnight (hour ${sv.mid}) and resumed continues bit for bit like the uninterrupted one (${sv.kb} KB of storms)`, sv.same && sv.mid < sv.ha);
+  await checkLook(page, label, prefix);
   // the main menu's Continue card for a season saved here names the basin, the season and the local word (this is the last check of a basin's callback: it leaves the page)
   const sc = await ev((q) => { const S = window.SSTSIM; S.stormLabCalendar(q.sm, 1); S.applySeed(31); S.setPlaying(false); S.stormAuto(true); S.tick(24 * 40); S.advance(0); S.saveTick(); return { stats: S.stormState().stats, year: document.getElementById('se-year').textContent, meta: JSON.parse(S.saveInfo().meta) }; }, { sm: BI.seasonMonth });
   await page.goto(pathToFileURL(join(ROOT, 'index.html')).href, { waitUntil: 'load' });
@@ -2549,6 +2568,7 @@ await checkBasin('Atlantic', ATLANTIC_DIST, async (page, label) => {
   await checkEnvSeasons(page, label, ATLANTIC_DIST);
   await checkStorms(page, label);
   await checkForecastSkill(page, label);
+  await checkLook(page, label, 'atlantic');
   await checkPlace(page, label);
   await checkSummary(page, label);
   await checkCityMarkers(page, label, 25.76, -80.19, 'Miami');

@@ -87,20 +87,26 @@ function category(kt) {                                   // by the wind as a be
    classifies on its own winds: the 10-minute winds of JMA, Meteo-France, the Bureau of Meteorology and Fiji, the 3-minute winds of the India Meteorological Department. Each class below starts at the
    agency's cut-off converted to the 1-minute wind (10-minute / 0.88, the WMO rule of thumb; 3-minute x 1.05) and rounded to the 5 kt a best track holds, so a storm is called what that agency would call
    it. The first storm class always starts at 34 kt (a storm is named at 34 kt of 1-minute wind in every basin: the definition of the named storms the engine is calibrated on). The West Pacific takes
-   JTWC's own 1-minute Typhoon (64 kt) and Super Typhoon (130 kt) with JMA's Severe Tropical Storm (48 kt of 10-minute wind) between. `bar` are the three season-bar counters' tags: they keep their engine
-   thresholds (64 / 96 / 137 kt, what the real normals count) and only the word changes. Colours are not part of a scale: a marker's colour is its 1-minute wind, the same on every page.
+   JTWC's own 1-minute Typhoon (64 kt) and Super Typhoon (130 kt) with JMA's Severe Tropical Storm (48 kt of 10-minute wind), Very Strong (85) and Violent Typhoon (105) between. `bar` are the three season-bar counters' tags: they keep their engine
+   thresholds (64 / 96 / 137 kt, what the real normals count) and only the word changes. Each scale also has its own look, as the region's agency and Wikipedia draw it: `cols`, one colour for each class (the NHC's and the West Pacific's blue-green-yellow-orange-red-pink, and the ranked pastels of the Australian, South-West Indian and North Indian charts), and `tag`, the letters that stand for each class on a forecast point (D S H M for the NHC, D S SS T ST VT SU for the West Pacific, the category numbers for Australia, the agency's own abbreviations in the Indian Ocean). Post-tropical is grey on every page.
    Each class: [first 1-minute kt, short, long]. A word `Hurricane` in a long name is the page's local word for it (hurrWord in src/storm-hooks.js: Cyclone, Medicane, ...). */
 const NHC_CLASSES = SSHWS.slice().reverse();
 const AU_CLASSES = [[34, 'C1', 'Category 1 Tropical Cyclone'], [55, 'C2', 'Category 2 Tropical Cyclone'], [75, 'C3', 'Category 3 Severe Tropical Cyclone'], [100, 'C4', 'Category 4 Severe Tropical Cyclone'], [125, 'C5', 'Category 5 Severe Tropical Cyclone']];
+const NHC_LOOK = { cols: ['#3d8bff', '#2fd27a', '#ffe14a', '#ffa534', '#ff4d3d', '#e53fb5', '#a45dff'], tag: ['D', 'S', 'H', 'H', 'M', 'M', 'M'] };           // (the cone's letters are the NHC's: D, S, H for Category 1 and 2, M from Category 3)
+const WIKI = { purple: '#a188fc', pink: '#ff738a', peach: '#ffd98c', green: '#c0ffc0', cyan: '#4dffff', sky: '#6ec1ea', blue: '#1591de', teal: '#00faf4' };           // the colours of Wikipedia's storm-formation charts, from the top class down
+const AU_LOOK = { cols: [WIKI.sky, WIKI.cyan, WIKI.green, WIKI.peach, WIKI.pink, WIKI.purple], tag: ['L', '1', '2', '3', '4', '5'] };
 const SCALES = {
-  nhc:  { agency: 'NHC / CPHC', avg: '1-min', classes: NHC_CLASSES, major: 4, bar: ['HURR', 'MAJOR', 'CAT 5'] },          // major: the index of the first class called major (Category 3); the others have no such word
-  satl: { agency: 'Saffir-Simpson (no agency)', avg: '1-min', classes: NHC_CLASSES, major: 4, bar: ['CYC', 'MAJOR', 'CAT 5'] },
-  med:  { agency: 'Saffir-Simpson (no agency)', avg: '1-min', classes: NHC_CLASSES, major: 4, bar: ['MEDI', 'MAJOR', 'CAT 5'] },
-  jtwc: { agency: 'JTWC / JMA', avg: '1-min', classes: [[0, 'TD', 'Tropical Depression'], [34, 'TS', 'Tropical Storm'], [55, 'STS', 'Severe Tropical Storm'], [64, 'TY', 'Typhoon'], [130, 'STY', 'Super Typhoon']], bar: ['TYPH', 'MAJOR', 'SUPER'] },
-  imd:  { agency: 'IMD', avg: '3-min', classes: [[0, 'D', 'Depression'], [30, 'DD', 'Deep Depression'], [34, 'CS', 'Cyclonic Storm'], [50, 'SCS', 'Severe Cyclonic Storm'], [65, 'VSCS', 'Very Severe Cyclonic Storm'], [95, 'ESCS', 'Extremely Severe Cyclonic Storm'], [125, 'SuCS', 'Super Cyclonic Storm']], bar: ['VSCS', 'ESCS', 'SUPER'] },
-  mfr:  { agency: 'Meteo-France La Reunion', avg: '10-min', classes: [[0, 'TD', 'Tropical Depression'], [34, 'MTS', 'Moderate Tropical Storm'], [55, 'STS', 'Severe Tropical Storm'], [75, 'TC', 'Tropical Cyclone'], [100, 'ITC', 'Intense Tropical Cyclone'], [130, 'VITC', 'Very Intense Tropical Cyclone']], bar: ['CYC', 'INTENSE', 'V.INT'] },
-  bom:  { agency: 'Bureau of Meteorology', avg: '10-min', classes: [[0, 'TL', 'Tropical Low']].concat(AU_CLASSES), bar: ['SEVERE', 'CAT 4+', 'CAT 5'] },
-  fiji: { agency: 'Fiji Meteorological Service (RSMC Nadi)', avg: '10-min', classes: [[0, 'TD', 'Tropical Depression']].concat(AU_CLASSES), bar: ['SEVERE', 'CAT 4+', 'CAT 5'] },
+  nhc:  Object.assign({ agency: 'NHC / CPHC', avg: '1-min', classes: NHC_CLASSES, major: 4, bar: ['HURR', 'MAJOR', 'CAT 5'] }, NHC_LOOK),          // major: the index of the first class called major (Category 3); the others have no such word
+  satl: Object.assign({ agency: 'Saffir-Simpson (no agency)', avg: '1-min', classes: NHC_CLASSES, major: 4, bar: ['CYC', 'MAJOR', 'CAT 5'] }, NHC_LOOK),
+  med:  Object.assign({ agency: 'Saffir-Simpson (no agency)', avg: '1-min', classes: NHC_CLASSES, major: 4, bar: ['MEDI', 'MAJOR', 'CAT 5'] }, NHC_LOOK),
+  jtwc: { agency: 'JTWC / JMA', avg: '1-min', classes: [[0, 'D', 'Tropical Depression'], [34, 'S', 'Tropical Storm'], [55, 'SS', 'Severe Tropical Storm'], [64, 'T', 'Typhoon'], [95, 'ST', 'Strong Typhoon'], [120, 'VT', 'Violent Typhoon'], [130, 'SU', 'Super Typhoon']], bar: ['TYPH', 'MAJOR', 'SUPER'],
+          cols: ['#0a84ff', '#00f060', '#ffcc00', '#ff9400', '#ff5900', '#ff0022', '#ff55bb'], tag: ['D', 'S', 'SS', 'T', 'ST', 'VT', 'SU'] },
+  imd:  { agency: 'IMD', avg: '3-min', classes: [[0, 'D', 'Depression'], [30, 'DD', 'Deep Depression'], [34, 'CS', 'Cyclonic Storm'], [50, 'SCS', 'Severe Cyclonic Storm'], [65, 'VSCS', 'Very Severe Cyclonic Storm'], [95, 'ESCS', 'Extremely Severe Cyclonic Storm'], [125, 'SuCS', 'Super Cyclonic Storm']], bar: ['VSCS', 'ESCS', 'SUPER'],
+          cols: [WIKI.blue, WIKI.sky, WIKI.teal, WIKI.green, WIKI.peach, WIKI.pink, WIKI.purple], tag: ['D', 'DD', 'CS', 'SCS', 'VSCS', 'ESCS', 'SuCS'] },
+  mfr:  { agency: 'Meteo-France La Reunion', avg: '10-min', classes: [[0, 'TD', 'Tropical Depression'], [34, 'MTS', 'Moderate Tropical Storm'], [55, 'STS', 'Severe Tropical Storm'], [75, 'TC', 'Tropical Cyclone'], [100, 'ITC', 'Intense Tropical Cyclone'], [130, 'VITC', 'Very Intense Tropical Cyclone']], bar: ['CYC', 'INTENSE', 'V.INT'],
+          cols: [WIKI.sky, WIKI.cyan, WIKI.green, WIKI.peach, WIKI.pink, WIKI.purple], tag: ['D', 'MTS', 'STS', 'TC', 'ITC', 'VITC'] },
+  bom:  Object.assign({ agency: 'Bureau of Meteorology', avg: '10-min', classes: [[0, 'TL', 'Tropical Low']].concat(AU_CLASSES), bar: ['SEVERE', 'CAT 4+', 'CAT 5'] }, AU_LOOK),
+  fiji: Object.assign({ agency: 'Fiji Meteorological Service (RSMC Nadi)', avg: '10-min', classes: [[0, 'TD', 'Tropical Depression']].concat(AU_CLASSES), bar: ['SEVERE', 'CAT 4+', 'CAT 5'] }, { cols: AU_LOOK.cols, tag: ['D', '1', '2', '3', '4', '5'] }),
 };
 const ktToMph = (kt) => round5(kt * KT_MPH);               // advisories round to 5 mph
 const aceOf = (kt) => (kt >= 34 ? (kt / 100) * (kt / 100) : 0);
@@ -1648,7 +1654,7 @@ Manager.prototype.ensemble = function (target, envSrc, opts) {
 /* the cone of uncertainty: the consensus of a fan (the mean of the members still alive) with a circle round it as big as the NHC's mean track error at that lead (par.cone: 26 nmi at 12 h to 220 at 120 h), so the cone is the
    same size for every storm whatever the fan looks like. The centre line is a smooth curve: the consensus is smoothed over a few hours and read every 12 hours, and a monotone cubic (pchip) runs through those points, so it
    never wiggles, overshoots or loops the way the mean of a few dozen tracks does where members come and go; the circles' sizes run through the NHC's numbers the same way. The points at 12, 24, 36, 48, 72, 96 and 120 h are read off that
-   curve and carry the wind, the pressure and the class letter (D, S, H, M by the category the page colours the point with; grey when most members are post-tropical). A new cone is blended with the last one by valid time -- all the way to the
+   curve and carry the wind, the pressure and the class letter (the tag of the class the page colours the point with in the basin's scale: D, S, H, M for the NHC, D S SS T ST VT SU in the West Pacific, the category numbers in Australia ...; grey when most members are post-tropical). A new cone is blended with the last one by valid time -- all the way to the
    new forecast near the start (it must begin at the storm), half way beyond a day and a half -- so it moves part of the way to a changed forecast and never jumps. */
 function pchip(xs, ys) {                                                     // the monotone cubic through the points (Fritsch-Carlson): no overshoot, so no wiggle
   const n = xs.length; if (n === 1) return () => ys[0];
@@ -1669,8 +1675,8 @@ function coneRadius(K, lead) {                                               // 
   let f = coneRCache.get(K); if (!f) { f = pchip(K.h, K.nmi); coneRCache.set(K, f); }
   return f(Math.min(Math.max(lead, K.h[0]), K.h[K.h.length - 1])) / 60;
 }
-const coneLetter = (v) => { const c = category(v).short; return c === 'TD' ? 'D' : c === 'TS' ? 'S' : c === 'C1' || c === 'C2' ? 'H' : 'M'; };       // by the category the point is coloured with (the wind in 5-kt steps), so the letter and the colour can never disagree
-function coneOf(E, par, prev) {
+const coneLetter = (v, scale) => { const S = scale || SCALES.nhc, C = S.classes, r = round5(v); let k = 0; for (let i = 0; i < C.length; i++) if (r >= C[i][0]) k = i; return S.tag[k]; };       // by the class the point is coloured with (the wind in 5-kt steps in the basin's scale), so the letter and the colour can never disagree
+function coneOf(E, par, prev, scale) {
   if (!E || !E.members.length) return null;
   const K = par.cone, N = E.members.length, rows = [];
   for (let i = 0; i < 41; i++) {
@@ -1701,7 +1707,7 @@ function coneOf(E, par, prev) {
   const out = rows.map((r) => { const q = at(r.lead); return { lat: q.lat, lon: q.lon, v: q.v, p: Math.round(q.p), th: r.th, lead: r.lead, t: r.t }; });
   const leadsP = K.pts.filter((h) => h <= last), pre = leadsP.length ? leadsP[leadsP.length - 1] : 0;
   if (last >= K.pts[0] && last - pre >= 6 && last % 3 === 0) leadsP.push(last);                    // a cone that ends early (the system is gone by then) still ends in a point, the last hour of the forecast
-  const pts = leadsP.map((h) => { const q = at(h), v = Math.max(5, round5(q.v)), th = out[h / 3].th; return { lead: h, t: E.init + h, lat: q.lat, lon: q.lon, v, p: Math.round(q.p), th, letter: coneLetter(v), post: th === 'ex' || th === 'nl', end: K.pts.indexOf(h) < 0 }; });
+  const pts = leadsP.map((h) => { const q = at(h), v = Math.max(5, round5(q.v)), th = out[h / 3].th; return { lead: h, t: E.init + h, lat: q.lat, lon: q.lon, v, p: Math.round(q.p), th, letter: coneLetter(v, scale), post: th === 'ex' || th === 'nl', end: K.pts.indexOf(h) < 0 }; });
   return { init: E.init, id: E.id, rows: out, pts, chain: out.map((q) => [q.lat, q.lon, coneRadius(K, q.lead)]), ctrl, at: (T) => at(T), line: Array.from({ length: last + 1 }, (_, l) => at(l)) };
 }
 /* the track density: the share of the members that pass within a footprint of each cell of a grid in (longitude, Mercator y), both in degrees, so that it lands exactly on the page's projection */

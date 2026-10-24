@@ -486,10 +486,14 @@ function drawPlacePreview(g, toPx) {
 }
 
 /* ---- labels, colours, shapes ---------------------------------------------------------------------------------------- */
-const STORM_COL = { TD: '#3d8bff', TS: '#2fd27a', C1: '#ffe14a', C2: '#ffa534', C3: '#ff4d3d', C4: '#e53fb5', C5: '#a45dff', EX: '#a9a9a9' };
+const STORM_GREY = '#a9a9a9';                                     // post-tropical, remnant and extratropical: grey in every basin (the letter still shows the intensity)
 const NUM_WORD = ['Zero', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen', 'Twenty', 'Twenty-One', 'Twenty-Two', 'Twenty-Three', 'Twenty-Four', 'Twenty-Five', 'Twenty-Six', 'Twenty-Seven', 'Twenty-Eight', 'Twenty-Nine', 'Thirty'];
 const numWord = (k) => NUM_WORD[k] || String(k);
-function stormColor(fix) { if (fix.th === 'ex' || fix.th === 'nl') return STORM_COL.EX; return STORM_COL[HFStorms.category(fix.v).short] || STORM_COL.TD; }
+const STORM_BY5 = [];                                             // class index of a wind in 5-kt steps in this basin's scale (the colour and the letter of a point are the same class)
+const stormClassIdx = (v) => { const k = Math.max(0, Math.round(v / 5)); return STORM_BY5[k] != null ? STORM_BY5[k] : (STORM_BY5[k] = HFStorms.classOf(STORM_BASIN, k * 5, 'tc').idx); };
+function stormColor(fix) { if (fix.th === 'ex' || fix.th === 'nl') return STORM_GREY; return SCALE.cols[stormClassIdx(fix.v)]; }       // the basin's own palette (src/storms.js, SCALES)
+const stormTag = (v) => SCALE.tag[stormClassIdx(v)];
+const inkOn = (hex) => { const n = parseInt(hex.slice(1), 16), L = 0.299 * (n >> 16) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255); return L > 168 ? '#14100a' : '#ffffff'; };       // text on a colour: dark on the pale ones
 function stormDate(h) { const d = simDate(h); return String(d.getUTCHours()).padStart(2, '0') + 'Z ' + MON[d.getUTCMonth()] + ' ' + d.getUTCDate(); }
 function stormDateFull(h) { const d = simDate(h); return String(d.getUTCHours()).padStart(2, '0') + 'z ' + MON[d.getUTCMonth()] + ' ' + d.getUTCDate() + ' ' + d.getUTCFullYear(); }
 function stormKindName(S, fix) {                                    // the long status text of a fix
@@ -696,7 +700,7 @@ function ensRefresh(tid) {
   if (!shadow || simHour - shadow.t0 >= 12) shadowBuild();
   const E = stormMgr.ensemble(tid, { at: shadowEnv }, { horizon: Math.max(24, Math.min(stormMgr.par.ens.horizon, shadow.t0 + SHADOW_H - stormMgr.hour)) });
   ensPack = E ? { tid, slot, hour: stormMgr.hour, E, members: E.members, dens: null, cone: null } : null;
-  if (ensPack) { ensPack.cone = HFStorms.coneOf(E, stormMgr.par, coneMem && coneMem.tid === tid ? coneMem.cone : null); coneMem = { tid, cone: ensPack.cone }; }
+  if (ensPack) { ensPack.cone = HFStorms.coneOf(E, stormMgr.par, coneMem && coneMem.tid === tid ? coneMem.cone : null, SCALE); coneMem = { tid, cone: ensPack.cone }; }
 }
 function drawCone(g, toPx, part) {                                        // the cone of the picked cyclone: the area (under the fans), then the centre line and the forecast points (over them)
   const S = stormSel ? stormMgr.get(stormSel.id) : null, P = ensPack;
@@ -713,10 +717,12 @@ function drawCone(g, toPx, part) {                                        // the
   g.lineWidth = 5.4; g.strokeStyle = 'rgba(10,16,30,.55)'; g.stroke(); g.lineWidth = 3; g.strokeStyle = 'rgba(232,238,250,.95)'; g.stroke();
   const hot = ensHot < 0 && coneHot >= 0 ? coneHot : -1;
   for (const q of C.pts) {
-    const p = toPx(q.lat, q.lon), r = q.lead === hot ? 12 : 10.5;
-    g.beginPath(); g.arc(p.x, p.y, r, 0, 7); g.fillStyle = stormColor({ th: q.th, v: q.v }); g.fill(); g.lineWidth = q.lead === hot ? 3 : 1.8; g.strokeStyle = q.lead === hot ? '#ffffff' : 'rgba(255,255,255,.85)'; g.stroke();
-    g.font = '700 13px Georgia, "Times New Roman", serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.lineWidth = 2.6; g.strokeStyle = 'rgba(20,14,6,.95)'; g.strokeText(q.letter, p.x, p.y + 0.5); g.fillStyle = '#fff'; g.fillText(q.letter, p.x, p.y + 0.5);
-    stormHits.push({ x: p.x, y: p.y, r: 12, cone: q });
+    const p = toPx(q.lat, q.lon), r = q.lead === hot ? 12 : 10.5, col = stormColor({ th: q.th, v: q.v }), ink = inkOn(col), n = q.letter.length, fs = n <= 1 ? 13 : n === 2 ? 11.5 : 10, hw = Math.max(r, 0.32 * fs * n + 5);       // (a letter or two sits in a circle, the agency's longer abbreviations in a pill)
+    g.beginPath();
+    if (hw > r + 0.5) { g.moveTo(p.x - hw + r, p.y - r); g.lineTo(p.x + hw - r, p.y - r); g.arc(p.x + hw - r, p.y, r, -Math.PI / 2, Math.PI / 2); g.lineTo(p.x - hw + r, p.y + r); g.arc(p.x - hw + r, p.y, r, Math.PI / 2, 1.5 * Math.PI); g.closePath(); } else g.arc(p.x, p.y, r, 0, 7);
+    g.fillStyle = col; g.fill(); g.lineWidth = q.lead === hot ? 3 : 1.8; g.strokeStyle = q.lead === hot ? '#ffffff' : 'rgba(255,255,255,.85)'; g.stroke();
+    g.font = '700 ' + fs + 'px Georgia, "Times New Roman", serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.lineWidth = 2.6; g.strokeStyle = ink === '#ffffff' ? 'rgba(20,14,6,.95)' : 'rgba(255,255,255,.6)'; g.strokeText(q.letter, p.x, p.y + 0.5); g.fillStyle = ink; g.fillText(q.letter, p.x, p.y + 0.5);
+    stormHits.push({ x: p.x, y: p.y, r: Math.max(12, hw), cone: q });
   }
   g.restore();
 }
@@ -891,6 +897,7 @@ function fillStormCard() {
   const d = HFStorms.describe(S, f), over = !!f.land;
   $('sc-name').textContent = S.name || stormTitle(S, f);
   $('sc-cat').textContent = stormKindName(S, f);
+  { const tg = $('sc-tag'), col = stormColor(f); tg.style.display = f.th === 'wv' ? 'none' : ''; tg.textContent = HFStorms.classOf(STORM_BASIN, f.v, 'tc').short; tg.style.background = col; tg.style.color = inkOn(col); }       // the class in the basin's own letters and colour (VT on red, C4 on pink ...)
   $('sc-mph').textContent = d.windMph; $('sc-p').textContent = d.pressure;
   $('sc-peak').style.display = (f.h === S.peakHour && f.v === S.peakV && f.th !== 'wv') ? '' : 'none';
   $('sc-ace').textContent = f.ace.toFixed(1);
@@ -1003,7 +1010,7 @@ function fillSummary() {
   const tb = $('sum-table').querySelector('tbody'); tb.innerHTML = '';
   $('sum-empty').hidden = rec.storms.length > 0; $('sum-table').style.display = rec.storms.length ? '' : 'none';
   for (const s of rec.storms) {
-    const c = HFStorms.category(s.peakV), col = STORM_COL[c.short] || STORM_COL.TD, live = s.end == null;
+    const col = stormColor({ th: 'tc', v: s.peakV }), live = s.end == null;
     const tr = document.createElement('tr'); if (live) tr.className = 'live'; tr.dataset.id = s.id;
     const d0 = s.tdHour >= 0 ? simDate(s.tdHour) : null, d1 = s.end != null ? simDate(s.end) : null;
     const dates = d0 ? MON[d0.getUTCMonth()] + ' ' + d0.getUTCDate() + ' – ' + (d1 ? (d1.getUTCMonth() === d0.getUTCMonth() ? '' : MON[d1.getUTCMonth()] + ' ') + d1.getUTCDate() : 'now') : '–';

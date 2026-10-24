@@ -4,7 +4,7 @@
 // program does, which docs/roadmap.md names). Needs a clean tree and Chromium for the browser drivers:
 //   PLAYWRIGHT_CHROMIUM_PATH=/path/to/chromium node tools/storm_mutants.mjs [--dry] [--base] [--only X1,S4] [--drivers node,save] [--jobs 3]
 // --dry   only checks that every edit anchor occurs exactly once and that the mutated file still parses; --base runs every driver on the unmodified tree (all must pass first);
-// --only  a comma list of mutant ids; --drivers  restricts the drivers to run (node, storms, summary, place, save, gate, env); --jobs  how many mutants run at once (default 3; each builds into its own directory under $MUT_DIR or the
+// --only  a comma list of mutant ids; --drivers  restricts the drivers to run (node, storms, summary, place, save, gate, env, look); --jobs  how many mutants run at once (default 3; each builds into its own directory under $MUT_DIR or the
 //         temp directory). It changes src/storms.js, src/template.html or index.html for the few seconds a build takes and puts them back itself;
 //         if it is killed in between, `git checkout -- src index.html` restores them. The drivers are the check functions cut out of tests/run.mjs
 //         by their opening comments (`// The storm layer on the Atlantic page`, `// Save / resume`, `async function checkEnsoHold`): keep them.
@@ -151,7 +151,7 @@ const mutants = [
   // ---- M11: the equator, the remnant low's triangle, each basin's own intensity scale
   M('Z47', S, [E('S.lat = keepSide(lat, (my * KT_KMH) / KM_DEG, par.eqSoft);', 'S.lat = lat + (my * KT_KMH) / KM_DEG;')], ['node'], 'a system can cross the equator'),
   M('Z48', H, [E("th === 'ex' || th === 'nl' ? 'triangle' : 'circle'", "th === 'ex' ? 'triangle' : 'circle'")], ['storms'], 'a remnant low is a dot, not a triangle'),
-  M('Z49', S, [E("[130, 'STY', 'Super Typhoon']", "[137, 'STY', 'Super Typhoon']")], ['node'], 'a super typhoon needs the Saffir-Simpson category 5 wind'),
+  M('Z49', S, [E("[130, 'SU', 'Super Typhoon']", "[137, 'SU', 'Super Typhoon']")], ['node'], 'a super typhoon needs the Saffir-Simpson category 5 wind'),
   M('Z50', S, [E("menu: 'wpac', scale: 'jtwc', ", "menu: 'wpac', scale: 'nhc', ")], ['node'], 'the West Pacific is classified in Saffir-Simpson categories'),
   M('Z51', S, [E("bar: ['VSCS', 'ESCS', 'SUPER']", "bar: ['HURR', 'ESCS', 'SUPER']")], ['node'], 'the North Indian season bar counts hurricanes'),
   M('Z52', S, [E("[75, 'TC', 'Tropical Cyclone']", "[65, 'TC', 'Tropical Cyclone']")], ['node'], 'a Meteo-France tropical cyclone starts at the unconverted 10-minute cut-off\'s round number'),
@@ -229,10 +229,16 @@ const mutants = [
   M('Z128', S, [E('chain: out.map((q) => [q.lat, q.lon, coneRadius(K, q.lead)]), ctrl,', 'chain: out.map((q) => [q.lat, q.lon, 0.3]), ctrl,')], ['node'], 'the cone is the same width at every lead (not the NHC error circles)'),
   M('Z129', S, [E('if (prev && prev.init < E.init && E.init - prev.init <= 24 && prev.at) {', 'if (false) {')], ['node'], 'a new cone does not move from the last one: it is the new forecast whole'),
   M('Z130', S, [E("m.pts[i][3] === 'ex' || m.pts[i][3] === 'nl').length > A.length / 2;", "m.pts[i][3] === 'ex' || m.pts[i][3] === 'nl').length < A.length / 2;")], ['node'], 'a point is grey when most members are not post-tropical'),
-  M('Z131', S, [E("const coneLetter = (v) => { const c = category(v).short; return c === 'TD' ? 'D' : c === 'TS' ? 'S' : c === 'C1' || c === 'C2' ? 'H' : 'M'; };", "const coneLetter = (v) => { const c = category(v).short; return c === 'TD' ? 'D' : c === 'TS' ? 'S' : c === 'C1' ? 'H' : 'M'; };")], ['node'], 'a Category 2 hurricane is an M on the cone, not an H'),
+  M('Z131', S, [E("tag: ['D', 'S', 'H', 'H', 'M', 'M', 'M'] };", "tag: ['D', 'S', 'H', 'M', 'M', 'M', 'M'] };")], ['node'], 'a Category 2 hurricane is an M on the cone, not an H (the NHC letters)'),
   M('Z132', S, [E('vs = f * (E.vec[0] + E.vec[1] * u), g = E.common;', 'vs = f * (E.vec[0] + E.vec[1] * u), g = 0;')], ['node'], 'the members share no forecast error (the real track is almost always inside the cone and the fan)'),
   M('Z133', H, [E('const ch = h && h.cone ? h.cone.lead : -1;', 'const ch = -1;')], ['storms'], 'hovering a forecast point of the cone does not ring it'),
   M('Z134', T, [E("hl: ['highs', 'stlows'],", "hl: ['highs'],")], ['storms'], 'the Highs & lows button leaves the lows alone'),
+  M('Z140', S, [E("cols: ['#0a84ff', '#00f060', '#ffcc00', '#ff9400', '#ff5900', '#ff0022', '#ff55bb'], tag: ['D', 'S', 'SS', 'T', 'ST', 'VT', 'SU'] },", "cols: ['#0a84ff', '#00f060', '#ffcc00', '#ff9400', '#ff0022', '#ff5900', '#ff55bb'], tag: ['D', 'S', 'SS', 'T', 'ST', 'VT', 'SU'] },")], ['node', 'look'], 'the West Pacific Strong and Violent Typhoon colours are swapped'),
+  M('Z141', S, [E("cols: [WIKI.blue, WIKI.sky, WIKI.teal, WIKI.green, WIKI.peach, WIKI.pink, WIKI.purple]", "cols: [WIKI.blue, WIKI.sky, WIKI.cyan, WIKI.green, WIKI.peach, WIKI.pink, WIKI.purple]")], ['node'], 'the North Indian Cyclonic Storm is the Australian cyan, not its own teal'),
+  M('Z142', S, [E("const AU_LOOK = { cols: [WIKI.sky, WIKI.cyan, WIKI.green, WIKI.peach, WIKI.pink, WIKI.purple], tag: ['L', '1', '2', '3', '4', '5'] };", "const AU_LOOK = { cols: [WIKI.sky, WIKI.cyan, WIKI.green, WIKI.peach, WIKI.pink, WIKI.purple], tag: ['L', 'C1', 'C2', 'C3', 'C4', 'C5'] };")], ['node'], 'an Australian cone point reads C4 instead of 4'),
+  M('Z143', H, [E("return SCALE.cols[stormClassIdx(fix.v)]; }", "return STORM_NHC[HFStorms.category(fix.v).short]; }"), E("const STORM_BY5 = [];", "const STORM_NHC = { TD: '#3d8bff', TS: '#2fd27a', C1: '#ffe14a', C2: '#ffa534', C3: '#ff4d3d', C4: '#e53fb5', C5: '#a45dff' }; const STORM_BY5 = [];")], ['look'], 'every page colours its storms with the NHC palette whatever its region'),
+  M('Z144', H, [E("tg.textContent = HFStorms.classOf(STORM_BASIN, f.v, 'tc').short;", "tg.textContent = HFStorms.category(f.v).short;")], ['look'], 'the card chip names the class in Saffir-Simpson letters on every page'),
+  M('Z145', H, [E("ensPack.cone = HFStorms.coneOf(E, stormMgr.par, coneMem && coneMem.tid === tid ? coneMem.cone : null, SCALE);", "ensPack.cone = HFStorms.coneOf(E, stormMgr.par, coneMem && coneMem.tid === tid ? coneMem.cone : null);")], ['look'], 'a cone is lettered D S H M whatever the region'),
   M('Z135', S, [E("  const run = [];\n", "  const run = []; const pre = []; for (let q = 0; q < horizon; q++) pre.push(envSrc && typeof envSrc.at === 'function' ? envSrc.at(H0 + q) : envSrc);\n"), E("const h = H0 + q, base = envSrc && typeof envSrc.at === 'function' ? envSrc.at(h) : envSrc, doy", "const h = H0 + q, base = pre[q], doy")], ['node'], 'a fan reads the steering of the last hour for every hour (the page carries its steering forward in place): the turns of every member come at the wrong time'),
   M('Z136', S, [E("ctx: { maps: this.maps, tw: null, diag: null, keep: true }", "ctx: { maps: this.maps, tw: null, diag: null }")], ['node'], 'a post-tropical member of a fan dies at the end of the engine\'s short post-tropical life, so a cone ends there'),
   M('Z137', S, [E("if (i === 0) return rows[0][key];\n    let sw = 0", "return rows[i][key];\n    let sw = 0")], ['node'], 'the consensus is not smoothed before the curve goes through it: the centre line follows every step of the mean of the tracks'),
@@ -309,6 +315,16 @@ await checkStormGate(page, '${GATE_BASIN}', GATE_DIST);
 await checkStormGateOff(browser, '${GATE_BASIN}', GATE_DIST);
 await browser.close();
 `
+    : which === 'look'
+    ? `const browser = await chromium.launch(launchOpts);
+const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+await page.route('**://**/*', (route) => route.request().url().startsWith('file://') ? route.continue() : route.abort());
+await page.goto(pathToFileURL(WPAC_DIST).href, { waitUntil: 'load', timeout: 30000 });
+await page.waitForFunction(() => window.__ready === true, { timeout: 30000 });
+await page.waitForTimeout(800);
+await checkLook(page, 'West Pacific', 'westpacific');
+await browser.close();
+`
     : which === 'env'
     ? `const browser = await chromium.launch(launchOpts);
 const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
@@ -350,7 +366,7 @@ function runDriver(dir, name) {            // resolves {name, code, fails[], tai
   return new Promise((resolve) => {
     let file, argv;
     if (name === 'node') { file = join(dir, 'tests/storms.mjs'); argv = [file]; copyFileSync(join(dir, 'storms.js.mut'), join(dir, 'src/storms.js')); }
-    else { file = join(dir, `tests/_drv_${name}.mjs`); writeFileSync(file, makeDriver(name)); argv = [file]; if (name === 'gate' || name === 'env') copyFileSync(join(dir, 'storms.js.mut'), join(dir, 'src/storms.js')); }
+    else { file = join(dir, `tests/_drv_${name}.mjs`); writeFileSync(file, makeDriver(name)); argv = [file]; if (name === 'gate' || name === 'env' || name === 'look') copyFileSync(join(dir, 'storms.js.mut'), join(dir, 'src/storms.js')); }
     const p = spawn('node', argv, { cwd: dir, env: process.env });
     let out = ''; p.stdout.on('data', (d) => (out += d)); p.stderr.on('data', (d) => (out += d));
     const timer = setTimeout(() => { out += '\nTIMEOUT'; p.kill('SIGKILL'); }, 900000);
@@ -372,7 +388,7 @@ async function runMutant(m, results) {
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------------
-let list = base ? [M('base', S, [], ['node', 'storms', 'summary', 'place', 'save', 'gate', 'env'], 'unmutated')] : (only ? mutants.filter((m) => only.includes(m.id)) : mutants);
+let list = base ? [M('base', S, [], ['node', 'storms', 'summary', 'place', 'save', 'gate', 'env', 'look'], 'unmutated')] : (only ? mutants.filter((m) => only.includes(m.id)) : mutants);
 if (drivers) list = list.map((m) => ({ ...m, drivers: m.drivers.filter((d) => drivers.includes(d)) })).filter((m) => m.drivers.length);
 if (dry) { let bad = 0; for (const m of mutants) { try { parses(m.file, applyEdits(readFileSync(join(REPO, m.file), 'utf8'), m.edits, m.id)); } catch (e) { bad++; console.log(m.id + ': ' + e.message); } } console.log(bad ? bad + ' of ' + mutants.length + ' mutants broken (an anchor that is not found exactly once, or a mutated file that does not parse)' : 'all ' + mutants.length + ' anchors found exactly once and every mutated file parses'); process.exit(bad ? 1 : 0); }
 mkdirSync(OUT, { recursive: true });
