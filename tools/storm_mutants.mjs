@@ -218,11 +218,11 @@ const mutants = [
   M('Z119', S, [E("&& r.P2 >= O.favP2[0] && r.P2 < O.favP2[1] && p2 < 5)", "&& r.P2 >= O.favP2[0] && p2 < 5)")], ['node'], 'the 5 % of a disturbance kept in its shape is also given to one that is not'),
   M('Z120', H, [E("nothing is expected in 2 days, the chance starts to build up '", "it is expected to reach them '")], ['storms'], 'the tip of an arrow does not say that nothing is expected in 2 days'),
   // ---- milestone 12: ensembles and the track density
-  M('Z121', S, [E('W.dla = sd * (C.dla + 0.5 * C.dla2 * sw); W.dlo = sd * (C.dlo + 0.5 * C.dlo2 * sw);', 'W.dla = 0; W.dlo = 0;')], ['node'], 'the features that steer a member are where they are for every member (a steering edge does not open the fan)'),
+  M('Z121', S, [E('W.dla = sd * (C.dla + 0.5 * C.dla2 * sw + g * (Cc.dla + 0.5 * Cc.dla2 * sw)); W.dlo = sd * (C.dlo + 0.5 * C.dlo2 * sw + g * (Cc.dlo + 0.5 * Cc.dlo2 * sw));', 'W.dla = 0; W.dlo = 0;')], ['node'], 'the features that steer a member are where they are for every member (a steering edge does not open the fan)'),
   M('Z122', S, [E('const f = ensFactor(E, S0.vr), horizon', 'const f = 1, horizon')], ['node'], 'a hurricane is as hard to forecast as a wave (the fan is as wide)'),
   M('Z123', S, [E('C = ensCoef(this.seed, tid, k)', 'C = ensCoef(this.seed, tid + H0, k)')], ['node'], 'a new fan every six hours: the members are drawn again at every issue'),
   M('Z124', S, [E('f[c] = cnt[c] / N;', 'f[c] = 0.5 * cnt[c] / N;')], ['node'], 'the track density is never red: it is half the share of the members even where all agree'),
-  M('Z125', S, [E('S.lat += E.pos * f * C.pla;', 'S.lat += 30 * C.pla;')], ['node'], 'the members start far from the system'),
+  M('Z125', S, [E('S.lat += E.pos * f * (C.pla + E.common * Cc.pla);', 'S.lat += 30 * C.pla;')], ['node'], 'the members start far from the system'),
   M('Z126', H, [E('const mk = !h && ensPack && stormsOn ? ensNear(cx, cy) : -1;', 'const mk = -1;')], ['storms'], 'hovering a member of the fan does nothing'),
   M('Z127', H, [E('else if (h && (h.wave || h.low)) selectPlain(h);', '')], ['storms'], 'a plain wave or L cannot be picked'),
   // ---- milestone 13: the cone of uncertainty and the layer buttons
@@ -241,7 +241,7 @@ const mutants = [
   M('Z105', H, [E('else if (stormsOn && !h && !stormSel && olAreaAt(cx, cy)) openAoiCard(olAreaAt(cx, cy));', '')], ['storms'], 'an area can only be picked by its X'),
   M('Z106', H, [E('  if (S) openStormCard(S, HFStorms.makeFix(S, stormMgr.hour, S.ace), true);', ';')], ['storms'], 'a disturbance that becomes a depression just closes the card'),
   M('Z107', H, [E('      olEager();\n', '')], ['storms'], 'the issues are made only when the map is drawn'),
-  M('Z108', H, [E('stormSel = null; olSel = null; plainSel = null; ensPack = null; ensHot = -1; stormHot = null; stormHits = []; olHeld = null; olEagerSlot = -1e9;', 'stormSel = null; olSel = null; plainSel = null; ensPack = null; ensHot = -1; stormHot = null; stormHits = []; olHeld = null;')], ['storms'], 'the issue clock of a new season is the one of the old'),
+  M('Z108', H, [E('stormSel = null; olSel = null; plainSel = null; ensPack = null; coneMem = null; ensHot = -1; stormHot = null; stormHits = []; olHeld = null; olEagerSlot = -1e9;', 'stormSel = null; olSel = null; plainSel = null; ensPack = null; coneMem = null; ensHot = -1; stormHot = null; stormHits = []; olHeld = null;')], ['storms'], 'the issue clock of a new season is the one of the old'),
   M('Z109', H, [E('if (!stormsOn || !stormMgr || typeof stormMgr.outlook !== \'function\' || !$(\'stdist\').checked) return;\n  const slot', 'if (!stormsOn || !stormMgr || typeof stormMgr.outlook !== \'function\') return;\n  const slot')], ['storms'], 'the issues are made with the Areas of interest box off'),
   M('Z11', T, [E('const k = j * NX + i; return land[k] === 1 && lakeGrid[k] === 0;', 'const k = j * NX + i; return land[k] === 1;')], ['storms'], 'a lake is land for a storm'),
   M('Z12', T, [E('sst: (la, lo) => { const id = lakeIdAt(la, lo); return id ? kfLake[id - 1] : sampleFieldS(kfSst, la, lo); },', 'sst: (la, lo) => sampleFieldS(kfSst, la, lo),')], ['storms'], 'a lake has the land\'s temperature for the storms'),
