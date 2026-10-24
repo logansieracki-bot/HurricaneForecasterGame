@@ -1262,6 +1262,38 @@ const LAND = (la, lo) => (lo > -16.3 && lo < 38 && la > 4 && la < 30) || (lo < -
       for (let h = 6; h <= 24 * 8; h += 6) { m.advanceTo(h, lowEnv);
         for (const S of m.systems) if (S.origin === 'low' && !seen.has(S.id)) { seen.add(S.id); made++; const t = m.lows.tracks.find((q) => q.became && q.end === S.born && q.lat === S.lat && q.lon === S.lon); if (t && t.invest) { withInv++; if (S.invest === t.invest) handed++; } if (t && S.ck === t.id) keyed++; } } }
     check(`a low with an invest that becomes a depression keeps its number (${handed} of ${withInv} of the ${made} that developed from a tracked low) and the key its area had (${keyed} of ${made})`, made >= 3 && withInv === made && handed === made && keyed === made); }
+  // ---- milestone 12: ensembles (a fan of members that start from the system and see a slightly different weather) and the track density
+  { const km = (a, b) => Math.hypot((a[0] - b[0]) * 111.2, (a[1] - b[1]) * 111.2 * Math.cos((a[0] + b[0]) / 2 * Math.PI / 180));
+    const at = (E, l) => E.members.filter((q) => q.pts.length > l / 3).map((q) => q.pts[l / 3]), mean = (P) => [P.reduce((t, q) => t + q[0], 0) / P.length, P.reduce((t, q) => t + q[1], 0) / P.length];
+    const sprd = (E, l) => { const P = at(E, l), c = mean(P); return Math.sqrt(P.reduce((t, q) => t + km(q, c) ** 2, 0) / P.length); };
+    const mkS = (sd, v, kind, lat = 14, lon = -40) => { const m = mk(sd, olMaps(), {}), S = m.place({ kind: kind || 'td', lat, lon }); S.th = v > 25 ? 'tc' : 'wv'; S.v = S.vr = v; return [m, S]; };
+    const [mA, SA] = mkS(3, 20, 'wave'), before = JSON.stringify(SA), E1 = mA.ensemble(SA.id, good), E2 = mA.ensemble(SA.id, good);
+    check(`an ensemble is 24 members of three families (${['GEFS', 'ECENS', 'CMCE'].map((f) => f + ' ' + E1.members.filter((q) => q.fam === f).length).join(', ')}) with their own names (${E1.members[0].name}, ${E1.members[23].name}), the same twice, and it leaves the live system as it was`,
+      E1.members.length === 24 && new Set(E1.members.map((q) => q.name)).size === 24 && E1.members.filter((q) => q.fam === 'GEFS').length === 10 && E1.members.filter((q) => q.fam === 'ECENS').length === 8 && E1.members.filter((q) => q.fam === 'CMCE').length === 6
+      && JSON.stringify(E1) === JSON.stringify(E2) && JSON.stringify(SA) === before);
+    const st = E1.members.map((q) => q.pts[0]), s0 = Math.max(...st.map((q) => km(q, [SA.lat, SA.lon])));
+    check(`the members start where the system is (the farthest ${s0.toFixed(0)} km off, the analysis error) and the fan widens with lead: spread ${[0, 12, 24, 48, 96, 168].map((l) => (l ? sprd(E1, l) : mean(st) && Math.sqrt(st.reduce((t, q) => t + km(q, mean(st)) ** 2, 0) / st.length)).toFixed(0)).join(' / ')} km at 0 / 12 / 24 / 48 / 96 / 168 h`,
+      s0 < 120 && [12, 24, 48, 96, 168].every((l, i, a) => i === 0 || sprd(E1, l) > sprd(E1, a[i - 1])) && sprd(E1, 24) < 130);
+    const [mH, SH] = mkS(3, 90), [mT, ST2] = mkS(3, 45), EH = mH.ensemble(SH.id, good), ET = mT.ensemble(ST2.id, good), tg = { 24: 78, 48: 143, 96: 312, 168: 624 };
+    check(`the spread is the size of a real forecast's track error and a mature storm's fan is tighter than a wave's: wave ${[24, 48, 96, 168].map((l) => sprd(E1, l).toFixed(0)).join(' / ')} km (NHC-like ${Object.values(tg).join(' / ')}), 45 kt storm ${[24, 48, 96, 168].map((l) => sprd(ET, l).toFixed(0)).join(' / ')}, 90 kt hurricane ${[24, 48, 96, 168].map((l) => sprd(EH, l).toFixed(0)).join(' / ')} (predictability ${E1.factor.toFixed(2)} / ${ET.factor.toFixed(2)} / ${EH.factor.toFixed(2)})`,
+      [24, 48, 96, 168].every((l) => sprd(E1, l) > 0.55 * tg[l] && sprd(E1, l) < 1.6 * tg[l]) && [96, 168].every((l) => sprd(EH, l) < 0.8 * sprd(E1, l)) && sprd(EH, 168) < sprd(ET, 168) && sprd(ET, 168) < sprd(E1, 168) && E1.factor > EH.factor);
+    // the real storm, continued in the same weather with its own chances, lies in the fan
+    let inside = 0, tot = 0; const rk = [];
+    for (let sd = 1; sd <= 30; sd++) { const [m, S] = mkS(sd, sd % 3 ? 20 : 60, sd % 3 ? 'wave' : 'td', 11 + (sd % 7), -30 - (sd * 7) % 40), E = m.ensemble(S.id, good);
+      for (const l of [48, 96, 168]) { m.advanceTo(l, good); if (!S.alive) break; const P = at(E, l), c = mean(P), d = P.map((q) => km(q, c)).sort((a, b) => a - b); tot++; if (km([S.lat, S.lon], c) <= d[Math.floor(0.9 * (d.length - 1))]) inside++; rk.push(l); } }
+    check(`the real track lies inside the fan: ${inside} of ${tot} real positions at 2, 4 and 7 days are inside the 90 % of the members nearest their mean (at least 85 %)`, tot >= 60 && inside / tot >= 0.85);
+    // a fan made six hours later is the same fan moved on, not a new one
+    const [m6, S6] = mkS(3, 45), Ea = m6.ensemble(S6.id, good); m6.advanceTo(6, good); const Eb = m6.ensemble(S6.id, good);
+    const mv = Ea.members.map((q, i) => km(q.pts[96 / 3], Eb.members[i].pts[90 / 3])).sort((a, b) => a - b), sh0 = sprd(Ea, 96);
+    check(`a fan made six hours later is the same fan, not a new one: the same member's position at the same hour four days out moves by ${mv[12].toFixed(0)} km in the median and ${mv[22].toFixed(0)} km at the 90th percentile against a fan ${sh0.toFixed(0)} km wide`, mv[12] < 0.35 * sh0 && mv[22] < 0.8 * sh0);
+    const tr = mk(2, olMaps(), {}); tr.lows.tracks.push({ id: 'L1', born: 0, lat: 25, lon: -60, p: 1005, dx: -0.6, dy: 0.2, miss: 0, alive: true, maxDepth: 5, n: 3, pmin: 1005, fixes: [] });
+    const EL = tr.ensemble('L1', good), EN = tr.ensemble('L9', good), EW = tr.ensemble(SA.id.replace('M', 'X'), good);
+    check(`a tracked low has a fan too (${EL ? EL.members.length : 0} members, the first leaving ${EL ? (EL.members[0].pts[4][1] - EL.members[0].pts[0][1]).toFixed(1) : '-'} degrees of longitude in 12 h, west as the low was moving), and something that is not there has none (${EN === null && EW === null ? 'null' : 'a fan'})`,
+      EL && EL.members.length === 24 && EL.members[0].pts[4][1] < EL.members[0].pts[0][1] - 0.5 && EN === null && EW === null);
+    const D = H.ensDensity(E1.members), cellOf = (la, lo) => { const i = Math.round((lo - D.lon0) / D.dlon), j = Math.round((H.mercY(la) - D.my0) / D.dmy); return D.frac[j * D.nx + i]; };
+    const tm = (l) => { const c = mean(at(E1, l)); return cellOf(c[0], c[1]); }, same = H.ensDensity(Array.from({ length: 6 }, () => E1.members[0])), fmax = (d) => Math.max(...d.frac);
+    check(`the track density is the share of members near each place: ${tm(0).toFixed(2)} at the start, ${tm(24).toFixed(2)} at 1 day, ${tm(72).toFixed(2)} at 3 days, ${tm(168).toFixed(2)} at 7 days (red where all agree, then fewer as the spread grows), 1.00 when the members are one (${fmax(same).toFixed(2)}), none far away (${cellOf(60, 30) === undefined ? 'off the grid' : cellOf(40, -20)})`,
+      tm(0) >= 0.95 && tm(24) >= 0.85 && tm(72) < tm(24) && tm(168) < 0.6 && fmax(same) > 0.99 && D.nx > 20 && D.ny > 20 && D.dlon === D.dmy && (cellOf(40, -20) || 0) < 0.05); }
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

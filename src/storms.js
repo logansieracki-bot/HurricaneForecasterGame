@@ -68,7 +68,7 @@ function rndn(seed, a, b, c) {                                                  
   return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
 }
 // streams (the `c` argument): one per purpose, so adding a draw somewhere never shifts another
-const ST = { VOL: 1, WX: 2, WY: 3, PRES: 4, RIT: 5, RID: 6, RIR: 7, SPAWN: 8, POS: 9, V0: 10, SUBC: 11, ETC: 12, LIFE: 13, WAVE: 14, LOWSEED: 15, PLACE: 16, Q: 17, Q0: 18, GEN: 19, LIFEN: 20, SEEDPOS: 21, ACT: 22, ETL: 23, ETD: 24, ETS: 25, GENC: 26, ENDH: 27, FLOOR: 28, CONV: 29, LEAD: 30 };
+const ST = { VOL: 1, WX: 2, WY: 3, PRES: 4, RIT: 5, RID: 6, RIR: 7, SPAWN: 8, POS: 9, V0: 10, SUBC: 11, ETC: 12, LIFE: 13, WAVE: 14, LOWSEED: 15, PLACE: 16, Q: 17, Q0: 18, GEN: 19, LIFEN: 20, SEEDPOS: 21, ACT: 22, ETL: 23, ETD: 24, ETS: 25, GENC: 26, ENDH: 27, FLOOR: 28, CONV: 29, LEAD: 30, ENS: 31 };
 const NS = { W: 1, N: 2, M: 3, L: 4, F: 5 };                                                          // id namespaces
 const idNum = (ns, k) => NS[ns] * 1000000 + k;
 
@@ -422,6 +422,16 @@ function structureParams() {
       rise: 20, fall: 20, firstP7: 40, firstP2: 30, morph: 0.3, maxMove: 2, maxGrow: 0.5, memH: 30,   // between two issues a chance moves by no more than rise / fall (percent), a shape the share morph of the way to the new forecast (the rest is the last issue's, carried with its disturbance) and at most maxMove degrees (its radius maxGrow); a disturbance seen for the first time starts no higher than firstP7 / firstP2; an issue older than memH hours is not what the next one moves on from
       lead: { W: [48, 168, 0], N: [12, 120, 0.3], F: [12, 120, 0.3] },           // how many hours before it exists a forecaster sees a system coming: shortest, longest, and the share nobody sees coming
       cls: [35, 60],                                                              // an area is low (yellow) up to this 7-day chance, medium (orange) up to the next, high (red) above
+    },
+    // the ensembles (Manager.prototype.ensemble): members that start from the same system and see a slightly different weather; every size below is for a predictability factor of 1 (see ensFactor)
+    ens: {
+      n: 24, horizon: 168,                                                         // members and hours ahead (the look-ahead of the page's own weather is 174 h)
+      f: [1.3, 0.5, 25, 80],                                                      // predictability factor: for a wave or low, for a hurricane, and the wind (kt) between which it falls from one to the other (a strong storm is steered by the deep flow and is the better forecast)
+      pos: 0.1, dv: 5,                                                            // the error of the starting position (degrees) and wind (kt) of a member
+      disp: [0.25, 2.6, 1.2],                                                      // the features the steering is read from are shifted by a member-specific amount: sd (degrees) at the start, and the growth to a week with lead (power of lead / 168 h)
+      vec: [1.3, 0.6],                                                             // the steering error (kt, a speed and direction error that changes slowly): sd at the start and growth to a week
+      shear: 0.25, sst: 0.4, rh: 4, ramp: 48,                                      // the weather the storm feels: shear x (1 + e), sea temperature (C) and humidity (points), reaching full size after ramp hours
+      foot: [0.6, 1.4],                                                            // the track density: the radius (degrees) round a member's track that counts as "there", at the start and at a week
     },
   };
 }
@@ -1564,6 +1574,99 @@ Manager.prototype.forecast = function (spec, envSrc, horizonH) {
   return { id: S.id, fixes, peak, developed: td, named, ace: Math.round(ace * 100) / 100, alive: S.alive, endReason: S.endReason, endHour: S.end };
 };
 
+/* ---- ensembles ---------------------------------------------------------------------------------------------------------------------------------------------------------
+   A member is a copy of the live system stepped by the engine's own physics through the page's own weather of the next days, with what a forecast does not know made different from member to member: where the
+   features that steer it (a ridge's edge, a trough) are, how fast the flow really is, a little of the shear, sea temperature and humidity it feels, and the draws of chance (wobble, rapid intensification,
+   genesis). The sizes grow with lead and are scaled by how well a system of that strength can be forecast (ensFactor): a wave is a wide fan, a hurricane a tight one. A member's coefficients are a pure function of the
+   seed, the system and the member, never of the hour of the issue, so a fan made six hours later is the same fan moved on by what changed, not a new one. */
+const ENS_FAM = [['GEFS', 'p', 10], ['ECENS', 'e', 8], ['CMCE', 'c', 6]];
+function cloneSystem(S) { const C = Object.assign({}, S); C.fixes = []; C.ri = S.ri ? Object.assign({}, S.ri) : null; C.exEp = S.exEp ? Object.assign({}, S.exEp) : null; return C; }
+const ensFactor = (E, v) => E.f[0] + (E.f[1] - E.f[0]) * smooth01(v, E.f[2], E.f[3]);
+function ensCoef(seed, tid, k) {
+  const z = (j) => rndn(seed, tid, k * 32 + j, ST.ENS);
+  return { dla: z(0), dlo: z(1), dla2: z(2), dlo2: z(3), eu: z(4), ev: z(5), eu2: z(6), ev2: z(7), ph: 6.2832 * rnd(seed, tid, k * 32 + 8, ST.ENS), shr: z(9), sst: z(10), rh: z(11), pla: z(12), plo: z(13), pv: z(14), salt: hash5(seed, tid, k, ST.ENS, 99) };
+}
+function ensEnv(E, f, C) {                                                   // the weather one member sees: the base environment with its own errors, a wrapper whose `at(base, lead)` sets the hour
+  const W = { base: null, box: null, ds: 0, dr: 0, sm: 0, dla: 0, dlo: 0, eu: 0, ev: 0, sstRef: undefined, enso: undefined };
+  W.isLand = (la, lo) => W.base.isLand(la, lo);
+  W.sst = (la, lo) => W.base.sst(la, lo) + W.ds; W.rh = (la, lo) => W.base.rh(la, lo) + W.dr; W.shear = (la, lo) => W.base.shear(la, lo) * (1 + W.sm);
+  W.steer = (la, lo, out) => {
+    W.base.steer(la + W.dla, lo + W.dlo / Math.max(0.3, Math.cos(la * DEG)), out);
+    out[0] += W.eu; out[2] += W.eu; out[4] += W.eu; out[1] += W.ev; out[3] += W.ev; out[5] += W.ev;
+  };
+  W.at = (base, lead) => {
+    const u = Math.min(Math.max(lead, 0), 192) / 168, ramp = Math.min(1, lead / E.ramp), sw = Math.sin(lead / 41 + C.ph);
+    const sd = f * (E.disp[0] + E.disp[1] * Math.pow(u, E.disp[2])), vs = f * (E.vec[0] + E.vec[1] * u);
+    W.base = base; W.box = base.box; W.sstRef = base.sstRef ? () => base.sstRef() : undefined; W.enso = base.enso ? () => base.enso() : undefined;
+    W.dla = sd * (C.dla + 0.5 * C.dla2 * sw); W.dlo = sd * (C.dlo + 0.5 * C.dlo2 * sw);
+    W.eu = vs * (C.eu + 0.5 * C.eu2 * sw); W.ev = vs * (C.ev + 0.5 * C.ev2 * sw);
+    W.sm = f * E.shear * C.shr * ramp; W.ds = f * E.sst * C.sst * ramp; W.dr = f * E.rh * C.rh * ramp;
+    return W;
+  };
+  return W;
+}
+/* target: the id of a system (a cyclone, a wave, a seed) or of a tracked low ('L12'); envSrc: { at(h) } or an environment (the page's shadow weather). Returns null for something that is not there. */
+Manager.prototype.ensemble = function (target, envSrc, opts) {
+  const par = this.par, E = opts && opts.ens ? mergeParams(par.ens, opts.ens) : par.ens, H0 = this.hour, n = (opts && opts.n) || E.n;
+  let S0 = typeof target === 'string' ? this.byId[target] : target, tid;
+  if (S0 && !S0.alive) return null;
+  if (!S0) {                                                               // a tracked low: the same low a placed one is, moving as the track moved over its last six hours
+    const t = this.lows.tracks.find((q) => q.id === target); if (!t || !t.alive) return null;
+    S0 = this.pendingPlacement({ kind: 'low', lat: t.lat, lon: t.lon, hour: H0 }); const k = 111.2 / 6 / 1.852;
+    S0.cx = (t.dx || 0) * Math.cos(t.lat * DEG) * k; S0.cy = (t.dy || 0) * k; tid = 1e6 + (t.born | 0);
+  } else tid = S0.num | 0;
+  const f = ensFactor(E, S0.vr), horizon = Math.min(E.horizon, (opts && opts.horizon) || E.horizon), ctxAt = [];
+  for (let k = 0; k < horizon; k++) {                                       // what is the same for every member: the season's weights and the activity of each hour
+    const h = H0 + k, base = envSrc && typeof envSrc.at === 'function' ? envSrc.at(h) : envSrc, ctx = { maps: this.maps, tw: null, diag: null }, doy = this.doyAt(h);
+    if (this.maps) { ctx.tw = timeWeights(doy + (((h % 24) + 24) % 24) / 24); ctx.act = activityFactor(par, this.seed, seasonYearOf(this.startMs + h * HOUR_MS, this.seasonMonth), h); ensoOf(par, base, ctx); }
+    ctxAt.push({ base, tw: ctx.tw, act: ctx.act, shift: ctx.shift, doy });
+  }
+  const members = [], labels = []; for (const F of ENS_FAM) for (let i = 0; i < F[2]; i++) labels.push([F[0], F[1] + String(i + 1).padStart(2, '0')]);
+  for (let k = 0; k < n; k++) {
+    const L = labels[k % labels.length], C = ensCoef(this.seed, tid, k), W = ensEnv(E, f, C), S = cloneSystem(S0);
+    S.lat += E.pos * f * C.pla; S.lon += (E.pos * f * C.plo) / Math.max(0.3, Math.cos(S.lat * DEG)); S.v = Math.max(5, S.v + E.dv * f * C.pv); S.vr = Math.max(5, S.vr + E.dv * f * C.pv);
+    const ctx = { maps: this.maps, tw: null, diag: null }, pts = [[S.lat, S.lon, Math.round(S.vr), S.th]]; let peak = S.vr;
+    for (let q = 0; q < horizon && S.alive; q++) {
+      const c = ctxAt[q], h = H0 + q; ctx.tw = c.tw; ctx.act = c.act; ctx.shift = c.shift;
+      stepSystem(S, W.at(c.base, q), h, C.salt, par, c.doy, ctx);
+      if (S.vr > peak) peak = S.vr;
+      if ((q + 1) % 3 === 0 || !S.alive) pts.push([S.lat, S.lon, Math.round(S.vr), S.th]);
+    }
+    members.push({ k, name: L[0] + ' ' + L[1], fam: L[0], pts, peak: Math.round(peak), hours: Math.min(horizon, (pts.length - 1) * 3), alive: S.alive });
+  }
+  return { init: H0, id: S0.id || target, factor: f, members };
+};
+/* the track density: the share of the members that pass within a footprint of each cell of a grid in (longitude, Mercator y), both in degrees, so that it lands exactly on the page's projection */
+const mercY = (lat) => (Math.log(Math.tan(Math.PI / 4 + Math.min(85, Math.max(-85, lat)) * DEG / 2)) / DEG);
+function ensDensity(members, o) {
+  const E = (o && o.foot) || [0.6, 1.4], N = members.length; if (!N) return null;
+  let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
+  for (const m of members) for (const q of m.pts) { const y = mercY(q[0]); x0 = Math.min(x0, q[1]); x1 = Math.max(x1, q[1]); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+  const pad = 2.2 * E[1] / Math.max(0.2, Math.cos(((y0 + y1) / 2) * 0.5 * DEG)), cell = Math.max(0.1, Math.max(x1 - x0, y1 - y0) / 220);
+  x0 -= pad; y0 -= pad; x1 += pad; y1 += pad;
+  const nx = Math.ceil((x1 - x0) / cell) + 1, ny = Math.ceil((y1 - y0) / cell) + 1, cnt = new Float32Array(nx * ny), mark = new Int32Array(nx * ny);
+  members.forEach((m, k) => {
+    const stamp = (x, y, r) => {                                           // r in degrees of mercator space (a circle there is a circle on the map)
+      const i0 = Math.max(0, Math.floor((x - r - x0) / cell)), i1 = Math.min(nx - 1, Math.ceil((x + r - x0) / cell)), j0 = Math.max(0, Math.floor((y - r - y0) / cell)), j1 = Math.min(ny - 1, Math.ceil((y + r - y0) / cell));
+      for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) { const dx = x0 + i * cell - x, dy = y0 + j * cell - y; if (dx * dx + dy * dy <= r * r) { const c = j * nx + i; if (mark[c] !== k + 1) { mark[c] = k + 1; cnt[c]++; } } }
+    };
+    for (let a = 0; a < m.pts.length; a++) {
+      const A = m.pts[a], B = m.pts[Math.min(a + 1, m.pts.length - 1)], ya = mercY(A[0]), yb = mercY(B[0]), L = Math.hypot(B[1] - A[1], yb - ya), steps = Math.max(1, Math.ceil(L / (0.5 * cell)));
+      for (let s2 = 0; s2 < (a + 1 < m.pts.length ? steps : 1); s2++) {
+        const u = s2 / steps, lead = (a + u) * 3, la = A[0] + u * (B[0] - A[0]), rr = (E[0] + (E[1] - E[0]) * Math.min(1, lead / 168)) / Math.max(0.2, Math.cos(la * DEG));
+        stamp(A[1] + u * (B[1] - A[1]), ya + u * (yb - ya), rr);
+      }
+    }
+  });
+  const f = new Float32Array(nx * ny); for (let c = 0; c < f.length; c++) f[c] = cnt[c] / N;
+  for (let pass = 0; pass < 1; pass++) {                                    // a light 3 x 3 blur: the edge of a footprint is not a staircase
+    const g = new Float32Array(f.length);
+    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) { let t = 0, w = 0; for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) { const jj = j + dj, ii = i + di; if (jj >= 0 && jj < ny && ii >= 0 && ii < nx) { const wt = (di ? 1 : 2) * (dj ? 1 : 2); t += wt * f[jj * nx + ii]; w += wt; } } g[j * nx + i] = t / w; }
+    f.set(g);
+  }
+  return { lon0: x0, my0: y0, dlon: cell, dmy: cell, nx, ny, frac: f };
+}
+
 /* The season summary: one uniform record for any season of this run -- the current one, one that has ended but still has a storm alive
    (its counters keep running in `prev`), or an archived one. Cyclones only (those that got a depression number), in order of formation. */
 Manager.prototype.seasonYears = function () { return this.archive.map((e) => e.year).concat([this.season.year]); };
@@ -1613,7 +1716,7 @@ root.HFStorms = {
   VERSION, create: (o) => new Manager(o), restore: (o, extra) => Manager.restore(o, extra), defaultParams, mergeParams,
   prepareMaps, timeWeights, mapAt, driftAt, climAt, steerRing, envFactor, activityFactor, structureParams, CALIBRATED, calibrated: (on) => { const was = useCalibrated; if (on != null) useCalibrated = !!on; return was; },
   category, ktToMph, aceOf, round5, gustKt, compass, pressureFromWind, windFromPressure, WP, vPot, statusOf, describe, nameFor, NAME_SETS, NAME_SUPPLEMENTAL, BASINS, basinInfo: basinOf, stormName, seasonYearOf,
-  smooth01, rnd, rndn, hash5, idNum, stepSystem, newSystem, makeFix, seasonalWeight, WAVE_SEASON, LowTracker, etHazard6, disHazard6, baroclinicV, satur, softMin, lowWeight, keepSide, SCALES, scaleOf, classOf, investLetter, capsule, swath, swathFull, outlookClass, outlookFollow, sstGateAt, growthG, decayLimit,
+  smooth01, rnd, rndn, hash5, idNum, stepSystem, newSystem, makeFix, seasonalWeight, WAVE_SEASON, LowTracker, etHazard6, disHazard6, baroclinicV, satur, softMin, lowWeight, keepSide, SCALES, scaleOf, classOf, investLetter, capsule, swath, swathFull, outlookClass, outlookFollow, cloneSystem, ensFactor, ensDensity, mercY, sstGateAt, growthG, decayLimit,
 };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
 /* ==== STORMS ENGINE END ==== */
