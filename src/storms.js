@@ -1634,7 +1634,7 @@ Manager.prototype.ensemble = function (target, envSrc, opts) {
     }
     members.push({ k, name: L[0] + ' ' + L[1], fam: L[0], pts, peak: Math.round(peak), hours: Math.min(horizon, (pts.length - 1) * 3), alive: S.alive });
   }
-  return { init: H0, id: S0.id || target, factor: f, members };
+  return { init: H0, id: S0.id || target, factor: f, start: [S0.lat, S0.lon], members };
 };
 /* the track density: the share of the members that pass within a footprint of each cell of a grid in (longitude, Mercator y), both in degrees, so that it lands exactly on the page's projection */
 const mercY = (lat) => (Math.log(Math.tan(Math.PI / 4 + Math.min(85, Math.max(-85, lat)) * DEG / 2)) / DEG);

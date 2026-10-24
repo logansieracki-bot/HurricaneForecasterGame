@@ -634,6 +634,39 @@ async function checkStorms(page, label) {
   const empty = await ev(() => ({ card: document.getElementById('storm-card').hidden, ids: window.SSTSIM.stormDrawn() }));
   check(`[${label}] selecting again hides the others (${again.ids.length} drawn) and a click on the empty map deselects and shows them all (${empty.ids.length} drawn)`, again.card === false && again.ids.length === 1 && empty.card === true && [i1, i2, i3].every((id) => empty.ids.includes(id)));
 
+  // ---- ensembles: a fan of members for the selected system, hover a member for its data, the track density, and a plain wave that can be picked
+  const en0 = await ev(() => ({ has: !!document.getElementById('stens'), checked: document.getElementById('stens').checked, densChecked: document.getElementById('stdens').checked, densDisabled: document.getElementById('stdens').disabled, state: window.SSTSIM.ensState() }));
+  check(`[${label}] the Ensembles and Track density layers exist, start off (the density one disabled until ensembles are on) and draw nothing (${JSON.stringify(en0.state)})`, en0.has && !en0.checked && !en0.densChecked && en0.densDisabled && en0.state === null);
+  await ev(() => { document.getElementById('stens').click(); });
+  const dis1 = await ev(() => document.getElementById('stdens').disabled);
+  await page.mouse.click(px.x, px.y); await page.waitForFunction(() => window.SSTSIM.ensState() !== null, null, { timeout: 15000 }); await page.waitForTimeout(300);
+  const en1 = await ev(() => { const S = window.SSTSIM, st = S.ensState(), probe = (k, i) => { const p = S.ensPoint(k, i), c = document.getElementById('storm-canvas'), d = c.width / c.clientWidth, a = c.getContext('2d').getImageData(Math.round(p.x * d), Math.round(p.y * d), 1, 1).data; return [a[0], a[1], a[2], a[3]]; };
+    const cols = new Set(); let inked = 0, tot = 0; if (st) for (let k = 0; k < st.n; k++) for (const i of [6, 12, 20, 30]) { const p = S.ensPoint(k, i); if (!p) continue; tot++; const q = probe(k, i); if (q[3] > 40) { inked++; cols.add(Math.round(q[0] / 64) + '-' + Math.round(q[1] / 64) + '-' + Math.round(q[2] / 64)); } }
+    return { st, inked, tot, cols: cols.size, p0: st ? S.ensPoint(0, 0) : null, live: S.stormPx(st ? st.tid : 'x') }; });
+  check(`[${label}] with Ensembles on, a selected storm gets 24 members of three families (${en1.st && en1.st.names[0]}..${en1.st && en1.st.names[23]}), the density layer becomes available (${!dis1 ? 'enabled' : 'disabled'}), the lines are painted on the map (${en1.inked} of ${en1.tot} probes, ${en1.cols} colours) and the fan starts at the storm (${en1.p0 ? Math.round(Math.hypot(en1.p0.x - px.x, en1.p0.y - px.y)) : '-'} px)`,
+    en1.st && en1.st.tid === i1 && en1.st.n === 24 && en1.st.names.some((n) => /^GEFS p\d\d$/.test(n)) && en1.st.names.some((n) => /^ECENS e\d\d$/.test(n)) && en1.st.names.some((n) => /^CMCE c\d\d$/.test(n)) && dis1 === false && en1.inked >= 0.6 * en1.tot && en1.cols >= 2 && en1.p0 && Math.hypot(en1.p0.x - px.x, en1.p0.y - px.y) < 25);
+  const mp = await ev(() => window.SSTSIM.ensPoint(5, 14));
+  await page.mouse.move(mp.x + 60, mp.y + 60); await page.mouse.move(mp.x, mp.y, { steps: 5 }); await page.waitForTimeout(200);
+  const en2 = await ev(() => { const t = document.getElementById('storm-tip'); return { shown: t.style.display === 'block', title: t.querySelector('b').textContent, body: t.querySelector('div').innerText.replace(/\n/g, ' | '), hot: window.SSTSIM.ensState().hot }; });
+  check(`[${label}] hovering a member highlights it and shows its data (${en2.title} | ${en2.body})`, en2.shown && en2.hot >= 0 && /^(GEFS|ECENS|CMCE) [pec]\d\d · \d+ h$/.test(en2.title) && /init \d\dz [A-Z][a-z]{2} \d+ \d{4}/.test(en2.body) && /peak \d+ mph \(1-min\)/.test(en2.body));
+  await page.mouse.move(mp.x - 300, mp.y + 250); await page.waitForTimeout(200);
+  const en3 = await ev(() => window.SSTSIM.ensState().hot);
+  check(`[${label}] moving off the member un-highlights it (${en3})`, en3 === -1);
+  const dn = await ev(() => { const S = window.SSTSIM, c = document.getElementById('storm-canvas'), d = c.width / c.clientWidth, p = S.ensPoint(0, 0), block = () => { const a = c.getContext('2d').getImageData(Math.round((p.x - 14) * d), Math.round((p.y + 8) * d), 20, 14).data; let t = 0; for (let i = 3; i < a.length; i += 4) t += a[i]; return t; };
+    const off = block(); document.getElementById('stdens').click(); S.stormDraw(); const on = block(), st = S.ensState(); document.getElementById('stdens').click(); S.stormDraw(); return { off, on, dens: st.dens }; });
+  check(`[${label}] Track density paints the map where the members agree (${dn.off} -> ${dn.on} of alpha in a block beside the storm) and nothing when it is off again`, dn.dens && dn.on > dn.off + 400);
+  await page.keyboard.press('Escape'); await page.waitForTimeout(100);
+  const en4 = await ev(() => window.SSTSIM.ensState());
+  check(`[${label}] nothing is drawn once the storm is deselected (${JSON.stringify(en4)})`, en4 === null);
+  // a plain wave (no area of interest) can be picked, alone, and gets a fan too
+  const pw = await ev(() => { const S = window.SSTSIM; document.getElementById('stdist').click(); S.stormAuto(false); const id = S.stormPlace({ kind: 'wave', lat: 17, lon: -42 }); S.stormDraw(); return { id, px: S.stormPx(id), hits: S.stormDrawn() }; });
+  await page.mouse.move(pw.px.x + 40, pw.px.y + 40); await page.mouse.move(pw.px.x, pw.px.y, { steps: 3 }); await page.mouse.click(pw.px.x, pw.px.y); await page.waitForFunction(() => window.SSTSIM.ensState() !== null, null, { timeout: 15000 }); await page.waitForTimeout(300);
+  const pw1 = await ev(() => ({ sel: window.SSTSIM.plainSelState(), e: window.SSTSIM.ensState(), drawn: window.SSTSIM.stormDrawn() }));
+  await page.keyboard.press('Escape'); await page.waitForTimeout(100);
+  const pw2 = await ev((id) => { const S = window.SSTSIM, r = { sel: S.plainSelState(), e: S.ensState() }; document.getElementById('stens').click(); document.getElementById('stdist').click(); S.stormForce(id, { alive: false }); S.stormAuto(true); S.stormDraw(); return r; }, pw.id);
+  check(`[${label}] a plain wave can be clicked: it is picked alone (${JSON.stringify(pw1.sel)}, ${pw1.drawn.length} cyclones drawn), gets its fan (${pw1.e ? pw1.e.n : 0} members, predictability ${pw1.e ? pw1.e.factor.toFixed(2) : '-'}), and Escape puts it all back (${JSON.stringify(pw2.sel)})`,
+    pw1.sel && pw1.sel.id === pw.id && pw1.drawn.length === 0 && pw1.e && pw1.e.tid === pw.id && pw1.e.n === 24 && pw1.e.factor > 1.2 && pw2.sel === null && pw2.e === null);
+
   // layout: at desktop, tablet and phone widths the season bar stays on screen and clear of the clock, the open panel and the dock,
   // and an open stat card stays on screen and clear of the dock (the bar once ran over the panel title and off a phone's edge)
   const lay = [];

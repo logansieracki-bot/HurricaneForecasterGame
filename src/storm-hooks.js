@@ -265,7 +265,7 @@ function labRecord(m) {
 }
 function stormsReset() {
   stormMgr = HFStorms.create({ seed: stormSeed(), startMs: START_MS, hour0: simHour, auto: stormAuto, autoRate: stormActivity, maps: stormMapsNow(), basin: STORM_BASIN });
-  stormLab = null; shadow = null; stormFieldsDirty = true; kfBreak = true; kfFieldHour = -1; stormSel = null; olSel = null; stormHot = null; stormHits = []; olHeld = null; olEagerSlot = -1e9; olHits = []; stormsDirty = true;
+  stormLab = null; shadow = null; stormFieldsDirty = true; kfBreak = true; kfFieldHour = -1; stormSel = null; olSel = null; plainSel = null; ensPack = null; ensHot = -1; stormHot = null; stormHits = []; olHeld = null; olEagerSlot = -1e9; olHits = []; stormsDirty = true;
   sumArch = 0; if (sumOpen) closeSummary();
   const card = $('storm-card'), tip = $('storm-tip'), acard = $('aoi-card'); if (card) card.hidden = true; if (acard) acard.hidden = true; if (tip) tip.style.display = 'none';
   updateSeasonBar();
@@ -306,7 +306,7 @@ function stormsSwitch(on, force) {
   if (!STORMS_READY && !force) return false;                        // a page without its climatology yet can not be switched on by a visitor (the fitting tools force it: they are what makes the climatology)
   if (on === stormsOn) return stormsOn;
   stormsOn = !!on;
-  if (!stormsOn) { stormSel = null; olSel = null; for (const id of ['storm-card', 'aoi-card']) { const c = $(id); if (c) c.hidden = true; } }          // (no card of a system that is not on the map)
+  if (!stormsOn) { stormSel = null; olSel = null; plainSel = null; ensPack = null; for (const id of ['storm-card', 'aoi-card']) { const c = $(id); if (c) c.hidden = true; } }          // (no card of a system that is not on the map)
   if (!stormsOn && typeof placeSet === 'function') placeSet(false);
   if (stormsOn) stormsReset();                                     // storms resume from the current hour with a fresh season
   stormsDirty = true; drawStorms(); updateSeasonBar();
@@ -523,7 +523,7 @@ const shapeOf = (th) => (th === 'sc' ? 'square' : th === 'ex' || th === 'nl' ? '
 /* ---- the outlook: areas of interest, X's and arrows (the engine's Manager.prototype.outlook makes them, the same for every basin; this block only draws, picks and describes) ---- */
 const OL_COL = { low: '#ffe24d', medium: '#ff9d2e', high: '#ff3b30' }, OL_NAME = { low: 'Low', medium: 'Medium', high: 'High' };      // the National Hurricane Center's yellow, orange and red
 const OL_HATCH = { low: [9, 1.4], medium: [7.5, 1.7], high: [6, 2.0] };                                                              // diagonal lines inside the shape: tile size and line width in px, closer and thicker for a higher chance
-let olForced = null, olHeld = null, olHeldAt = 0, olShown = null, olHits = [], olIssuedText = '', olSel = null, lastAoiCardAt = 0;           // olShown: the issue on the map now (what a tooltip talks about); olSel: the disturbance picked to look at alone ({ key, id })
+let olForced = null, olHeld = null, olHeldAt = 0, olShown = null, olHits = [], olIssuedText = '', olSel = null, lastAoiCardAt = 0, plainSel = null, ensPack = null, ensHot = -1, ensPx = [];           // olShown: the issue on the map now (what a tooltip talks about); olSel: the disturbance picked to look at alone ({ key, id })
 function outlookNow() {
   if (olForced) return olForced;
   if (!stormsOn || !stormMgr || typeof stormMgr.outlook !== 'function' || kfFieldHour < 0) return null;
@@ -669,13 +669,88 @@ function fillAoiCard() {
 }
 function openAoiCard(a) {
   stormSel = null; $('storm-card').hidden = true; $('storm-tip').style.display = 'none';
-  olSel = { key: a.key, id: a.id }; lastAoiCardAt = 0; fillAoiCard(); stormsDirty = true; drawStorms();
+  olSel = { key: a.key, id: a.id }; plainSel = null; lastAoiCardAt = 0; fillAoiCard(); stormsDirty = true; drawStorms();
 }
 function updateOutlookLegend(on, OL) {
   const el = $('ol-legend'); if (!el) return;
   el.style.display = on ? 'block' : 'none';
   const t = on && OL ? 'Issued ' + stormDate(OL.issued) + ' · ' + OL.areas.length + (OL.areas.length === 1 ? ' area' : ' areas') : '';
   if (t !== olIssuedText) { olIssuedText = t; $('ol-issued').textContent = t; }
+}
+
+/* ---- ensembles: a fan of members for the system you select, and where they agree (the engine: Manager.prototype.ensemble, HFStorms.ensDensity) ------------------------------------
+   The members are made from the page's own weather of the next days (the shadow environment the Place preview uses), once per six-hour issue, and drawn anchored to where the system is now, the anchor fading
+   out over two days so that the fan does not lag the live head between issues. The track density is the share of members near each place, on a grid in the map's own projection.                          */
+function ensTarget() {
+  if (!stormMgr || !$('stens').checked) return null;
+  const id = stormSel ? stormSel.id : olSel ? olSel.id : plainSel ? plainSel.id || plainSel.low : null;
+  if (!id) return null;
+  const S = stormMgr.get(id); return (S ? S.alive : stormMgr.lows.tracks.some((t) => t.id === id && t.alive)) ? id : null;
+}
+function ensRefresh(tid) {
+  if (!tid) { ensPack = null; ensHot = -1; return; }
+  const slot = Math.floor(stormMgr.hour / 6), fast = playing && SPEEDS[speedIdx] >= 8;
+  if (ensPack && ensPack.tid === tid && (ensPack.slot === slot || (fast && stormMgr.hour - ensPack.hour < 24))) return;       // (at 8x and above once a day: the look-ahead of the weather is a third of a second)
+  if (!shadow || simHour - shadow.t0 >= 12) shadowBuild();
+  const E = stormMgr.ensemble(tid, { at: shadowEnv }, { horizon: Math.max(24, Math.min(stormMgr.par.ens.horizon, shadow.t0 + SHADOW_H - stormMgr.hour)) });
+  ensPack = E ? { tid, slot, hour: stormMgr.hour, E, members: E.members, dens: null } : null;
+}
+const ENS_RAMP = [[0.03, 150, 205, 250, 95], [0.15, 105, 175, 245, 195], [0.3, 40, 115, 235, 220], [0.5, 30, 200, 70, 228], [0.7, 255, 232, 0, 236], [0.85, 255, 140, 0, 242], [0.96, 255, 25, 25, 248]];
+function ensDensImage(D) {                                                // the density as a small image (a pixel a cell): the page stretches it between the projected corners, smoothed
+  const c = document.createElement('canvas'); c.width = D.nx; c.height = D.ny; const cx = c.getContext('2d'), im = cx.createImageData(D.nx, D.ny), d = im.data;
+  for (let j = 0; j < D.ny; j++) for (let i = 0; i < D.nx; i++) {
+    const f = D.frac[j * D.nx + i]; if (f < ENS_RAMP[0][0]) continue;
+    let a = ENS_RAMP[0], b = ENS_RAMP[ENS_RAMP.length - 1]; for (let k = 1; k < ENS_RAMP.length; k++) if (f <= ENS_RAMP[k][0]) { a = ENS_RAMP[k - 1]; b = ENS_RAMP[k]; break; }
+    const u = f >= b[0] ? 1 : Math.max(0, (f - a[0]) / (b[0] - a[0])), o = ((D.ny - 1 - j) * D.nx + i) * 4;
+    for (let q = 0; q < 4; q++) d[o + q] = Math.round(a[q + 1] + u * (b[q + 1] - a[q + 1]));
+  }
+  cx.putImageData(im, 0, 0); return { c, D };
+}
+function drawEnsDensity(g, toPx, I) {
+  const D = I.D, la = (my) => (2 * Math.atan(Math.exp(my * DEG)) - Math.PI / 2) / DEG, hc = D.dlon / 2;
+  const a = toPx(la(D.my0 + (D.ny - 0.5) * D.dmy), D.lon0 - hc), b = toPx(la(D.my0 - hc), D.lon0 + (D.nx - 0.5) * D.dlon);
+  g.save(); g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high'; g.drawImage(I.c, a.x, a.y, b.x - a.x, b.y - a.y); g.restore();
+}
+function ensColor(q, a) {                                                 // a member's point [lat, lon, wind, class]: the intensity colour of a cyclone, pale for a wave, grey once post-tropical
+  if (q[3] === 'wv') return 'rgba(226,232,244,' + (0.8 * a).toFixed(2) + ')';
+  if (q[3] === 'ex' || q[3] === 'nl') return 'rgba(168,172,184,' + (0.8 * a).toFixed(2) + ')';
+  const h = stormColor({ th: q[3], v: q[2] }), n = parseInt(h.slice(1), 16);
+  return 'rgba(' + (n >> 16) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a.toFixed(2) + ')';
+}
+function ensTrace(g, px, i) {                                             // the leg that ends at point i, as a curve through the midpoints (the path of a storm is smooth, not a polyline)
+  const n = px.length, s = i === 1 ? px[0] : { x: (px[i - 1].x + px[i].x) / 2, y: (px[i - 1].y + px[i].y) / 2 }, e = i === n - 1 ? px[i] : { x: (px[i].x + px[i + 1].x) / 2, y: (px[i].y + px[i + 1].y) / 2 };
+  g.moveTo(s.x, s.y); g.quadraticCurveTo(px[i].x, px[i].y, e.x, e.y);
+}
+function ensHere(tid) { const S = stormMgr.get(tid); if (S) return [S.lat, S.lon]; const t = stormMgr.lows.tracks.find((q) => q.id === tid); return t ? [t.lat, t.lon] : null; }
+function drawEnsembles(g, toPx) {
+  ensPx = []; const P = ensPack; if (!P) return;
+  const here = ensHere(P.tid), st = P.E.start, dla = here ? here[0] - st[0] : 0, dlo = here ? here[1] - st[1] : 0;
+  P.members.forEach((m) => { ensPx.push(m.pts.map((q, i) => { const w = Math.max(0, 1 - i * 3 / 48); return toPx(q[0] + dla * w, q[1] + dlo * w); })); });
+  g.save(); g.lineCap = 'round'; g.lineJoin = 'round';
+  const order = P.members.map((_, k) => k).sort((a, b) => (a === ensHot) - (b === ensHot));
+  for (const k of order) {
+    const px = ensPx[k], m = P.members[k], hot = k === ensHot, dim = ensHot >= 0 && !hot ? 0.45 : 1; if (px.length < 2) continue;
+    if (hot) { g.lineWidth = 5.5; g.strokeStyle = 'rgba(8,10,16,.7)'; g.beginPath(); for (let i = 1; i < px.length; i++) ensTrace(g, px, i); g.stroke(); }
+    g.lineWidth = hot ? 3 : 1.3;
+    for (let i = 1; i < px.length; i++) { const lead = i * 3, a = hot ? 1 : Math.round((0.9 - 0.45 * Math.min(1, lead / 168)) * dim * 10) / 10; g.strokeStyle = ensColor(m.pts[i], a); g.beginPath(); ensTrace(g, px, i); g.stroke(); }
+  }
+  g.restore();
+}
+function ensNear(cx, cy) {                                                // the member whose line is within a few pixels of the pointer, or -1
+  let best = -1, bd = 7;
+  ensPx.forEach((px, k) => { for (let i = 1; i < px.length; i++) { const a = px[i - 1], b = px[i], dx = b.x - a.x, dy = b.y - a.y, L2 = dx * dx + dy * dy, t = L2 > 0 ? Math.max(0, Math.min(1, ((cx - a.x) * dx + (cy - a.y) * dy) / L2)) : 0, d = Math.hypot(cx - a.x - t * dx, cy - a.y - t * dy); if (d < bd) { bd = d; best = k; } } });
+  return best;
+}
+function selectPlain(h) {
+  olSel = null; stormSel = null; $('storm-card').hidden = true; $('aoi-card').hidden = true;
+  plainSel = h.wave ? { id: h.wave.id } : { low: h.low.id }; stormsDirty = true; drawStorms();
+}
+function plainCheck() {                                                   // the plain wave or L picked must still be there: one that has formed becomes a cyclone pick
+  if (!plainSel) return;
+  const S = plainSel.id ? stormMgr.get(plainSel.id) : null, t = plainSel.low ? stormMgr.lows.tracks.find((q) => q.id === plainSel.low) : null;
+  if ((S && S.alive && S.th === 'wv') || (t && t.alive)) return;
+  plainSel = null; stormsDirty = true;
+  if (S && S.alive) { stormSel = { id: S.id, h: -1 }; lastStormCardAt = 0; fillStormCard(); }
 }
 
 /* ---- drawing -------------------------------------------------------------------------------------------------------- */
@@ -686,7 +761,8 @@ function drawStorms() {
   if (!stormsOn || !stormMgr) { updateOutlookLegend(false, null); return; }              // (storms off: no legend of the outlook either)
   const toPx = (lat, lon) => map.latLngToContainerPoint([lat, lon]);
   olSelCheck();                                                     // (a disturbance picked to look at alone that has formed becomes a cyclone pick here)
-  const only = stormSel ? stormSel.id : null, aoiKey = olSel ? olSel.key : null, solo = only || aoiKey;       // a selected system is shown alone: every other path, wave, low and area disappears until it is deselected
+  plainCheck();
+  const only = stormSel ? stormSel.id : null, aoiKey = olSel ? olSel.key : null, plainId = plainSel ? plainSel.id || plainSel.low : null, solo = only || aoiKey || plainId;       // a selected system is shown alone: every other path, wave, low and area disappears until it is deselected
   const showWaves = $('stwaves').checked && !solo, showLows = $('stlows').checked && !solo, showDist = $('stdist').checked && !only, showNames = $('stlabels').checked;
   // precursors are one lifecycle: a wave (dashed line) or a low (L) that has the potential to become a cyclone turns into a disturbance (X in a dashed ring), then a depression
   const drawLow = (p, hPa) => {
@@ -696,22 +772,26 @@ function drawStorms() {
     g.fillStyle = 'rgba(10,14,24,.82)'; g.beginPath(); g.roundRect(p.x - tw / 2, p.y + 12, tw, 16, 8); g.fill(); g.fillStyle = '#fff'; g.fillText(tx, p.x, p.y + 20.5);
   };
   // the outlook first: the areas under everything, then (after the waves and lows) the X's and arrows over them
-  const OLall = showDist ? outlookNow() : null, OL = olShown = OLall && aoiKey ? { issued: OLall.issued, hour: OLall.hour, areas: OLall.areas.filter((a) => a.key === aoiKey) } : OLall;       // (picked: that one area alone)
+  const OLall = showDist ? outlookNow() : null, OL = olShown = OLall && (aoiKey || plainId) ? { issued: OLall.issued, hour: OLall.hour, areas: OLall.areas.filter((a) => a.key === aoiKey) } : OLall;       // (picked: that one area alone)
   const marks = OL ? olMarks(OL) : [], xIds = new Set(marks.map((m) => m.a.id));          // a disturbance that has its X is the X: it is not drawn as a wave or an L as well
   olHits = [];
   if (OL) drawOutlookAreas(g, toPx, OL, showNames);
   updateOutlookLegend(showDist && stormsOn, OLall);
-  if (showLows) for (const t of stormMgr.lows.tracks) {
+  ensRefresh(ensTarget());
+  if (ensPack && $('stdens').checked) { if (!ensPack.dens) ensPack.dens = ensDensImage(HFStorms.ensDensity(ensPack.members, { foot: stormMgr.par.ens.foot })); drawEnsDensity(g, toPx, ensPack.dens); }
+  if (showLows || (plainSel && plainSel.low)) for (const t of stormMgr.lows.tracks) {
+    if (plainSel && plainSel.low && t.id !== plainSel.low) continue;
     if (!t.alive || t.fixes.length < 3 || HFStorms.lowWeight(stormMgr.par, t.lat) < 0.05 || isLand(t.lat, t.lon) || xIds.has(t.id)) continue;      // only the lows over water where a depression could still form (the engine weighs a low by its latitude: a ramp, not a window)
     const p = toPx(t.lat, t.lon); if (p.x < -20 || p.y < -20 || p.x > W + 20 || p.y > H + 20) continue;
     drawLow(p, t.p);
     stormHits.push({ x: p.x, y: p.y, r: 12, low: t });
   }
-  if (showWaves || showLows || aoiKey) for (const S of stormMgr.systems) {
+  if (showWaves || showLows || aoiKey || (plainSel && plainSel.id)) for (const S of stormMgr.systems) {
     if (!S.alive || S.th !== 'wv') continue;
-    if (aoiKey && (S.ck || S.id) !== aoiKey) continue;                              // (looking at one disturbance: only its own trail)
+    if (aoiKey && (S.ck || S.id) !== aoiKey) continue;
+    if (plainId && S.id !== plainId) continue;                              // (looking at one disturbance: only its own trail)
     const stage = S.kind === 'N' ? 'low' : 'wave';                                   // a wave is a dashed line, anything else a low (an area of interest turns either into its X)
-    if (!aoiKey && (stage === 'low' ? !showLows : !showWaves)) continue;
+    if (!aoiKey && !plainId && (stage === 'low' ? !showLows : !showWaves)) continue;
     const p = toPx(S.lat, S.lon); if (p.x < -20 || p.y < -30 || p.x > W + 20 || p.y > H + 30) continue;
     const col = '#ffa24d';
     if (S.fixes.length > 1) {                                                // where it came from: the faint dotted trail that becomes the depression's own if it develops
@@ -728,7 +808,7 @@ function drawStorms() {
     stormHits.push({ x: p.x, y: p.y, r: 13, wave: S });
   }
   drawOutlookMarks(g, toPx, marks, showNames);
-  const list = stormMgr.systems.filter((S) => (aoiKey ? false : only ? S.id === only : S.depNum > 0 || (S.alive && S.th !== 'wv'))).sort((a, b) => (a.alive - b.alive) || (a.tdHour - b.tdHour) || (a.born - b.born));
+  const list = stormMgr.systems.filter((S) => (aoiKey || plainId ? false : only ? S.id === only : S.depNum > 0 || (S.alive && S.th !== 'wv'))).sort((a, b) => (a.alive - b.alive) || (a.tdHour - b.tdHour) || (a.born - b.born));
   g.lineJoin = 'round'; g.lineCap = 'round';
   for (const S of list) {
     const fx = S.fixes, pts = fx.map((f) => { const p = toPx(f.lat, f.lon); return { x: p.x, y: p.y, f }; });
@@ -765,6 +845,7 @@ function drawStorms() {
       g.lineWidth = 3.5; g.strokeStyle = 'rgba(8,10,16,.85)'; g.strokeText(lab.text, lab.x + lab.dx, lab.y); g.fillStyle = '#fff'; g.fillText(lab.text, lab.x + lab.dx, lab.y);
     }
   }
+  drawEnsembles(g, toPx);
   if (placeMode) drawPlacePreview(g, toPx);
   // the selected fix / storm gets a ring
   if (stormSel) {
@@ -794,8 +875,8 @@ function fillStormCard() {
   $('sc-time').textContent = stormDate(f.h);
   card.hidden = false;
 }
-function openStormCard(S, f, live) { olSel = null; $('aoi-card').hidden = true; stormSel = { id: S.id, h: live ? -1 : f.h }; lastStormCardAt = 0; fillStormCard(); stormsDirty = true; drawStorms(); }
-function closeStormCard() { stormSel = null; olSel = null; $('storm-card').hidden = true; $('aoi-card').hidden = true; stormsDirty = true; drawStorms(); }
+function openStormCard(S, f, live) { olSel = null; plainSel = null; $('aoi-card').hidden = true; stormSel = { id: S.id, h: live ? -1 : f.h }; lastStormCardAt = 0; fillStormCard(); stormsDirty = true; drawStorms(); }
+function closeStormCard() { stormSel = null; olSel = null; plainSel = null; $('storm-card').hidden = true; $('aoi-card').hidden = true; stormsDirty = true; drawStorms(); }
 function stormPick(cx, cy) {
   let best = null, bd = 1e9;
   for (const h of stormHits) { const d = Math.hypot(cx - h.x, cy - h.y) - (h.live ? 0.75 : 0) - (h.aoi ? 1.5 : 0); if (d + (h.live ? 0.75 : 0) + (h.aoi ? 1.5 : 0) <= h.r && d < bd) { bd = d; best = h; } }       // (the live head wins over the advisory dot under it: the last fix is where the storm is, to a fraction of a pixel; the X of an area of interest wins over the wave or low it is drawn on)
@@ -804,6 +885,14 @@ function stormPick(cx, cy) {
 const only_ = () => !!stormSel;                                       // (a selected cyclone is shown alone: no areas to point at)
 function stormHover(cx, cy) {
   const tip = $('storm-tip'), h = stormsOn ? stormPick(cx, cy) : null;
+  const mk = !h && ensPack && stormsOn ? ensNear(cx, cy) : -1;
+  if (mk !== ensHot) { ensHot = mk; stormsDirty = true; drawStorms(); }                 // (the member under the pointer is drawn thick, the others dimmed)
+  if (mk >= 0) {
+    const m = ensPack.members[mk]; map.getContainer().style.cursor = 'pointer';
+    tip.querySelector('b').textContent = m.name + ' · ' + m.hours + ' h'; tip.querySelector('div').innerHTML = ['init ' + stormDateFull(ensPack.slot * 6), 'peak ' + HFStorms.ktToMph(m.peak) + ' mph (1-min)'].join('<br>');
+    tip.style.left = Math.max(8, Math.min(W - 236, cx + 16)) + 'px'; tip.style.top = Math.max(8, Math.min(H - 110, cy + 16)) + 'px'; tip.style.display = 'block';
+    return true;
+  }
   const area = h || only_() ? null : olAreaAt(cx, cy);
   const key = h ? (h.S ? h.S.id + ':' + (h.live ? 'live' : h.f.h) : h.low ? h.low.id : h.aoi ? 'aoi:' + h.aoi.key : h.wave.id) : area ? 'area:' + area.key : null;
   if (key !== stormHot) { stormHot = key; stormCanvas.style.cursor = ''; }
@@ -829,7 +918,8 @@ function stormClick(cx, cy) {
   if (h && h.S) openStormCard(h.S, h.f, !!h.live);
   else if (h && h.aoi) openAoiCard(h.aoi);                          // the X of a disturbance: look at it and its area alone
   else if (stormsOn && !h && !stormSel && olAreaAt(cx, cy)) openAoiCard(olAreaAt(cx, cy));        // the area itself (a cyclone, wave or L under the pointer wins over it)
-  else if (stormSel || olSel) closeStormCard();
+  else if (h && (h.wave || h.low)) selectPlain(h);                  // a plain wave or L (no area of interest): picked to look at alone, and to show its ensembles
+  else if (stormSel || olSel || plainSel) closeStormCard();
 }
 let seasonText = '';
 function updateSeasonBar() {
@@ -862,7 +952,7 @@ function sumStep(dir) {
 }
 function seasonEnded() {
   const n = stormMgr.archive.length, e = stormMgr.archive[n - 1]; sumArch = n;
-  stormSel = null; olSel = null; $('storm-card').hidden = true; $('aoi-card').hidden = true; stormHot = null; $('storm-tip').style.display = 'none'; stormsDirty = true;
+  stormSel = null; olSel = null; plainSel = null; ensPack = null; $('storm-card').hidden = true; $('aoi-card').hidden = true; stormHot = null; $('storm-tip').style.display = 'none'; stormsDirty = true;
   openSummary(e.year);
 }
 function fillSummary() {
