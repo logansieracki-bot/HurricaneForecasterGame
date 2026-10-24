@@ -265,7 +265,7 @@ function labRecord(m) {
 }
 function stormsReset() {
   stormMgr = HFStorms.create({ seed: stormSeed(), startMs: START_MS, hour0: simHour, auto: stormAuto, autoRate: stormActivity, maps: stormMapsNow(), basin: STORM_BASIN });
-  stormLab = null; shadow = null; stormFieldsDirty = true; kfBreak = true; kfFieldHour = -1; stormSel = null; olSel = null; plainSel = null; ensPack = null; ensHot = -1; stormHot = null; stormHits = []; olHeld = null; olEagerSlot = -1e9; olHits = []; stormsDirty = true;
+  stormLab = null; shadow = null; stormFieldsDirty = true; kfBreak = true; kfFieldHour = -1; stormSel = null; olSel = null; plainSel = null; ensPack = null; coneMem = null; ensHot = -1; stormHot = null; stormHits = []; olHeld = null; olEagerSlot = -1e9; olHits = []; stormsDirty = true;
   sumArch = 0; if (sumOpen) closeSummary();
   const card = $('storm-card'), tip = $('storm-tip'), acard = $('aoi-card'); if (card) card.hidden = true; if (acard) acard.hidden = true; if (tip) tip.style.display = 'none';
   updateSeasonBar();
@@ -523,7 +523,7 @@ const shapeOf = (th) => (th === 'sc' ? 'square' : th === 'ex' || th === 'nl' ? '
 /* ---- the outlook: areas of interest, X's and arrows (the engine's Manager.prototype.outlook makes them, the same for every basin; this block only draws, picks and describes) ---- */
 const OL_COL = { low: '#ffe24d', medium: '#ff9d2e', high: '#ff3b30' }, OL_NAME = { low: 'Low', medium: 'Medium', high: 'High' };      // the National Hurricane Center's yellow, orange and red
 const OL_HATCH = { low: [9, 1.4], medium: [7.5, 1.7], high: [6, 2.0] };                                                              // diagonal lines inside the shape: tile size and line width in px, closer and thicker for a higher chance
-let olForced = null, olHeld = null, olHeldAt = 0, olShown = null, olHits = [], olIssuedText = '', olSel = null, lastAoiCardAt = 0, plainSel = null, ensPack = null, ensHot = -1, ensPx = [];           // olShown: the issue on the map now (what a tooltip talks about); olSel: the disturbance picked to look at alone ({ key, id })
+let olForced = null, olHeld = null, olHeldAt = 0, olShown = null, olHits = [], olIssuedText = '', olSel = null, lastAoiCardAt = 0, plainSel = null, ensPack = null, ensHot = -1, ensPx = [], coneMem = null;           // olShown: the issue on the map now (what a tooltip talks about); olSel: the disturbance picked to look at alone ({ key, id })
 function outlookNow() {
   if (olForced) return olForced;
   if (!stormsOn || !stormMgr || typeof stormMgr.outlook !== 'function' || kfFieldHour < 0) return null;
@@ -682,19 +682,43 @@ function updateOutlookLegend(on, OL) {
    The members are made from the page's own weather of the next days (the shadow environment the Place preview uses), once per six-hour issue, and drawn anchored to where the system is now, the anchor fading
    out over two days so that the fan does not lag the live head between issues. The track density is the share of members near each place, on a grid in the map's own projection.                          */
 function ensTarget() {
-  if (!stormMgr || !$('stens').checked) return null;
+  if (!stormMgr) return null;
+  const fan = $('stens').checked, cone = $('stcone').checked && !!stormSel;                      // (a cone is drawn only for the cyclone you picked; a fan for whatever you picked)
+  if (!fan && !cone) return null;
   const id = stormSel ? stormSel.id : olSel ? olSel.id : plainSel ? plainSel.id || plainSel.low : null;
   if (!id) return null;
   const S = stormMgr.get(id); return (S ? S.alive : stormMgr.lows.tracks.some((t) => t.id === id && t.alive)) ? id : null;
 }
 function ensRefresh(tid) {
   if (!tid) { ensPack = null; ensHot = -1; return; }
-  const slot = Math.floor(stormMgr.hour / 6), fast = playing && SPEEDS[speedIdx] >= 8;
+  const slot = Math.floor(stormMgr.hour / 3), fast = playing && SPEEDS[speedIdx] >= 8;                // (a new fan and cone every three hours, not every hour)
   if (ensPack && ensPack.tid === tid && (ensPack.slot === slot || (fast && stormMgr.hour - ensPack.hour < 24))) return;       // (at 8x and above once a day: the look-ahead of the weather is a third of a second)
   if (!shadow || simHour - shadow.t0 >= 12) shadowBuild();
   const E = stormMgr.ensemble(tid, { at: shadowEnv }, { horizon: Math.max(24, Math.min(stormMgr.par.ens.horizon, shadow.t0 + SHADOW_H - stormMgr.hour)) });
-  ensPack = E ? { tid, slot, hour: stormMgr.hour, E, members: E.members, dens: null } : null;
+  ensPack = E ? { tid, slot, hour: stormMgr.hour, E, members: E.members, dens: null, cone: null } : null;
+  if (ensPack) { ensPack.cone = HFStorms.coneOf(E, stormMgr.par, coneMem && coneMem.tid === tid ? coneMem.cone : null); coneMem = { tid, cone: ensPack.cone }; }
 }
+function drawCone(g, toPx, part) {                                        // the cone of the picked cyclone: the area (under the fans), then the centre line and the forecast points (over them)
+  const S = stormSel ? stormMgr.get(stormSel.id) : null, P = ensPack;
+  if (!$('stcone').checked || !S || !S.alive || !(S.depNum > 0) || !P || P.tid !== S.id || !P.cone) return;
+  const C = P.cone, px = C.rows.map((q) => toPx(q.lat, q.lon));
+  if (part === 'area') {
+    if (!C.poly) C.poly = HFStorms.swathFull(C.chain, stormMgr.par.eqSoft).poly;
+    g.save(); g.beginPath(); C.poly.forEach((q, i) => { const p = toPx(q[0], q[1]); if (i) g.lineTo(p.x, p.y); else g.moveTo(p.x, p.y); }); g.closePath();
+    g.fillStyle = 'rgba(96,128,190,.30)'; g.fill(); g.lineJoin = 'round'; g.lineWidth = 2.6; g.strokeStyle = 'rgba(205,218,240,.9)'; g.stroke(); g.restore();
+    return;
+  }
+  g.save(); g.lineCap = 'round'; g.lineJoin = 'round'; g.lineWidth = 2; g.strokeStyle = 'rgba(214,224,242,.75)'; g.beginPath(); px.forEach((p, i) => { if (i) g.lineTo(p.x, p.y); else g.moveTo(p.x, p.y); }); g.stroke();
+  const hot = ensHot < 0 && coneHot >= 0 ? coneHot : -1;
+  for (const q of C.pts) {
+    const p = toPx(q.lat, q.lon), r = q.lead === hot ? 12 : 10.5;
+    g.beginPath(); g.arc(p.x, p.y, r, 0, 7); g.fillStyle = stormColor({ th: q.th, v: q.v }); g.fill(); g.lineWidth = q.lead === hot ? 3 : 1.8; g.strokeStyle = q.lead === hot ? '#ffffff' : 'rgba(255,255,255,.85)'; g.stroke();
+    g.font = '700 13px Georgia, "Times New Roman", serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.lineWidth = 2.6; g.strokeStyle = 'rgba(20,14,6,.95)'; g.strokeText(q.letter, p.x, p.y + 0.5); g.fillStyle = '#fff'; g.fillText(q.letter, p.x, p.y + 0.5);
+    stormHits.push({ x: p.x, y: p.y, r: 12, cone: q });
+  }
+  g.restore();
+}
+let coneHot = -1;
 const ENS_RAMP = [[0.03, 150, 205, 250, 95], [0.15, 105, 175, 245, 195], [0.3, 40, 115, 235, 220], [0.5, 30, 200, 70, 228], [0.7, 255, 232, 0, 236], [0.85, 255, 140, 0, 242], [0.96, 255, 25, 25, 248]];
 function ensDensImage(D) {                                                // the density as a small image (a pixel a cell): the page stretches it between the projected corners, smoothed
   const c = document.createElement('canvas'); c.width = D.nx; c.height = D.ny; const cx = c.getContext('2d'), im = cx.createImageData(D.nx, D.ny), d = im.data;
@@ -778,7 +802,7 @@ function drawStorms() {
   if (OL) drawOutlookAreas(g, toPx, OL, showNames);
   updateOutlookLegend(showDist && stormsOn, OLall);
   ensRefresh(ensTarget());
-  if (ensPack && $('stdens').checked) { if (!ensPack.dens) ensPack.dens = ensDensImage(HFStorms.ensDensity(ensPack.members, { foot: stormMgr.par.ens.foot })); drawEnsDensity(g, toPx, ensPack.dens); }
+  if (ensPack && $('stens').checked && $('stdens').checked) { if (!ensPack.dens) ensPack.dens = ensDensImage(HFStorms.ensDensity(ensPack.members, { foot: stormMgr.par.ens.foot })); drawEnsDensity(g, toPx, ensPack.dens); }
   if (showLows || (plainSel && plainSel.low)) for (const t of stormMgr.lows.tracks) {
     if (plainSel && plainSel.low && t.id !== plainSel.low) continue;
     if (!t.alive || t.fixes.length < 3 || HFStorms.lowWeight(stormMgr.par, t.lat) < 0.05 || isLand(t.lat, t.lon) || xIds.has(t.id)) continue;      // only the lows over water where a depression could still form (the engine weighs a low by its latitude: a ramp, not a window)
@@ -845,7 +869,9 @@ function drawStorms() {
       g.lineWidth = 3.5; g.strokeStyle = 'rgba(8,10,16,.85)'; g.strokeText(lab.text, lab.x + lab.dx, lab.y); g.fillStyle = '#fff'; g.fillText(lab.text, lab.x + lab.dx, lab.y);
     }
   }
-  drawEnsembles(g, toPx);
+  drawCone(g, toPx, 'area');
+  if ($('stens').checked) drawEnsembles(g, toPx); else ensPx = [];
+  drawCone(g, toPx, 'points');
   if (placeMode) drawPlacePreview(g, toPx);
   // the selected fix / storm gets a ring
   if (stormSel) {
@@ -889,17 +915,23 @@ function stormHover(cx, cy) {
   if (mk !== ensHot) { ensHot = mk; stormsDirty = true; drawStorms(); }                 // (the member under the pointer is drawn thick, the others dimmed)
   if (mk >= 0) {
     const m = ensPack.members[mk]; map.getContainer().style.cursor = 'pointer';
-    tip.querySelector('b').textContent = m.name + ' · ' + m.hours + ' h'; tip.querySelector('div').innerHTML = ['init ' + stormDateFull(ensPack.slot * 6), 'peak ' + HFStorms.ktToMph(m.peak) + ' mph (1-min)'].join('<br>');
+    tip.querySelector('b').textContent = m.name + ' · ' + m.hours + ' h'; tip.querySelector('div').innerHTML = ['init ' + stormDateFull(ensPack.slot * 3), 'peak ' + HFStorms.ktToMph(m.peak) + ' mph (1-min)'].join('<br>');
     tip.style.left = Math.max(8, Math.min(W - 236, cx + 16)) + 'px'; tip.style.top = Math.max(8, Math.min(H - 110, cy + 16)) + 'px'; tip.style.display = 'block';
     return true;
   }
   const area = h || only_() ? null : olAreaAt(cx, cy);
-  const key = h ? (h.S ? h.S.id + ':' + (h.live ? 'live' : h.f.h) : h.low ? h.low.id : h.aoi ? 'aoi:' + h.aoi.key : h.wave.id) : area ? 'area:' + area.key : null;
+  const key = h ? (h.S ? h.S.id + ':' + (h.live ? 'live' : h.f.h) : h.cone ? 'cone:' + h.cone.lead : h.low ? h.low.id : h.aoi ? 'aoi:' + h.aoi.key : h.wave.id) : area ? 'area:' + area.key : null;
+  const ch = h && h.cone ? h.cone.lead : -1; if (ch !== coneHot) { coneHot = ch; stormsDirty = true; drawStorms(); }
   if (key !== stormHot) { stormHot = key; stormCanvas.style.cursor = ''; }
   if (!h && !area) { tip.style.display = 'none'; map.getContainer().style.cursor = ''; return false; }
   map.getContainer().style.cursor = h || area ? 'pointer' : '';         // (an area can be clicked too)
   let title, lines;
   if (area) [title, lines] = olTip(area, null);
+  else if (h.cone) {
+    const q = h.cone, mph = HFStorms.ktToMph(q.v), gust = HFStorms.ktToMph(HFStorms.gustKt(q.v, false));
+    title = '+' + q.lead + ' h' + (q.post ? ' · Post-tropical' : '') + ' · ' + mph + ' mph (1-min)';
+    lines = [q.post ? 'Remnant / extratropical low' : HFStorms.classOf(STORM_BASIN, q.v, q.th === 'sc' ? 'sc' : 'tc').long, 'gusts ' + gust + ' mph · ' + q.p + ' hPa', stormDateFull(q.t)];
+  }
   else if (h.aoi) [title, lines] = olTip(h.aoi, h.sys);
   else if (h.low) { title = (h.low.dist ? 'Disturbance (low) ' : 'Low ') + h.low.id.slice(1); lines = [Math.round(h.low.p) + ' hPa · ' + h.low.fixes.length * 6 + ' h old']; }
   else if (h.wave) { const S = h.wave; title = S.dist ? 'Disturbance' : S.kind === 'N' ? 'Low-pressure area' : 'Tropical wave'; lines = [fmtLL(S.lat, S.lon), HFStorms.compass((Math.atan2(S.cx, S.cy) / DEG + 360) % 360) + ' at ' + Math.round(Math.hypot(S.cx, S.cy)) + ' kt']; }

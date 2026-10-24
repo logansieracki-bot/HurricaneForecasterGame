@@ -2,7 +2,7 @@
 /* the storm controls */
 $('b-place').onclick = () => placeSet(!placeMode);
 document.querySelectorAll('#place-menu button').forEach((b) => { b.onclick = () => { placeKind = b.dataset.kind; document.querySelectorAll('#place-menu button').forEach((x) => x.setAttribute('aria-checked', x === b ? 'true' : 'false')); placeRefresh(); }; });
-$('stwaves').onchange = $('stlows').onchange = $('stdist').onchange = $('stlabels').onchange = $('stdens').onchange = () => { stormsDirty = true; drawStorms(); };
+$('stwaves').onchange = $('stlows').onchange = $('stdist').onchange = $('stlabels').onchange = $('stdens').onchange = $('stcone').onchange = () => { stormsDirty = true; drawStorms(); };
 $('stens').onchange = () => { $('stdens').disabled = !$('stens').checked; ensPack = null; ensHot = -1; stormsDirty = true; drawStorms(); };
 $('st-auto').onchange = () => { stormAuto = $('st-auto').checked; if (stormMgr) stormMgr.auto = stormAuto; markDirty(); };
 $('p-stact').oninput = () => { stormActivity = parseFloat($('p-stact').value); $('p-stact-o').textContent = stormActivity.toFixed(1) + '×'; if (stormMgr) stormMgr.autoRate = stormActivity; markDirty(); };
@@ -64,7 +64,7 @@ function applySave(s) {
   initSim(P.seed);                                                                // the static structure of this seed (waves, jet modes ...) and a throw-away new season
   simRestoreLight(s.weather);
   stormMgr = HFStorms.restore(JSON.parse(s.storms), { maps: stormMapsNow() });
-  stormLab = null; shadow = null; stormSel = null; olSel = null; plainSel = null; ensPack = null; ensHot = -1; $('aoi-card').hidden = true; stormHot = null; stormHits = []; olHeld = null; olEagerSlot = -1e9; olHits = []; stormsDirty = true; sumArch = stormMgr.archive.length; if (sumOpen) closeSummary();
+  stormLab = null; shadow = null; stormSel = null; olSel = null; plainSel = null; ensPack = null; coneMem = null; ensHot = -1; $('aoi-card').hidden = true; stormHot = null; stormHits = []; olHeld = null; olEagerSlot = -1e9; olHits = []; stormsDirty = true; sumArch = stormMgr.archive.length; if (sumOpen) closeSummary();
   lowsStamp = -1; kfBreak = true; stormKeyframe(true); stormFieldsDirty = false;      // fresh keyframes of the steering and the fields at the restored hour
   if (s.kf0 && simHour === kfHour) { for (let i = 0; i < 3; i++) { b64f32(s.kf0.u[i], kfU0[i]); b64f32(s.kf0.v[i], kfV0[i]); } kfHour0 = s.kf0.h; wkHour = -1e9; stormEnv.beginHour(simHour); }
   seasonText = ''; acc = 0; lastClock = ''; updateClock(); updateSeasonBar(); refresh();
@@ -135,6 +135,8 @@ const STORM_API = {
   stormLowsDrawn() { return stormHits.filter((h) => h.low).map((h) => [h.low.lat, h.low.lon]); },
   stormEnvAt(name, lat, lon) { return stormEnv[name](lat, lon); },                                       // the page's own sea temperature / humidity / shear at a place and the hour of the last keyframe (tools and tests)
   ensState() { return ensPack ? { tid: ensPack.tid, n: ensPack.members.length, init: ensPack.E.init, factor: ensPack.E.factor, names: ensPack.members.map((m) => m.name), hot: ensHot, dens: !!ensPack.dens } : null; },
+  coneState() { const C = ensPack && ensPack.cone; return C ? { tid: ensPack.tid, init: C.init, n: C.rows.length, pts: C.pts.map((q) => ({ lead: q.lead, v: q.v, letter: q.letter, post: q.post, th: q.th })), hot: coneHot, poly: !!C.poly } : null; },
+  conePoint(lead) { const q = ensPack && ensPack.cone && ensPack.cone.pts.find((p) => p.lead === lead); if (!q) return null; const p = map.latLngToContainerPoint([q.lat, q.lon]); return { x: p.x, y: p.y }; },
   ensPoint(k, i) { const px = ensPx[k]; return px && px[i] ? { x: px[i].x, y: px[i].y } : null; }, plainSelState() { return plainSel; },
   outlook() { return outlookNow(); }, outlookFresh() { if (stormMgr) stormMgr._ol = null; olHeld = null; olEagerSlot = -1e9; const t = performance.now(), r = outlookNow(); return { ms: performance.now() - t, areas: r ? r.areas.length : -1 }; }, outlookForce(res) { olForced = res || null; stormsDirty = true; drawStorms(); return !!olForced; },        // the areas of interest the page shows (tests: force a list of areas to draw, null puts the engine's back)
   outlookMemSlot() { return stormMgr && stormMgr.olMem ? stormMgr.olMem.slot : null; },                                   // the six-hour slot of the last issue the engine made (tests: the issues are made by the clock)
