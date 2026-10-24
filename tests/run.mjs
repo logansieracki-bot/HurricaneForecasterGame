@@ -1299,6 +1299,46 @@ async function checkStormGateOff(browser, label, dist) {
   } finally { await page.close(); rmSync(off, { force: true }); }
 }
 
+// The cone and the fan on the page's own weather (not a made-up flow): a season of cyclones, a cone made for each one every day, and the real track that followed. The consensus must be about as far off as the NHC's
+// cones are (the real position inside the cone's circle two times in three), its turns must come at about the right time, and the fan must be as wide as a forecast's error. This is the check that catches a fan
+// reading the wrong weather (its steering from the last hour of the look-ahead for every hour: the cone then held the real track 2-8 % of the time and the turns were late or early by more than a day).
+async function checkForecastSkill(page, label) {
+  const R = await page.evaluate(() => {
+    const S = window.SSTSIM; S.setPlaying(false); S.applySeed(1); S.setPlaying(false); S.storms(true); S.tick(24 * 45); S.advance(0);
+    const samples = [], last = {}, ids = new Set();
+    for (let t = 0; t < 4 * 90; t++) {
+      S.tick(6); S.advance(0); const st = S.stormState();
+      for (const s of st.systems) if (s.alive && (s.th === 'tc' || s.th === 'sc') && s.depNum > 0 && s.vr >= 25 && (last[s.id] === undefined || st.hour - last[s.id] >= 24)) {
+        last[s.id] = st.hour; const c = S.coneFor(s.id); if (!c) continue; ids.add(s.id);
+        const spread = [24, 120].map((l) => { const P = c.mean.filter((m) => m.length > l / 3).map((m) => m[l / 3]); if (P.length < 8) return null; const la = P.reduce((a, q) => a + q[0], 0) / P.length, lo = P.reduce((a, q) => a + q[1], 0) / P.length; return Math.sqrt(P.reduce((a, q) => a + ((q[0] - la) * 111.2) ** 2 + ((q[1] - lo) * 111.2 * Math.cos(la * Math.PI / 180)) ** 2, 0) / P.length); });
+        samples.push({ id: s.id, init: c.init, line: c.line.filter((_, l) => l % 6 === 0), has120: c.pts.some((q) => q.lead === 120), spread, len: c.line.length });
+      }
+    }
+    const fx = {}; for (const id of ids) fx[id] = S.fixesOf(id);
+    return { samples, fx };
+  });
+  const rad = Math.PI / 180, NHC = { 24: 41, 48: 70, 72: 102, 96: 151, 120: 220 };
+  const posAt = (fix, T) => { if (!fix || T < fix[0][0] || T > fix[fix.length - 1][0]) return null; for (let i = 1; i < fix.length; i++) if (fix[i][0] >= T) { const a = fix[i - 1], b = fix[i], u = (T - a[0]) / Math.max(1e-9, b[0] - a[0]); return [a[1] + u * (b[1] - a[1]), a[2] + u * (b[2] - a[2])]; } return null; };
+  const hd = (a, b) => Math.atan2((b[1] - a[1]) * Math.cos(a[0] * rad), b[0] - a[0]) / rad, dang = (a, b) => ((a - b + 540) % 360) - 180;
+  const turnAt = (P) => { const Hd = []; for (let i = 0; i + 2 < P.length; i++) { if (!P[i] || !P[i + 2]) break; Hd.push(hd(P[i], P[i + 2])); } if (Hd.length < 6) return null; for (let i = 1; i < Hd.length; i++) if (Math.abs(dang(Hd[i], Hd[0])) >= 45) return (i + 1) * 6; return null; };
+  const cov = {}; let inN = 0, allN = 0, flips = 0; const terr = [], bend = [], sp24 = [], sp120 = []; let n120 = 0;
+  for (const s of R.samples) {
+    const PA = [], PC = []; for (let l = 0; l <= 120; l += 6) { PA.push(posAt(R.fx[s.id], s.init + l)); PC.push(s.line[l / 6] || null); }
+    for (const l of [24, 48, 72, 96, 120]) { const a = PA[l / 6], c = PC[l / 6]; if (!a || !c) continue; const d = Math.hypot((c[1] - a[1]) * 60 * Math.cos(a[0] * rad), (c[0] - a[0]) * 60); cov[l] = cov[l] || [0, 0]; cov[l][1]++; allN++; if (d <= NHC[l]) { cov[l][0]++; inN++; } }
+    if (PA.filter(Boolean).length >= 18 && PC.filter(Boolean).length >= 18) { const ta = turnAt(PA), tc = turnAt(PC); if (ta != null && tc != null) terr.push(tc - ta); }
+    if (s.spread[0] != null) sp24.push(s.spread[0]); if (s.spread[1] != null) sp120.push(s.spread[1]); if (s.has120) n120++;
+    let sg0 = 0; for (let i = 1; i + 1 < s.line.length; i++) {                            // (where the storm moves: a bend between two six-hour legs of at least 60 km; a nearly stalled consensus has no direction to bend)
+      const a = s.line[i - 1], b = s.line[i], c = s.line[i + 1], cl = Math.cos(b[0] * rad) * 111.2, u = [(b[1] - a[1]) * cl, (b[0] - a[0]) * 111.2], w = [(c[1] - b[1]) * cl, (c[0] - b[0]) * 111.2];
+      if (Math.hypot(...u) >= 60 && Math.hypot(...w) >= 60) { const ang = Math.atan2(u[0] * w[1] - u[1] * w[0], u[0] * w[0] + u[1] * w[1]) / rad; bend.push(Math.abs(ang)); if (Math.abs(ang) > 15) { const sg = Math.sign(ang); if (sg0 && sg !== sg0) flips++; sg0 = sg; } }
+    }
+  }
+  terr.sort((a, b) => a - b); const med = terr[Math.floor(terr.length / 2)], mae = terr.reduce((a, v) => a + Math.abs(v), 0) / terr.length, mean = (x) => x.reduce((a, v) => a + v, 0) / x.length, lowest = Math.min(...Object.values(cov).map((c) => c[0] / c[1]));
+  check(`[${label}] on the page's own weather the real track is in the cone about two thirds of the time: ${(100 * inN / allN).toFixed(0)} % of ${allN} positions (${[24, 48, 72, 96, 120].map((l) => l + ' h ' + Math.round(100 * cov[l][0] / cov[l][1]) + ' %').join(', ')}) for ${R.samples.length} cones`, R.samples.length >= 40 && allN >= 150 && inN / allN > 0.5 && inN / allN < 0.85 && lowest > 0.4);
+  check(`[${label}] and the turns come on time: the consensus turns ${med > 0 ? '+' : ''}${med} h from the real storm's turn in the median, ${mae.toFixed(0)} h on average in ${terr.length} turning cases (late and early alike)`, terr.length >= 30 && Math.abs(med) <= 6 && mae < 22);
+  check(`[${label}] the fan is as wide as a forecast's error: ${mean(sp24).toFixed(0)} km at 24 h (the NHC's mean error 75) and ${mean(sp120).toFixed(0)} km at 120 h (the NHC's 410)`, mean(sp24) > 45 && mean(sp24) < 130 && mean(sp120) > 300 && mean(sp120) < 900);
+  check(`[${label}] the centre line is smooth on the page's weather: the sharpest bend between two six-hour legs is ${Math.max(...bend).toFixed(0)} degrees over ${bend.length} bends and the line swings back and forth (a bend over 15 degrees the other way) in ${flips} of ${R.samples.length} cones; ${n120} of ${R.samples.length} cones reach their 120-hour point (the others end where the system dissipates over land or leaves the map)`, Math.max(...bend) < 50 && flips <= 0.06 * R.samples.length && n120 >= 0.5 * R.samples.length);
+}
+
 async function checkEnsoHold(page, label) {
   const ev = (fn, arg) => page.evaluate(fn, arg);
   const r = await ev(() => {
@@ -2508,6 +2548,7 @@ await checkBasin('Atlantic', ATLANTIC_DIST, async (page, label) => {
   await checkEnsoHold(page, label);
   await checkEnvSeasons(page, label, ATLANTIC_DIST);
   await checkStorms(page, label);
+  await checkForecastSkill(page, label);
   await checkPlace(page, label);
   await checkSummary(page, label);
   await checkCityMarkers(page, label, 25.76, -80.19, 'Miami');

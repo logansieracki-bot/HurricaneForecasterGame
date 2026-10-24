@@ -701,14 +701,16 @@ function ensRefresh(tid) {
 function drawCone(g, toPx, part) {                                        // the cone of the picked cyclone: the area (under the fans), then the centre line and the forecast points (over them)
   const S = stormSel ? stormMgr.get(stormSel.id) : null, P = ensPack;
   if (!$('stcone').checked || !S || !S.alive || !(S.depNum > 0) || !P || P.tid !== S.id || !P.cone) return;
-  const C = P.cone, px = C.rows.map((q) => toPx(q.lat, q.lon));
+  const C = P.cone;
   if (part === 'area') {
     if (!C.poly) C.poly = HFStorms.swathFull(C.chain, stormMgr.par.eqSoft).poly;
     g.save(); g.beginPath(); C.poly.forEach((q, i) => { const p = toPx(q[0], q[1]); if (i) g.lineTo(p.x, p.y); else g.moveTo(p.x, p.y); }); g.closePath();
-    g.fillStyle = 'rgba(96,128,190,.30)'; g.fill(); g.lineJoin = 'round'; g.lineWidth = 2.6; g.strokeStyle = 'rgba(205,218,240,.9)'; g.stroke(); g.restore();
+    g.fillStyle = 'rgba(96,128,190,.30)'; g.fill(); g.lineJoin = 'round'; g.lineWidth = 3.6; g.strokeStyle = 'rgba(210,222,244,.95)'; g.stroke(); g.restore();
     return;
   }
-  g.save(); g.lineCap = 'round'; g.lineJoin = 'round'; g.lineWidth = 2; g.strokeStyle = 'rgba(214,224,242,.75)'; g.beginPath(); px.forEach((p, i) => { if (i) g.lineTo(p.x, p.y); else g.moveTo(p.x, p.y); }); g.stroke();
+  const px = C.line.map((q) => toPx(q.lat, q.lon));
+  g.save(); g.lineCap = 'round'; g.lineJoin = 'round'; g.beginPath(); px.forEach((p, i) => { if (i) g.lineTo(p.x, p.y); else g.moveTo(p.x, p.y); });
+  g.lineWidth = 5.4; g.strokeStyle = 'rgba(10,16,30,.55)'; g.stroke(); g.lineWidth = 3; g.strokeStyle = 'rgba(232,238,250,.95)'; g.stroke();
   const hot = ensHot < 0 && coneHot >= 0 ? coneHot : -1;
   for (const q of C.pts) {
     const p = toPx(q.lat, q.lon), r = q.lead === hot ? 12 : 10.5;
@@ -754,8 +756,8 @@ function drawEnsembles(g, toPx) {
   const order = P.members.map((_, k) => k).sort((a, b) => (a === ensHot) - (b === ensHot));
   for (const k of order) {
     const px = ensPx[k], m = P.members[k], hot = k === ensHot, dim = ensHot >= 0 && !hot ? 0.45 : 1; if (px.length < 2) continue;
-    if (hot) { g.lineWidth = 5.5; g.strokeStyle = 'rgba(8,10,16,.7)'; g.beginPath(); for (let i = 1; i < px.length; i++) ensTrace(g, px, i); g.stroke(); }
-    g.lineWidth = hot ? 3 : 1.3;
+    if (hot) { g.lineWidth = 7; g.strokeStyle = 'rgba(8,10,16,.7)'; g.beginPath(); for (let i = 1; i < px.length; i++) ensTrace(g, px, i); g.stroke(); }
+    g.lineWidth = hot ? 4 : 2;
     for (let i = 1; i < px.length; i++) { const lead = i * 3, a = hot ? 1 : Math.round((0.9 - 0.45 * Math.min(1, lead / 168)) * dim * 10) / 10; g.strokeStyle = ensColor(m.pts[i], a); g.beginPath(); ensTrace(g, px, i); g.stroke(); }
   }
   g.restore();
@@ -930,7 +932,7 @@ function stormHover(cx, cy) {
   else if (h.cone) {
     const q = h.cone, mph = HFStorms.ktToMph(q.v), gust = HFStorms.ktToMph(HFStorms.gustKt(q.v, false));
     title = '+' + q.lead + ' h' + (q.post ? ' · Post-tropical' : '') + ' · ' + mph + ' mph (1-min)';
-    lines = [q.post ? 'Remnant / extratropical low' : HFStorms.classOf(STORM_BASIN, q.v, q.th === 'sc' ? 'sc' : 'tc').long, 'gusts ' + gust + ' mph · ' + q.p + ' hPa', stormDateFull(q.t)];
+    lines = [q.post ? 'Remnant / extratropical low' : HFStorms.classOf(STORM_BASIN, q.v, q.th === 'sc' ? 'sc' : 'tc').long, 'gusts ' + gust + ' mph · ' + q.p + ' hPa', stormDateFull(q.t) + (q.end ? ' · end of the forecast' : '')];
   }
   else if (h.aoi) [title, lines] = olTip(h.aoi, h.sys);
   else if (h.low) { title = (h.low.dist ? 'Disturbance (low) ' : 'Low ') + h.low.id.slice(1); lines = [Math.round(h.low.p) + ' hPa · ' + h.low.fixes.length * 6 + ' h old']; }

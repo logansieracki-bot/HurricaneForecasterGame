@@ -426,8 +426,8 @@ function structureParams() {
     // the ensembles (Manager.prototype.ensemble): members that start from the same system and see a slightly different weather; every size below is for a predictability factor of 1 (see ensFactor)
     ens: {
       n: 24, horizon: 168,                                                         // members and hours ahead (the look-ahead of the page's own weather is 174 h)
-      f: [1.3, 0.5, 25, 80],                                                      // predictability factor: for a wave or low, for a hurricane, and the wind (kt) between which it falls from one to the other (a strong storm is steered by the deep flow and is the better forecast)
-      common: 0.8,                                                                 // every member also shares one forecast error (the analysis and the model are wrong the same way for all of them): its size in members' sizes -- a fan's centre is sometimes wrong
+      f: [0.75, 0.3, 25, 80], wv: 1.6,                                            // predictability factor: for a depression or weak storm, for a hurricane, and the wind (kt) between which it falls from one to the other (a strong storm is steered by the deep flow and is the better forecast); wv: a wave, low or disturbance is worse again, this many times that
+      common: 0.4,                                                                 // every member also shares one forecast error (the analysis and the model are wrong the same way for all of them): its size in members' sizes -- a fan's centre is sometimes wrong
       pos: 0.1, dv: 5,                                                            // the error of the starting position (degrees) and wind (kt) of a member
       disp: [0.4, 5, 1.2],                                                      // the features the steering is read from are shifted by a member-specific amount: sd (degrees) at the start, and the growth to a week with lead (power of lead / 168 h)
       vec: [1.3, 0.6],                                                             // the steering error (kt, a speed and direction error that changes slowly): sd at the start and growth to a week
@@ -919,7 +919,7 @@ function stepSystem(S, env, h, seed, par, doy, ctx) {
       else S.lowCount = 0;
     }
   } else if (th === 'ex' || th === 'nl') {
-    if (h + 1 >= S.nlTill || S.v < 12) { S.alive = false; S.endReason = th === 'ex' ? 'absorbed' : 'dissipated'; S.end = h + 1; }
+    if ((h + 1 >= S.nlTill && !(ctx && ctx.keep)) || S.v < 12) { S.alive = false; S.endReason = th === 'ex' ? 'absorbed' : 'dissipated'; S.end = h + 1; }
   }
   // a circulation that is nearly gone is finished: a hazard that grows as the wind falls (over land from 22 kt on, over water from 10 kt), not a threshold
   if (S.alive && S.th === 'tc' && lf > 0) { const w = smooth01(lf, 0.3, 0.6) * (1 - smooth01(S.v, 12, 22)); if (w > 0 && rnd(seed, id, h, ST.ENDH + 100) < 0.5 * w) { S.alive = false; S.endReason = 'dissipated over land'; S.end = h + 1; } }
@@ -1623,57 +1623,86 @@ Manager.prototype.ensemble = function (target, envSrc, opts) {
     S0 = this.pendingPlacement({ kind: 'low', lat: t.lat, lon: t.lon, hour: H0 }); const k = 111.2 / 6 / 1.852;
     S0.cx = (t.dx || 0) * Math.cos(t.lat * DEG) * k; S0.cy = (t.dy || 0) * k; tid = 1e6 + (t.born | 0);
   } else tid = S0.num | 0;
-  const f = ensFactor(E, S0.vr), horizon = Math.min(E.horizon, (opts && opts.horizon) || E.horizon), ctxAt = [];
-  for (let k = 0; k < horizon; k++) {                                       // what is the same for every member: the season's weights and the activity of each hour
-    const h = H0 + k, base = envSrc && typeof envSrc.at === 'function' ? envSrc.at(h) : envSrc, ctx = { maps: this.maps, tw: null, diag: null }, doy = this.doyAt(h);
-    if (this.maps) { ctx.tw = timeWeights(doy + (((h % 24) + 24) % 24) / 24); ctx.act = activityFactor(par, this.seed, seasonYearOf(this.startMs + h * HOUR_MS, this.seasonMonth), h); ensoOf(par, base, ctx); }
-    ctxAt.push({ base, tw: ctx.tw, act: ctx.act, shift: ctx.shift, doy });
-  }
+  const f = ensFactor(E, S0.vr) * (S0.th === 'wv' ? E.wv : 1), horizon = Math.min(E.horizon, (opts && opts.horizon) || E.horizon);
   const Cc = ensCommon(this.seed, tid, H0), members = [], labels = []; for (const F of ENS_FAM) for (let i = 0; i < F[2]; i++) labels.push([F[0], F[1] + String(i + 1).padStart(2, '0')]);
+  const run = [];
   for (let k = 0; k < n; k++) {
     const L = labels[k % labels.length], C = ensCoef(this.seed, tid, k), W = ensEnv(E, f, C, Cc), S = cloneSystem(S0);
     S.lat += E.pos * f * (C.pla + E.common * Cc.pla); S.lon += (E.pos * f * (C.plo + E.common * Cc.plo)) / Math.max(0.3, Math.cos(S.lat * DEG)); { const dv = E.dv * f * (C.pv + E.common * Cc.pv); S.v = Math.max(5, S.v + dv); S.vr = Math.max(5, S.vr + dv); }
-    const ctx = { maps: this.maps, tw: null, diag: null }, pts = [[S.lat, S.lon, Math.round(S.vr), S.th, Math.round(S.p)]]; let peak = S.vr;
-    for (let q = 0; q < horizon && S.alive; q++) {
-      const c = ctxAt[q], h = H0 + q; ctx.tw = c.tw; ctx.act = c.act; ctx.shift = c.shift;
-      stepSystem(S, W.at(c.base, q), h, C.salt, par, c.doy, ctx);
-      if (S.vr > peak) peak = S.vr;
-      if ((q + 1) % 3 === 0 || !S.alive) pts.push([S.lat, S.lon, Math.round(S.vr), S.th, Math.round(S.p)]);
-    }
-    members.push({ k, name: L[0] + ' ' + L[1], fam: L[0], pts, peak: Math.round(peak), hours: Math.min(horizon, (pts.length - 1) * 3), alive: S.alive });
+    run.push({ k, L, C, W, S, ctx: { maps: this.maps, tw: null, diag: null, keep: true }, pts: [[S.lat, S.lon, Math.round(S.vr), S.th, Math.round(S.p)]], peak: S.vr });
   }
+  for (let q = 0; q < horizon; q++) {                                       // hour by hour, all members together: the page's weather carries its steering forward in place, so the environment of an hour has to be read at that hour and used before the next is asked for
+    const h = H0 + q, base = envSrc && typeof envSrc.at === 'function' ? envSrc.at(h) : envSrc, doy = this.doyAt(h), cx = { maps: this.maps, tw: null, diag: null };
+    if (this.maps) { cx.tw = timeWeights(doy + (((h % 24) + 24) % 24) / 24); cx.act = activityFactor(par, this.seed, seasonYearOf(this.startMs + h * HOUR_MS, this.seasonMonth), h); ensoOf(par, base, cx); }
+    for (const m of run) {
+      const S = m.S; if (!S.alive) continue;
+      m.ctx.tw = cx.tw; m.ctx.act = cx.act; m.ctx.shift = cx.shift;
+      stepSystem(S, m.W.at(base, q), h, m.C.salt, par, doy, m.ctx);
+      if (S.vr > m.peak) m.peak = S.vr;
+      if ((q + 1) % 3 === 0 || !S.alive) m.pts.push([S.lat, S.lon, Math.round(S.vr), S.th, Math.round(S.p)]);
+    }
+  }
+  for (const m of run) members.push({ k: m.k, name: m.L[0] + ' ' + m.L[1], fam: m.L[0], pts: m.pts, peak: Math.round(m.peak), hours: Math.min(horizon, (m.pts.length - 1) * 3), alive: m.S.alive });
   return { init: H0, id: S0.id || target, factor: f, start: [S0.lat, S0.lon], members };
 };
-/* the cone of uncertainty: the consensus of a fan (the mean of the members still alive) every three hours, with a circle round each point as big as the NHC's mean track error at that lead (par.cone: 26 nmi at 12 h
-   to 220 at 120 h), so the cone is the same size for every storm whatever the fan looks like; its points at 12, 24, 36, 48, 72, 96 and 120 h carry the wind, pressure and the class letter (D, S, H, M; grey when most
-   members are post-tropical). A new cone is blended with the last one by valid time -- all the way to the new forecast near the start (it must begin at the storm), half way beyond a day and a half -- so it moves part of the way to a changed
-   forecast and never jumps. */
-function coneRadius(K, lead) {                                               // degrees of latitude
-  const h = K.h, r = K.nmi; if (lead <= h[0]) return r[0] / 60; for (let i = 1; i < h.length; i++) if (lead <= h[i]) return (r[i - 1] + (r[i] - r[i - 1]) * (lead - h[i - 1]) / (h[i] - h[i - 1])) / 60; return r[r.length - 1] / 60;
+/* the cone of uncertainty: the consensus of a fan (the mean of the members still alive) with a circle round it as big as the NHC's mean track error at that lead (par.cone: 26 nmi at 12 h to 220 at 120 h), so the cone is the
+   same size for every storm whatever the fan looks like. The centre line is a smooth curve: the consensus is smoothed over a few hours and read every 12 hours, and a monotone cubic (pchip) runs through those points, so it
+   never wiggles, overshoots or loops the way the mean of a few dozen tracks does where members come and go; the circles' sizes run through the NHC's numbers the same way. The points at 12, 24, 36, 48, 72, 96 and 120 h are read off that
+   curve and carry the wind, the pressure and the class letter (D, S, H, M by the category the page colours the point with; grey when most members are post-tropical). A new cone is blended with the last one by valid time -- all the way to the
+   new forecast near the start (it must begin at the storm), half way beyond a day and a half -- so it moves part of the way to a changed forecast and never jumps. */
+function pchip(xs, ys) {                                                     // the monotone cubic through the points (Fritsch-Carlson): no overshoot, so no wiggle
+  const n = xs.length; if (n === 1) return () => ys[0];
+  const h = [], d = []; for (let i = 0; i < n - 1; i++) { h.push(xs[i + 1] - xs[i]); d.push((ys[i + 1] - ys[i]) / h[i]); }
+  if (n === 2) return (x) => ys[0] + d[0] * (x - xs[0]);
+  const m = new Array(n), sg = Math.sign;
+  for (let i = 1; i < n - 1; i++) m[i] = d[i - 1] * d[i] > 0 ? 3 * (h[i - 1] + h[i]) / ((2 * h[i] + h[i - 1]) / d[i - 1] + (h[i] + 2 * h[i - 1]) / d[i]) : 0;
+  const end = (h0, h1, d0, d1) => { let e = ((2 * h0 + h1) * d0 - h0 * d1) / (h0 + h1); if (sg(e) !== sg(d0)) e = 0; else if (sg(d0) !== sg(d1) && Math.abs(e) > 3 * Math.abs(d0)) e = 3 * d0; return e; };
+  m[0] = end(h[0], h[1], d[0], d[1]); m[n - 1] = end(h[n - 2], h[n - 3], d[n - 2], d[n - 3]);
+  return (x) => {
+    let k = 0; while (k < n - 2 && x > xs[k + 1]) k++;
+    const t = Math.min(1, Math.max(0, (x - xs[k]) / h[k])), t2 = t * t, t3 = t2 * t;
+    return (2 * t3 - 3 * t2 + 1) * ys[k] + (t3 - 2 * t2 + t) * h[k] * m[k] + (-2 * t3 + 3 * t2) * ys[k + 1] + (t3 - t2) * h[k] * m[k + 1];
+  };
 }
-const coneLetter = (v) => (v < 34 ? 'D' : v < 64 ? 'S' : v < 96 ? 'H' : 'M');
+const coneRCache = new Map();
+function coneRadius(K, lead) {                                               // degrees of latitude: the NHC's circles through a monotone curve, not a polyline
+  let f = coneRCache.get(K); if (!f) { f = pchip(K.h, K.nmi); coneRCache.set(K, f); }
+  return f(Math.min(Math.max(lead, K.h[0]), K.h[K.h.length - 1])) / 60;
+}
+const coneLetter = (v) => { const c = category(v).short; return c === 'TD' ? 'D' : c === 'TS' ? 'S' : c === 'C1' || c === 'C2' ? 'H' : 'M'; };       // by the category the point is coloured with (the wind in 5-kt steps), so the letter and the colour can never disagree
 function coneOf(E, par, prev) {
   if (!E || !E.members.length) return null;
-  const K = par.cone, N = E.members.length, track = [], rows = [];
+  const K = par.cone, N = E.members.length, rows = [];
   for (let i = 0; i < 41; i++) {
     const A = E.members.filter((m) => m.pts.length > i); if (A.length < K.minAlive * N) break;
     const med = (j) => { const v = A.map((m) => m.pts[i][j]).sort((a, b) => a - b); return v[Math.floor((v.length - 1) / 2)]; };
     const la = A.reduce((t, m) => t + m.pts[i][0], 0) / A.length, lo = A.reduce((t, m) => t + m.pts[i][1], 0) / A.length, post = A.filter((m) => m.pts[i][3] === 'ex' || m.pts[i][3] === 'nl').length > A.length / 2;
-    const th = post ? (A.filter((m) => m.pts[i][3] === 'nl').length > A.filter((m) => m.pts[i][3] === 'ex').length ? 'nl' : 'ex') : (A.some((m) => m.pts[i][3] === 'wv') && A.filter((m) => m.pts[i][3] === 'wv').length > A.length / 2 ? 'wv' : A.filter((m) => m.pts[i][3] === 'sc').length > A.length / 2 ? 'sc' : 'tc');
-    rows.push({ lat: la, lon: lo, v: med(2), p: med(4), th });
+    const th = post ? (A.filter((m) => m.pts[i][3] === 'nl').length > A.filter((m) => m.pts[i][3] === 'ex').length ? 'nl' : 'ex') : (A.filter((m) => m.pts[i][3] === 'wv').length > A.length / 2 ? 'wv' : A.filter((m) => m.pts[i][3] === 'sc').length > A.length / 2 ? 'sc' : 'tc');
+    rows.push({ lat: la, lon: lo, v: med(2), p: med(4), th, lead: i * 3, t: E.init + i * 3 });
   }
-  const gapOk = prev && prev.init < E.init && E.init - prev.init <= 24;
-  rows.forEach((q, i) => {
-    q.lead = i * 3; q.t = E.init + i * 3;
-    const j = gapOk ? (q.t - prev.init) / 3 : -1;
-    if (j >= 0 && j < prev.track.length && Number.isInteger(j)) {
-      const w = 1 - (1 - K.blend[2]) * smooth01(q.lead, K.blend[0], K.blend[1]), o = prev.track[j];
-      q.lat = o.lat + w * (q.lat - o.lat); q.lon = o.lon + w * (q.lon - o.lon); q.v = Math.round(o.v + w * (q.v - o.v)); q.p = Math.round(o.p + w * (q.p - o.p));
-    }
-    track.push({ lat: q.lat, lon: q.lon, v: q.v, p: q.p, th: q.th });
-  });
-  const pts = K.pts.filter((h) => rows[h / 3]).map((h) => { const q = rows[h / 3], v = Math.max(5, Math.round(q.v)); return { lead: h, t: q.t, lat: q.lat, lon: q.lon, v, p: q.p, th: q.th, letter: coneLetter(v), post: q.th === 'ex' || q.th === 'nl' }; });
-  return { init: E.init, id: E.id, track, rows, pts, chain: rows.map((q) => [q.lat, q.lon, coneRadius(K, q.lead)]) };
+  if (!rows.length) return null;
+  const last = (rows.length - 1) * 3, leads = []; for (let l = 0; l <= last; l += 12) leads.push(l); if (last % 12) leads.push(last);
+  const sm = (i, key) => {                                                  // (a few hours of the consensus: the mean of a few dozen tracks has small steps where members come and go) a straight line fitted through the rows within 6 hours, read at the row: smooth, and no lag where the track ends
+    if (i === 0) return rows[0][key];
+    let sw = 0, sx = 0, sy = 0, sxx = 0, sxy = 0;
+    for (let d = -2; d <= 2; d++) { const r = rows[i + d]; if (!r) continue; const w = 3 - Math.abs(d); sw += w; sx += w * d; sy += w * r[key]; sxx += w * d * d; sxy += w * d * r[key]; }
+    const den = sw * sxx - sx * sx; return den > 1e-9 ? (sy * sxx - sx * sxy) / den : sy / sw;
+  };
+  let ctrl = leads.map((l) => ({ lead: l, lat: sm(l / 3, 'lat'), lon: sm(l / 3, 'lon'), v: sm(l / 3, 'v'), p: sm(l / 3, 'p') }));
+  if (prev && prev.init < E.init && E.init - prev.init <= 24 && prev.at) {
+    ctrl = ctrl.map((c) => {
+      const o = prev.at(E.init + c.lead - prev.init); if (!o) return c;
+      const w = 1 - (1 - K.blend[2]) * smooth01(c.lead, K.blend[0], K.blend[1]);
+      return { lead: c.lead, lat: o.lat + w * (c.lat - o.lat), lon: o.lon + w * (c.lon - o.lon), v: o.v + w * (c.v - o.v), p: o.p + w * (c.p - o.p) };
+    });
+  }
+  const xs = ctrl.map((c) => c.lead), f = {}; for (const k of ['lat', 'lon', 'v', 'p']) f[k] = pchip(xs, ctrl.map((c) => c[k]));
+  const at = (lead) => (lead < 0 || lead > last + 1e-9 ? null : { lat: f.lat(lead), lon: f.lon(lead), v: f.v(lead), p: f.p(lead) });
+  const out = rows.map((r) => { const q = at(r.lead); return { lat: q.lat, lon: q.lon, v: q.v, p: Math.round(q.p), th: r.th, lead: r.lead, t: r.t }; });
+  const leadsP = K.pts.filter((h) => h <= last), pre = leadsP.length ? leadsP[leadsP.length - 1] : 0;
+  if (last >= K.pts[0] && last - pre >= 6 && last % 3 === 0) leadsP.push(last);                    // a cone that ends early (the system is gone by then) still ends in a point, the last hour of the forecast
+  const pts = leadsP.map((h) => { const q = at(h), v = Math.max(5, round5(q.v)), th = out[h / 3].th; return { lead: h, t: E.init + h, lat: q.lat, lon: q.lon, v, p: Math.round(q.p), th, letter: coneLetter(v), post: th === 'ex' || th === 'nl', end: K.pts.indexOf(h) < 0 }; });
+  return { init: E.init, id: E.id, rows: out, pts, chain: out.map((q) => [q.lat, q.lon, coneRadius(K, q.lead)]), ctrl, at: (T) => at(T), line: Array.from({ length: last + 1 }, (_, l) => at(l)) };
 }
 /* the track density: the share of the members that pass within a footprint of each cell of a grid in (longitude, Mercator y), both in degrees, so that it lands exactly on the page's projection */
 const mercY = (lat) => (Math.log(Math.tan(Math.PI / 4 + Math.min(85, Math.max(-85, lat)) * DEG / 2)) / DEG);
