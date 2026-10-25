@@ -2,6 +2,7 @@
 // The engine is exercised on synthetic environments (tests/storms_env.mjs) so one physical response can be checked at a time;
 // the statistics of whole seasons against the real best track are a separate, calibrated job (tools/make_tc_ref.py).
 import { readFileSync } from 'node:fs';
+import '../src/storm-cities.js';
 import '../src/storms.js';
 import { makeEnv, climateEnv, defaultSteer } from './storms_env.mjs';
 
@@ -1549,6 +1550,96 @@ const LAND = (la, lo) => (lo > -16.3 && lo < 38 && la > 4 && la < 30) || (lo < -
     // the hard cap
     const old = born(70, 5); old.etAt = -400; let end = 0; for (let h = 1; h < 120 && old.alive; h++) { H.stepSystem(old, e, h, 5, flip); end = h; }
     check(`a post-tropical cyclone that is very old (more than two weeks) is gone within a day or so (ended at hour ${end}: ${old.endReason})`, !old.alive && end < 60 && old.endReason === 'absorbed'); }
+}
+
+/* ---- milestone 15: what a storm does to a city -------------------------------------------------------------------------------------------------------------------------------------- */
+{
+  const C = globalThis.HF_CITIES, KT = 1.150779;
+  const CITY = (name, lat, lon, inland = false) => { const x = C.info(name, lat); return { name, lat, lon, inland, pop: x.pop, inc: x.inc, oro: x.oro, coast: inland ? 0 : x.coast }; };
+  const north = (lat, lon, v, o = {}) => Object.assign({ lat0: lat - 4, lon0: lon - 0.1, lat1: lat + 4, lon1: lon - 0.1, hours: 40, v, land: (la, lo) => lo < lon - 0.05 }, o);
+  // a storm along a straight track through a city, then a day more of the storm leaving; the manager hands the page what it would see at the end
+  function visit(cityDef, o) {
+    const m = H.create({ seed: o.seed || 5, startMs: Date.UTC(2026, 8, 1), auto: false, params: o.params || {} });
+    m.setCities(Array.isArray(cityDef) ? cityDef : [cityDef]);
+    const S = H.newSystem({ id: 'T' + (o.id || 1), num: H.idNum('M', o.id || 1), th: 'tc', lat: o.lat0, lon: o.lon0, v: o.v, hour: 0 });
+    S.name = 'Test'; S.alive = true; S.depNum = 1; S.tdHour = 0; S.season = m.season.year; m.systems.push(S); m.byId[S.id] = S;
+    const env = makeEnv({ land: o.land || (() => false), sst: 28.5, shear: 6 }), n = o.hours, h0 = o.h0 || 0, dl = (o.lat1 - o.lat0) / n, dn = (o.lon1 - o.lon0) / n, snaps = [];
+    S.cx = dn * 60 * Math.cos(o.lat0 * Math.PI / 180); S.cy = dl * 60;
+    for (let h = h0; h < h0 + n + (o.after ?? 24); h++) {
+      const k = h - h0;
+      if (k < n) { S.lat = o.lat0 + dl * k; S.lon = o.lon0 + dn * k; S.v = S.vr = o.vAt ? o.vAt(k, n) : o.v; } else { S.cx = 0; S.cy = 0; S.v = S.vr = Math.max(20, o.v * Math.exp(-(k - n) / 8)); }
+      H.stepWind(S, m.par, 9, h, Math.abs(S.lat), 0);
+      m.hour = h; m._impacts(h + 1, env); m.hour = h + 1; snaps.push(m.impactOf(0));
+    }
+    return { m, out: m.impactOf(0), S, snaps, env };
+  }
+  const key = (c) => c.name + '#' + Math.round(c.lat);
+  const events = (r, c) => { const L = r.m.ledger[key(c)]; return L ? L.ev.concat(L.open ? [L.open] : []) : []; };
+  const mia = CITY('Miami', 25.76, -80.19), pap = CITY('Port-au-Prince', 18.59, -72.31), frp = CITY('Freeport', 26.53, -78.7), hou = CITY('Houston', 29.3, -94.8), nol = CITY('New Orleans', 29.95, -90.07);
+  const m4 = visit(mia, north(25.76, -80.19, 125)), m1 = visit(mia, north(25.76, -80.19, 75)), mt = visit(mia, north(25.76, -80.19, 50));
+  const B = (x) => (x.damageCost / 1e9).toFixed(1) + ' B';
+  check(`a category 4 over Miami (125 kt, 12 kt north, through the city) costs ${B(m4.out)} (${m4.out.damagePct.toFixed(1)} % of its value; the 1926 hurricane re-run today: about 235 B), kills ${m4.out.deaths} and injures ${m4.out.injuries}; a category 1 costs ${B(m1.out)} and kills ${m1.out.deaths}, a tropical storm ${B(mt.out)} and ${mt.out.deaths}`,
+    m4.out.damageCost > 100e9 && m4.out.damageCost < 320e9 && m4.out.deaths > 30 && m4.out.deaths < 420 && m4.out.injuries > m4.out.deaths && m1.out.damageCost > 1e9 && m1.out.damageCost < 15e9 && m1.out.deaths < 10 && mt.out.damageCost < 1e9 && mt.out.deaths === 0);
+  const pp = visit(pap, north(18.59, -72.31, 125)), fr = visit(frp, north(26.53, -78.7, 160)), no = visit(nol, { lat0: 26, lon0: -90.1, lat1: 34, lon1: -90.1, hours: 40, v: 115, land: (la) => la > 29.9 });
+  const hv = visit(hou, { lat0: 28.2, lon0: -94.9, lat1: 30.6, lon1: -94.9, hours: 90, v: 65, land: (la, lo) => lo < -94.85 });
+  check(`the same storm costs a poor city far more lives: a category 4 over Port-au-Prince kills ${pp.out.deaths} (against ${m4.out.deaths} over Miami) and destroys ${pp.out.damagePct.toFixed(0)} % of its value; a category 5 over a small city (Freeport, 27 thousand) destroys ${fr.out.damagePct.toFixed(0)} % of it; a category 3 over New Orleans kills ${no.out.deaths}; a stalled 65 kt storm over Houston rains ${events(hv, hou)[0].rp.toFixed(0)} inches and costs ${B(hv.out)}`,
+    pp.out.deaths > 300 && pp.out.deaths < 6000 && pp.out.damagePct > 15 && fr.out.damagePct > 20 && fr.out.damagePct < 90 && no.out.deaths > 200 && no.out.deaths < 3000 && events(hv, hou)[0].rp > 18 && hv.out.damageCost > 30e9 && hv.out.damageCost < 160e9);
+  // the numbers the tooltip shows: winds and gusts in mph, by exposure, while the storm is there
+  { const inl = CITY('Atlanta', 33.75, -84.39, true), r = visit([mia, inl], { lat0: 22, lon0: -80.3, lat1: 30, lon1: -80.3, hours: 40, v: 90, land: (la, lo) => lo < -80.15 }), cm = r.m.cities[0], ci = r.m.cities[1];
+    const mid = visit(mia, north(25.76, -80.19, 100)); let worst = { v: 0, g: 0 }, onGust = 0;
+    // the wind and gust the page would show at the hour the wind is strongest
+    const m = H.create({ seed: 5, startMs: Date.UTC(2026, 8, 1), auto: false }); m.setCities([mia]);
+    const S = H.newSystem({ id: 'T1', num: H.idNum('M', 1), th: 'tc', lat: 25.76, lon: -80.6, v: 100, hour: 0 }); S.alive = true; S.cx = 0; S.cy = 12; S.vr = 100; S.depNum = 1; S.season = m.season.year; m.systems.push(S); m.byId[S.id] = S;
+    const env = makeEnv({ land: (la, lo) => lo < -80.15 }); H.stepWind(S, m.par, 9, 0, 25.76, 0); m.hour = 0; m._impacts(1, env); m.hour = 1;
+    const now = m.impactOf(0), cn = m.cities[0].now;
+    check(`the wind a city shows is in mph and has a gust on it by exposure: ${now.windSustained} mph sustained and ${now.windGust} gusts in Miami (a gust factor of ${(now.windGust / now.windSustained).toFixed(2)}: 1.23 where the wind is onshore, 1.36 where it blows off the land), and an inland city has 1.49 (${(1.49).toFixed(2)}); the sustained wind is the profile's x ${m.par.impact.fric[0]} on the coast (${(H.windAt(S, m.par, 25.76, -80.19) * m.par.impact.fric[0] * KT).toFixed(0)} mph) and in kt/mph units (${cn.v.toFixed(1)} kt = ${(cn.v * KT).toFixed(0)} mph)`,
+      Math.abs(now.windSustained - cn.v * KT) < 1.1 && [1.23, 1.36].some((f) => Math.abs(now.windGust / now.windSustained - f) < 0.03) && Math.abs(now.windSustained - H.windAt(S, m.par, 25.76, -80.19) * m.par.impact.fric[0] * KT) < 1.6 && m.par.impact.gust[2] === 1.49); }
+  // the rain of the last 72 hours empties by itself
+  { const r = visit(mia, north(25.76, -80.19, 100, { after: 0 })), cs = (k) => { const m = r.m; return m.impactOf(0).rain72h; };
+    const peak = r.out.rain72h, m = r.m, env = r.env, S = r.S;
+    const at = {}; S.cx = 0; S.cy = 0; S.lat = 40; S.lon = -60; S.v = S.vr = 20;                      // the storm is gone
+    for (let k = 0; k <= 110; k++) { m.hour = 40 + k; m._impacts(40 + k + 1, env); m.hour = 40 + k + 1; if ([1, 24, 36, 60, 80, 100].includes(k)) at[k] = m.impactOf(0).rain72h; }
+    check(`the rain of the last 72 hours is the rolling sum of the hours' rain, so it empties by itself: ${peak.toFixed(1)} in at the end of the storm, ${at[24].toFixed(1)} a day later, ${at[60].toFixed(1)} after 60 hours, ${at[100].toFixed(1)} after 100 hours (nothing falls out of the window before the 72 hours are over, and none is left after them)`,
+      peak > 6 && at[24] > 0.85 * peak && at[60] < at[24] && at[100] === 0 && at[80] <= at[60] + 1e-9); }
+  // recovery: faster for lighter damage, a season at the worst; deaths stay, injuries heal faster, then the record goes
+  { const P = H.defaultParams(), Td = (d) => H.recoverH(P, d) / 24;
+    check(`the time to recover grows with the damage and is a season at the worst: a damage of 0.01 % of the city heals in ${Td(1e-4).toFixed(1)} days, 1 % in ${Td(0.01).toFixed(0)}, 10 % in ${Td(0.1).toFixed(0)}, 40 % and worse in ${Td(0.4).toFixed(0)} and ${Td(0.9).toFixed(0)}`, Td(1e-4) > 2 && Td(1e-4) < 5 && Td(0.01) > 25 && Td(0.01) < 40 && Td(0.1) > 90 && Td(0.1) < 110 && Td(0.4) === 200 && Td(0.9) === 200 && Td(0) === 2);
+    const e = { t0: 0, te: 100, D: 1e9, k: 40, i: 300, d: 0.1, T: H.recoverH(P, 0.1) }, T = e.T, at = (a) => H.eventNow(P, e, e.te + a);
+    check(`an event's damage does not heal at first (${(100 * at(0.05 * T).D / e.D).toFixed(0)} % left a twentieth of the way), heals ${(100 * (1 - at(0.5 * T).D / e.D)).toFixed(0)} % by half the time and entirely at the end (${at(T).D}); injuries heal three times as fast (${at(0.3 * T).i} left at 0.3 T of ${e.i}); deaths stay at ${at(0.99 * T).k} until the end and then the record is gone (${at(T).k})`,
+      at(0.05 * T).D > 0.97 * e.D && at(0.5 * T).D < 0.7 * e.D && at(0.5 * T).D > 0.2 * e.D && at(T).D === 0 && at(0.3 * T).i === 0 && at(0.02 * T).i === e.i && at(0.99 * T).k === 40 && at(T).k === 0); }
+  // a second storm adds its own event, and the season keeps the totals
+  { const two = visit(mia, north(25.76, -80.19, 100, { after: 0 })), r2 = two;                     // (the first storm)
+    const first = two.m.impactOf(0), m = two.m, env = two.env;
+    const S2 = H.newSystem({ id: 'T2', num: H.idNum('M', 2), th: 'tc', lat: 21.76, lon: -80.29, v: 100, hour: 0 }); S2.name = 'Second'; S2.alive = true; S2.depNum = 2; S2.season = m.season.year; m.systems.push(S2); m.byId[S2.id] = S2; two.S.alive = false;
+    const t0 = 40 + 24 * 30; S2.cx = 0; S2.cy = 12;
+    for (let k = 0; k < 40; k++) { S2.lat = 21.76 + 0.2 * k; S2.lon = -80.29; S2.v = S2.vr = 100; H.stepWind(S2, m.par, 9, t0 + k, S2.lat, 0); m.hour = t0 + k; m._impacts(t0 + k + 1, env); m.hour = t0 + k + 1; }
+    for (let k = 40; k < 70; k++) { S2.cx = 0; S2.cy = 0; S2.v = S2.vr = 20; m.hour = t0 + k; m._impacts(t0 + k + 1, env); m.hour = t0 + k + 1; }
+    const both = m.impactOf(0), ev = events(two, mia), imp = m.season.imp;
+    check(`a second storm adds its own event (${ev.length} events in the ledger: ${B(first)} left of the first after a month, ${B(both)} in all), and the season keeps what the storms did while the city recovers (damage ${(imp.d / 1e9).toFixed(0)} B, ${imp.k} deaths, ${imp.i} injured; the first storm's tally ${(two.S.imp.d / 1e9).toFixed(0)} B, the second's ${(S2.imp.d / 1e9).toFixed(0)} B; the worst: ${imp.worst.city}, ${(imp.worst.d / 1e9).toFixed(0)} B by ${imp.worst.storm})`,
+      ev.length === 2 && both.damageCost > first.damageCost * 0.5 && both.damageCost > 0.4 * (two.S.imp.d + S2.imp.d) * 0.5 && Math.abs(imp.d - (two.S.imp.d + S2.imp.d)) < 1 && imp.k === two.S.imp.k + S2.imp.k && imp.worst.city === 'Miami'); }
+  // the city heals and the record clears, the season's totals stay
+  { const r = visit(mia, north(25.76, -80.19, 125, { after: 0 })), m = r.m, env = r.env; r.S.alive = false;
+    const d0 = m.impactOf(0), rings0 = m.impactRings(), end = 40 + 12 + Math.ceil(m.par.impact.recover.max * 24) + 48; let mid = null;
+    for (let h = 40; h < end; h++) { m.hour = h; m._impacts(h + 1, env); m.hour = h + 1; if (h === 40 + 12 + 24 * 60) mid = m.impactOf(0); }
+    const fin = m.impactOf(0);
+    check(`a city that is hit hard heals: ${B(d0)} and ${d0.deaths} deaths after the storm (a ring of ${(100 * rings0[0][1]).toFixed(1)} % on the map), ${B(mid)} and ${mid.deaths} deaths two months on (recovery ${(100 * mid.recovery).toFixed(0)} %), nothing a season on (${B(fin)}, ${fin.deaths} deaths, ${fin.injuries} injured, no ring: ${m.impactRings().length}) while the season's totals stay (${(m.season.imp.d / 1e9).toFixed(0)} B)`,
+      rings0.length === 1 && rings0[0][0] === 0 && rings0[0][1] > 0.05 && mid.damageCost < 0.8 * d0.damageCost && mid.damageCost > 0.1 * d0.damageCost && mid.deaths === d0.deaths && fin.damageCost === 0 && fin.deaths === 0 && fin.injuries === 0 && m.impactRings().length === 0 && m.season.imp.d > 0.9 * d0.damageCost); }
+  // a far-away city has nothing; a save keeps the ledger
+  { const far = CITY('Halifax', 44.65, -63.57), r = visit([mia, far], north(25.76, -80.19, 110)), o = r.m.impactOf(1);
+    check(`a city the storm does not come near has nothing (${far.name}: ${o.damageCost} $, ${o.rain72h} in, ${o.deaths} deaths) and no ledger (${Object.keys(r.m.ledger).join(', ')})`, o.damageCost === 0 && o.deaths === 0 && o.rain72h === 0 && Object.keys(r.m.ledger).length === 1);
+    const j = JSON.parse(JSON.stringify(r.m.serialize())), back = H.restore(j, {}); back.setCities([mia, far]);
+    const a = r.m.impactOf(0), b = back.impactOf(0);
+    check(`a save carries the ledger (a ${B(a)} damage, ${a.deaths} deaths, ${a.rain72h.toFixed(1)} in of rain before and ${B(b)}, ${b.deaths}, ${b.rain72h.toFixed(1)} after a round trip through JSON), and an old save without one resumes with none`, Math.abs(a.damageCost - b.damageCost) < 1 && a.deaths === b.deaths && Math.abs(a.rain72h - b.rain72h) < 0.01 && (() => { const o2 = JSON.parse(JSON.stringify(j)); delete o2.imp; const old = H.restore(o2, {}); old.setCities([mia]); return old.impactOf(0).damageCost === 0; })()); }
+  // the surge needs an onshore wind: the same storm and coast, with land all round the city, gives none
+  { const wet = visit(mia, north(25.76, -80.19, 125)), dry = visit(mia, north(25.76, -80.19, 125, { land: () => true }));
+    check(`the surge needs water upwind of the city: a category 4 gives Miami ${events(wet, mia)[0].sg.toFixed(1)} m of surge from the sea and ${events(dry, mia)[0].sg.toFixed(1)} m with land on every side`, events(wet, mia)[0].sg > 3 && events(dry, mia)[0].sg === 0); }
+  // every city of every page has a row of the table, with sensible numbers
+  { let n = 0, bad = [];
+    for (const f of ['template.html', 'template-eastpacific.html', 'template-wpac.html', 'template-nio.html', 'template-aus.html', 'template-swio.html', 'template-spac.html', 'template-satl.html', 'template-med.html']) {
+      const t = readFileSync(new URL('../src/' + f, import.meta.url), 'utf8'), i = t.indexOf('const CITIES = ['), j = t.indexOf('\n];', i);
+      for (const c of new Function('return ' + t.slice(i + 'const CITIES = '.length, j + 2))()) { n++; const x = C.info(c.name, c.lat); if (!x || !(x.pop > 0) || ![0, 1, 2, 3].includes(x.inc) || !(x.oro >= 1 && x.oro <= 2) || !(x.coast >= 0.7 && x.coast <= 3)) bad.push(f + ':' + c.name); }
+    }
+    check(`every one of the ${n} cities of the nine pages has a row of the table with people, an income class, terrain and a coast (${bad.length} without: ${bad.slice(0, 4).join(', ')})`, n > 500 && bad.length === 0); }
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

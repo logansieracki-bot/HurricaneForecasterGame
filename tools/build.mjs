@@ -22,6 +22,8 @@ function build({ basin = 'atlantic', templatePath = join(ROOT, 'src/template.htm
   const data = readFileSync(dataPath, 'utf8');
   const storms = readFileSync(join(ROOT, 'src/storms.js'), 'utf8');
   if (storms.includes('</script>')) throw new Error('src/storms.js must not contain a closing script tag: it is inlined into a <script>');
+  const cities = readFileSync(join(ROOT, 'src/storm-cities.js'), 'utf8').trimEnd();                    // what each city holds (people, income, terrain, coast): the engine's impacts read it; it goes in front of the engine
+  if (cities.includes('</script>')) throw new Error('src/storm-cities.js must not contain a closing script tag: it is inlined into a <script>');
   const hooks = readFileSync(join(ROOT, 'src/storm-hooks.js'), 'utf8').trimEnd();                   // everything that connects the engine to a page (the same file in every basin's page); a template without the placeholder gets none
   if (hooks.includes('</script>')) throw new Error('src/storm-hooks.js must not contain a closing script tag: it is inlined into a <script>');
   const late = readFileSync(join(ROOT, 'src/storm-late.js'), 'utf8').trimEnd();                      // the storm controls' wiring, the save / resume block and the storm half of window.SSTSIM
@@ -33,7 +35,7 @@ function build({ basin = 'atlantic', templatePath = join(ROOT, 'src/template.htm
     .replace('/*__LEAFLET_CSS__*/', () => css)
     .replace('/*__DATA__*/', () => data)
     .replace('/*__LEAFLET_JS__*/', () => js)
-    .replace('/*__STORMS__*/', () => storms)
+    .replace('/*__STORMS__*/', () => cities + '\n' + storms)
     .replace('/*__STORM_HOOKS__*/', () => fill(hooks))
     .replace('/*__STORM_LATE__*/', () => fill(late))
     .replace('/*__STORM_CSS__*/', () => stormCss);

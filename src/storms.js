@@ -467,6 +467,21 @@ function structureParams() {
       // times, the 34 kt field grows by sz), and the storm re-intensifies (d2 hours: it takes back rec of the loss, Rmax contracts to rm2 of its peak value). The wind loss fades over tDef hours, the larger eye over tRm, the larger field over tSz
       erc: { rate: 0.08, vR: [76, 102], hi: [6, 14], sst: [25.5, 27.5], shear: 2.5, land: [0.05, 0.25], cool: [36, 84], d0: [6, 12], d1: [12, 24], d2: [12, 30], loss: [19, 7, 8, 38], rec: [0.7, 1.0], rmx: [1.8, 2.8], rm0: 0.85, rm2: 0.7, sz: [0.10, 0.18], tDef: 36, tRm: 48, tSz: 96 },
     },
+    // what a storm does to a city (Manager._impacts, impactOf). The wind a city has is the profile's (windAt) at nine points of a 3 x 3 grid round it, over land a little less (friction) with a gust on top; the rain is a
+    // symmetric profile (Lonfat et al., Tuleya et al.: about 3 mm/h at the core of a tropical storm, above 15 mm/h at that of a major hurricane, under 1 mm/h beyond 200 km) summed over the hours the storm stays (a slow storm rains
+    // longer), lifted by the mountains near the city; the surge is a proxy (the sim has none) from the onshore wind and the size of the storm on a coast. Damage is Emanuel's cubic law of the wind above a threshold, a law of the rain
+    // above a few inches and a law of the surge, together; deaths are three terms (surge, rain, wind: the shares of the real record) and injuries follow them. An event is a storm's visit: it opens when the local wind or rain
+    // reaches on[0] kt or on[1] in/h and closes on[2] hours after the last; its damage then heals over recover.max days at the worst (damage of a fraction d of the city takes max x sqrt(d / d0) days, at least min): not at all
+    // for the first lag of that time, injuries three tenths as long, deaths stay until the end and then the record goes
+    impact: {
+      reach: [1.5, 90], grid: 0.2, fric: [0.92, 0.85], gust: [1.23, 1.36, 1.49], on: [25, 0.04, 12],
+      wind: { vt: 25.7, vh: [92, 80, 68, 58], scale: 1 }, cap: [380, 90, 35, 12],
+      rain: { v: [20, 35, 50, 75, 100, 130], pk: [0.05, 0.12, 0.25, 0.5, 0.75, 1.0], core: 1.2, e: 0.3, asym: 0.35, max: 3 },
+      flood: { r0: 5, k: 0.0001, p: 1.7, max: 0.15, vul: [1, 1.2, 1.5, 2] },
+      surge: { s0: 3, ref: 100, size: 110, share: 0.2, shareMax: 0.6, back: 0.25, up: 21 },
+      deaths: { mult: [1, 3, 8, 25], surge: 0.07, ps: 2.5, flood: 3.1e-6, r1: 8, rs: 15, wind: 4.8e-5, sd: 0.45, inj: [6, 6, 5, 4], injW: 3e-5 },
+      recover: { max: 200, d0: 0.4, p: 0.5, min: 2, lag: 0.1, inj: 0.3, keep: 12, min0: 2e-5 },
+    },
     // watches and warnings (alertsOf), the NHC's: a warning is for conditions EXPECTED within 36 hours of the onset of tropical-storm-force winds, a watch for conditions POSSIBLE within 48; a cell the forecast's wind radius reaches (expected: plus
     // mExp of the cone's error circle [its share, nmi added], possible: plus mPos) gets one; once there, one stays while the threat is anywhere in the next keepH hours; a post-tropical cyclone's large field makes a high wind warning (hwwH hours ahead, kept to hwwKeep)
     alerts: { cell: 0.125, warnH: 36, watchH: 48, keepH: 72, mExp: [0.5, 10], mPos: [1.1, 25], hwwH: 24, hwwKeep: 48, hwwM: 0.3 },
@@ -1134,7 +1149,7 @@ LowTracker.prototype.update = function (hour, dets) {
 function newSeason(year) { return { year, dep: 0, named: 0, hurr: 0, major: 0, cat5: 0, ace: 0, aceDaily: new Array(366).fill(0), storms: [], namedIdx: 0 }; }
 function summarize(S) {
   return { id: S.id, name: S.name, depNum: S.depNum, origin: S.origin, tdHour: S.tdHour, namedHour: S.namedHour, peakV: S.peakV, peakP: S.peakP, peakHour: S.peakHour,
-    ace: S.ace, end: S.end, endReason: S.endReason, season: S.season, th: S.th };       // unrounded: the page rounds once, to a tenth (rounding here too turned 10.5475 into 10.55 and then 10.6)
+    ace: S.ace, end: S.end, endReason: S.endReason, season: S.season, th: S.th, imp: S.imp || null };       // unrounded: the page rounds once, to a tenth (rounding here too turned 10.5475 into 10.55 and then 10.6)
 }
 
 /* ---- the manager ----------------------------------------------------------------------------------------------------------
@@ -1159,6 +1174,7 @@ function Manager(o) {
   this.season = newSeason(seasonYearOf(this.startMs + this.hour * HOUR_MS, this.seasonMonth)); this.season.from = this.seasonDay(this.hour); this.prev = null; this.archive = [];
   this.yearEndH = this._hourOfYearStart(this.season.year + 1);
   this.prevEntry = null;
+  this.cities = null; this.ledger = {};                                          // the cities the host hands over (setCities) and what the storms did to them
 }
 Manager.prototype._hourOfYearStart = function (y) { return (Date.UTC(y, this.seasonMonth, 1) - this.startMs) / HOUR_MS; };      // the hour season y begins
 Manager.prototype.dateAt = function (h) { return new Date(this.startMs + h * HOUR_MS); };
@@ -1349,7 +1365,7 @@ Manager.prototype._rollover = function (h) {
   const old = this.season, y = old.year;
   const dead = this.systems.filter((S) => !S.alive && S.season === y && S.depNum > 0);
   const entry = { year: y, open: false, from: old.from || 0, dep: old.dep, named: old.named, hurr: old.hurr, major: old.major, cat5: old.cat5, ace: Math.round(old.ace * 10) / 10,
-    aceDaily: old.aceDaily.map((x) => Math.round(x * 100) / 100), storms: dead.map(summarize) };
+    aceDaily: old.aceDaily.map((x) => Math.round(x * 100) / 100), storms: dead.map(summarize), imp: old.imp || null };
   const stillAlive = this.systems.some((S) => S.alive && S.season === y && S.th !== 'wv');
   if (stillAlive) { entry.open = true; this.prev = old; this.prevEntry = entry; }
   this.archive.push(entry);
@@ -1363,7 +1379,7 @@ Manager.prototype._finalizePrev = function () {
   const p = this.prev, e = this.prevEntry;
   if (!p || !e) return;
   e.open = false; e.dep = p.dep; e.named = p.named; e.hurr = p.hurr; e.major = p.major; e.cat5 = p.cat5; e.ace = Math.round(p.ace * 10) / 10;
-  e.aceDaily = p.aceDaily.map((x) => Math.round(x * 100) / 100);
+  e.aceDaily = p.aceDaily.map((x) => Math.round(x * 100) / 100); e.imp = p.imp || null;
   this.prev = null; this.prevEntry = null;
 };
 Manager.prototype._cleanup = function (h) {
@@ -1399,6 +1415,7 @@ Manager.prototype.advanceTo = function (target, envSrc) {
     for (const S of this.systems) if (S.alive) stepSystem(S, env, h, this.seed, this.par, doy, this.ctx);
     this._merge(h);
     this.hour = h + 1;
+    this._impacts(h + 1, env);
     if (this.hour % 3 === 0) this._record(this.hour, env);
     if (this.hour % 6 === 0) { this._updateLows(this.hour, env); this._assignInvests(); this._cleanup(this.hour); }
   }
@@ -1964,7 +1981,7 @@ Manager.prototype.seasonYears = function () { return this.archive.map((e) => e.y
 Manager.prototype.seasonRecord = function (year) {
   const byDep = (a, b) => a.depNum - b.depNum, r1 = (x) => Math.round(x * 10) / 10;
   const live = (y) => this.systems.filter((S) => S.season === y && S.depNum > 0).map(summarize);
-  const rec = (q, o) => Object.assign({ year: q.year, from: q.from || 0, dep: q.dep, named: q.named, hurr: q.hurr, major: q.major, cat5: q.cat5, ace: r1(q.ace), aceDaily: q.aceDaily.slice() }, o);
+  const rec = (q, o) => Object.assign({ year: q.year, from: q.from || 0, dep: q.dep, named: q.named, hurr: q.hurr, major: q.major, cat5: q.cat5, ace: r1(q.ace), aceDaily: q.aceDaily.slice(), imp: q.imp || null }, o);
   const cur = this.season;
   if (year === cur.year) return rec(cur, { current: true, open: true, day: this.seasonDay(this.hour), storms: live(year).sort(byDep) });
   const e = this.archive.find((x) => x.year === year);
@@ -1973,13 +1990,135 @@ Manager.prototype.seasonRecord = function (year) {
   return rec(e, { current: false, open: false, day: 365, storms: e.storms.slice().sort(byDep) });
 };
 
+/* ---- what a storm does to a city --------------------------------------------------------------------------------------------------------------------------------------------------
+   The pure pieces (rainRate, surgeOf, emanuel, damageOf, deathsOf, recoverH, eventNow) are exported for the tests; Manager._impacts runs them every hour for the cities the page hands over (setCities) and keeps the ledger. */
+const KT_MS = 0.514444;
+/* the rain rate (in/h) a system gives a point r nmi from its centre, at azimuth az (degrees clockwise from north); P is the system's wind profile */
+function rainRate(S, par, P, r, az) {
+  const I = par.impact.rain, V = S.vr; if (!(V > 15)) return 0;
+  const r0 = I.core * P.rmax, rE = I.e * P.r34, g = r < r0 ? 0.55 + 0.45 * r / r0 : Math.exp(-(r - r0) / rE), rf = heading(S) + (S.lat < 0 ? -60 : 60);
+  return Math.min(I.max, tableAt(I.v, I.pk, V) * g * (1 + I.asym * Math.cos((az - rf) * DEG)));
+}
+/* the peak surge (m) a coast of exposure c gets from an onshore wind of v kt under a storm whose 34 kt wind reaches r34 nmi */
+const surgeOf = (par, v, r34, c) => { const Z = par.impact.surge; return v > 0 && c > 0 ? Z.s0 * Math.pow(v / Z.ref, 2) * Math.sqrt(Math.max(r34, 20) / Z.size) * c : 0; };
+const surgeShare = (par, S2, c) => (S2 > 0.3 ? Math.min(par.impact.surge.shareMax, par.impact.surge.share * c * c) * 0.6 * (1 - Math.exp(-Math.pow(S2 / 6, 2.2))) : 0);        // the share of a city's people and value the water reaches
+const emanuel = (v, vh, vt) => { const vn = Math.max(0, v - vt) / (vh - vt), c = vn * vn * vn; return c / (1 + c); };          // the share of the property destroyed by a wind of v m/s (Emanuel 2011)
+/* the damage fraction, the death and the injury tolls the peaks of an event give a city: pk: the nine peak winds (m/s), rp: the 72 h rain (in), sg: the surge (m); city: { pop (thousands), inc, oro, coast } */
+function damageOf(par, city, pk, rp, sg) {
+  const I = par.impact, W = I.wind, vh = W.vh[city.inc], F = I.flood;
+  let fw = 0; for (const v of pk) fw += emanuel(v, vh, W.vt); fw = Math.min(1, W.scale * fw / pk.length);
+  const ff = Math.min(F.max, F.k * Math.pow(Math.max(0, rp - F.r0), F.p)) * F.vul[city.inc] * (0.7 + 0.3 * city.coast), x = surgeShare(par, sg, city.coast);
+  const fs = x * 0.5;                                                                                     // (half of what the water reaches is lost)
+  return { fw, ff, fs, x, d: 1 - (1 - fw) * (1 - ff) * (1 - fs) };
+}
+function deathsOf(par, city, dmg, rp, z, u) {                                                             // z: a standard normal draw, u: a uniform one (the event's own)
+  const D = par.impact.deaths, people = city.pop * 1000 * D.mult[city.inc];
+  const exp = people * (D.surge * Math.pow(dmg.x, D.ps) + D.flood * Math.pow(Math.max(0, rp - D.r1) / D.rs, 1.5) + D.wind * dmg.fw), v = exp * Math.exp(D.sd * z - 0.5 * D.sd * D.sd);
+  const k = v >= 1 ? Math.round(v) : (u < v ? 1 : 0);
+  const inj = Math.round(k * D.inj[city.inc] + city.pop * 1000 * D.injW * Math.pow(dmg.fw / 0.01, 0.8) * (dmg.fw > 0 ? 1 : 0));
+  return { k, i: inj };
+}
+const recoverH = (par, d) => { const R = par.impact.recover; return 24 * clamp(R.max * Math.sqrt(Math.max(d, 0) / R.d0), R.min, R.max); };      // hours a damage fraction d takes to heal
+const healed = (age, T, lag) => smooth01(age, lag * T, T);                                                // the share that has healed `age` hours after the event ended
+/* the part of an event still there at hour t: damage, injuries, deaths, in the units of the event */
+function eventNow(par, e, t) {
+  const R = par.impact.recover, age = e.te == null ? 0 : Math.max(0, t - e.te), T = e.T || recoverH(par, e.d);
+  if (e.te != null && age >= T) return { D: 0, k: 0, i: 0, rec: 1 };
+  return { D: e.D * (1 - healed(age, T, R.lag)), k: e.k, i: Math.round(e.i * (1 - healed(age, R.inj * T, R.lag))), rec: healed(age, T, R.lag) };
+}
+const cityKey = (c) => c.name + '#' + Math.round(c.lat);
+Manager.prototype.setCities = function (list) {
+  const cap = this.par.impact.cap;
+  this.cities = list.map((c, idx) => Object.assign({ idx, key: cityKey(c), now: null, L: null, pop: 250, inc: 1, oro: 1, coast: c.inland ? 0 : 1 }, c, { cap: cap[c.inc == null ? 1 : c.inc] }));
+  if (!this.ledger) this.ledger = {};
+  for (const c of this.cities) { const l = this.ledger[c.key]; if (l) { c.L = l; } }
+  return this.cities.length;
+};
+Manager.prototype._ledgerOf = function (c) { return c.L || (c.L = this.ledger[c.key] = { rain: null, ev: [], open: null }); };
+Manager.prototype._impacts = function (h, env) {
+  const cs = this.cities; if (!cs || !cs.length) return;
+  const par = this.par, I = par.impact, G = I.grid;
+  const act = this.systems.filter((S) => S.alive && S.th !== 'wv' && S.vr > 15).map((S) => ({ S, P: windProfile(S, par, null) }));
+  for (const c of cs) {
+    let best = null, rain = 0, vmax = 0, pk = null;
+    const kx = Math.cos(c.lat * DEG);
+    for (const a of act) {
+      const S = a.S, P = a.P, dy = (c.lat - S.lat) * 60, dx = (c.lon - S.lon) * 60 * Math.cos(((c.lat + S.lat) / 2) * DEG), r = Math.hypot(dx, dy);
+      if (r > I.reach[0] * P.r34 + I.reach[1]) continue;
+      const az = (Math.atan2(dx, dy) / DEG + 360) % 360, fr = c.inland ? I.fric[1] : I.fric[0];
+      const w = [];                                                                                      // the sustained wind (kt) at the nine points: the city and eight round it
+      for (let k = 0; k < 9; k++) { const oy = k === 0 ? 0 : ((k - 1) % 3 - 1) * G, ox = k === 0 ? 0 : (Math.floor((k - 1) / 3) - 1) * G / kx; w.push(windAt(S, par, c.lat + oy, c.lon + ox, P) * fr); }
+      const r0 = rainRate(S, par, P, r, az) * c.oro;
+      rain += r0;
+      if (!pk) pk = w.slice(); else for (let k = 0; k < 9; k++) if (w[k] > pk[k]) pk[k] = w[k];
+      if (w[0] > vmax) { vmax = w[0]; best = { S, P, r, az, w0: w[0] }; }
+      else if (!best && r0 > 0) best = { S, P, r, az, w0: w[0] };
+    }
+    let L = c.L;
+    if (!L && !(vmax >= I.on[0] || rain >= I.on[1])) { c.now = vmax > 0 || rain > 0 ? { v: vmax, g: 0, rain: 0, sid: best ? best.S.id : null } : null; continue; }
+    L = this._ledgerOf(c);
+    // the rain ring: the last 72 hours of rain, the slot of this hour replaced
+    if (!L.rain && rain > 0) L.rain = new Array(72).fill(0);
+    if (L.rain) L.rain[((h % 72) + 72) % 72] = Math.round(rain * 1000) / 1000;
+    const r72 = L.rain ? L.rain.reduce((x, y) => x + y, 0) : 0;
+    // onshore wind on the coast: the water is upwind of the city
+    let onshore = false, surge = 0;
+    if (best && !c.inland && vmax > 0) {
+      const S = best.S, hs = S.lat < 0 ? -1 : 1, a = best.az * DEG, px = Math.sin(a), py = Math.cos(a), ci = Math.cos(20 * DEG), si = Math.sin(20 * DEG);      // the point's direction from the centre; cyclonic flow round it, turned 20 degrees inward
+      const wx = hs * (-py) * ci - px * si, wy = hs * px * ci - py * si, d = I.surge.back, uy = c.lat - wy * d, ux = c.lon - wx * d / kx;
+      onshore = !env.isLand(uy, ux);
+      if (onshore) surge = surgeOf(par, vmax, best.P.r34, c.coast);
+    }
+    const gf = c.inland ? I.gust[2] : (onshore ? I.gust[0] : I.gust[1]);
+    c.now = { v: vmax, g: vmax * gf, rain72: r72, sid: best ? best.S.id : null, onshore };
+    // the event
+    const active = vmax >= I.on[0] || rain >= I.on[1];
+    let e = L.open;
+    if (active) {
+      if (!e) { e = L.open = { t0: h, te: null, last: h, pk: new Array(9).fill(0), rp: 0, sg: 0, vmax: 0, gmax: 0, D: 0, k: 0, i: 0, d: 0, sid: null, sn: '' }; e.z = rndn(this.seed, c.idx + 1, h, ST.IMP); e.u = rnd(this.seed, c.idx + 1, h, ST.IMP); }
+      e.last = h; for (let k = 0; k < 9; k++) if (pk && pk[k] * KT_MS > e.pk[k]) e.pk[k] = pk[k] * KT_MS;
+      e.rp = Math.max(e.rp, r72); e.sg = Math.max(e.sg, surge); if (vmax > e.vmax) { e.vmax = vmax; e.gmax = c.now.g; e.sid = best ? best.S.id : e.sid; e.sn = best ? best.S.name || best.S.id : e.sn; }
+      const dm = damageOf(par, c, e.pk, e.rp, e.sg), ds = deathsOf(par, c, dm, e.rp, e.z, e.u), D = dm.d * c.pop * c.cap * 1e6, dD = D - e.D, dk = ds.k - e.k, di = ds.i - e.i;
+      e.d = dm.d; e.D = D; e.k = ds.k; e.i = ds.i;
+      if (best && (dD > 0 || dk > 0 || di > 0)) {
+        const S = best.S, T = S.imp || (S.imp = { d: 0, k: 0, i: 0 }), rec = S.season === this.season.year ? this.season : (this.prev && this.prev.year === S.season ? this.prev : this.season), Y = rec.imp || (rec.imp = { d: 0, k: 0, i: 0, worst: null });
+        T.d += Math.max(0, dD); T.k += Math.max(0, dk); T.i += Math.max(0, di); Y.d += Math.max(0, dD); Y.k += Math.max(0, dk); Y.i += Math.max(0, di);
+        if (!Y.worst || D > Y.worst.d) Y.worst = { city: c.name, d: D, k: ds.k, storm: S.name || S.id };
+      }
+    } else if (e && h - e.last >= I.on[2]) {
+      e.te = e.last; e.T = recoverH(par, e.d); L.open = null; delete e.z; delete e.u;
+      if (e.d >= I.recover.min0 || e.k > 0 || e.i > 0) { L.ev.push(e); if (L.ev.length > 12) L.ev.shift(); }
+    }
+    if (h % 24 === 0) L.ev = L.ev.filter((x) => h - x.te < (x.T || recoverH(par, x.d)));                     // a healed event leaves the ledger
+    if (!L.open && !L.ev.length && !(L.rain && L.rain.some((x) => x > 0))) { delete this.ledger[c.key]; c.L = null; }
+  }
+};
+/* what the page shows of a city now: the wind and gusts (mph), the rain of the last 72 hours (in), the toll of its open and unhealed events, and how far it has recovered */
+Manager.prototype.impactOf = function (i) {
+  const c = this.cities && this.cities[i]; if (!c) return null;
+  const L = c.L, t = this.hour, now = c.now, mph = (kt) => Math.round(kt * KT_MPH);
+  const out = { windSustained: now && now.v >= 15 ? mph(now.v) : 0, windGust: now && now.v >= 15 ? mph(now.g || now.v * 1.3) : 0, rain72h: 0, deaths: 0, injuries: 0, damageCost: 0, damagePct: 0, recovery: 0, severity: 0, open: false, value: c.pop * c.cap * 1e6 };
+  if (L) {
+    out.rain72h = L.rain ? L.rain.reduce((x, y) => x + y, 0) : 0;
+    let peak = 0, left = 0;
+    for (const e of L.ev.concat(L.open ? [L.open] : [])) { const q = eventNow(this.par, e, t); out.damageCost += q.D; out.deaths += q.k; out.injuries += q.i; peak += e.D; left += q.D; }
+    out.open = !!L.open; out.recovery = peak > 0 ? 1 - left / peak : 0;
+    out.damagePct = 100 * out.damageCost / out.value; out.severity = out.damageCost / out.value;
+  }
+  return out;
+};
+Manager.prototype.impactRings = function () {                           // the cities with damage that has not healed: [index, share of the city's value still damaged, share healed]
+  const out = []; if (!this.cities) return out;
+  for (const c of this.cities) { if (!c.L) continue; const v = this.impactOf(c.idx); if (v && v.damageCost > 0) out.push([c.idx, v.severity, v.recovery]); }
+  return out;
+};
 Manager.prototype.get = function (id) { return this.byId[id] || null; };
 Manager.prototype.active = function () { return this.systems.filter((S) => S.alive); };
 Manager.prototype.stats = function () { const s = this.season; return { year: s.year, dep: s.dep, named: s.named, hurr: s.hurr, major: s.major, cat5: s.cat5, ace: Math.round(s.ace * 10) / 10 }; };
 
 Manager.prototype.serialize = function () {
   return { v: VERSION, basin: this.basin, nameCur: this.nameCur, seed: this.seed, startMs: this.startMs, hour: this.hour, par: this.par, n: this.n, auto: this.auto, autoRate: this.autoRate, sched: this.sched, invN: this.invN, olMem: this.olMem,
-    season: this.season, prev: this.prev, prevEntry: this.prevEntry, archive: this.archive, yearEndH: this.yearEndH, systems: this.systems, lows: { tracks: this.lows.tracks, next: this.lows.next, done: this.lows.done } };
+    season: this.season, prev: this.prev, prevEntry: this.prevEntry, archive: this.archive, yearEndH: this.yearEndH, systems: this.systems, lows: { tracks: this.lows.tracks, next: this.lows.next, done: this.lows.done }, imp: this.ledger || {} };
 };
 Manager.prototype.enableDiag = function () { if (this.maps) this.ctx.diag = newDiag(this.maps); return !!this.ctx.diag; };
 Manager.prototype.diagPacked = function () {                              // the accumulators as sparse [index, value] lists (what the lab ships back to the page's caller)
@@ -1993,6 +2132,7 @@ Manager.restore = function (o, extra) {                                  // a pa
   m.par = mergeParams(defaultParams(m.basin), o.par); m.n = Object.assign({ W: 0, N: 0, M: 0, F: 0 }, o.n); m.sched = o.sched; m.invN = o.invN || {}; m.olMem = o.olMem || null; m.season = o.season; m.prev = o.prev; m.prevEntry = o.prevEntry || null; m.archive = o.archive; m.yearEndH = o.yearEndH;
   m.systems = o.systems; m.byId = {}; for (const S of m.systems) m.byId[S.id] = S;
   m.lows.tracks = o.lows.tracks; m.lows.next = o.lows.next; m.lows.done = o.lows.done || [];
+  m.ledger = o.imp || {};
   return m;
 };
 
@@ -2007,7 +2147,7 @@ root.HFStorms = {
   VERSION, create: (o) => new Manager(o), restore: (o, extra) => Manager.restore(o, extra), defaultParams, mergeParams,
   prepareMaps, timeWeights, mapAt, driftAt, climAt, steerRing, envFactor, activityFactor, structureParams, CALIBRATED, calibrated: (on) => { const was = useCalibrated; if (on != null) useCalibrated = !!on; return was; },
   category, ktToMph, aceOf, round5, gustKt, compass, pressureFromWind, windFromPressure, WP, vPot, statusOf, describe, nameFor, NAME_SETS, NAME_SUPPLEMENTAL, BASINS, basinInfo: basinOf, stormName, seasonYearOf,
-  smooth01, rnd, rndn, hash5, idNum, stepSystem, newSystem, makeFix, seasonalWeight, WAVE_SEASON, LowTracker, etHazard6, disHazard6, subShare, baroclinicV, satur, softMin, lowWeight, keepSide, SCALES, scaleOf, classOf, investLetter, capsule, swath, swathFull, outlookClass, outlookFollow, cloneSystem, windRadii, windScale, windAt, windProfile, profileAt, profileRoot, stepWind, stepErc, ercShape, sizeClim, rmaxBase, alertsOf, unmercY, ensFactor, ensDensity, mercY, coneOf, coneRadius, coneLetter, sstGateAt, growthG, decayLimit,
+  smooth01, rnd, rndn, hash5, idNum, stepSystem, newSystem, makeFix, seasonalWeight, WAVE_SEASON, LowTracker, etHazard6, disHazard6, subShare, baroclinicV, satur, softMin, lowWeight, keepSide, SCALES, scaleOf, classOf, investLetter, capsule, swath, swathFull, outlookClass, outlookFollow, cloneSystem, rainRate, surgeOf, surgeShare, emanuel, damageOf, deathsOf, recoverH, eventNow, windRadii, windScale, windAt, windProfile, profileAt, profileRoot, stepWind, stepErc, ercShape, sizeClim, rmaxBase, alertsOf, unmercY, ensFactor, ensDensity, mercY, coneOf, coneRadius, coneLetter, sstGateAt, growthG, decayLimit,
 };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
 /* ==== STORMS ENGINE END ==== */
