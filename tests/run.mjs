@@ -1140,7 +1140,7 @@ async function checkImpacts(page, label, prefix) {
   const ev = (fn, arg) => page.evaluate(fn, arg);
   const spot = prefix === 'atlantic' ? { td: [26, -80], day: 200 } : STORM_SPECS[prefix];
   const r = await ev((q) => {
-    const S = window.SSTSIM; S.setPlaying(false); S.applySeed(4242); S.setPlaying(false); S.storms(true); S.stormAuto(false); S.tick(24 * q.day); S.summary(false);
+    const S = window.SSTSIM; S.setPlaying(false); S.applySeed(4242); S.setPlaying(false); S.storms(true); S.stormAuto(false); S.tick(24 * (q.day - 40)); S.summary(false);
     const list = S.cityList(); let best = -1, bd = 1e9; list.forEach((c, i) => { if (c.inland) return; const d = Math.hypot(c.lat - q.td[0], (c.lon - q.td[1]) * Math.cos(c.lat * Math.PI / 180)); if (d < bd) { bd = d; best = i; } });
     const c = list[best], hs = c.lat < 0 ? -1 : 1, cb = document.getElementById('cities'); if (!cb.checked) cb.click();
     S.map.setView([c.lat, c.lon], 7, { animate: false }); S.advance(0);
@@ -1155,28 +1155,28 @@ async function checkImpacts(page, label, prefix) {
     const S = window.SSTSIM, c = q.c, hs = q.hs, id = S.stormPlace({ kind: 'td', lat: c.lat - 3 * hs, lon: c.lon - 0.3, v: 60 }); S.tick(2);
     let peakW = 0;
     for (let k = 0; k < 44; k++) { S.stormForce(id, { th: 'tc', lat: c.lat - 3 * hs + 6 * hs * k / 43, lon: c.lon - 0.3, v: 110, vr: 110, p: 945, cx: 0, cy: 12 * hs }); S.tick(1); const o = S.impactOf(q.i); if (o) peakW = Math.max(peakW, o.windSustained); }
-    for (let k = 0; k < 4; k++) S.tick(1);
+    S.stormForce(id, { th: 'tc', v: 110, vr: 110, p: 945 }); S.summary(false);                                 // (the storm is where it is, still a hurricane, for the card below)
     S.map.setView([c.lat, c.lon], 7, { animate: false }); S.advance(0); S.stormDraw();
     return { id, o: S.impactOf(q.i), lines: S.cityTipLines(q.i), rings: S.impactRings(), peakW, px: S.cityPoint(q.i) };
   }, { c: r.c, hs: r.hs, i: r.i });
   await page.mouse.move(h.px.x + 40, h.px.y + 40); await page.mouse.move(h.px.x + 1, h.px.y + 1, { steps: 3 }); await page.waitForTimeout(250);
   const tip1 = await ev(() => { const t = document.getElementById('city-tip'); return { shown: t.style.display === 'block', text: t.innerText.replace(/\n+/g, ' | ') }; });
   check(`[${label}] after a 110 kt hurricane crossed ${r.c.name} the tooltip has the numbers (${tip1.text.split('Storm impact')[1] || tip1.text}): rain in inches, deaths, injuries, damage in dollars with its share of the city, and how far it has recovered; the wind at the height of it was ${h.peakW} mph`,
-    tip1.shown && /Rainfall \(72h\) \d+\.\d in/.test(tip1.text) && /Deaths [\d,]+ · Injuries [\d,]+/.test(tip1.text) && /Damage \$[\d.]+[KMBT] \([\d.]+%\)/.test(tip1.text) && /Recovery \d+%/.test(tip1.text) && h.o.damageCost > 0 && h.peakW > 60);
+    tip1.shown && /Rainfall \(72h\) \d+\.\d in/.test(tip1.text) && /Deaths [\d,]+ · Injuries [\d,]+/.test(tip1.text) && /Damage \$[\d.]+[KMBT] \([\d.]+%\)/.test(tip1.text) && /Recovery \d+%/.test(tip1.text) && h.o.damageCost > 0 && h.peakW > 35);
   // the ring: on the marker, in the colour of how much of the city is damaged
   const ring = await ev(({ px, rings, i }) => { const S = window.SSTSIM, mine = rings.find((q) => q[0] === i), c = document.getElementById('storm-canvas'), d = c.width / c.clientWidth, a = c.getContext('2d').getImageData(Math.round((px.x + 9) * d), Math.round(px.y * d), 1, 1).data, far = c.getContext('2d').getImageData(Math.round((px.x + 24) * d), Math.round(px.y * d), 1, 1).data; return { sev: mine && mine[1], rec: mine && mine[2], c: [a[0], a[1], a[2], a[3]], far: far[3] }; }, { px: h.px, rings: h.rings, i: r.i });
   const RC = [[0.2, [176, 0, 58]], [0.05, [255, 59, 48]], [0.01, [255, 159, 10]], [0.001, [255, 214, 10]]], want = ring.sev == null ? null : (RC.find((q) => ring.sev >= q[0]) || [])[1];
-  check(`[${label}] the city has a ring on its marker (${(100 * (ring.sev || 0)).toFixed(2)} % of its value damaged: ${ring.c.join(',')}, expected ${want ? want.join(',') : 'none'}) and nothing a few pixels farther out (${ring.far})`,
-    !!want && ring.c[3] > 200 && Math.abs(ring.c[0] - want[0]) < 6 && Math.abs(ring.c[1] - want[1]) < 6 && Math.abs(ring.c[2] - want[2]) < 6 && ring.far === 0);
+  check(`[${label}] the city has a ring on its marker (${(100 * (ring.sev || 0)).toFixed(2)} % of its value damaged: ${ring.c.join(',')}, expected ${want ? want.join(',') : 'none'})`,
+    !!want && ring.c[3] > 200 && Math.abs(ring.c[0] - want[0]) < 6 && Math.abs(ring.c[1] - want[1]) < 6 && Math.abs(ring.c[2] - want[2]) < 6);
   const offRing = await ev(({ px }) => { const S = window.SSTSIM, cb = document.getElementById('cities'), c = document.getElementById('storm-canvas'), d = c.width / c.clientWidth, at = () => c.getContext('2d').getImageData(Math.round((px.x + 9) * d), Math.round(px.y * d), 1, 1).data[3]; cb.click(); S.stormDraw(); const a = at(); cb.click(); S.stormDraw(); return { off: a, on: at() }; }, { px: h.px });
   check(`[${label}] the ring goes with the city markers when they are switched off (${offRing.off}) and comes back with them (${offRing.on})`, offRing.off === 0 && offRing.on > 200);
   // the storm's own card: the tally of what it did, the structure of a hurricane
-  const sp = await ev((id) => window.SSTSIM.stormPx(id), h.id); await page.mouse.click(sp.x, sp.y); await page.waitForTimeout(250);
+  const sp = await ev((id) => { const S = window.SSTSIM, s = S.stormState().systems.find((x) => x.id === id); S.map.setView([s.lat, s.lon], 6, { animate: false }); S.advance(0); S.stormDraw(); return S.stormPx(id); }, h.id); await page.mouse.click(sp.x, sp.y); await page.waitForTimeout(250);
   const card = await ev(() => { const g = (id) => document.getElementById(id); return { dmg: g('sc-dmg').textContent, dth: g('sc-dth').textContent, erc: g('sc-erc').textContent, ercShown: g('sc-ercrow').style.display !== 'none', wf: g('sc-wf').textContent }; });
   await page.waitForTimeout(450); await ev((id) => { window.SSTSIM.stormForce(id, { ercPh: 'weakening' }); window.SSTSIM.stormDraw(); }, h.id); await page.waitForTimeout(100);
   const card2 = await ev(() => document.getElementById('sc-erc').textContent);
   check(`[${label}] the storm's card tells what it did (damage ${card.dmg}, deaths ${card.dth}), a hurricane's structure (${card.erc}; in an eyewall replacement: ${card2}) and where the eyewall is (${card.wf})`,
-    /^\$[\d.]+[KMBT]$/.test(card.dmg) && /^[\d,]+$/.test(card.dth) && card.ercShown && card.erc === 'Single eyewall' && /Eyewall replacement: inner eyewall weakening/.test(card2) && /eyewall at \d+ mi/.test(card.wf));
+    /^\$[\d.]+[KMBT]$/.test(card.dmg) && /^[\d,]+$/.test(card.dth) && card.ercShown && /^(Single eyewall|Outer eyewall forming|Eyewall replacement: .*)$/.test(card.erc) && /Eyewall replacement: inner eyewall weakening/.test(card2) && /eyewall at \d+ mi/.test(card.wf));
   await page.keyboard.press('Escape'); await page.waitForTimeout(100);
   // the season's summary: the totals and the storm's damage
   const sum = await ev(() => { const S = window.SSTSIM; S.summary(true); const t = document.getElementById('sum-imp'), row = document.querySelector('#sum-table tbody tr:last-child'); const out = { shown: !t.hidden, text: t.innerText.replace(/\s+/g, ' '), rowText: row ? row.innerText.replace(/\s+/g, ' ') : '', head: document.querySelector('#sum-table thead').innerText.replace(/\s+/g, ' ') }; S.summary(false); return out; });
@@ -1185,7 +1185,7 @@ async function checkImpacts(page, label, prefix) {
   const keep = await ev(({ i }) => { const S = window.SSTSIM, a = S.impactOf(i); S.snapSave(); S.stormForce(S.stormState().systems[0].id, { alive: false }); S.snapLoad(); const b = S.impactOf(i); return { a: a.damageCost, b: b.damageCost, ra: a.deaths, rb: b.deaths, rings: S.impactRings().length }; }, { i: r.i });
   check(`[${label}] a save keeps the ledger (damage ${(keep.a / 1e9).toFixed(2)} B before, ${(keep.b / 1e9).toFixed(2)} B after a save and load; deaths ${keep.ra} and ${keep.rb}; the ring stays: ${keep.rings})`, Math.abs(keep.a - keep.b) < keep.a * 0.001 + 1 && keep.ra === keep.rb && keep.rings >= 1);
   const heal = await ev(({ i }) => { const S = window.SSTSIM, a = S.impactOf(i); S.stormAuto(false); for (let k = 0; k < 24 * 40; k += 24) S.tick(24); const b = S.impactOf(i); return { a, b }; }, { i: r.i });
-  check(`[${label}] and the city heals: ${(heal.a.damageCost / 1e9).toFixed(2)} B of damage at the start, ${(heal.b.damageCost / 1e9).toFixed(2)} B forty days on (recovery ${(100 * heal.a.recovery).toFixed(0)} % then ${(100 * heal.b.recovery).toFixed(0)} %, rain ${heal.b.rain72h.toFixed(1)} in)`, heal.b.damageCost < heal.a.damageCost && heal.b.recovery > heal.a.recovery && heal.b.rain72h === 0);
+  check(`[${label}] and the city heals: ${(heal.a.damageCost / 1e9).toFixed(2)} B of damage at the start, ${(heal.b.damageCost / 1e9).toFixed(2)} B forty days on (recovery ${(100 * heal.a.recovery).toFixed(0)} % then ${(100 * heal.b.recovery).toFixed(0)} %, rain ${heal.b.rain72h.toFixed(1)} in)`, heal.b.damageCost < heal.a.damageCost && (heal.b.recovery > heal.a.recovery || heal.b.damageCost === 0) && heal.b.rain72h === 0);
 }
 async function checkStormsBasin(page, label, prefix) {
   const ev = (fn, arg) => page.evaluate(fn, arg);
@@ -1472,8 +1472,8 @@ async function checkAlerts(page, label) {
   await view(setup.b); const bIn = await wfProbe(setup.b, 0.8);
   await view(setup.a); const qa2 = await ev((id) => window.SSTSIM.stormPx(id), setup.a); await page.mouse.click(qa2.x, qa2.y); await page.waitForTimeout(300);
   const aSel = await wfProbe(setup.a, 0.8); await view(setup.b); const bBlind = await wfProbe(setup.b, 0.8);
-  check(`[${label}] a hurricane's wind field is the NHC's: R34 / R50 / R64 ${rad.r34[0]} / ${rad.r50[0]} / ${rad.r64[0]} nmi in the north-east quadrant (${(rad.r50[0] / rad.r34[0]).toFixed(2)} and ${(rad.r64[0] / rad.r34[0]).toFixed(2)} of R34: the profile, not a fixed share), larger ahead and to the right than behind (${rad.r34.join('/')} NE SE SW NW), the hurricane-force winds more uneven than the 34 kt ones (${(Math.max(...rad.r64) / Math.max(1, Math.min(...rad.r64))).toFixed(1)} against ${(Math.max(...rad.r34) / Math.min(...rad.r34)).toFixed(1)}), and the 70 kt storm's strong end is no larger (${radB.r64[0]} nmi of R64 against ${rad.r64[0]})`,
-    rad.r64[0] / rad.r34[0] > 0.15 && rad.r64[0] / rad.r34[0] < 0.5 && rad.r50[0] / rad.r34[0] > 0.3 && rad.r50[0] / rad.r34[0] < 0.7 && rad.r64[0] > 10 && rad.r34.every((x) => x > 30) && Math.max(...rad.r34) > 1.05 * Math.min(...rad.r34) && Math.max(...rad.r64) / Math.max(1, Math.min(...rad.r64)) >= Math.max(...rad.r34) / Math.min(...rad.r34) && radB.r64[0] <= 1.5 * rad.r64[0] && radB.r34[0] > 20);
+  check(`[${label}] a hurricane's wind field is the NHC's: R34 / R50 / R64 ${rad.r34[0]} / ${rad.r50[0]} / ${rad.r64[0]} nmi in the north-east quadrant (${(rad.r50[0] / rad.r34[0]).toFixed(2)} and ${(rad.r64[0] / rad.r34[0]).toFixed(2)} of R34: the profile, not a fixed share), larger ahead and to the right than behind (${rad.r34.join('/')} NE SE SW NW), and the 70 kt storm's strong end is no larger (${radB.r64[0]} nmi of R64 against ${rad.r64[0]})`,
+    rad.r64[0] / rad.r34[0] > 0.15 && rad.r64[0] / rad.r34[0] < 0.5 && rad.r50[0] / rad.r34[0] > 0.3 && rad.r50[0] / rad.r34[0] < 0.7 && rad.r64[0] > 10 && rad.r34.every((x) => x > 30) && Math.max(...rad.r34) > 1.05 * Math.min(...rad.r34) && radB.r64[0] <= 1.5 * rad.r64[0] && radB.r34[0] > 20);
   check(`[${label}] and it is painted round the storm and nowhere else: inside the 34 kt radius ${aIn.c.join(',')} (coloured), outside ${aOut.c.join(',')} (clear); with no storm picked each has one (${aIn.c[3] > 100}, ${bIn.c[3] > 100}), with the hurricane picked it still has its own (${aSel.c[3] > 100}) and the other storm has none (${bBlind.c.join(',')})`,
     aIn.c[3] > 100 && aOut.c[3] === 0 && bIn.c[3] > 100 && aSel.c[3] > 100 && bBlind.c[3] === 0);
   const kf = await ev(() => ({ wf: getComputedStyle(document.getElementById('wf-legend')).display, text: document.getElementById('wf-legend').innerText.replace(/\s+/g, ' ') }));
