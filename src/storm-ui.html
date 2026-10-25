@@ -47,7 +47,9 @@
     <div><span>Shear</span><b id="sc-sh">–</b></div><div><span>Gusts</span><b id="sc-gust">–</b></div>
     <div><span>Movement</span><b id="sc-mv">–</b></div><div><span>SST</span><b id="sc-sst">–</b></div>
     <div class="wide"><span>Wind field</span><b id="sc-wf">–</b></div>
-    <div><span>Damage</span><b>—</b></div><div><span>Formed</span><b id="sc-formed">–</b><small id="sc-invest"></small></div>
+    <div class="wide" id="sc-ercrow"><span>Structure</span><b id="sc-erc">–</b></div>
+    <div><span>Damage</span><b id="sc-dmg">—</b></div><div><span>Deaths</span><b id="sc-dth">—</b></div>
+    <div class="wide"><span>Formed</span><b id="sc-formed">–</b><small id="sc-invest"></small></div>
   </div>
   <p id="sc-note">Showing only this system. Click the empty map or press Esc to show all.</p>
 </aside>
@@ -67,9 +69,10 @@
   <button id="sum-close" aria-label="Close season summary" title="Close (Esc)">&times;</button>
   <div id="sum-head"><button id="sum-prev" aria-label="Previous season" title="Previous season">&#8249;</button><div><b id="sum-title">{{BASIN_LABEL}}</b><span id="sum-sub"></span></div><button id="sum-next" aria-label="Next season" title="Next season">&#8250;</button></div>
   <div id="sum-tot"></div>
+  <div id="sum-imp" hidden></div>
   <canvas id="sum-graph" role="img" aria-label="Accumulated cyclone energy through the year against the real seasons"></canvas>
   <div id="sum-cap"></div>
-  <div id="sum-scroll"><table id="sum-table"><thead><tr><th>Storm</th><th>Peak</th><th>hPa</th><th>Dates</th><th>ACE</th></tr></thead><tbody></tbody></table><div id="sum-empty" hidden>No depression has formed this season yet.</div></div>
+  <div id="sum-scroll"><table id="sum-table"><thead><tr><th>Storm</th><th>Peak</th><th>hPa</th><th>Dates</th><th>ACE</th><th>Damage</th></tr></thead><tbody></tbody></table><div id="sum-empty" hidden>No depression has formed this season yet.</div></div>
 </aside>
 <!--[dockMenu]-->
   <a class="btn" id="b-menu" href="../index.html" aria-label="Main menu" title="Main menu: your season is saved and waits under Continue">

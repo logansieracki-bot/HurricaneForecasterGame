@@ -1554,15 +1554,9 @@ function cityAt(cx, cy) {
   for (let i = 0; i < cityPx.length; i++) { const p = cityPx[i]; if (!p.onScreen) continue; const d = Math.hypot(cx - p.x, cy - p.y); if (d < 9 && d < bestD) { bestD = d; best = i; } }
   return best;
 }
-function stormImpactAt(lat, lon) {
-  // Placeholder for a future storm/cyclone model (genesis, track, wind field, rain shield,
-  // damage estimate) -- returns null until one actually exists. The "Storm impact" section in
-  // updateCityTip below is always visible (labels included) so the UI is ready, but every value
-  // in it stays a plain "--" dash rather than a fabricated number until this returns real data.
-  // No real storm runs until every basin's ocean simulation is built and the go-ahead is given.
-  // Shape once wired up: { windSustained, windGust (mph), rain72h (in over the last 72h),
-  // deaths, injuries (counts), damagePct (0-100), damageCost (USD) }.
-  return null;
+function stormImpactAt(i) {
+  // what the storms have done to a city and what they are doing now (the engine's ledger of events, reached through src/storm-hooks.js); null while this page has no storm engine
+  return typeof stormImpactNow === 'function' ? stormImpactNow(i) : null;
 }
 function updateCityTip(cx, cy) {
   const tip = $('city-tip');
@@ -1588,16 +1582,12 @@ function updateCityTip(cx, cy) {
   } else {
     lines.push('Outside the simulated area');
   }
-  const impact = stormImpactAt(c.lat, c.lon), dash = '—';   // no storm model yet -- labels are always on, values stay a dash until one exists
-  lines.push('<hr>');   // visual divider between the live climate reading above and the (still-placeholder) storm impact below
+  lines.push('<hr>');   // visual divider between the live climate reading above and the storm impact below
   lines.push('Storm impact');
-  lines.push('Sustained winds ' + (impact ? Math.round(impact.windSustained) + ' mph' : dash) + ' · gusts ' + (impact ? Math.round(impact.windGust) + ' mph' : dash));
-  lines.push('Rainfall (72h) ' + (impact ? impact.rain72h.toFixed(1) + ' in' : dash));
-  lines.push('Deaths ' + (impact ? impact.deaths : dash) + ' · Injuries ' + (impact ? impact.injuries : dash));
-  lines.push('Damage ' + (impact ? impact.damagePct.toFixed(0) + '% · $' + (impact.damageCost / 1e6).toFixed(0) + 'M' : dash));
+  for (const l of stormImpactLines(stormImpactAt(i))) lines.push(l);   // winds and gusts now, the rain of the last 72 h, the toll of the storms that have not yet been recovered from (dashes where nothing is going on)
   tip.querySelector('b').textContent = c.name;
   tip.querySelector('div').innerHTML = lines.join('<br>');
-  const left = Math.max(8, Math.min(W - 226, cx + 14)), top = Math.max(8, Math.min(H - 185, cy + 14));
+  const left = Math.max(8, Math.min(W - 226, cx + 14)), top = Math.max(8, Math.min(H - 235, cy + 14));
   tip.style.left = left + 'px'; tip.style.top = top + 'px'; tip.style.display = 'block';
 }
 

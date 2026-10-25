@@ -959,7 +959,7 @@ function stepSystem(S, env, h, seed, par, doy, ctx) {
       if (ctx.diag) diagExposure(ctx, S.kind, tw, lat, lon, eT, eS);
       const u = rnd(seed, id, h, ST.GEN);
       if (u < hT + hS) {
-        S.dev = h + 1; S.sub = u >= hT || (hT > 0 && rnd(seed, id, h, ST.SUBX) < subShare(par, alat, sst));
+        S.dev = h + 1; S.sub = u >= hT || (hT > 0 && rnd(seed, id, 0, ST.SUBX) < subShare(par, alat, sst));       // (one draw per system: the same uniform decides again where the depression is declared, which can be a day later and farther north)
         if (ctx.diag) diagGenesis(ctx, S.kind, S.sub, tw, lat, lon);
       }
     } else if (h - S.dev > 48) S.dev = -1;                                                  // it never organised: back to being a disturbance
@@ -1048,7 +1048,7 @@ function stepSystem(S, env, h, seed, par, doy, ctx) {
     if (S.dev >= 0 || S.v >= par.distOn) S.dist = true; else if (S.v < par.distOff) S.dist = false;      // the disturbance stage: development has begun, or the environment holds the wind up near what a depression needs (with some hysteresis)
     const sstOK = S.sub && M ? par.subSstOK : 24, wGen = (1 - smooth01(lf, 0.4, 0.8)) * smooth01(Math.abs(lat2), 3, 6) * smooth01(sstE, sstOK - 1, sstOK);          // the land, the equator and the cold sea each close the door gradually
     if (S.vr >= (S.sub && M ? par.devVSub - 1 : par.genV) && wGen > 0 && rnd(seed, id, h, ST.GENC) < wGen && (!M || (S.dev >= 0 && S.sust !== false))) S.genCount++; else S.genCount = 0;
-    if (S.genCount >= par.genHold) { S.th = S.sub ? 'sc' : 'tc'; S.tdHour = h + 1; S.genCount = 0; }
+    if (S.genCount >= par.genHold) { if (!S.sub && M && rnd(seed, id, 0, ST.SUBX) < subShare(par, Math.abs(S.lat), sstE)) S.sub = true; S.th = S.sub ? 'sc' : 'tc'; S.tdHour = h + 1; S.genCount = 0; }
     else {
       if (S.v < 9) S.v = 9;                                                      // a wave stays a wave: it fades toward a floor, it does not vanish
       if (lf > 0.7 && h - S.born > 12) S.lowCount++; else S.lowCount = 0;
@@ -1309,7 +1309,7 @@ Manager.prototype._updateLows = function (h, env) {
       if (u < hT + hS) {
         this.lows._finish(t, h); t.became = true;
         if (!t.invest) this._invest(t);                                          // (a depression that grows from a low was an invest first, whether or not the six-hourly look saw it flagged)
-        const S = this._seedSystem('N', 'wv', t.lat, t.lon, 22, h, 'low', u >= hT || (hT > 0 && rnd(this.seed, idNum('L', +t.id.slice(1)), h, ST.SUBX) < subShare(par, Math.abs(t.lat), sst)));
+        const S = this._seedSystem('N', 'wv', t.lat, t.lon, 22, h, 'low', u >= hT);
         S.dev = h; S.invest = t.invest; S.ck = t.id;
         S.fixes = t.fixes.map(([hh, la, lo, pp]) => ({ h: hh, lat: la, lon: lo, v: 20, p: pp, st: 'LO', th: 'wv', dir: 0, spd: 0, sst: 0, sh: 0, rh: 0, ace: 0, land: false }));      // the low's own path leads into the depression's
         if (ctx.diag) diagGenesis(ctx, 'L', S.sub, tw, t.lat, t.lon);

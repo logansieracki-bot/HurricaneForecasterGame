@@ -264,7 +264,7 @@ function labRecord(m) {
   return out;
 }
 function stormsReset() {
-  stormMgr = HFStorms.create({ seed: stormSeed(), startMs: START_MS, hour0: simHour, auto: stormAuto, autoRate: stormActivity, maps: stormMapsNow(), basin: STORM_BASIN });
+  stormMgr = HFStorms.create({ seed: stormSeed(), startMs: START_MS, hour0: simHour, auto: stormAuto, autoRate: stormActivity, maps: stormMapsNow(), basin: STORM_BASIN }); stormCitiesBind();
   stormLab = null; shadow = null; stormFieldsDirty = true; kfBreak = true; kfFieldHour = -1; stormSel = null; olSel = null; plainSel = null; ensPack = null; coneMem = null; wwPack = null; wwCones = {}; ensHot = -1; stormHot = null; stormHits = []; olHeld = null; olEagerSlot = -1e9; olHits = []; stormsDirty = true;
   sumArch = 0; if (sumOpen) closeSummary();
   const card = $('storm-card'), tip = $('storm-tip'), acard = $('aoi-card'); if (card) card.hidden = true; if (acard) acard.hidden = true; if (tip) tip.style.display = 'none';
@@ -784,6 +784,33 @@ function plainCheck() {                                                   // the
   if (S && S.alive) { stormSel = { id: S.id, h: -1 }; lastStormCardAt = 0; fillStormCard(); }
 }
 
+/* ---- what the storms did to the cities (the engine: Manager.setCities, impactOf, impactRings; src/storm-cities.js is what each city holds) ------------------------------------------------------- */
+function stormCitiesBind() {                                                  // hand the manager the page's cities with what each holds (a city the table does not know is a middling one)
+  if (!stormMgr || typeof CITIES === 'undefined') return;
+  stormMgr.setCities(CITIES.map((c) => { const x = HF_CITIES.info(c.name, c.lat) || { pop: 250, inc: 1, oro: 1, coast: 1 }, inland = c.sLat !== undefined; return { name: c.name, lat: c.lat, lon: c.lon, inland, pop: x.pop, inc: x.inc, oro: x.oro, coast: inland ? 0 : x.coast }; }));
+}
+const stormUsd = (v) => (v >= 1e12 ? '$' + (v / 1e12).toFixed(1) + 'T' : v >= 1e9 ? '$' + (v / 1e9).toFixed(v >= 1e10 ? 0 : 1) + 'B' : v >= 1e6 ? '$' + Math.round(v / 1e6) + 'M' : v >= 1e3 ? '$' + Math.round(v / 1e3) + 'K' : '$' + Math.round(v));
+const stormPct = (p) => (p >= 10 ? Math.round(p) : p >= 0.1 ? p.toFixed(1) : p.toFixed(2)) + '%';
+function stormImpactNow(i) { return stormMgr && stormsOn && i >= 0 ? stormMgr.impactOf(i) : null; }
+function stormImpactLines(o) {                                                // the "Storm impact" block of a city's tooltip: dashes where nothing is going on
+  const dash = '—', hit = !!o && (o.damageCost > 0 || o.deaths > 0 || o.injuries > 0), L = [];
+  L.push('Sustained winds ' + (o && o.windSustained > 0 ? o.windSustained + ' mph' : dash) + ' · gusts ' + (o && o.windGust > 0 ? o.windGust + ' mph' : dash));
+  L.push('Rainfall (72h) ' + (o && o.rain72h >= 0.05 ? o.rain72h.toFixed(1) + ' in' : dash));
+  L.push('Deaths ' + (hit ? o.deaths.toLocaleString('en-US') : dash) + ' · Injuries ' + (hit ? o.injuries.toLocaleString('en-US') : dash));
+  L.push('Damage ' + (hit ? stormUsd(o.damageCost) + ' (' + stormPct(o.damagePct) + ')' : dash));
+  if (hit) L.push('Recovery ' + Math.round(100 * o.recovery) + '%' + (o.open ? ' · storm here' : ''));
+  return L;
+}
+const RING_COLS = [[0.2, '#b0003a'], [0.05, '#ff3b30'], [0.01, '#ff9f0a'], [0.001, '#ffd60a']];       // a ring on the marker of a city with damage that has not healed: yellow from 0.1 % of the city, orange 1 %, red 5 %, dark red 20 %
+function drawCityRings(g, toPx) {
+  if (!$('cities').checked) return;
+  for (const [i, sev, rec] of stormMgr.impactRings()) {
+    const col = (RING_COLS.find((q) => sev >= q[0]) || [])[1]; if (!col) continue;
+    const c = CITIES[i], p = toPx(c.lat, c.lon); if (p.x < -20 || p.y < -20 || p.x > W + 20 || p.y > H + 20) continue;
+    g.save(); g.globalAlpha = 1 - 0.6 * rec; g.beginPath(); g.arc(p.x, p.y, 9, 0, 7); g.lineWidth = 5.5; g.strokeStyle = 'rgba(0,0,0,.55)'; g.stroke(); g.lineWidth = 2.6; g.strokeStyle = col; g.stroke(); g.restore();
+  }
+}
+
 /* ---- watches and warnings, and the wind fields (the engine: HFStorms.alertsOf, HFStorms.windRadii) ------------------------------------------------------------
    Watches and warnings are not for one storm: every active cyclone's cone (a small fan of 10 members, 60 hours) goes into one map of alerts on a grid, made at each six-hour issue and drawn only where it is land or coast (the cell image is
    stretched over the map in its projection, solid and sharp, then cut to the land polygons: colour inland and a thick coloured line along the shore, as the NHC draws it, with the state lines drawn over it). The wind field is the radii of the 34, 50 and 64 kt winds in the four quadrants,
@@ -917,6 +944,7 @@ function drawStorms() {
   updateOutlookLegend(showDist && stormsOn, OLall);
   wwRefresh(); updateWWLegend();
   drawWW(g); drawWindFields(g, toPx, only);                         // (the alerts under everything, then the wind fields: the alerts are for every storm, a wind field for the one you picked, or each when none is)
+  drawCityRings(g, toPx);
   ensRefresh(ensTarget());
   if (ensPack && $('stens').checked && $('stdens').checked) { if (!ensPack.dens) ensPack.dens = ensDensImage(HFStorms.ensDensity(ensPack.members, { foot: stormMgr.par.ens.foot })); drawEnsDensity(g, toPx, ensPack.dens); }
   if (showLows || (plainSel && plainSel.low)) for (const t of stormMgr.lows.tracks) {
@@ -1017,7 +1045,12 @@ function fillStormCard() {
   $('sc-invest').textContent = S.invest ? 'as Invest ' + S.invest : '';                  // the number it had as a disturbance
   $('sc-time').textContent = stormDate(f.h);
   { let a = 0, c = 0; if (stormSel.h < 0) { const R = HFStorms.windRadii(S, stormMgr.par); a = Math.max(...R.r34); c = Math.max(...R.r64); } else if (f.w) { a = f.w[0]; c = f.w[2]; }       // (how far the winds reach: the largest quadrant of the live storm, the mean of a past advisory)
-    const mi = (n) => Math.round(n * 1.15078 / 5) * 5; $('sc-wf').textContent = a ? '39 mph out to ' + mi(a) + ' mi' + (c ? ' · 74 mph out to ' + mi(c) + ' mi' : '') : 'no tropical-storm-force winds'; }
+    const mi = (n) => Math.round(n * 1.15078 / 5) * 5, rm = stormSel.h < 0 ? HFStorms.windRadii(S, stormMgr.par).rmax : 0;
+    $('sc-wf').textContent = a ? '39 mph out to ' + mi(a) + ' mi' + (c ? ' · 74 mph out to ' + mi(c) + ' mi' : '') + (rm ? ' · eyewall at ' + Math.max(5, Math.round(rm * 1.15078)) + ' mi' : '') : 'no tropical-storm-force winds'; }
+  { const ph = stormSel.h < 0 ? S.ercPh : f.ec, row = $('sc-ercrow'), live = f.th === 'tc' && f.v >= 64;           // the structure of a hurricane: a single eyewall, or an eyewall replacement under way
+    row.style.display = ph || live ? '' : 'none';
+    $('sc-erc').textContent = ph === 'forming' ? 'Outer eyewall forming' : ph === 'weakening' ? 'Eyewall replacement: inner eyewall weakening' : ph === 're-intensifying' ? 'Eyewall replacement: outer eyewall taking over' : 'Single eyewall'; }
+  { const im = S.imp, hasI = im && (im.d > 0 || im.k > 0 || im.i > 0); $('sc-dmg').textContent = hasI ? stormUsd(im.d) : '—'; $('sc-dth').textContent = hasI ? im.k.toLocaleString('en-US') : '—'; $('sc-dmg').title = hasI ? im.i.toLocaleString('en-US') + ' injured' : ''; }
   card.hidden = false;
 }
 function openStormCard(S, f, live) { olSel = null; plainSel = null; $('aoi-card').hidden = true; stormSel = { id: S.id, h: live ? -1 : f.h }; lastStormCardAt = 0; fillStormCard(); stormsDirty = true; drawStorms(); }
@@ -1117,6 +1150,8 @@ function fillSummary() {
   $('sum-sub').textContent = (rec.current ? 'Season so far, to ' + sumDay(rec.year, rec.day) : rec.open ? 'Season over, a storm is still active' : 'Season complete') + (rec.from > 0 ? ' · counted from ' + sumDay(rec.year, rec.from) : '');
   const cells = [['DEP', rec.dep, n && n.dep], ['NAMED', rec.named, n && n.named], [BAR[0], rec.hurr, n && n.hurr], [BAR[1], rec.major, n && n.major], [BAR[2], rec.cat5, n && n.cat5], ['ACE', sumF1(rec.ace), n && n.ace]];
   $('sum-tot').innerHTML = cells.map(([k, v, a]) => '<div><b>' + v + '</b><span>' + k + '</span><small>' + (a == null ? '' : 'avg ' + sumF1(a)) + '</small></div>').join('');
+  { const im = rec.imp, el = $('sum-imp'); el.hidden = !(im && (im.d > 0 || im.k > 0 || im.i > 0));
+    if (!el.hidden) el.innerHTML = 'Damage <b>' + stormUsd(im.d) + '</b> · deaths <b>' + im.k.toLocaleString('en-US') + '</b> · injured <b>' + im.i.toLocaleString('en-US') + '</b>' + (im.worst ? ' · worst hit: <b>' + im.worst.city + '</b> (' + stormUsd(im.worst.d) + ', ' + im.worst.storm + ')' : ''); }
   drawSumGraph(rec);
   const tb = $('sum-table').querySelector('tbody'); tb.innerHTML = '';
   $('sum-empty').hidden = rec.storms.length > 0; $('sum-table').style.display = rec.storms.length ? '' : 'none';
@@ -1125,7 +1160,7 @@ function fillSummary() {
     const tr = document.createElement('tr'); if (live) tr.className = 'live'; tr.dataset.id = s.id;
     const d0 = s.tdHour >= 0 ? simDate(s.tdHour) : null, d1 = s.end != null ? simDate(s.end) : null;
     const dates = d0 ? MON[d0.getUTCMonth()] + ' ' + d0.getUTCDate() + ' – ' + (d1 ? (d1.getUTCMonth() === d0.getUTCMonth() ? '' : MON[d1.getUTCMonth()] + ' ') + d1.getUTCDate() : 'now') : '–';
-    tr.innerHTML = '<td><i style="background:' + col + '"></i><b>' + (s.name || 'TD ' + s.depNum) + '</b></td><td>' + HFStorms.classOf(STORM_BASIN, s.peakV, 'tc').short + ' · ' + HFStorms.ktToMph(s.peakV) + '<span class="u"> mph</span></td><td>' + (s.peakV > 0 ? s.peakP : '–') + '</td><td>' + dates + '</td><td>' + sumF1(s.ace) + '</td>';
+    tr.innerHTML = '<td><i style="background:' + col + '"></i><b>' + (s.name || 'TD ' + s.depNum) + '</b></td><td>' + HFStorms.classOf(STORM_BASIN, s.peakV, 'tc').short + ' · ' + HFStorms.ktToMph(s.peakV) + '<span class="u"> mph</span></td><td>' + (s.peakV > 0 ? s.peakP : '–') + '</td><td>' + dates + '</td><td>' + sumF1(s.ace) + '</td><td>' + (s.imp && s.imp.d > 0 ? stormUsd(s.imp.d) : '–') + '</td>';
     tr.onclick = () => sumPick(s.id);
     tb.appendChild(tr);
   }

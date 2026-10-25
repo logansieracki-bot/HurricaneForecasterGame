@@ -4,7 +4,7 @@
 // program does, which docs/roadmap.md names). Needs a clean tree and Chromium for the browser drivers:
 //   PLAYWRIGHT_CHROMIUM_PATH=/path/to/chromium node tools/storm_mutants.mjs [--dry] [--base] [--only X1,S4] [--drivers node,save] [--jobs 3]
 // --dry   only checks that every edit anchor occurs exactly once and that the mutated file still parses; --base runs every driver on the unmodified tree (all must pass first);
-// --only  a comma list of mutant ids; --drivers  restricts the drivers to run (node, storms, summary, place, save, gate, env, look, alerts); --jobs  how many mutants run at once (default 3; each builds into its own directory under $MUT_DIR or the
+// --only  a comma list of mutant ids; --drivers  restricts the drivers to run (node, storms, summary, place, save, gate, env, look, alerts, impacts); --jobs  how many mutants run at once (default 3; each builds into its own directory under $MUT_DIR or the
 //         temp directory). It changes src/storms.js, src/template.html or index.html for the few seconds a build takes and puts them back itself;
 //         if it is killed in between, `git checkout -- src index.html` restores them. The drivers are the check functions cut out of tests/run.mjs
 //         by their opening comments (`// The storm layer on the Atlantic page`, `// Save / resume`, `async function checkEnsoHold`): keep them.
@@ -67,7 +67,7 @@ const mutants = [
   M('S2', T, [E("['humidSynCd', humidSynCd], ", '')], ['save'], 'the humidity generator of the previous day is not saved'),
   M('S2b', T, [E("['shearSynCd', shearSynCd], ", '')], ['save'], 'the shear generator of the previous day is not saved'),
   M('S2c', T, [E("['ensoHist', ensoHist], ", '')], ['save'], 'the ENSO history is not saved'),
-  M('S3', T, [E('HFStorms.restore(JSON.parse(s.storms), { maps: stormMapsNow() });\n  stormLab = null;', 'HFStorms.restore(JSON.parse(s.storms));\n  stormLab = null;')], ['save'], 'a resumed season loses the climatology maps'),
+  M('S3', T, [E('HFStorms.restore(JSON.parse(s.storms), { maps: stormMapsNow() }); stormCitiesBind();\n  stormLab = null;', 'HFStorms.restore(JSON.parse(s.storms)); stormCitiesBind();\n  stormLab = null;')], ['save'], 'a resumed season loses the climatology maps'),
   M('S4', T, [E('function restart() { deleteSave(); saveOwner = true;', 'function restart() { saveOwner = true;')], ['save'], 'Restart keeps the old save'),
   M('S5', I, [R('if \\(save\\) deleteSave\\(\\);\\s+// a new game replaces the saved season', '/* kept */')], ['save'], 'Start on the menu keeps the saved season'),
   M('S6', T, [E('s.sv !== HFStorms.VERSION || ', '')], ['save'], 'a save of another engine version is accepted'),
@@ -233,10 +233,10 @@ const mutants = [
   M('Z132', S, [E('vs = f * (E.vec[0] + E.vec[1] * u), g = E.common;', 'vs = f * (E.vec[0] + E.vec[1] * u), g = 0;')], ['node'], 'the members share no forecast error (the real track is almost always inside the cone and the fan)'),
   M('Z133', H, [E('const ch = h && h.cone ? h.cone.lead : -1;', 'const ch = -1;')], ['storms'], 'hovering a forecast point of the cone does not ring it'),
   M('Z134', T, [E("hl: ['highs', 'stlows'],", "hl: ['highs'],")], ['storms'], 'the Highs & lows button leaves the lows alone'),
-  M('Z146', S, [E("x: 0.46, rm: [24, -0.011, 0.012],", "x: 0.9, rm: [24, -0.011, 0.012],")], ['node', 'alerts'], 'the 64 kt radius is half of the 34 kt radius, not a quarter (the red core of the wind field is too big beside the orange)'),
-  M('Z147', S, [E("kv: 0.55, tau: 20,", "kv: 0, tau: 20,")], ['node'], 'a wind field does not follow the intensity: it does not grow as a storm strengthens or shrink as it weakens'),
-  M('Z148', S, [E("rf = head + (S.lat < 0 ? -45 : 45);", "rf = head + 45;")], ['node'], 'the strong quadrant is on the right of the track in the south too'),
-  M('Z149', S, [E("etRate: 0.03, etCap: 0.8,", "etRate: 0, etCap: 0.8,")], ['node'], 'a post-tropical cyclone never broadens'),
+  M('Z146', S, [E("xMin: 0.12, xMax: 1.3,", "xMin: 0.12, xMax: 0.2,")], ['node', 'alerts'], 'the winds fall off so slowly outside the eyewall that the 64 kt radius is nearly as large as the 34 kt radius (the red core of the wind field is too big beside the orange)'),
+  M('Z147', S, [E("kv: 0.42, tau: 36,", "kv: 0, tau: 36,")], ['node'], 'a wind field does not follow the intensity: it does not grow as a storm strengthens or shrink as it weakens'),
+  M('Z148', S, [E("rf = head + (S.lat < 0 ? -60 : 60);", "rf = head + 60;")], ['node'], 'the strong quadrant is on the right of the track in the south too'),
+  M('Z149', S, [E("return (S.exG === undefined ? X.g0 + 0.3 * X.g1 : S.exG) * sm3((h - S.etAt) / X.T); };", "return 0; };")], ['node'], 'a post-tropical cyclone never broadens'),
   M('Z150', S, [E("warnH: 36, watchH: 48, keepH: 72,", "warnH: 60, watchH: 48, keepH: 72,")], ['node'], 'a warning is for conditions within 60 hours, not 36'),
   M('Z151', S, [E("watchH: 48, keepH: 72,", "watchH: 24, keepH: 72,")], ['node'], 'a watch is for conditions within 24 hours, not 48'),
   M('Z152', S, [E("(warnHad && Te <= A.keepH)", "false")], ['node'], 'a warning is dropped as soon as the forecast moves the arrival past 36 hours'),
@@ -249,6 +249,44 @@ const mutants = [
   M('Z159', H, [E("if (!$('stww').checked || !wwPack || !wwPack.A.nx) return;\n  const z = map.getZoom()", "if (!$('stww').checked || !wwPack || !wwPack.A.nx || stormSel) return;\n  const z = map.getZoom()")], ['alerts'], 'the watches and warnings disappear when a storm is picked (they are not per storm)'),
   M('Z160', H, [E("(only && S.id !== only)) continue;\n    const R = HFStorms.windRadii", "false) continue;\n    const R = HFStorms.windRadii")], ['alerts'], 'every storm keeps its wind field when one is picked'),
   M('Z161', H, [E("g.lineWidth = 1.7; g.strokeStyle = 'rgba(10,10,18,.8)'; g.strokeText(q.letter, p.x, p.y + 0.5); g.fillStyle = '#ffffff';", "g.lineWidth = 1.7; g.strokeStyle = 'rgba(10,10,18,.8)'; g.strokeText(q.letter, p.x, p.y + 0.5); g.fillStyle = '#000000';")], ['storms'], 'the letters of the forecast points are black'),
+  // ---- M15: the wind field as a profile, eyewall replacement cycles, long-lived post-tropical cyclones, subtropical storms in cool water, what a storm does to a city
+  M('Z162', S, [E("S.vr = Math.max(1, S.v * Math.exp(par.noiseRel * S.zv) - (S.ercDef || 0));", "S.vr = Math.max(1, S.v * Math.exp(par.noiseRel * S.zv));")], ['node'], 'an eyewall replacement never dips the reported wind'),
+  M('Z163', S, [E("(1 - smooth01(lf, E.land[0], E.land[1])) / (1 + Math.pow(shT / E.shear, 3));", "1 / (1 + Math.pow(shT / E.shear, 3));")], ['node'], 'a hurricane over land gets an eyewall replacement'),
+  M('Z164', S, [E("const g = smooth01(S.v, E.vR[0], E.vR[1]) * smooth01(S.hiH", "const g = 1 * smooth01(S.hiH")], ['node'], 'a weak storm gets eyewall replacements as often as an intense one'),
+  M('Z165', S, [E("if (S.th !== 'tc' || S.ri || h < (S.ercCool || -1)) return;", "if (S.th !== 'tc' || h < (S.ercCool || -1)) return;")], ['node'], 'an eyewall replacement can start in the middle of rapid intensification'),
+  M('Z166', S, [E("S.ercCool = h + 1 + E.cool[0] + (E.cool[1] - E.cool[0]) * rnd(seed, S.num, h, ST.ERCP);", "S.ercCool = h + 1;")], ['node'], 'a new eyewall replacement can start the moment the last one ends'),
+  M('Z167', S, [E("(S.ercRm || 0) + (S.ri ? W.rmRI : 0)", "0 + (S.ri ? W.rmRI : 0)")], ['node'], 'the eye does not grow in an eyewall replacement'),
+  M('Z168', S, [E("(S.ercSz || 0) - W.land * lf;", "- W.land * lf;")], ['node'], 'an eyewall replacement does not grow the 34 kt field'),
+  M('Z169', S, [E("asym: [0.35, 0.5],", "asym: [0, 0],")], ['node'], 'a moving storm has no stronger side'),
+  M('Z170', S, [E("profileRoot(P, v - d) * f)", "profileRoot(P, v) * f)")], ['node'], 'the radii by quadrant do not match the wind at a point'),
+  M('Z171', S, [E(" - par.wind.pSz * clamp(sizeAnom(S, par, alat), -0.6, 0.9)", "")], ['node'], 'a larger storm has the same pressure for the same wind'),
+  M('Z172', S, [E("pressureFromWind(S.vr + par.wind.pErc * (S.ercDef || 0), S.lat)", "pressureFromWind(S.vr, S.lat)")], ['node'], 'all of an eyewall replacement\'s wind loss shows in the pressure'),
+  M('Z173', S, [E("const keep = ctx && ctx.keep, timed = S.nlTill > 0 && h + 1 >= S.nlTill && !keep;", "const keep = ctx && ctx.keep, timed = (S.th === 'ex' && h + 1 >= S.etAt + 30 && !keep) || (S.nlTill > 0 && h + 1 >= S.nlTill && !keep);")], ['node'], 'a post-tropical cyclone is killed by a timer 30 hours after its transition, strong or not'),
+  M('Z174', S, [E("const hz = (1 - smooth01(S.v, X.absV[0], X.absV[1])) * smooth01(alat,", "const hz = smooth01(S.v, X.absV[0], X.absV[1]) * smooth01(alat,")], ['node'], 'a strong post-tropical cyclone is absorbed faster than a weak one'),
+  M('Z175', S, [E("+ smooth01(age, X.maxAge[0], X.maxAge[1]) / 24;", "+ 0;")], ['node'], 'a post-tropical cyclone can go on for ever'),
+  M('Z176', S, [E("if (rnd(this.seed, w.num, h, ST.ABS + 100) < X.mergeP) {", "if (false) {")], ['node'], 'two post-tropical lows close together never merge'),
+  M('Z177', S, [E("else if (!keep) {\n        const hz =", "else {\n        const hz =")], ['node'], 'a member of a fan can be absorbed at random, ending its cone early'),
+  M('Z178', S, [E("const lc = Math.exp(-Math.max(0, h + 1 - S.etAt - par.ex.occ[0]) / par.ex.occ[1]);", "const lc = 1;")], ['node'], 'a post-tropical cyclone is never worn down by the occlusion and the friction'),
+  M('Z179', S, [E("subShift: { max: 0.9, lat: [22, 30], sst: [25, 27] },", "subShift: { max: 0, lat: [22, 30], sst: [25, 27] },")], ['node'], 'a cyclone forming in cool northern water is no more often subtropical'),
+  M('Z180', S, [E("lat: [22, 30], sst: [25, 27] },", "lat: [-1, 0], sst: [25, 27] },")], ['node'], 'subtropical storms are as common in the tropics as in the north'),
+  M('Z181', S, [E("if (!S.sub && M && rnd(seed, id, 0, ST.SUBX) < subShare(par, Math.abs(S.lat), sstE)) S.sub = true; ", "")], ['node'], 'the class is not drawn again where the depression is declared, a day later and farther north'),
+  M('Z182', S, [E("const vn = Math.max(0, v - vt) / (vh - vt), c = vn * vn * vn;", "const vn = Math.max(0, v - vt) / (vh - vt), c = vn * vn;")], ['node'], 'wind damage grows with the square of the wind above the threshold, not the cube'),
+  M('Z183', S, [E("vh: [92, 80, 68, 58]", "vh: [58, 68, 80, 92]")], ['node'], 'a rich city is built worse than a poor one'),
+  M('Z184', S, [E("gust: [1.23, 1.36, 1.49]", "gust: [1.23, 1.36, 1.23]")], ['node'], 'an inland city gets the gusts of the coast'),
+  M('Z185', S, [E("mph = (kt) => Math.round(kt * KT_MPH);", "mph = (kt) => Math.round(kt);")], ['node'], 'a city\'s winds are shown in knots under the label mph'),
+  M('Z186', S, [E("L.rain[((h % 72) + 72) % 72]", "L.rain[((h % 36) + 36) % 36]")], ['node'], 'the rain window is 36 hours, not 72'),
+  M('Z187', S, [E("R.max * Math.sqrt(Math.max(d, 0) / R.d0)", "R.max * Math.max(d, 0) / R.d0")], ['node'], 'light damage takes almost as long to recover from as heavy'),
+  M('Z188', S, [E("return { D: e.D * (1 - healed(age, T, R.lag)), k: e.k,", "return { D: e.D * (1 - healed(age, T, R.lag)), k: Math.round(e.k * (1 - healed(age, T, R.lag))),")], ['node'], 'deaths fade away as the city recovers'),
+  M('Z189', S, [E("i: Math.round(e.i * (1 - healed(age, R.inj * T, R.lag)))", "i: e.i")], ['node'], 'the injured never heal'),
+  M('Z190', S, [E("onshore = !env.isLand(uy, ux);", "onshore = true;")], ['node'], 'a coast gets its surge whichever way the wind blows'),
+  M('Z191', S, [E("lows: { tracks: this.lows.tracks, next: this.lows.next, done: this.lows.done }, imp: this.ledger || {} };", "lows: { tracks: this.lows.tracks, next: this.lows.next, done: this.lows.done } };")], ['node'], 'a save forgets what the storms did to the cities'),
+  M('Z192', S, [E("Y.d += Math.max(0, dD); Y.k += Math.max(0, dk); Y.i += Math.max(0, di);", "")], ['node'], 'the season keeps no totals of the damage and deaths'),
+  M('Z193', S, [E("L.ev.push(e); if (L.ev.length > 12) L.ev.shift();", "L.ev = [e];")], ['node'], 'a second storm wipes the record of the first'),
+  M('Z194', H, [E("const RING_COLS = [[0.2, '#b0003a'], [0.05, '#ff3b30'], [0.01, '#ff9f0a'], [0.001, '#ffd60a']];", "const RING_COLS = [[0.2, '#ffd60a'], [0.05, '#ff9f0a'], [0.01, '#ff3b30'], [0.001, '#b0003a']];")], ['impacts'], 'the rings of the damaged cities are yellow where the damage is worst'),
+  M('Z195', H, [E("if (!$('cities').checked) return;\n  for (const [i, sev, rec] of stormMgr.impactRings())", "for (const [i, sev, rec] of stormMgr.impactRings())")], ['impacts'], 'the rings stay when the city markers are switched off'),
+  M('Z196', H, [E("row.style.display = ph || live ? '' : 'none';", "row.style.display = 'none';")], ['impacts'], 'the card never says what a hurricane\'s structure is'),
+  M('Z197', H, [E("el.hidden = !(im && (im.d > 0 || im.k > 0 || im.i > 0));", "el.hidden = true;")], ['impacts'], 'the season summary has no totals of the damage'),
+  M('Z198', H, [E("function stormImpactNow(i) { return stormMgr && stormsOn && i >= 0 ? stormMgr.impactOf(i) : null; }", "function stormImpactNow(i) { return null; }")], ['impacts'], 'the city tooltip never gets the engine\'s numbers'),
   M('Z140', S, [E("cols: ['#0a84ff', '#00f060', '#ffcc00', '#ff9400', '#ff5900', '#ff0022', '#ff55bb'], tag: ['D', 'S', 'SS', 'T', 'ST', 'VT', 'SU'] },", "cols: ['#0a84ff', '#00f060', '#ffcc00', '#ff9400', '#ff0022', '#ff5900', '#ff55bb'], tag: ['D', 'S', 'SS', 'T', 'ST', 'VT', 'SU'] },")], ['node', 'look'], 'the West Pacific Strong and Violent Typhoon colours are swapped'),
   M('Z141', S, [E("cols: [WIKI.blue, WIKI.sky, WIKI.teal, WIKI.green, WIKI.peach, WIKI.pink, WIKI.purple]", "cols: [WIKI.blue, WIKI.sky, WIKI.cyan, WIKI.green, WIKI.peach, WIKI.pink, WIKI.purple]")], ['node'], 'the North Indian Cyclonic Storm is the Australian cyan, not its own teal'),
   M('Z142', S, [E("const AU_LOOK = { cols: [WIKI.sky, WIKI.cyan, WIKI.green, WIKI.peach, WIKI.pink, WIKI.purple], tag: ['L', '1', '2', '3', '4', '5'] };", "const AU_LOOK = { cols: [WIKI.sky, WIKI.cyan, WIKI.green, WIKI.peach, WIKI.pink, WIKI.purple], tag: ['L', 'C1', 'C2', 'C3', 'C4', 'C5'] };")], ['node'], 'an Australian cone point reads C4 instead of 4'),
@@ -359,7 +397,7 @@ await page.goto(pathToFileURL(ATLANTIC_DIST).href, { waitUntil: 'load', timeout:
 await page.waitForFunction(() => window.__ready === true, { timeout: 30000 });
 await page.waitForTimeout(800);
 await page.evaluate(() => { window.SSTSIM.storms(false); });
-${which === 'summary' ? "await checkSummary(page, 'Atlantic');" : which === 'place' ? "await checkPlace(page, 'Atlantic');" : which === 'alerts' ? "await checkAlerts(page, 'Atlantic');" : "await checkStorms(page, 'Atlantic');"}
+${which === 'summary' ? "await checkSummary(page, 'Atlantic');" : which === 'place' ? "await checkPlace(page, 'Atlantic');" : which === 'alerts' ? "await checkAlerts(page, 'Atlantic');" : which === 'impacts' ? "await checkImpacts(page, 'Atlantic', 'atlantic');" : "await checkStorms(page, 'Atlantic');"}
 check('no page errors (' + errors.length + ')', errors.length === 0);
 await browser.close();
 `;
@@ -404,7 +442,7 @@ async function runMutant(m, results) {
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------------
-let list = base ? [M('base', S, [], ['node', 'storms', 'summary', 'place', 'save', 'gate', 'env', 'look', 'alerts'], 'unmutated')] : (only ? mutants.filter((m) => only.includes(m.id)) : mutants);
+let list = base ? [M('base', S, [], ['node', 'storms', 'summary', 'place', 'save', 'gate', 'env', 'look', 'alerts', 'impacts'], 'unmutated')] : (only ? mutants.filter((m) => only.includes(m.id)) : mutants);
 if (drivers) list = list.map((m) => ({ ...m, drivers: m.drivers.filter((d) => drivers.includes(d)) })).filter((m) => m.drivers.length);
 if (dry) { let bad = 0; for (const m of mutants) { try { parses(m.file, applyEdits(readFileSync(join(REPO, m.file), 'utf8'), m.edits, m.id)); } catch (e) { bad++; console.log(m.id + ': ' + e.message); } } console.log(bad ? bad + ' of ' + mutants.length + ' mutants broken (an anchor that is not found exactly once, or a mutated file that does not parse)' : 'all ' + mutants.length + ' anchors found exactly once and every mutated file parses'); process.exit(bad ? 1 : 0); }
 mkdirSync(OUT, { recursive: true });

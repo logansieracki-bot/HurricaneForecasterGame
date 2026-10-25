@@ -76,7 +76,7 @@ function applySave(s) {
   speedIdx = u.speedIdx; updateSpeedUI();
   initSim(P.seed);                                                                // the static structure of this seed (waves, jet modes ...) and a throw-away new season
   simRestoreLight(s.weather);
-  stormMgr = HFStorms.restore(JSON.parse(s.storms), { maps: stormMapsNow() });
+  stormMgr = HFStorms.restore(JSON.parse(s.storms), { maps: stormMapsNow() }); stormCitiesBind();
   stormLab = null; shadow = null; stormSel = null; olSel = null; plainSel = null; ensPack = null; coneMem = null; wwPack = null; wwCones = {}; ensHot = -1; $('aoi-card').hidden = true; stormHot = null; stormHits = []; olHeld = null; olEagerSlot = -1e9; olHits = []; stormsDirty = true; sumArch = stormMgr.archive.length; if (sumOpen) closeSummary();
   lowsStamp = -1; kfBreak = true; stormKeyframe(true); stormFieldsDirty = false;      // fresh keyframes of the steering and the fields at the restored hour
   if (s.kf0 && simHour === kfHour) { for (let i = 0; i < 3; i++) { b64f32(s.kf0.u[i], kfU0[i]); b64f32(s.kf0.v[i], kfV0[i]); } kfHour0 = s.kf0.h; wkHour = -1e9; stormEnv.beginHour(simHour); }
@@ -129,7 +129,7 @@ const STORM_API = {
   placePreview() { return placePrev; }, placeLabel() { return placeSummary(placePrev); },
   shadowInfo() { return shadow ? { t0: shadow.t0, nk: shadow.nk, nf: shadow.nf } : null; },
   simCapture() { window.__snap = { weather: simCapture(), storms: stormMgr ? JSON.stringify(stormMgr.serialize()) : null }; return true; },
-  simRestore() { const s = window.__snap; simRestore(s.weather); if (s.storms) { stormMgr = HFStorms.restore(JSON.parse(s.storms), { maps: stormMapsNow() }); stormFieldsDirty = true; kfFieldHour = -1; } return true; },
+  simRestore() { const s = window.__snap; simRestore(s.weather); if (s.storms) { stormMgr = HFStorms.restore(JSON.parse(s.storms), { maps: stormMapsNow() }); stormCitiesBind(); stormFieldsDirty = true; kfFieldHour = -1; } return true; },
   stormLabRecord() { return stormLab ? stormLab.map(labRecord) : []; },
   stormLabStop() { stormLab = null; },
   stormPlace(spec) { const S = stormMgr.place(spec); stormsDirty = true; drawStorms(); markDirty(); return S.id; },
@@ -154,6 +154,10 @@ const STORM_API = {
   windRadiiOf(id) { const S = stormMgr && stormMgr.get(id); return S ? HFStorms.windRadii(S, stormMgr.par) : null; },
   conePoint(lead) { const q = ensPack && ensPack.cone && ensPack.cone.pts.find((p) => p.lead === lead); if (!q) return null; const p = map.latLngToContainerPoint([q.lat, q.lon]); return { x: p.x, y: p.y }; },
   coneFor(id, ens) { if (!stormMgr) return null; if (!shadow || simHour - shadow.t0 >= 12) shadowBuild(); const E = stormMgr.ensemble(id, { at: shadowEnv }, { horizon: Math.max(24, Math.min(stormMgr.par.ens.horizon, shadow.t0 + SHADOW_H - stormMgr.hour)), ens }); if (!E) return null; const C = HFStorms.coneOf(E, stormMgr.par, null, SCALE); return C ? { init: E.init, line: C.line.map((q) => [q.lat, q.lon, q.v]), pts: C.pts, mean: E.members.map((m) => m.pts) } : null; },       // the cone and the fan of a system as the page would make them now (tools and tests)
+  impactOf(i) { return stormMgr ? stormMgr.impactOf(typeof i === 'string' ? stormMgr.cities.findIndex((c) => c.name === i) : i) : null; }, impactRings() { return stormMgr ? stormMgr.impactRings() : []; },           // what the storms did to a city (by index or name) and the cities with damage that has not healed
+  cityList() { return CITIES.map((c) => ({ name: c.name, lat: c.lat, lon: c.lon, inland: c.sLat !== undefined })); },
+  cityIndex(name) { return CITIES.findIndex((c) => c.name === name); }, cityTipLines(i) { return stormImpactLines(stormImpactNow(i)); }, cityPoint(i) { const c = CITIES[i], p = map.latLngToContainerPoint([c.lat, c.lon]); return { x: p.x, y: p.y }; },
+  impactSeed(name, ev) { const m = stormMgr, c = m.cities.find((q) => q.name === name), L = m._ledgerOf(c); L.ev.push(Object.assign({ t0: m.hour - 60, te: m.hour - 12, last: m.hour - 12, pk: new Array(9).fill(40), rp: 5, sg: 0, vmax: 80, gmax: 100, D: 1e9, k: 5, i: 20, d: 0.01, sid: null, sn: 'Seed' }, ev)); if (!ev.T) { const e = L.ev[L.ev.length - 1]; e.T = HFStorms.recoverH(m.par, e.d); } stormsDirty = true; drawStorms(); return true; },       // a finished event put into a city's ledger (tests)
   fixesOf(id) { const S = stormMgr && stormMgr.get(id); return S ? S.fixes.map((f) => [f.h, f.lat, f.lon, f.v, f.th, f.w]) : null; },
   ensPoint(k, i) { const px = ensPx[k]; return px && px[i] ? { x: px[i].x, y: px[i].y } : null; }, plainSelState() { return plainSel; },
   outlook() { return outlookNow(); }, outlookFresh() { if (stormMgr) stormMgr._ol = null; olHeld = null; olEagerSlot = -1e9; const t = performance.now(), r = outlookNow(); return { ms: performance.now() - t, areas: r ? r.areas.length : -1 }; }, outlookForce(res) { olForced = res || null; stormsDirty = true; drawStorms(); return !!olForced; },        // the areas of interest the page shows (tests: force a list of areas to draw, null puts the engine's back)
