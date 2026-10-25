@@ -411,7 +411,8 @@ function snapshot(id, mutatedIndexHtml) {
   if (!existsSync(join(dir, 'data'))) symlinkSync(join(REPO, 'data'), join(dir, 'data'));
   writeFileSync(join(dir, 'index.html'), mutatedIndexHtml);
   copyFileSync(join(REPO, 'package.json'), join(dir, 'package.json'));
-  for (const f of ['tests/storms.mjs', 'tests/storms_env.mjs']) copyFileSync(join(REPO, f), join(dir, f));
+  for (const f of ['tests/storms.mjs', 'tests/storms_env.mjs', 'src/storm-cities.js']) copyFileSync(join(REPO, f), join(dir, f));
+  for (const f of ['template.html', 'template-eastpacific.html', 'template-wpac.html', 'template-nio.html', 'template-aus.html', 'template-swio.html', 'template-spac.html', 'template-satl.html', 'template-med.html']) if (!existsSync(join(dir, 'src', f))) copyFileSync(join(REPO, 'src', f), join(dir, 'src', f));      // (the node tests read the city lists of the nine pages)
   if (!existsSync(join(dir, 'node_modules'))) symlinkSync(join(REPO, 'node_modules'), join(dir, 'node_modules'));
   return dir;
 }

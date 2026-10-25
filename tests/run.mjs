@@ -1173,14 +1173,14 @@ async function checkImpacts(page, label, prefix) {
   // the storm's own card: the tally of what it did, the structure of a hurricane
   const sp = await ev((id) => window.SSTSIM.stormPx(id), h.id); await page.mouse.click(sp.x, sp.y); await page.waitForTimeout(250);
   const card = await ev(() => { const g = (id) => document.getElementById(id); return { dmg: g('sc-dmg').textContent, dth: g('sc-dth').textContent, erc: g('sc-erc').textContent, ercShown: g('sc-ercrow').style.display !== 'none', wf: g('sc-wf').textContent }; });
-  await ev((id) => { window.SSTSIM.stormForce(id, { ercPh: 'weakening' }); }, h.id); await page.waitForTimeout(1300);
+  await page.waitForTimeout(450); await ev((id) => { window.SSTSIM.stormForce(id, { ercPh: 'weakening' }); window.SSTSIM.stormDraw(); }, h.id); await page.waitForTimeout(100);
   const card2 = await ev(() => document.getElementById('sc-erc').textContent);
   check(`[${label}] the storm's card tells what it did (damage ${card.dmg}, deaths ${card.dth}), a hurricane's structure (${card.erc}; in an eyewall replacement: ${card2}) and where the eyewall is (${card.wf})`,
     /^\$[\d.]+[KMBT]$/.test(card.dmg) && /^[\d,]+$/.test(card.dth) && card.ercShown && card.erc === 'Single eyewall' && /Eyewall replacement: inner eyewall weakening/.test(card2) && /eyewall at \d+ mi/.test(card.wf));
   await page.keyboard.press('Escape'); await page.waitForTimeout(100);
   // the season's summary: the totals and the storm's damage
   const sum = await ev(() => { const S = window.SSTSIM; S.summary(true); const t = document.getElementById('sum-imp'), row = document.querySelector('#sum-table tbody tr:last-child'); const out = { shown: !t.hidden, text: t.innerText.replace(/\s+/g, ' '), rowText: row ? row.innerText.replace(/\s+/g, ' ') : '', head: document.querySelector('#sum-table thead').innerText.replace(/\s+/g, ' ') }; S.summary(false); return out; });
-  check(`[${label}] the season summary has the totals (${sum.text}) and a damage column (${sum.head}: ${sum.rowText})`, sum.shown && /Damage \$[\d.]+[KMBT] · deaths [\d,]+ · injured [\d,]+ · worst hit: /.test(sum.text) && /Damage$/.test(sum.head) && /\$[\d.]+[KMBT]/.test(sum.rowText));
+  check(`[${label}] the season summary has the totals (${sum.text}) and a damage column (${sum.head}: ${sum.rowText})`, sum.shown && /Damage \$[\d.]+[KMBT] · deaths [\d,]+ · injured [\d,]+ · worst hit: /.test(sum.text) && /Damage\s*$/.test(sum.head) && /\$[\d.]+[KMBT]/.test(sum.rowText));
   // a save keeps the ledger, and the city heals over the weeks (a storm-free month later the damage is smaller and the recovery further on)
   const keep = await ev(({ i }) => { const S = window.SSTSIM, a = S.impactOf(i); S.snapSave(); S.stormForce(S.stormState().systems[0].id, { alive: false }); S.snapLoad(); const b = S.impactOf(i); return { a: a.damageCost, b: b.damageCost, ra: a.deaths, rb: b.deaths, rings: S.impactRings().length }; }, { i: r.i });
   check(`[${label}] a save keeps the ledger (damage ${(keep.a / 1e9).toFixed(2)} B before, ${(keep.b / 1e9).toFixed(2)} B after a save and load; deaths ${keep.ra} and ${keep.rb}; the ring stays: ${keep.rings})`, Math.abs(keep.a - keep.b) < keep.a * 0.001 + 1 && keep.ra === keep.rb && keep.rings >= 1);
