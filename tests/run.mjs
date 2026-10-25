@@ -1134,6 +1134,100 @@ async function checkLook(page, label, prefix) {
   check(`[${label}] the 105-kt storm is drawn in this region's colour (${lk.head}, expected ${LOOK105[0]}), its card shows the class ${lk.tag} on ${lk.tagBg} (expected ${LOOK105[1]} on ${LOOK105[0]}) and the cone's letters are the region's (${lc ? lc.map((q) => q[1]).join(' ') : 'no cone'})`,
     lk.head === LOOK105[0] && lk.a === 255 && lk.shown && lk.tag === LOOK105[1] && lk.tagBg === LOOK105[0] && !!lc && lc.length >= 4 && lc.every((q) => q[1] === SC.tag[H.classOf(prefix, q[0], 'tc').idx]));
 }
+// the radar floater: a 2-km model of one system drawn as radar over the map, opened from the system's card; its own clock (real time to 20 minutes a second) running inside the hour and moving the engine on at the hour,
+// the storm layers on top of it, a radar site with its beam, crisp colours in the National Weather Service's steps, and everything back as it was when it is closed
+async function checkFloater(page, label, prefix) {
+  const ev = (fn, arg) => page.evaluate(fn, arg);
+  const sp = prefix === 'atlantic' ? { td: [15, -45], day: 200 } : STORM_SPECS[prefix];
+  const PAL = ['04e9e7', '019ff4', '0300f4', '02fd02', '01c501', '008e00', 'fdf802', 'e5bc00', 'fd9500', 'fd0000', 'd40000', 'bc0000', 'f800fd', '9854c6', 'ffffff'];
+  const r = await ev((q) => { const S = window.SSTSIM; S.setPlaying(false); S.applySeed(4242); S.setPlaying(false); S.storms(true); S.stormAuto(false); S.summary(false); S.tick(24 * q.day);
+    const id = S.stormPlace({ kind: 'td', lat: q.td[0], lon: q.td[1], v: 60 }); S.tick(12); S.advance(0);
+    S.map.setView([q.td[0], q.td[1]], 6, { animate: false }); S.stormForce(id, { th: 'tc', v: 105, vr: 105, p: 946 }); S.tick(2); S.advance(0);
+    const st = S.stormState().systems.find((x) => x.id === id); S.map.setView([st.lat, st.lon], 6, { animate: false }); S.stormDraw();
+    return { id, px: S.stormPx(id), hour: S.state().simHour, playing: S.playingNow() }; }, sp);
+  await page.mouse.click(r.px.x, r.px.y); await page.waitForTimeout(300);
+  const card = await ev(() => ({ btn: getComputedStyle(document.getElementById('sc-radar')).display !== 'none', cardShown: !document.getElementById('storm-card').hidden }));
+  check(`[${label}] the card of a hurricane has a Radar floater button (a disturbance or more can open one)`, card.cardShown && card.btn);
+  await page.click('#sc-radar'); await page.waitForTimeout(300);
+  const o = await ev(() => { const S = window.SSTSIM, f = S.floaterState(); return { on: f.on, spin: f.spin, bar: !document.getElementById('fl-bar').hidden, body: document.body.classList.contains('fl-on'), card: document.getElementById('storm-card').hidden, legend: getComputedStyle(document.getElementById('fl-legend')).display !== 'none', canvas: !!document.getElementById('radar-canvas') && document.getElementById('radar-canvas').style.display !== 'none', speed: document.getElementById('speed-x').textContent, sub: document.getElementById('speed-sub').textContent, name: document.getElementById('fl-name').textContent }; });
+  check(`[${label}] the button opens the floater: its bar (${o.name}), the reflectivity key and the radar canvas appear, the storm card gives way to it, the playback label reads ${o.speed} (${o.sub})`, o.on && o.bar && o.body && o.card && o.legend && o.canvas && /10/.test(o.speed) && /real time/.test(o.sub));
+  await page.waitForFunction(() => window.SSTSIM.floaterState().spin >= 1, null, { timeout: 30000 }); await page.waitForTimeout(400);
+  const a = await ev(() => { const S = window.SSTSIM, f = S.floaterState(); return { f }; });
+  check(`[${label}] two hours of the system's life are spun up while the bar shows it, and the nest is running (${a.f.steps} steps, mean wind ${Math.round(a.f.vNest * 1.944)} kt of ${Math.round(a.f.vTarget * 1.944)} kt, eyewall ${Math.round(a.f.dbzMax)} dBZ, ${a.f.cells} cells of 20 dBZ or more)`, a.f.spin >= 1 && a.f.steps >= 30 && a.f.dbzMax >= 45 && a.f.cells > 300 && a.f.vNest > 0.6 * a.f.vTarget);
+  const px = await ev(() => { const c = document.getElementById('radar-canvas'), g = c.getContext('2d'), d = g.getImageData(0, 0, c.width, c.height).data; let op = 0, ex = 0; const pal = new Set(['04e9e7', '019ff4', '0300f4', '02fd02', '01c501', '008e00', 'fdf802', 'e5bc00', 'fd9500', 'fd0000', 'd40000', 'bc0000', 'f800fd', '9854c6', 'ffffff']);
+    const rgb = [...pal].map((h) => [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)]);
+    for (let i = 0; i < d.length; i += 4) { if (d[i + 3] > 200) { op++; if (rgb.some((c) => Math.abs(c[0] - d[i]) + Math.abs(c[1] - d[i + 1]) + Math.abs(c[2] - d[i + 2]) <= 12)) ex++; } } return { op, ex }; });       // (a colour read back from a translucent canvas is a few steps off)
+  check(`[${label}] the radar is drawn in the National Weather Service's steps and is crisp: ${px.op} opaque pixels, ${(100 * px.ex / Math.max(1, px.op)).toFixed(0)} % of them exactly a colour of the scale (a gradient or a blur would leave under half)`, px.op > 5000 && px.ex > 0.6 * px.op);
+  // the playback buttons are the floater's now: faster / slower / pause change its speed, not the main clock's
+  const sp0 = await ev(() => window.SSTSIM.floaterState().speed);
+  await page.click('#b-faster'); await page.click('#b-faster'); await page.waitForTimeout(100);
+  const sp1 = await ev(() => ({ s: window.SSTSIM.floaterState().speed, x: document.getElementById('speed-x').textContent, sub: document.getElementById('speed-sub').textContent, main: window.SSTSIM.playingNow() }));
+  await page.keyboard.press('['); await page.waitForTimeout(50);
+  const sp2 = await ev(() => window.SSTSIM.floaterState().speed);
+  await page.click('#b-play'); await page.waitForTimeout(100);
+  const pz = await ev(() => ({ play: window.SSTSIM.floaterState().play, ic: document.getElementById('ic-play').style.display !== 'none' }));
+  await page.keyboard.press(' '); await page.waitForTimeout(100);
+  const pz2 = await ev(() => window.SSTSIM.floaterState().play);
+  check(`[${label}] the playback buttons and keys steer the floater (speed ${sp0} to ${sp1.s} with two clicks on faster, ${sp2} after [, label ${sp1.x} ${sp1.sub}), pause and Space toggle it (${pz.play} then ${pz2}), and the main clock stays stopped`, sp1.s === sp0 + 2 && sp2 === sp1.s - 1 && pz.play === false && pz.ic && pz2 === true && sp1.main === false);
+  // the clock runs by itself at 20 minutes a second: inside the hour, then the engine moves on
+  await ev(() => { window.SSTSIM.floaterSet({ speed: 11, play: true }); }); const h0 = await ev(() => window.SSTSIM.floaterState());
+  await page.waitForTimeout(4200);
+  const h1 = await ev(() => { const f = window.SSTSIM.floaterState(); return { f, clock: document.getElementById('c-time').textContent }; });
+  check(`[${label}] at 20 minutes a second the floater's clock runs (${h0.steps} to ${h1.f.steps} steps in four seconds) and when it passes the hour the engine really moves on (hour ${h0.hour} to ${h1.f.hour}, the main clock reads ${h1.clock.replace(/\D*$/, '')})`, h1.f.steps >= h0.steps + 12 && h1.f.hour >= h0.hour + 1 && h1.f.on);
+  // the storm layers sit on top of the radar: the system alone with its path and place, and the cone and wind field on request
+  await ev(() => { const S = window.SSTSIM; S.floaterSet({ play: false }); S.floaterRun(1500); });
+  await lyrSet(page, 'stwf', true); await lyrSet(page, 'stcone', true); await page.waitForTimeout(300);
+  const lay = await ev((id) => { const S = window.SSTSIM, f = S.floaterState(), e = S.stormState().systems.find((x) => x.id === id), p = S.floaterPos(); return { drawn: S.stormDrawn().includes(id), cone: S.coneState() !== null, z: [document.getElementById('radar-canvas'), document.getElementById('storm-canvas')].map((c) => +c.style.zIndex), pos: p, min: f.minutes, d: p ? Math.hypot(p.lat - e.lat, p.lon - e.lon) : 0 }; }, r.id);
+  await lyrSet(page, 'stwf', false); await lyrSet(page, 'stcone', false);
+  check(`[${label}] the storm layers stay on top of the radar (storm canvas ${lay.z[1]} over radar ${lay.z[0]}): the system alone with its path and its place (${lay.min} minutes into the hour it is ${(lay.d * 111).toFixed(1)} km from where the engine has it at the hour: the floater says where it is between two hours), the cone on request`, lay.drawn && lay.z[1] > lay.z[0] && !!lay.pos && lay.min >= 20 && lay.d > 0.003);
+  await ev(() => { window.SSTSIM.floaterSet({ play: true }); });
+  // a radar site: a city's radar with the beam's height and range
+  const siteO = await ev(() => ({ sites: window.SSTSIM.floaterState().sites })); let st = null;
+  if (siteO.sites.length) {
+    await ev(() => { window.SSTSIM.floaterSet({ play: false }); window.SSTSIM.floaterRun(1); });
+    const before = await ev(() => window.SSTSIM.floaterState().cells);
+    st = await ev(() => { const S = window.SSTSIM; S.floaterSet({ site: 0, tilt: 6 }); S.floaterRun(1); return { f: S.floaterState(), tilt: getComputedStyle(document.getElementById('fl-tilt-l')).display !== 'none', op: (() => { const c = document.getElementById('radar-canvas'), d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 200) n++; return n; })() }; });
+    await ev(() => { window.SSTSIM.floaterSet({ site: 0, tilt: 0.5 }); window.SSTSIM.floaterRun(1); });
+    const lowO = await ev(() => { const c = document.getElementById('radar-canvas'), d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 200) n++; return n; });
+    check(`[${label}] a radar site (${st.f.site}) has its tilt chooser, and the beam matters: at 6° the beam is higher (${st.op} opaque pixels) and at 0.5° it sees at least as many (${lowO}; the strict comparison is in the radar-site check)`, st.f.site === siteO.sites[0] && st.tilt && lowO >= st.op);
+    await ev(() => { window.SSTSIM.floaterSet({ site: null }); });
+  } else check(`[${label}] (no city within reach of this storm: composite only)`, true);
+  // closing puts everything back
+  await page.keyboard.press('Escape'); await page.waitForTimeout(300);
+  const c1 = await ev(() => { const S = window.SSTSIM; return { on: S.floaterState().on, bar: document.getElementById('fl-bar').hidden, body: document.body.classList.contains('fl-on'), canvas: document.getElementById('radar-canvas').style.display, x: document.getElementById('speed-x').textContent, play: S.playingNow(), card: !document.getElementById('storm-card').hidden, ic: document.getElementById('ic-play').style.display !== 'none' }; });
+  check(`[${label}] Escape closes the floater and puts everything back: bar and radar gone, the playback label back to ${c1.x}, the main clock as it was (stopped), the storm card again`, c1.on === false && c1.bar && !c1.body && c1.canvas === 'none' && /×/.test(c1.x) && c1.play === false && c1.card && c1.ic);
+  // a disturbance and a plain wave: the first can have a floater, the second cannot
+  const d = await ev((q) => { const S = window.SSTSIM, w = S.stormPlace({ kind: 'wave', lat: q.td[0] + (q.td[0] > 0 ? 1 : -1) * 3, lon: q.td[1] + 6, v: 20 }), w2 = S.stormPlace({ kind: 'wave', lat: q.td[0] + (q.td[0] > 0 ? 1 : -1) * 6, lon: q.td[1] - 8, v: 20 }); S.tick(3); S.stormForce(w, { dist: true }); S.stormForce(w2, { dist: false, invest: '', kind: 'M' });
+    const no = S.floaterOpen(w2), yes = S.floaterOpen(w); const f = S.floaterState(); S.floaterRun(600); const g = S.floaterState(); const sub = document.getElementById('fl-sub').textContent; S.floaterClose(); return { no, yes, on: f.on, sub, rc: g.rcMax, dbz: g.dbzMax }; }, sp);
+  check(`[${label}] a plain tropical wave has no floater, a disturbance has (${d.sub}): a broad weak vortex whose echoes stay under 50 dBZ (${Math.round(d.dbz)} dBZ)`, d.no === false && d.yes === true && d.on && /Disturbance/.test(d.sub) && d.dbz < 50);
+}
+// a radar site: a hurricane near San Juan seen from the city's radar: its range rings, the beam's height (a higher tilt passes over the lower echoes) and the range limit
+const SITE_SPECS = { atlantic: { lat: 18.6, lon: -66.2, city: 'San Juan', day: 100 }, aus: { lat: -12.3, lon: 130.2, city: 'Darwin', day: 215 } };
+async function checkFloaterSite(page, label, prefix = 'atlantic') {
+  const ev = (fn, arg) => page.evaluate(fn, arg), sp = SITE_SPECS[prefix], sgn = sp.lat < 0 ? -1 : 1;
+  const r = await ev((q) => { const S = window.SSTSIM; S.setPlaying(false); S.applySeed(4242); S.setPlaying(false); S.storms(true); S.stormAuto(false); S.summary(false); S.tick(24 * q.day);
+    const id = S.stormPlace({ kind: 'td', lat: q.lat, lon: q.lon, v: 60 }); S.tick(2); for (let k = 0; k < 30; k++) { S.stormForce(id, { th: 'tc', lat: q.lat + 0.02 * k * (q.lat < 0 ? -1 : 1), lon: q.lon + 0.02 * k, v: 110, vr: 110, p: 945, cx: 4, cy: 2 * (q.lat < 0 ? -1 : 1) }); S.tick(1); }
+    S.floaterOpen(id); S.floaterRun(1800); const f = S.floaterState(); return { id, sites: f.sites }; }, sp);
+  const count = () => ev(() => { const c = document.getElementById('radar-canvas'), d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let n = 0, ring = 0; for (let i = 0; i < d.length; i += 4) { if (d[i + 3] > 200) n++; else if (d[i + 3] > 20 && d[i] > 200 && d[i + 1] > 200 && d[i + 2] > 200) ring++; } return { n, ring }; });
+  const comp = await count();
+  await ev((c) => { const S = window.SSTSIM, i = S.floaterState().sites.indexOf(c); S.floaterSet({ site: i < 0 ? 0 : i, tilt: 0.5 }); S.floaterRun(1); }, sp.city);
+  const low = await count(); const a = await ev(() => ({ f: window.SSTSIM.floaterState(), tilt: getComputedStyle(document.getElementById('fl-tilt-l')).display !== 'none' }));
+  await ev(() => { window.SSTSIM.floaterSet({ tilt: 6 }); window.SSTSIM.floaterRun(1); });
+  const high = await count();
+  check(`[${label}] the city is a radar site (${a.f.site}, of ${r.sites.join(', ')}): it brings the tilt chooser, range rings and the 460 km limit are drawn (${low.ring} ring pixels), and the beam matters: the 6° tilt passes over the lower echoes (${high.n} opaque pixels against ${low.n} at 0.5° and ${comp.n} for the composite)`, a.f.site === sp.city && a.tilt && low.ring > 200 && high.n < 0.85 * low.n && low.n <= comp.n * 1.02);
+  // the velocity product: winds toward the radar green, away from it red; for a cyclonic storm the side to the left of the line from the radar to the centre has the winds coming toward it
+  await ev(() => { const S = window.SSTSIM; S.floaterSet({ tilt: 0.5, product: 'v' }); S.floaterRun(1); });
+  const vv = await ev(() => { const S = window.SSTSIM, f = S.floaterState(), p = S.floaterPos(), c = S.placePx(p.lat, p.lon), siteC = S.cityList().find((q) => q.name === f.site), sp = S.placePx(siteC.lat, siteC.lon);
+    const vx = c.x - sp.x, vy = c.y - sp.y, L = Math.hypot(vx, vy), d = 38, lx = vy / L, ly = -vx / L, cv = document.getElementById('radar-canvas'), g = cv.getContext('2d'), dp = cv.width / cv.clientWidth;
+    const at = (x, y) => { const a = g.getImageData(Math.round(x * dp), Math.round(y * dp), 1, 1).data; return [a[0], a[1], a[2], a[3]]; };
+    return { f, left: at(c.x + lx * d, c.y + ly * d), right: at(c.x - lx * d, c.y - ly * d), keyV: getComputedStyle(document.getElementById('fl-legend-v')).display !== 'none', keyZ: getComputedStyle(document.getElementById('fl-legend')).display !== 'none' }; });
+  check(`[${label}] the velocity product (${vv.f.product}) shows the circulation's couplet: ${sgn > 0 ? 'cyclonic (counter-clockwise), so the left side of the line from the radar to the centre is green and the right side red' : 'clockwise, so the left side of the line from the radar to the centre is red and the right side green'} (left ${vv.left.slice(0, 3)}, right ${vv.right.slice(0, 3)}), with its own key and not the reflectivity key`,
+    vv.f.product === 'v' && vv.left[3] > 150 && vv.right[3] > 150 && (sgn > 0 ? vv.left[1] > vv.left[0] && vv.right[0] > vv.right[1] : vv.left[0] > vv.left[1] && vv.right[1] > vv.right[0]) && vv.keyV && !vv.keyZ);
+  await ev(() => { window.SSTSIM.floaterSet({ site: null }); });
+  const back = await ev(() => ({ p: window.SSTSIM.floaterState().product, keyZ: getComputedStyle(document.getElementById('fl-legend')).display !== 'none', prod: getComputedStyle(document.getElementById('fl-prod-l')).display !== 'none' }));
+  check(`[${label}] back to the composite the product is reflectivity again (${back.p}) with its key, and the product chooser goes away`, back.p === 'z' && back.keyZ && !back.prod);
+  await ev(() => { window.SSTSIM.floaterClose(); });
+}
 // what the storms do to a city: the tooltip's "Storm impact" block (dashes with nothing going on, then the winds, rain, tolls and damage after a hit), the ring on the marker, the storm's own tally on its card, the season's totals
 // in the summary, the structure row of a hurricane, a save that keeps it, and the healing over the weeks
 async function checkImpacts(page, label, prefix) {
@@ -1284,6 +1378,8 @@ async function checkStormsBasin(page, label, prefix) {
   check(`[${label}] a season saved at a midnight (hour ${sv.mid}) and resumed continues bit for bit like the uninterrupted one (${sv.kb} KB of storms)`, sv.same && sv.mid < sv.ha);
   await checkLook(page, label, prefix);
   await checkImpacts(page, label, prefix);
+  await checkFloater(page, label, prefix);
+  if (SITE_SPECS[prefix]) await checkFloaterSite(page, label, prefix);
   // the main menu's Continue card for a season saved here names the basin, the season and the local word (this is the last check of a basin's callback: it leaves the page)
   const sc = await ev((q) => { const S = window.SSTSIM; S.stormLabCalendar(q.sm, 1); S.applySeed(31); S.setPlaying(false); S.stormAuto(true); S.tick(24 * 40); S.advance(0); S.saveTick(); return { stats: S.stormState().stats, year: document.getElementById('se-year').textContent, meta: JSON.parse(S.saveInfo().meta) }; }, { sm: BI.seasonMonth });
   await page.goto(pathToFileURL(join(ROOT, 'index.html')).href, { waitUntil: 'load' });
@@ -2693,6 +2789,8 @@ await checkBasin('Atlantic', ATLANTIC_DIST, async (page, label) => {
   await checkForecastSkill(page, label);
   await checkLook(page, label, 'atlantic');
   await checkImpacts(page, label, 'atlantic');
+  await checkFloater(page, label, 'atlantic');
+  await checkFloaterSite(page, label);
   await checkAlerts(page, label);
   await checkPlace(page, label);
   await checkSummary(page, label);

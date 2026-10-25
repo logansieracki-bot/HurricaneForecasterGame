@@ -4,7 +4,7 @@
 // program does, which docs/roadmap.md names). Needs a clean tree and Chromium for the browser drivers:
 //   PLAYWRIGHT_CHROMIUM_PATH=/path/to/chromium node tools/storm_mutants.mjs [--dry] [--base] [--only X1,S4] [--drivers node,save] [--jobs 3]
 // --dry   only checks that every edit anchor occurs exactly once and that the mutated file still parses; --base runs every driver on the unmodified tree (all must pass first);
-// --only  a comma list of mutant ids; --drivers  restricts the drivers to run (node, storms, summary, place, save, gate, env, look, alerts, impacts); --jobs  how many mutants run at once (default 3; each builds into its own directory under $MUT_DIR or the
+// --only  a comma list of mutant ids; --drivers  restricts the drivers to run (node, nest, storms, summary, place, save, gate, env, look, alerts, impacts, floater); --jobs  how many mutants run at once (default 3; each builds into its own directory under $MUT_DIR or the
 //         temp directory). It changes src/storms.js, src/template.html or index.html for the few seconds a build takes and puts them back itself;
 //         if it is killed in between, `git checkout -- src index.html` restores them. The drivers are the check functions cut out of tests/run.mjs
 //         by their opening comments (`// The storm layer on the Atlantic page`, `// Save / resume`, `async function checkEnsoHold`): keep them.
@@ -25,7 +25,7 @@ const drivers = args.includes('--drivers') ? args[args.indexOf('--drivers') + 1]
 const GATE_BASIN = ['westpacific', 'nio', 'aus', 'swio', 'spac', 'satl', 'med', 'eastpacific'].find((b) => { const d = JSON.parse(readFileSync(join(REPO, 'data/generated', `${b}-data.json`), 'utf8')); return !(d.storms && d.storms.maps); }) || 'eastpacific';      // the page the 'gate' driver loads: one without storm climatology yet
 const M = (id, file, edits, drivers, what) => ({ id, file, edits, drivers, what });
 const E = (find, repl) => ({ find, repl }), R = (re, repl) => ({ re, repl });
-const T = 'src/template.html', S = 'src/storms.js', I = 'index.html', W = 'src/template-wpac.html', H = 'src/storm-hooks.js';
+const T = 'src/template.html', S = 'src/storms.js', I = 'index.html', W = 'src/template-wpac.html', H = 'src/storm-hooks.js', NS = 'src/storm-nest.js', FL = 'src/storm-floater.js';
 const mutants = [
   // ---- M5: the season record and the summary card
   M('E1', S, [E('clamp(this.seasonDay(h), 0, 365)', '0')], ['node'], 'ACE of every fix credited to day 0'),
@@ -314,6 +314,41 @@ const mutants = [
   M('Z14', S, [E('if (w > 0 && rnd(seed, id, h, ST.ENDH + 200) < 0.5 * w)', 'if (false)')], ['node'], 'a circulation that has all but gone lives on'),
   M('Z15', S, [E('if (cut < had) { S.v *= cut / had; S.landCut = cut; }', 'if (cut < had) { S.landCut = cut; }')], ['node'], 'a cyclone feels no friction at its first contact with land'),
   M('Z16', S, [E('* (1 - smooth01(lf || 0, 0.2, 0.5));', ';')], ['node'], 'a cyclone over land dissipates as it would at sea'),
+  // ---- M16: the 2-km nest behind the radar floater and the floater page
+  M('N1', NS, [E("let ey = 0; if (eyeA > 0 && r < eyeR) ey = eyeA * sm01(eyeR - r, 0, 0.35 * eyeR + 2);", "let ey = 0;")], ['nest'], 'no eye: convection fills the middle of a hurricane'),
+  M('N2', NS, [E("250 * Math.pow(rc, 1.2)", "300 * Math.pow(rc, 1.4)")], ['nest'], 'the default Z-R relation for convective rain'),
+  M('N3', NS, [E("200 * Math.pow(rs, 1.6)", "200 * Math.pow(rs, 1.2)")], ['nest'], 'stratiform rain with the convective exponent'),
+  M('N4', NS, [E("qb[k] = P.Qenv + 0.12 * (rh - 0.7);", "qb[k] = P.Qenv;")], ['nest'], 'dry air on one side of a storm does nothing'),
+  M('N5', NS, [E("qs[k] = Qc * (P.Qstar + 0.05 * clamp((sst - 27) / 2, -1.5, 1)) * (0.6 + 0.4 * sm01(sst, 23, 27.5));", "qs[k] = Qc * P.Qstar;"), E("qc[k] = Qc * (1 + 0.12 * clamp((27.5 - sst) / 4, -0.5, 1.5));", "qc[k] = Qc;")], ['nest'], 'cold water on one side of a storm does nothing'),
+  M('N6', NS, [E("if (vent > 0 && r < ventR) {", "if (false) {")], ['nest'], 'shear does not ventilate the upshear side'),
+  M('N7', NS, [E("let relax = aEnv * (1 + 18 * l);", "let relax = aEnv;")], ['nest'], 'land does not dry the column'),
+  M('N8', NS, [E("strat = eta * warm * P.gsW * edgeS[k]", "strat = 0 * warm * P.gsW * edgeS[k]")], ['nest'], 'no stratiform shield in the warm sector of a transition'),
+  M('N9', NS, [E("0.55 * front * (0.7 + 0.3 * nz)", "0 * front * (0.7 + 0.3 * nz)")], ['nest'], 'no convective front behind a transitioning storm'),
+  M('N10', NS, [E("this.edgeS[k] = 1 - sm01(Math.max(Math.abs(x), Math.abs(y)), 200, 245);", "this.edgeS[k] = 1;")], ['nest'], 'the box edge is not tapered: rain at the periodic seam'),
+  M('N11', NS, [E("const zn = z[k] - dt * (fcor + (z[k] < zc ? z[k] : zc)) * (d - msk * bdm[rb[k]]);", "const zn = z[k] + dt * (fcor + (z[k] < zc ? z[k] : zc)) * (d - msk * bdm[rb[k]]);")], ['nest'], 'the stretching of the vorticity has the wrong sign'),
+  M('N12', NS, [E("g[b] = bn[b] > 0 ? (zT[b] - bz[b]) * (1 - Math.exp(-dt / tau)) : 0;", "g[b] = 0;")], ['nest'], 'the nest\'s mean vorticity is not held to the engine\'s'),
+  M('N13', NS, [E("wb[k] = we > P.wFloor * wi ? we : P.wFloor * wi;", "wb[k] = 0;")], ['nest'], 'the boundary layer lifts nothing: no eyewall, no bands'),
+  M('N14', NS, [E("if (!(frac > 0.02) || !this.cur) { drc.set(rc); drs.set(rs); return; }", "{ drc.set(rc); drs.set(rs); return; }")], ['nest'], 'the picture does not glide between steps'),
+  M('N15', NS, [E("const nIn = 1 + 2 * sm01(P.Vs, 50, 100);", "const nIn = 1;")], ['nest'], 'the core of a strong storm is solid rotation, not a ring'),
+  M('N16', NS, [E("head: Math.atan2(sg * cy, cx), spd:", "head: Math.atan2(cy, cx), spd:")], ['nest'], 'a southern storm\'s heading is not mirrored'),
+  M('N17', NS, [E("      ringInto(vt, rOut, Vo, 2.5, tailOf(Pq));\n", "")], ['nest'], 'an eyewall replacement has only the inner ring'),
+  M('N18', NS, [E("out[j * N + i] = isLand(lat, lon0 + (i - (N - 1) / 2) * 2 / kx) ? 1 : 0;", "out[j * N + i] = isLand(lat, lon0 - (i - (N - 1) / 2) * 2 / kx) ? 1 : 0;")], ['nest'], 'the land under the nest is mirrored east-west'),
+  M('N19', S, [E("const S = cloneSystem(S0); stepSystem(S, env, h, this.seed, this.par, doy, ctx); return S;", "const S = cloneSystem(S0); stepSystem(S, env, h + 1, this.seed, this.par, doy, ctx); return S;")], ['nest'], 'the look-ahead steps the wrong hour'),
+  M('N20', NS, [E("const trA = clamp(f.spd / 8, 0, 1) * 0.45,", "const trA = 0 * clamp(f.spd / 8, 0, 1) * 0.45,")], ['nest'], 'the right-front side of a moving storm gets no extra convergence'),
+  M('F1', FL, [E("if (k === 'Escape') { flClose(); e.stopPropagation(); e.preventDefault(); }", "if (k === 'Escape') { e.stopPropagation(); e.preventDefault(); }")], ['floater'], 'Escape does not close the floater'),
+  M('F2', FL, [E("  advanceHours(1); updateClock();\n  const S = flSystem();", "  updateClock();\n  const S = flSystem();")], ['floater'], 'the engine never moves on at the hour'),
+  M('F3', FL, [E("  }, true);\n  window.addEventListener('keydown'", "  }, false);\n  window.addEventListener('keydown'")], ['floater'], 'the playback buttons keep steering the main clock'),
+  M('F4', FL, [E("makeCanvas(458)", "makeCanvas(462)")], ['floater'], 'the radar is drawn over the storm layers'),
+  M('F5', FL, [E("  setPlaying(flPrevPlay); updateSpeedUI();", "  setPlaying(flPrevPlay);")], ['floater'], 'closing leaves the floater\'s speed label on the main clock'),
+  M('F6', FL, [E("      if (bh >= top + 0.5) { dbz[k] = -20; continue; }", "      if (false) { dbz[k] = -20; continue; }")], ['floater'], 'a radar beam never passes over an echo'),
+  M('F7', FL, [E("function flEligible(S) { return !!S && S.alive && (S.th !== 'wv' || S.dist || S.kind === 'N' || !!S.invest); }", "function flEligible(S) { return !!S && S.alive; }")], ['floater'], 'a plain tropical wave can have a floater'),
+  M('F8', FL, [E("const FL_DT = 120, FL_SPIN = 30,", "const FL_DT = 120, FL_SPIN = 1,")], ['floater'], 'no spin-up: the radar opens on a model with no convection yet'),
+  M('F9', FL, [E("flSpeed = 5, flPlay = true,", "flSpeed = 0, flPlay = true,")], ['floater'], 'the floater opens at a quarter speed'),
+  M('F10', FL, [E("  $('storm-card').hidden = true; $('aoi-card').hidden = true;\n  const f0 = flForcing(S, simHour);", "  const f0 = flForcing(S, simHour);")], ['floater'], 'the storm card stays over the radar'),
+  M('F11', FL, [E("k = Math.max(0, Math.min(1, (n.t - n.tF0 + (flPlay ? flAcc : 0)) / 3600));", "k = 0;")], ['floater'], 'the radar stays where the system was at the hour'),
+  M('F13', FL, [E("vr[k] = (ue * sx + ve * sy) / r * MS; }", "vr[k] = -(ue * sx + ve * sy) / r * MS; }")], ['floater'], 'the Doppler velocity has the wrong sign: winds toward the radar are red'),
+  M('F14', FL, [E("ve = sg * (V[k] + cy);", "ve = V[k] + cy;")], ['floater'], 'the velocity of a southern storm is not mirrored back'),
+  M('F12', FL, [E("lut[i * 4 + 3] = 226;", "lut[i * 4 + 3] = 226; if (i % 2) lut[i * 4] = 255 - lut[i * 4];")], ['floater'], 'every other half dBZ is a colour of its own: a gradient of noise, not steps'),
 ];
 
 /* the page's storm code lives in several files now (the template and the shared src/storm-*.js / storm-ui.* that the build inlines into every basin's page): a mutant written against the
@@ -397,7 +432,7 @@ await page.goto(pathToFileURL(ATLANTIC_DIST).href, { waitUntil: 'load', timeout:
 await page.waitForFunction(() => window.__ready === true, { timeout: 30000 });
 await page.waitForTimeout(800);
 await page.evaluate(() => { window.SSTSIM.storms(false); });
-${which === 'summary' ? "await checkSummary(page, 'Atlantic');" : which === 'place' ? "await checkPlace(page, 'Atlantic');" : which === 'alerts' ? "await checkAlerts(page, 'Atlantic');" : which === 'impacts' ? "await checkImpacts(page, 'Atlantic', 'atlantic');" : "await checkStorms(page, 'Atlantic');"}
+${which === 'summary' ? "await checkSummary(page, 'Atlantic');" : which === 'place' ? "await checkPlace(page, 'Atlantic');" : which === 'alerts' ? "await checkAlerts(page, 'Atlantic');" : which === 'impacts' ? "await checkImpacts(page, 'Atlantic', 'atlantic');" : which === 'floater' ? "await checkFloater(page, 'Atlantic', 'atlantic'); await checkFloaterSite(page, 'Atlantic');" : "await checkStorms(page, 'Atlantic');"}
 check('no page errors (' + errors.length + ')', errors.length === 0);
 await browser.close();
 `;
@@ -411,7 +446,7 @@ function snapshot(id, mutatedIndexHtml) {
   if (!existsSync(join(dir, 'data'))) symlinkSync(join(REPO, 'data'), join(dir, 'data'));
   writeFileSync(join(dir, 'index.html'), mutatedIndexHtml);
   copyFileSync(join(REPO, 'package.json'), join(dir, 'package.json'));
-  for (const f of ['tests/storms.mjs', 'tests/storms_env.mjs', 'src/storm-cities.js']) copyFileSync(join(REPO, f), join(dir, f));
+  for (const f of ['tests/storms.mjs', 'tests/nest.mjs', 'tests/storms_env.mjs', 'src/storm-cities.js']) copyFileSync(join(REPO, f), join(dir, f));
   for (const f of ['template.html', 'template-eastpacific.html', 'template-wpac.html', 'template-nio.html', 'template-aus.html', 'template-swio.html', 'template-spac.html', 'template-satl.html', 'template-med.html']) if (!existsSync(join(dir, 'src', f))) copyFileSync(join(REPO, 'src', f), join(dir, 'src', f));      // (the node tests read the city lists of the nine pages)
   if (!existsSync(join(dir, 'node_modules'))) symlinkSync(join(REPO, 'node_modules'), join(dir, 'node_modules'));
   return dir;
@@ -420,7 +455,8 @@ function snapshot(id, mutatedIndexHtml) {
 function runDriver(dir, name) {            // resolves {name, code, fails[], tail}
   return new Promise((resolve) => {
     let file, argv;
-    if (name === 'node') { file = join(dir, 'tests/storms.mjs'); argv = [file]; copyFileSync(join(dir, 'storms.js.mut'), join(dir, 'src/storms.js')); }
+    if (name === 'nest') { file = join(dir, 'tests/nest.mjs'); argv = [file]; copyFileSync(join(dir, 'storms.js.mut'), join(dir, 'src/storms.js')); copyFileSync(join(dir, 'storm-nest.js.mut'), join(dir, 'src/storm-nest.js')); }
+    else if (name === 'node') { file = join(dir, 'tests/storms.mjs'); argv = [file]; copyFileSync(join(dir, 'storms.js.mut'), join(dir, 'src/storms.js')); }
     else { file = join(dir, `tests/_drv_${name}.mjs`); writeFileSync(file, makeDriver(name)); argv = [file]; if (name === 'gate' || name === 'env' || name === 'look' || name === 'alerts') copyFileSync(join(dir, 'storms.js.mut'), join(dir, 'src/storms.js')); }
     const p = spawn('node', argv, { cwd: dir, env: process.env });
     let out = ''; p.stdout.on('data', (d) => (out += d)); p.stderr.on('data', (d) => (out += d));
@@ -443,7 +479,7 @@ async function runMutant(m, results) {
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------------
-let list = base ? [M('base', S, [], ['node', 'storms', 'summary', 'place', 'save', 'gate', 'env', 'look', 'alerts', 'impacts'], 'unmutated')] : (only ? mutants.filter((m) => only.includes(m.id)) : mutants);
+let list = base ? [M('base', S, [], ['node', 'nest', 'storms', 'summary', 'place', 'save', 'gate', 'env', 'look', 'alerts', 'impacts', 'floater'], 'unmutated')] : (only ? mutants.filter((m) => only.includes(m.id)) : mutants);
 if (drivers) list = list.map((m) => ({ ...m, drivers: m.drivers.filter((d) => drivers.includes(d)) })).filter((m) => m.drivers.length);
 if (dry) { let bad = 0; for (const m of mutants) { try { parses(m.file, applyEdits(readFileSync(join(REPO, m.file), 'utf8'), m.edits, m.id)); } catch (e) { bad++; console.log(m.id + ': ' + e.message); } } console.log(bad ? bad + ' of ' + mutants.length + ' mutants broken (an anchor that is not found exactly once, or a mutated file that does not parse)' : 'all ' + mutants.length + ' anchors found exactly once and every mutated file parses'); process.exit(bad ? 1 : 0); }
 mkdirSync(OUT, { recursive: true });
@@ -455,7 +491,7 @@ for (const m of list) {
     execFileSync('npm', ['run', 'build'], { cwd: REPO, stdio: 'ignore' });
     const idx = readFileSync(join(REPO, 'index.html'), 'utf8');
     const dir = snapshot(m.id, idx);
-    copyFileSync(join(REPO, 'src/storms.js'), join(dir, 'storms.js.mut'));
+    copyFileSync(join(REPO, 'src/storms.js'), join(dir, 'storms.js.mut')); copyFileSync(join(REPO, 'src/storm-nest.js'), join(dir, 'storm-nest.js.mut'));
   } finally { writeFileSync(join(REPO, m.file), orig); }
   const pr = runMutant(m, results).then(() => running.delete(pr)); running.add(pr);
   if (running.size >= jobs) await Promise.race(running);

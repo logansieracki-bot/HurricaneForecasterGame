@@ -37,8 +37,8 @@ body.steer-on #panel{max-height:calc(100% - 606px)}
 #storm-tip div{font-size:11.5px;color:var(--dim);margin-top:3px;line-height:1.5}
 #lg-stack{position:absolute;left:64px;bottom:82px;z-index:900;display:flex;flex-direction:column-reverse;align-items:flex-start;gap:8px;pointer-events:none}
 #lg-stack .card{position:static}
-#ol-legend, #ww-legend, #wf-legend, #fl-legend{width:206px;padding:6px 10px 7px;display:none;font-size:11px;line-height:1.4;pointer-events:none}
-#ol-legend b, #ww-legend b, #wf-legend b, #fl-legend b{font-size:11.5px}
+#ol-legend, #ww-legend, #wf-legend, #fl-legend, #fl-legend-v{width:206px;padding:6px 10px 7px;display:none;font-size:11px;line-height:1.4;pointer-events:none}
+#ol-legend b, #ww-legend b, #wf-legend b, #fl-legend b, #fl-legend-v b{font-size:11.5px}
 #ol-legend i, #ww-legend i, #wf-legend i{width:20px;height:9px}
 #ol-legend b{font-size:12px;font-weight:600;display:block;margin-bottom:3px}
 #ol-legend div{display:flex;align-items:center;gap:8px;color:var(--dim)}
@@ -156,8 +156,17 @@ body.no-waves .st-waves { display: none; }      /* a basin without a wave train 
 #fl-ctl select{background:rgba(255,255,255,.08);color:var(--text);border:1px solid var(--line);border-radius:8px;font:inherit;font-size:12px;padding:3px 6px;max-width:210px}
 #fl-prog{height:4px;border-radius:2px;background:rgba(255,255,255,.12);margin-top:8px;overflow:hidden}
 #fl-prog i{display:block;height:100%;width:0;background:var(--ice)}
-#fl-legend i{display:block;height:9px;margin:5px 0 2px;border-radius:2px;background:linear-gradient(to right,#646464 0%,#04e9e7 7%,#019ff4 14%,#0300f4 21%,#02fd02 28%,#01c501 36%,#008e00 43%,#fdf802 50%,#e5bc00 57%,#fd9500 64%,#fd0000 71%,#d40000 79%,#bc0000 86%,#f800fd 93%,#9854c6 100%)}
+#fl-legend i{display:block;height:9px;margin:5px 0 2px;border-radius:2px;background:linear-gradient(to right,#04e9e7 0 6.67%,#019ff4 0 13.3%,#0300f4 0 20%,#02fd02 0 26.7%,#01c501 0 33.3%,#008e00 0 40%,#fdf802 0 46.7%,#e5bc00 0 53.3%,#fd9500 0 60%,#fd0000 0 66.7%,#d40000 0 73.3%,#bc0000 0 80%,#f800fd 0 86.7%,#9854c6 0 93.3%,#fff 0 100%)}
 #fl-legend span{display:flex;justify-content:space-between;font-size:10px;color:var(--dim)}
 #fl-legend u{text-decoration:none}
 body.fl-on #toast{top:150px}
 body.fl-on #b-restart{opacity:.4;pointer-events:none}
+@media (max-width:640px){
+  #fl-bar{top:8px;width:calc(100% - 20px)}
+  body.fl-on #clock, body.fl-on #season, body.fl-on #legend, body.fl-on #toast{display:none}
+  #fl-ctl select{max-width:150px}
+}
+#fl-legend-v i{display:block;height:9px;margin:5px 0 2px;border-radius:2px;background:linear-gradient(to right,#00cc66 0 7%,#00e676 0 14%,#4cff8a 0 21%,#8cf0a8 0 29%,#b8e8c4 0 36%,#d4e4d8 0 43%,#ccc 0 50%,#e8d4d4 0 57%,#f2b8b8 0 64%,#f28c8c 0 71%,#f55a5a 0 79%,#f02020 0 86%,#c00000 0 93%,#800000 0 100%)}
+#fl-legend-v span{display:flex;justify-content:space-between;font-size:10px;color:var(--dim)}
+#fl-legend-v u{text-decoration:none}
+#fl-legend-v small{font-weight:400;color:var(--dim);font-size:10px}

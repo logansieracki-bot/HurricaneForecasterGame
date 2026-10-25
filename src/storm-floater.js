@@ -4,22 +4,28 @@
    state now and a look-ahead copy stepped one hour on, Manager.peek), at speeds from real time to 20 minutes per second, and when it reaches the next hour the engine really advances
    one hour and the floater goes on from there. The picture is a map-registered canvas under the storm canvas, so the storm layers (past path and position, cone, ensembles, wind fields) stay on top of it.
    The radar is either a composite (every echo of the nest) or a site: a city's radar with the beam's height and width, range rings, the echoes that pass under or over the beam.                              */
-const FL_SPEEDS = [1, 2, 5, 10, 30, 60, 120, 300, 600, 1200], FL_NAMES = ['real time', '2×', '5×', '10×', '30×', '1 min every second', '2 min every second', '5 min every second', '10 min every second', '20 min every second'];
+const FL_SPEEDS = [0.25, 0.5, 1, 2, 5, 10, 30, 60, 120, 300, 600, 1200], FL_NAMES = ['quarter speed', 'half speed', 'real time', '2× real time', '5× real time', '10× real time', '30× real time', '1 min every second', '2 min every second', '5 min every second', '10 min every second', '20 min every second'];
 const FL_DT = 120, FL_SPIN = 30, FL_MAXKM = 460;
-let flOn = false, flRenderAt = 0, flSstOpacity = '', flId = null, flNest = null, flSpeed = 3, flPlay = true, flPrevPlay = true, flSpinN = 0, flAcc = 0, flLast = 0, flSite = null, flTilt = 0.5, flLandStep = -99, flCanvas = null, flOff = null, flRaf = 0, flGone = false, flTextAt = 0, flDirty = true, flF1 = null, flSites = [], flDbz = null, flTop = null, flImg = null, flColAt = null;
+let flProd = 'z', flVr = null, flVTex = null, flOn = false, flRenderAt = 0, flSstOpacity = '', flId = null, flNest = null, flSpeed = 5, flPlay = true, flPrevPlay = true, flSpinN = 0, flAcc = 0, flLast = 0, flSite = null, flTilt = 0.5, flLandStep = -99, flCanvas = null, flOff = null, flRaf = 0, flGone = false, flTextAt = 0, flDirty = true, flF1 = null, flSites = [], flDbz = null, flTop = null, flImg = null, flColAt = null;
 const flKmDeg = 111.195;
 
-const FL_STOPS = [[5, 100, 100, 100], [10, 4, 233, 231], [15, 1, 159, 244], [20, 3, 0, 244], [25, 2, 253, 2], [30, 1, 197, 1], [35, 0, 142, 0], [40, 253, 248, 2], [45, 229, 188, 0], [50, 253, 149, 0], [55, 253, 0, 0], [60, 212, 0, 0], [65, 188, 0, 0], [70, 248, 0, 253], [75, 152, 84, 198], [80, 255, 255, 255]];
-const FL_LUT = (() => {                                                           // the NWS reflectivity colours, one entry per half dBZ (0 .. 80): [r, g, b, alpha]
+const FL_BANDS = ['04e9e7', '019ff4', '0300f4', '02fd02', '01c501', '008e00', 'fdf802', 'e5bc00', 'fd9500', 'fd0000', 'd40000', 'bc0000', 'f800fd', '9854c6', 'ffffff'];       // the National Weather Service's base reflectivity colours, one band per 5 dBZ from 5 up (a radar's picture is in steps, with crisp edges between them, not a gradient)
+const FL_LUT = (() => {                                                           // one entry per half dBZ (0 .. 80): [r, g, b, alpha]
   const lut = new Uint8ClampedArray(161 * 4);
   for (let i = 0; i <= 160; i++) {
-    const d = i / 2; let r = 0, g = 0, b = 0;
-    if (d >= FL_STOPS[0][0]) { let k = 1; while (k < FL_STOPS.length - 1 && d > FL_STOPS[k][0]) k++; const a = FL_STOPS[k - 1], c = FL_STOPS[k], t = Math.min(1, Math.max(0, (d - a[0]) / (c[0] - a[0]))); r = a[1] + (c[1] - a[1]) * t; g = a[2] + (c[2] - a[2]) * t; b = a[3] + (c[3] - a[3]) * t; }
-    lut[i * 4] = r; lut[i * 4 + 1] = g; lut[i * 4 + 2] = b; lut[i * 4 + 3] = d < 6 ? 0 : Math.min(235, 235 * Math.min(1, (d - 6) / 10));
+    const d = i / 2; if (d < 5) continue;
+    const c = FL_BANDS[Math.min(FL_BANDS.length - 1, Math.floor((d - 5) / 5))];
+    lut[i * 4] = parseInt(c.slice(0, 2), 16); lut[i * 4 + 1] = parseInt(c.slice(2, 4), 16); lut[i * 4 + 2] = parseInt(c.slice(4, 6), 16); lut[i * 4 + 3] = 226;
   }
   return lut;
 })();
 
+const FL_VEL = [[-64, '00cc66'], [-50, '00e676'], [-36, '4cff8a'], [-26, '8cf0a8'], [-16, 'b8e8c4'], [-8, 'd4e4d8'], [-2, 'cccccc'], [2, 'e8d4d4'], [8, 'f2b8b8'], [16, 'f28c8c'], [26, 'f55a5a'], [36, 'f02020'], [50, 'c00000'], [64, '800000']];      // the Doppler velocity colours (kt): green for winds toward the radar, red away from it, grey for none
+const FL_VLUT = (() => {                                                          // one entry per kt from -80 to 80 (index v + 80): ABGR
+  const a = new Uint32Array(161), c = new Uint8ClampedArray(3);
+  for (let i = 0; i <= 160; i++) { const v = i - 80; let k = 0; while (k < FL_VEL.length - 1 && v >= FL_VEL[k + 1][0]) k++; const h = FL_VEL[k][1]; a[i] = (226 << 24) | (parseInt(h.slice(4, 6), 16) << 16) | (parseInt(h.slice(2, 4), 16) << 8) | parseInt(h.slice(0, 2), 16); }
+  return a;
+})();
 function flEligible(S) { return !!S && S.alive && (S.th !== 'wv' || S.dist || S.kind === 'N' || !!S.invest); }          // a disturbance or more: anything but a plain tropical wave
 function flSystem() { return flId && stormMgr ? stormMgr.get(flId) : null; }
 function flSeed(S) { return (HFStorms.hash5(stormMgr.seed, S.num, 17, 3, 1) >>> 0) || 1; }
@@ -38,6 +44,11 @@ function flStepHour() {                                                         
   flNest.setForcing(f0, null); flF1 = flLook(); flNest.setForcing(f0, flF1 || f0);
   stormsDirty = true;
 }
+function flLegend() { const v = flProd === 'v' && flSite; $('fl-legend').style.display = flOn && !v ? 'block' : 'none'; $('fl-legend-v').style.display = flOn && v ? 'block' : 'none'; }
+function flEnvUpdate() {                                                         // the weather round the storm (sea temperature, humidity, shear on a 16-km grid of the nest's square) from the page's own fields: a dry, cold or sheared side makes the storm lopsided
+  const f = flNest.cur || flNest.f0; flEnvBuf = HFNest.envGridOf(stormEnv, f.clat, f.clon, f.sg, f, flEnvBuf); flNest.setEnv(flEnvBuf, f);
+}
+let flEnvBuf = null;
 function flLandUpdate() {                                                        // the land under the nest (it moves with the storm), from the page's own land test
   const f = flNest.cur || flNest.f0, lf = flLf || (flLf = new Float32Array(HFNest.N * HFNest.N));
   HFNest.landGrid(f.clat, f.clon, typeof stormLand === 'function' ? stormLand : isLand, lf);
@@ -51,15 +62,15 @@ function flOpen(id) {
   const S = stormMgr.get(id); if (!flEligible(S)) return false;
   if (flOn) flClose();
   flOn = true; flId = id; flGone = false; flSpinN = 0; flAcc = 0; flSite = null; flLandStep = -99; flPrevPlay = playing; setPlaying(false);
-  if (!olSel && !(stormSel && stormSel.id === id)) { plainSel = null; stormSel = { id, h: -1 }; }       // (the system alone, with its path and its place)
+  if (!olSel) { plainSel = null; stormSel = { id, h: -1 }; }                                        // (the system alone, with its path and its place)
   $('storm-card').hidden = true; $('aoi-card').hidden = true;
   const f0 = flForcing(S, simHour);
-  flNest = HFNest.create({ seed: flSeed(S) }); flNest.init(f0); flF1 = null;
+  flNest = HFNest.create({ seed: flSeed(S) }); flNest.init(f0); flEnvUpdate(); flF1 = null;
   flCanvas = flCanvas || (() => { const c = makeCanvas(458); c.id = 'radar-canvas'; return c; })();
   flCanvas.style.display = ''; document.body.classList.add('fl-on'); flSstOpacity = sstCanvas.style.opacity; sstCanvas.style.opacity = '0.28';       // (the sea-temperature picture fades back so the echoes read)
-   $('fl-bar').hidden = false; $('fl-legend').style.display = 'block';
+   $('fl-bar').hidden = false; flLegend();
   flSites = flSiteList(f0); const sel = $('fl-site'); sel.innerHTML = '<option value="">Composite (every echo)</option>' + flSites.map((c, i) => '<option value="' + i + '">' + c.name + ' · ' + Math.round(c.d) + ' km</option>').join(''); sel.value = '';
-  $('fl-tilt-l').style.display = 'none'; $('fl-prog').style.display = ''; $('fl-name').textContent = (S.name || stormTitle(S, HFStorms.makeFix(S, stormMgr.hour, S.ace))) + ' · radar'; flSetPlayUI(); flSpeedUI();
+  $('fl-tilt-l').style.display = 'none'; $('fl-prod-l').style.display = 'none'; flProd = 'z'; $('fl-prod').value = 'z'; $('fl-prog').style.display = ''; $('fl-name').textContent = (S.name || stormTitle(S, HFStorms.makeFix(S, stormMgr.hour, S.ace))) + ' · radar'; flSetPlayUI(); flSpeedUI();
   flFrameMap(f0); flText(true); flDirty = true;
   flLast = performance.now(); cancelAnimationFrame(flRaf); flRaf = requestAnimationFrame(flLoop);
   return true;
@@ -68,7 +79,7 @@ function flClose() {
   if (!flOn) return;
   flOn = false; cancelAnimationFrame(flRaf); flId = null; flNest = null;
   if (flCanvas) { flCanvas.style.display = 'none'; const g = flCanvas.getContext('2d'); g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, flCanvas.width, flCanvas.height); }
-  document.body.classList.remove('fl-on'); sstCanvas.style.opacity = flSstOpacity; $('fl-bar').hidden = true; $('fl-legend').style.display = 'none';
+  document.body.classList.remove('fl-on'); sstCanvas.style.opacity = flSstOpacity; $('fl-bar').hidden = true; $('fl-legend').style.display = 'none'; $('fl-legend-v').style.display = 'none';
   setPlaying(flPrevPlay); updateSpeedUI(); if (stormSel) { lastStormCardAt = 0; fillStormCard(); } if (olSel) { lastAoiCardAt = 0; fillAoiCard(); } stormsDirty = true; drawStorms();
 }
 function flFrameMap(f) {                                                         // the map to the nest's 512 km square, with a little room
@@ -84,8 +95,9 @@ function flSiteList(f) {                                                        
 
 /* ---- the clock ------------------------------------------------------------------------------------------------------------------------------------------------------------------- */
 function flSpeedUI() {
-  $('speed-x').textContent = FL_SPEEDS[flSpeed] >= 60 ? FL_SPEEDS[flSpeed] / 60 + ' min/s' : FL_SPEEDS[flSpeed] === 1 ? '1×' : FL_SPEEDS[flSpeed] + '×';
-  $('speed-sub').textContent = FL_SPEEDS[flSpeed] === 1 ? 'real time' : FL_NAMES[flSpeed].replace('×', '× real time');
+  const v = FL_SPEEDS[flSpeed];
+  $('speed-x').textContent = v >= 60 ? v / 60 + ' min/s' : v === 0.25 ? '¼×' : v === 0.5 ? '½×' : v + '×';
+  $('speed-sub').textContent = FL_NAMES[flSpeed];
   $('b-slower').disabled = flSpeed === 0; $('b-faster').disabled = flSpeed === FL_SPEEDS.length - 1;
 }
 function flSetPlayUI() { $('ic-pause').style.display = flPlay ? '' : 'none'; $('ic-play').style.display = flPlay ? 'none' : ''; $('b-play').setAttribute('aria-label', flPlay ? 'Pause' : 'Play'); }
@@ -96,12 +108,12 @@ function flText(force) {
   const d = simDate(simHour), min = flMinutes(), t = new Date(d.getTime() + min * 60000);
   $('fl-time').textContent = String(t.getUTCHours()).padStart(2, '0') + ':' + String(t.getUTCMinutes()).padStart(2, '0') + ' UTC · ' + MON[t.getUTCMonth()] + ' ' + t.getUTCDate();
   const kt = Math.round(f.vmax / 0.514444), spin = flSpinN < FL_SPIN;
-  $('fl-sub').textContent = flGone ? 'The system has dissipated' : spin ? 'Spinning up the convection…' : (S && S.th === 'wv' ? 'Disturbance' : S ? stormKindName(S, HFStorms.makeFix(S, stormMgr.hour, S.ace)) : '') + (S && S.th !== 'wv' ? ' · mean wind ' + HFStorms.ktToMph(kt) + ' mph' : '') + ' · radar tilt ' + (flSite ? flTilt + '°' : 'composite');
+  $('fl-sub').textContent = flGone ? 'The system has dissipated' : spin ? 'Spinning up the convection…' : (S && S.th === 'wv' ? 'Disturbance' : S ? stormKindName(S, HFStorms.makeFix(S, stormMgr.hour, S.ace)) : '') + (S && S.th !== 'wv' ? ' · mean wind ' + HFStorms.ktToMph(kt) + ' mph' : '') + ' · ' + (flSite ? (flProd === 'v' ? 'velocity' : 'reflectivity') + ', tilt ' + flTilt + '°' : 'composite reflectivity');
   $('fl-prog').style.display = spin ? '' : 'none'; $('fl-prog').firstElementChild.style.width = Math.round(100 * flSpinN / FL_SPIN) + '%';
 }
 function flSpin(budget) {                                                       // spin-up: the convection settles in over two hours of the system's life, a few steps at a time
   const nest = flNest, t0 = performance.now();
-  while (flSpinN < FL_SPIN && performance.now() - t0 < budget) { nest.step(2 * FL_DT); flSpinN++; if (flSpinN % 3 === 0) flLandUpdate(); }
+  while (flSpinN < FL_SPIN && performance.now() - t0 < budget) { nest.step(2 * FL_DT); flSpinN++; if (flSpinN % 3 === 0) flLandUpdate(); if (flSpinN % 5 === 0) flEnvUpdate(); }
   if (flSpinN >= FL_SPIN) { nest.setForcing(nest.f0, null); flF1 = flLook(); nest.setForcing(nest.f0, flF1 || nest.f0); flAcc = 0; flText(true); }
   flDirty = true;
 }
@@ -111,6 +123,7 @@ function flWork(sec, budget) {                                                  
   while (flAcc >= FL_DT && performance.now() - t0 < budget) {
     nest.step(FL_DT); flAcc -= FL_DT; n++;
     if ((nest.steps % 3) === 0) flLandUpdate();
+    if ((nest.steps % 5) === 0) flEnvUpdate();
     if (nest.t - nest.tF0 >= 3600 - 1e-6) { flStepHour(); if (flGone) break; }
   }
   if (flAcc > 4 * FL_DT) flAcc = 4 * FL_DT;                                     // (the machine cannot keep the speed: the clock runs as fast as it can)
@@ -134,50 +147,89 @@ function flPos(S) {                                                             
 
 /* ---- the picture ----------------------------------------------------------------------------------------------------------------------------------------------------------------- */
 function flBeam(range, tiltDeg) { const th = tiltDeg * Math.PI / 180; return range * Math.sin(th) + range * range / (2 * 8495); }      // the height (km) of the middle of the beam at a distance (4/3 earth radius)
+const FL_CR = (t) => [-0.5 * t * t * t + t * t - 0.5 * t, 1.5 * t * t * t - 2.5 * t * t + 1, -1.5 * t * t * t + 2 * t * t + 0.5 * t, 0.5 * t * t * t - 0.5 * t * t];      // Catmull-Rom weights (a sharper reconstruction than a linear one)
+const FL_LUT32 = (() => { const a = new Uint32Array(161), b = new Uint8Array(FL_LUT.buffer.slice(0)); for (let i = 0; i <= 160; i++) a[i] = (b[i * 4 + 3] << 24) | (b[i * 4 + 2] << 16) | (b[i * 4 + 1] << 8) | b[i * 4]; return a; })();      // (little-endian ABGR, one store a pixel)
+/* the dBZ field of the cells i0..i1, j0..j1 made U times finer with a bicubic reconstruction kept between the two samples it lies between (sharp, no ripple), north at the top: the picture is made at the screen's own
+   sharpness, not stretched. Returns the texture's size */
+function flTexture(dbz, U, sg, i0, i1, j0, j1, out) {
+  const N = HFNest.N, W0 = i1 - i0 + 1, H0 = j1 - j0 + 1, MW = W0 * U, MH = H0 * U, jlo = Math.max(0, j0 - 1), jhi = Math.min(N - 1, j1 + 2), rows = jhi - jlo + 1;
+  const tmp = flTmp && flTmp.length >= rows * MW ? flTmp : (flTmp = new Float32Array(rows * MW));
+  const wts = []; for (let u = 0; u < U; u++) wts.push(FL_CR((u + 0.5) / U));
+  for (let j = jlo; j <= jhi; j++) {                                              // along x
+    const o = j * N, r = (j - jlo) * MW;
+    for (let ii = 0; ii < W0; ii++) { const i = i0 + ii, a = dbz[o + Math.max(0, i - 1)], b = dbz[o + i], c = dbz[o + Math.min(N - 1, i + 1)], d = dbz[o + Math.min(N - 1, i + 2)], lo = b < c ? b : c, hi = b < c ? c : b;
+      for (let u = 0; u < U; u++) { const w = wts[u], v = a * w[0] + b * w[1] + c * w[2] + d * w[3]; tmp[r + ii * U + u] = v < lo ? lo : v > hi ? hi : v; } }
+  }
+  for (let ty = 0; ty < MH; ty++) {                                               // along y: texture row ty is north-up (the nest's rows run north, or south in the southern hemisphere's mirror)
+    const cj = sg > 0 ? j1 + 1 - (ty + 0.5) / U : j0 + (ty + 0.5) / U, gj = cj - 0.5, jf = Math.floor(gj), w = FL_CR(gj - jf), cl = (q) => (Math.max(jlo, Math.min(jhi, q)) - jlo) * MW, r0 = cl(jf - 1), r1 = cl(jf), r2 = cl(jf + 1), r3 = cl(jf + 2), o = ty * MW;
+    for (let x = 0; x < MW; x++) { const b = tmp[r1 + x], c = tmp[r2 + x], v = tmp[r0 + x] * w[0] + b * w[1] + c * w[2] + tmp[r3 + x] * w[3], lo = b < c ? b : c, hi = b < c ? c : b; out[o + x] = v < lo ? lo : v > hi ? hi : v; }
+  }
+  return { w: MW, h: MH };
+}
+let flProf = [0, 0, 0, 0], flTmp = null, flTex = null, flTexC = null, flTexImg = null, flRng = null, flRngAt = null;
 function flRender() {
   if (!flOn || !flNest || !flNest.cur || !flCanvas) return;
   const c = flCanvas; if (c.width !== Math.round(W * DPR) || c.height !== Math.round(H * DPR)) { c.width = Math.round(W * DPR); c.height = Math.round(H * DPR); }
   const g = c.getContext('2d'); g.setTransform(DPR, 0, 0, DPR, 0, 0); g.clearRect(0, 0, W, H);
-  const nest = flNest, f = nest.cur, N = HFNest.N, NN = N * N, sg = f.sg || 1;
-  nest.display(flPlay ? flAcc / FL_DT : 0);
-  const rc = nest.drc, rs = nest.drs, dbz = flDbz || (flDbz = new Float32Array(NN)), top = flTop || (flTop = new Float32Array(NN));
-  const pos = flPos(flSystem() || { id: '' }) || { lat: f.clat, lon: f.clon }, lat0 = pos.lat, lon0 = pos.lon, site = flSite;
-  for (let k = 0; k < NN; k++) { const a = rc[k], b = rs[k]; dbz[k] = HFNest.dbzOf(a, b); if (site) top[k] = a > 0.2 || b > 0.2 ? Math.min(16, 3.2 + 2.3 * Math.log(1 + a / 3) + 1.4 * Math.log(1 + b / 1.5)) : 0; }
-  const st = W * H > 520000 ? 3 : 2, w = Math.ceil(W / st), h = Math.ceil(H / st);
-  if (!flOff) flOff = document.createElement('canvas'); if (flOff.width !== w || flOff.height !== h) { flOff.width = w; flOff.height = h; flImg = null; }
-  const og = flOff.getContext('2d'), img = flImg || (flImg = og.createImageData(w, h)), px = img.data; px.fill(0);
-  const lat = new Float64Array(h), lon = new Float64Array(w);
-  for (let y = 0; y < h; y++) lat[y] = map.containerPointToLatLng([w > 0 ? 0 : 0, y * st + st / 2]).lat;
-  for (let x = 0; x < w; x++) lon[x] = map.containerPointToLatLng([x * st + st / 2, 0]).lng;
-  const sLat = site ? site.lat : 0, sLon = site ? site.lon : 0, tilt = flTilt;
-  for (let y = 0; y < h; y++) {
-    const la = lat[y], dy = (la - lat0) * flKmDeg, cl = Math.cos(la * Math.PI / 180), gj = sg > 0 ? dy / 2 + (N - 1) / 2 : (N - 1) / 2 - dy / 2;
-    if (gj < 0 || gj > N - 1.001) continue;
-    const j0 = Math.floor(gj), fy = gj - j0, sdy = site ? (la - sLat) * flKmDeg : 0;
-    for (let x = 0; x < w; x++) {
-      let dl = lon[x] - lon0; if (dl > 180) dl -= 360; else if (dl < -180) dl += 360;
-      const gi = dl * flKmDeg * cl / 2 + (N - 1) / 2; if (gi < 0 || gi > N - 1.001) continue;
-      const i0 = Math.floor(gi), fx = gi - i0, k0 = j0 * N + i0, w00 = (1 - fx) * (1 - fy), w10 = fx * (1 - fy), w01 = (1 - fx) * fy, w11 = fx * fy;
-      let d = dbz[k0] * w00 + dbz[k0 + 1] * w10 + dbz[k0 + N] * w01 + dbz[k0 + N + 1] * w11;
-      if (site) {
-        let dls = lon[x] - sLon; if (dls > 180) dls -= 360; else if (dls < -180) dls += 360;
-        const r = Math.hypot(dls * flKmDeg * cl, sdy);
-        if (r > FL_MAXKM) continue;
-        const bh = flBeam(r, tilt), tp = top[k0] * w00 + top[k0 + 1] * w10 + top[k0 + N] * w01 + top[k0 + N + 1] * w11;
-        if (bh >= tp + 0.5) continue;                                                    // the beam passes over the echo
-        d -= 5.5 * Math.max(0, bh - 3.5) + (bh > tp - 1.5 ? 6 * (bh - (tp - 1.5)) / 2 : 0);          // above the melting layer and near the top the echo is weaker
-        d -= 1.2 * Math.max(0, r - 100) / 100;                                          // (the beam fills less of a small echo with range)
-      }
-      if (d < 6) continue;
-      const li = Math.min(160, Math.round(d * 2)) * 4, o = (y * w + x) * 4;
-      px[o] = FL_LUT[li]; px[o + 1] = FL_LUT[li + 1]; px[o + 2] = FL_LUT[li + 2]; px[o + 3] = FL_LUT[li + 3];
+  const nest = flNest, f = nest.cur, N = HFNest.N, NN = N * N, sg = f.sg || 1, site = flSite;
+  const tp0 = performance.now(); nest.display(flPlay ? flAcc / FL_DT : 0);
+  const rc = nest.drc, rs = nest.drs, dbz = flDbz || (flDbz = new Float32Array(NN));
+  const pos = flPos(flSystem() || { id: '' }) || { lat: f.clat, lon: f.clon }, lat0 = pos.lat, lon0 = pos.lon, cos0 = Math.cos(lat0 * Math.PI / 180);
+  let i0 = N, i1 = -1, j0 = N, j1 = -1;
+  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) { const k = j * N + i, a = rc[k], b = rs[k]; if (a < 0.01 && b < 0.01) { dbz[k] = -20; continue; } const d = HFNest.dbzOf(a, b); dbz[k] = d; if (d >= 5) { if (i < i0) i0 = i; if (i > i1) i1 = i; if (j < j0) j0 = j; if (j > j1) j1 = j; } }
+  if (site) {                                                                    // what a site's beam sees: its range, the height of the beam over every cell against the top of the echo, a weaker echo high and near the top, the beam fills less of a small echo far away
+    const rng = flRng || (flRng = new Float32Array(NN)), key = site.name + '|' + lat0.toFixed(2) + '|' + lon0.toFixed(2);
+    if (key !== flRngAt) { flRngAt = key; for (let j = 0; j < N; j++) { const dy = (sg > 0 ? j - (N - 1) / 2 : (N - 1) / 2 - j) * 2, la = lat0 + dy / flKmDeg, sy = (la - site.lat) * flKmDeg, ck = Math.cos(la * Math.PI / 180); for (let i = 0; i < N; i++) { let dl = lon0 + (i - (N - 1) / 2) * 2 / (flKmDeg * ck) - site.lon; if (dl > 180) dl -= 360; else if (dl < -180) dl += 360; rng[j * N + i] = Math.hypot(dl * flKmDeg * ck, sy); } } }
+    const tilt = flTilt;
+    for (let k = 0; k < NN; k++) {
+      let d = dbz[k]; if (d < 5) continue; const r = rng[k];
+      if (r > FL_MAXKM) { dbz[k] = -20; continue; }
+      const a = rc[k], b = rs[k], top = Math.min(16, 3.2 + 2.3 * Math.log(1 + a / 3) + 1.4 * Math.log(1 + b / 1.5)), bh = flBeam(r, tilt);
+      if (bh >= top + 0.5) { dbz[k] = -20; continue; }                                   // the beam passes over the echo
+      d -= 5.5 * Math.max(0, bh - 3.5) + (bh > top - 1.5 ? 3 * (bh - (top - 1.5)) : 0) + 1.2 * Math.max(0, r - 100) / 100;
+      dbz[k] = d;
     }
   }
-  og.putImageData(img, 0, 0);
-  g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high'; g.drawImage(flOff, 0, 0, w * st, h * st);
+  const vel = site && flProd === 'v';
+  if (vel) {                                                                     // the wind along the beam (toward the radar negative): the nest's low-level wind plus the storm's own motion, ground relative
+    const vr = flVr || (flVr = new Float32Array(NN)), U = nest.U, V = nest.V, rng = flRng, sp = f.spd || 0, cx = sp * Math.cos(f.head), cy = sp * Math.sin(f.head), MS = 1.943844;
+    for (let j = 0; j < N; j++) { const dy = (sg > 0 ? j - (N - 1) / 2 : (N - 1) / 2 - j) * 2, la = lat0 + dy / flKmDeg, sy = (la - site.lat) * flKmDeg, ck = Math.cos(la * Math.PI / 180);
+      for (let i = 0; i < N; i++) { const k = j * N + i; let dl = lon0 + (i - (N - 1) / 2) * 2 / (flKmDeg * ck) - site.lon; if (dl > 180) dl -= 360; else if (dl < -180) dl += 360;
+        const sx = dl * flKmDeg * ck, r = rng[k] || 1, ue = U[k] + cx, ve = sg * (V[k] + cy); vr[k] = (ue * sx + ve * sy) / r * MS; } }
+  }
+  const tp1 = performance.now();
+  const pxKm0 = (() => { const a = map.latLngToContainerPoint([lat0, lon0]), b = map.latLngToContainerPoint([lat0 + 10 / flKmDeg, lon0]); return Math.abs(a.y - b.y) / 10; })();
+  if (i1 >= 0) {
+    i0 = Math.max(0, i0 - 1); j0 = Math.max(0, j0 - 1); i1 = Math.min(N - 1, i1 + 1); j1 = Math.min(N - 1, j1 + 1);
+    const U = Math.max(2, Math.min(4, Math.ceil(pxKm0 * 2 * DPR / 2.2))), W0 = i1 - i0 + 1, H0 = j1 - j0 + 1, MW = W0 * U, MH = H0 * U;
+    if (!flTex || flTex.length < MW * MH) flTex = new Float32Array(MW * MH);
+    flTexture(dbz, U, sg, i0, i1, j0, j1, flTex); const tp2 = performance.now();
+    if (vel) { if (!flVTex || flVTex.length < MW * MH) flVTex = new Float32Array(MW * MH); flTexture(flVr, U, sg, i0, i1, j0, j1, flVTex); }
+    if (!flTexC) flTexC = document.createElement('canvas');
+    if (flTexC.width !== MW || flTexC.height !== MH) { flTexC.width = MW; flTexC.height = MH; flTexImg = flTexC.getContext('2d').createImageData(MW, MH); }
+    { const px = new Uint32Array(flTexImg.data.buffer), n = MW * MH;
+      if (vel) for (let k = 0; k < n; k++) { const d = flTex[k]; if (d < 5) { px[k] = 0; continue; } const v = flVTex[k]; px[k] = FL_VLUT[v <= -80 ? 0 : v >= 80 ? 160 : (v + 80.5) | 0]; }
+      else for (let k = 0; k < n; k++) { const d = flTex[k]; px[k] = d < 5 ? 0 : FL_LUT32[d >= 80 ? 160 : (d * 2 + 0.5) | 0]; }
+      flTexC.getContext('2d').putImageData(flTexImg, 0, 0); }
+    const tp3 = performance.now();
+    g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
+    // laid on the map in strips of rows (the map's projection stretches east-west by the cosine of the latitude, row by row)
+    const sh = 8, yTop = map.latLngToContainerPoint([lat0 + (sg > 0 ? (j1 + 1 - 128) : (128 - j0)) * 2 / flKmDeg, lon0]).y, yBot = map.latLngToContainerPoint([lat0 + (sg > 0 ? (j0 - 128) : (128 - j1 - 1)) * 2 / flKmDeg, lon0]).y;
+    const yA = Math.max(0, Math.floor(Math.min(yTop, yBot))), yB = Math.min(H, Math.ceil(Math.max(yTop, yBot)));
+    for (let y0 = yA; y0 < yB; y0 += sh) {
+      const y1 = Math.min(yB, y0 + sh), la0 = map.containerPointToLatLng([0, y0]).lat, la1 = map.containerPointToLatLng([0, y1]).lat, lac = (la0 + la1) / 2, ck = Math.cos(lac * Math.PI / 180);
+      const cj = (la) => { const yk = (la - lat0) * flKmDeg; return sg > 0 ? yk / 2 + 128 : 128 - yk / 2; };       // the nest's continuous row of a latitude
+      const t0 = sg > 0 ? (j1 + 1 - cj(la0)) * U : (cj(la0) - j0) * U, t1 = sg > 0 ? (j1 + 1 - cj(la1)) * U : (cj(la1) - j0) * U;       // the texture rows of the strip (north at the top: they grow down the screen)
+      const sy0 = Math.max(0, t0), sy1 = Math.min(MH, t1); if (sy1 - sy0 < 0.01) continue;
+      const dy0 = y0 + (sy0 - t0) / (t1 - t0) * (y1 - y0), dy1 = y0 + (sy1 - t0) / (t1 - t0) * (y1 - y0);
+      const xl = map.latLngToContainerPoint([lac, lon0 + (i0 - 128) * 2 / (flKmDeg * ck)]).x, xr = map.latLngToContainerPoint([lac, lon0 + (i1 + 1 - 128) * 2 / (flKmDeg * ck)]).x;
+      g.drawImage(flTexC, 0, sy0, MW, sy1 - sy0, xl, dy0, xr - xl, dy1 - dy0);
+    }
+    flProf = [tp1 - tp0, tp2 - tp1, tp3 - tp2, performance.now() - tp3];
+  }
   // the frame of the nest, and the site's rings
   const toPx = (la, lo) => map.latLngToContainerPoint([la, lo]);
-  { const a = toPx(lat0 - 256 / flKmDeg, lon0 - 256 / (flKmDeg * Math.cos(lat0 * Math.PI / 180))), b = toPx(lat0 + 256 / flKmDeg, lon0 + 256 / (flKmDeg * Math.cos(lat0 * Math.PI / 180)));
+  { const a = toPx(lat0 - 256 / flKmDeg, lon0 - 256 / (flKmDeg * cos0)), b = toPx(lat0 + 256 / flKmDeg, lon0 + 256 / (flKmDeg * cos0));
     g.save(); g.setLineDash([6, 6]); g.lineWidth = 1.2; g.strokeStyle = 'rgba(255,255,255,.35)'; g.strokeRect(Math.min(a.x, b.x), Math.min(a.y, b.y), Math.abs(b.x - a.x), Math.abs(b.y - a.y)); g.restore(); }
   if (site) {
     const p = toPx(site.lat, site.lon), q = toPx(site.lat + 100 / flKmDeg, site.lon), pxKm = Math.abs(q.y - p.y) / 100;
@@ -208,8 +260,9 @@ function flBind() {
     else if (k === ']') { if (flSpeed < FL_SPEEDS.length - 1) { flSpeed++; flSpeedUI(); } e.stopPropagation(); e.preventDefault(); }
   }, true);
   $('fl-close').onclick = flClose;
-  $('fl-site').onchange = () => { const v = $('fl-site').value; flSite = v === '' ? null : flSites[+v]; $('fl-tilt-l').style.display = flSite ? '' : 'none'; flDirty = true; flText(true); };
+  $('fl-site').onchange = () => { const v = $('fl-site').value; flSite = v === '' ? null : flSites[+v]; $('fl-tilt-l').style.display = flSite ? '' : 'none'; $('fl-prod-l').style.display = flSite ? '' : 'none'; if (!flSite) { flProd = 'z'; $('fl-prod').value = 'z'; } flLegend(); flDirty = true; flText(true); };
   $('fl-tilt').onchange = () => { flTilt = parseFloat($('fl-tilt').value); flDirty = true; flText(true); };
+  $('fl-prod').onchange = () => { flProd = $('fl-prod').value; flLegend(); flDirty = true; flText(true); };
   const radar = (S) => { if (S && flEligible(S)) flOpen(S.id); };
   $('sc-radar').onclick = () => { if (stormSel) radar(stormMgr.get(stormSel.id)); };
   $('ac-radar').onclick = () => { const OL = outlookNow(), a = OL && olSel && OL.areas.find((q) => q.key === olSel.key); radar(a ? olSystem(a) : null); };

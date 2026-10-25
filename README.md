@@ -63,8 +63,12 @@ nothing to run by hand.
 - `src/storms.js` the storm engine (waves, tropical / subtropical / extratropical cyclones, lows,
   names, ACE): pure JS with no DOM, inlined into the pages through `/*__STORMS__*/` and loaded as-is by
   its node tests.
+- `src/storm-nest.js` the 2-km storm-scale nest behind the **radar floater** (a moist-convective vorticity model on a 256 x 256 grid of 2 km cells, the
+  radar operator, the forcing of a system from the engine, the land and environment grids): pure JS with no DOM, inlined after the engine through
+  `/*__STORMS__*/` and loaded as-is by `tests/nest.mjs`. `src/storm-floater.js` is the floater's page half (its clock, the picture, the radar sites and products), inlined in front of the hooks.
 - `tools/build.mjs` the build script.
-- `tests/run.mjs` the browser test suite; `tests/storms.mjs` the node-only storm-engine tests (run first by
+- `tests/nest.mjs` the nest's node tests (physics, the radar operator, the weather on a storm's sides, the engine's forcing and look-ahead; run by `npm test` after the engine's);
+  `tests/run.mjs` the browser test suite; `tests/storms.mjs` the node-only storm-engine tests (run first by
   `npm test`; they need no build and no browser) with synthetic environments in `tests/storms_env.mjs`.
 - `docs/roadmap.md` what's next, basin by basin. `docs/storms-plan.md` is the approved design of the storm system (tropical
   waves, lows, cyclones, names, ACE, season stats, save/resume).
@@ -457,7 +461,26 @@ check that Satellite still resolves to something usable.
   0.03) high; category 5 storms 0.37 a season (0.47) and ACE 12 % above the real normal (the perfect-environment relief adds a few majors); a sixth of numbered depressions never reach storm strength (real 12 %); post-tropical systems are about 20 % too slow after
   their transition and there are fewer of them than in the data; subtropical storms are 1.1 a year (1.7); the page's own pressure lows are
   fewer and longer-lived than ERA5's; the moisture slider's effect is far stronger than the warming slider's. The lows thresholds, the
-  2027+ name lists and the clock at 32× and 64× (about a third of its nominal speed in headless Chromium) are also open. The city impacts, the surge proxy and the wind radii are a calibrated model, not a forecast of real losses.
+  2027+ name lists and the clock at 32× and 64× (about a third of its nominal speed in headless Chromium) are also open. The city impacts, the surge proxy and the wind radii are a calibrated model, not a forecast of real losses. The radar floater's storm is the engine's (its mean wind and size, its eyewall replacements and its transition are the engine's statistics, shown by a convective model); the nest has no terrain, no vertical structure and no satellite view yet (the infrared floater is the next push), and a very large storm's outer field is cut by the 512 km square.
+- **Radar floater** (storms on): select a cyclone, or a disturbance that is on the map, and press **Radar floater** on its card. The map frames a 512 km square round the system and a 2-km model of
+  its inside runs there, drawn as radar over the map (over land too): the National Weather Service's reflectivity steps, crisp (the picture is made at the screen's sharpness by a bicubic reconstruction of the
+  2-km field that keeps no ripple, in 5 dBZ steps with sharp edges between them). The main clock stops and the floater has its own, running inside the hour between the engine's state now and its look-ahead one
+  hour on (`Manager.peek`: the engine's own `stepSystem` on a copy), at **a quarter of real time up to 20 minutes a second** (the playback buttons, `[`, `]` and Space are the floater's while it is open); when it
+  passes the hour the engine really advances one hour and the floater goes on from there. Two hours of the system's life are spun up first (a bar says so). The storm layers stay on top of the radar: the
+  system alone with its past path and its place (moving between two hours), the **cone**, the **ensembles**, the **wind fields**. **Radar** chooses a composite (every echo of the model) or the radar of a
+  nearby city: range rings (50 to 460 km), the beam's height at the **tilt** you pick (0.5, 1.5, 3, 6 degrees: the beam passes over low echoes far away and weakens them near their tops, 4/3 earth radius),
+  and with a site the **velocity** product too (Doppler: green toward the radar, red away, the couplet of the storm's circulation plus its own motion).
+  *What the model is, honestly:* the balanced limit of the moist-convective rotating shallow-water model (Bouchut et al. 2009, Rostami and Zeitlin 2017-2022: the gravity waves left out), with no vertical
+  dimension and no microphysics, not a numerical weather prediction model. The low-level vorticity is advected by its own winds (semi-Lagrangian), so differential rotation shears everything into spiral bands, vortex Rossby waves
+  travel and rings break up; the boundary layer lifts moist air where the surface stress has curl (Ekman pumping, the slab layer's strength, more drag over land) and converges moisture; a column of water rains out above a
+  threshold in ten minutes, fed by that convergence, by the sea (evaporation grows with the wind) and by a background ascent and mesoscale clusters, so cells have a life cycle and a spacing; the rain's mass flux stretches the
+  vorticity (convection builds the vortex' asymmetries, hot towers, mesovortices); rain is a convective tracer (Z = 250 R^1.2) and a stratiform one (Z = 200 R^1.6) made from the decay of the first and from broad ascent.
+  **The engine owns the storm**: it hands the nest its mean wind profile (a ring with a hollow core when strong; **two rings during an eyewall replacement**, the inner fading as the outer forms and takes over, with a moat
+  between: concentric eyewalls), its motion and the weather round it, and the nest's mean vorticity is held to it by a relaxation of 20 minutes and its heating efficiency adapts so its convection supports the intensity the
+  engine says; the structure inside is the nest's: the eye (a convection-free hole once the vortex is strong enough to have one), the eyewall and its hot spots, the bands, the moat, the gaps. **The weather on a storm's sides makes
+  it lopsided**: the page's own sea temperature, humidity and shear are sampled over the whole square (16-km grid), so dry air on one flank erodes it, cold water weakens that side, shear ventilates the upshear side, land dries
+  and drags and makes a coastal band, the right-front side of a moving storm converges more; an **extratropical transition** brings the warm-conveyor-belt stratiform shield ahead and to the left, a convective front behind
+  and the dry slot. A disturbance is a broad weak vortex whose convection is clusters. A step is 2 minutes of the system's life and takes about 20-25 ms, the picture about 7 ms.
 - All nine basins run in Simulation mode; Forecaster mode hasn't been started (its
   menu card is disabled). Steering arrows and highs are in all nine basins; the
   Mediterranean and the North Indian Ocean have hardly any highs to show (about one day in ten in winter).

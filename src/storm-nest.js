@@ -89,6 +89,7 @@ function Nest(o) {
   this.cu = new Float32Array(NC * NC); this.cv = new Float32Array(NC * NC); this.cu2 = new Float32Array(NC * NC); this.cv2 = new Float32Array(NC * NC);
   this.bz = new Float64Array(NR + 1); this.bd = new Float64Array(NR + 1); this.bn = new Float64Array(NR + 1); this.Vb = new Float64Array(NR + 1); this.Ub = new Float64Array(NR + 1);
   this.zT = new Float32Array(NR + 1); this.gz = new Float32Array(NR + 1);                                  // the engine's mean vorticity by radius (km); the correction that pulls the mean to it
+  this.eQs = mk(); this.eQb = mk(); this.eQc = mk(); this.eBg = mk(); this.eVent = mk();                                 // the air round the storm, cell by cell: the sea's saturation, the environment's moisture, the threshold, the background ascent, the shear's ventilation
   this.f0 = null; this.f1 = null; this.cur = null; this.lastDt = 120; this.lfOn = false; this.vNest = 0; this.qNorm = 1; this.rmaxN = 30;
 }
 
@@ -116,7 +117,7 @@ function vorticityOf(vt) {                                                     /
   return o;
 }
 Nest.prototype.init = function (f) {                                           // the vortex the engine describes, in a moist environment
-  this.setForcing(f, f); this.zT.set(vorticityOf(f.vt)); this.tabAt = 0;
+  this.setForcing(f, f); this.zT.set(vorticityOf(f.vt)); this.tabAt = 0; this.setEnv(null, f);
   const z = this.zeta, Q = this.Q, rr = this.rr, P = PAR;
   for (let k = 0; k < NN; k++) { const r = rr[k], a = Math.min(NR - 1, Math.floor(r)), t = r - a; z[k] = this.zT[a] * (1 - t) + this.zT[a + 1] * t; Q[k] = P.Qc * (P.Qenv + P.QenvV * sm01(f.vmax, 10, 30) + 0.12 * Math.exp(-r / 120)); }
   this.clMix(0); for (let k = 0; k < NN; k++) Q[k] += 4 * this.cl[k] * (1 + 0.5 * Math.exp(-rr[k] / 150));
@@ -137,6 +138,40 @@ Nest.prototype.clMix = function (a) {                                          /
     for (let i = 0; i < N; i++) { const x = i / 16, i0 = Math.floor(x) & 15, i1 = (i0 + 1) & 15, fx = x - Math.floor(x), sx = fx * fx * (3 - 2 * fx);
       const v = (c[j0 * 16 + i0] * (1 - sx) + c[j0 * 16 + i1] * sx) * (1 - sy) + (c[j1 * 16 + i0] * (1 - sx) + c[j1 * 16 + i1] * sx) * sy; cl[j * N + i] = a * cl[j * N + i] + b * v; } }
 };
+
+/* the weather round the storm, not only at its centre: coarse fields (32 x 32 of 16 km: sea temperature, humidity 0-1, shear m/s; row 0 south, mirrored by the caller in the southern hemisphere) set the sea's
+   saturation, the moisture the air round the storm relaxes to, the threshold, the background ascent and the shear's ventilation of every cell, so a dry side, a cold side or a sheared side makes the storm lopsided.
+   null: the centre's values everywhere */
+const NE = 32;
+Nest.prototype.setEnv = function (g, f) {
+  const P = PAR, Qc = P.Qc, qs = this.eQs, qb = this.eQb, qc = this.eQc, bg = this.eBg, ve = this.eVent;
+  f = f || this.cur || this.f0;
+  for (let j = 0; j < N; j++) {
+    const v = clamp((j - (N - 1) / 2) / 8 + (NE - 1) / 2, 0, NE - 1.001), j0 = Math.floor(v), fy = v - j0;
+    for (let i = 0; i < N; i++) {
+      const u = clamp((i - (N - 1) / 2) / 8 + (NE - 1) / 2, 0, NE - 1.001), i0 = Math.floor(u), fx = u - i0, k = j * N + i;
+      let sst = f.sst, rh = f.rh, sh = f.shear;
+      if (g) { const a = j0 * NE + i0, w00 = (1 - fx) * (1 - fy), w10 = fx * (1 - fy), w01 = (1 - fx) * fy, w11 = fx * fy;
+        sst = g.sst[a] * w00 + g.sst[a + 1] * w10 + g.sst[a + NE] * w01 + g.sst[a + NE + 1] * w11; rh = g.rh[a] * w00 + g.rh[a + 1] * w10 + g.rh[a + NE] * w01 + g.rh[a + NE + 1] * w11; sh = g.sh[a] * w00 + g.sh[a + 1] * w10 + g.sh[a + NE] * w01 + g.sh[a + NE + 1] * w11; }
+      qs[k] = Qc * (P.Qstar + 0.05 * clamp((sst - 27) / 2, -1.5, 1)) * (0.6 + 0.4 * sm01(sst, 23, 27.5));
+      qb[k] = P.Qenv + 0.12 * (rh - 0.7);
+      qc[k] = Qc * (1 + 0.12 * clamp((27.5 - sst) / 4, -0.5, 1.5));
+      bg[k] = (0.3 + 0.7 * sm01(sst, 25.5, 28.5)) * sm01(rh, 0.4, 0.8);
+      ve[k] = clamp(sh / 12, 0, 1.5);
+    }
+  }
+};
+/* the coarse environment fields of a nest centred on (lat0, lon0), from the engine's environment env (sst degC, rh %, shear kt; NaN where it has none: the centre's value stands in) */
+function envGridOf(env, lat0, lon0, sg, fb, out) {
+  out = out || { sst: new Float32Array(NE * NE), rh: new Float32Array(NE * NE), sh: new Float32Array(NE * NE) };
+  const kx = KM_DEG * Math.cos(lat0 * DEG);
+  for (let j = 0; j < NE; j++) for (let i = 0; i < NE; i++) {
+    const lat = lat0 + (j - (NE - 1) / 2) * 16 / KM_DEG, lon = lon0 + (i - (NE - 1) / 2) * 16 / kx, jj = sg < 0 ? NE - 1 - j : j, k = jj * NE + i;
+    const a = env.sst(lat, lon), b = env.rh(lat, lon), c = env.shear(lat, lon);
+    out.sst[k] = a === a ? a : fb.sst; out.rh[k] = b === b ? clamp(b / 100, 0.05, 1) : fb.rh; out.sh[k] = c === c ? c * KT : fb.shear;
+  }
+  return out;
+}
 
 /* ---- transport --------------------------------------------------------------------------------------------------------------------------------------------------------------- */
 Nest.prototype.departure = function (U, V, dt) {                               // the departure cell of every cell by the midpoint rule, periodic
@@ -216,7 +251,9 @@ Nest.prototype.winds = function (f) {
       if (vb > vmax) vmax = vb;
     }
   }
-  { let rm = 0, vm2 = 0; for (let b = 1; b < NR; b++) if (Vb[b] > vm2) { vm2 = Vb[b]; rm = b; } this.rmaxN = Math.max(rm, 5); }
+  { let vm2 = 0; for (let b = 1; b < NR; b++) if (Vb[b] > vm2) vm2 = Vb[b];
+    let rm = 0; for (let b = 4; b < NR - 4 && !rm; b++) if (Vb[b] > 0.6 * vm2) { let top = true; for (let q = b - 4; q <= b + 4; q++) if (Vb[q] > Vb[b]) { top = false; break; } if (top) rm = b; }        // the innermost real maximum of the mean wind (the inner eyewall of a pair of them)
+    this.rmaxN = Math.max(rm || 5, 5); }
   this.vNest = vmax;                                                                                       // the strongest axisymmetric mean wind (m/s): what the efficiency adapts to
 };
 
@@ -272,16 +309,16 @@ Nest.prototype.convect = function (f, dt, fcor) {
   const P = PAR, z = this.zeta, Q = this.Q, qn = this.qn, cl = this.cl, rc = this.rc, rs = this.rs, Pr = this.P, wb = this.wb, Wc = this.Wc, dv = this.dv, rr = this.rr, lf = this.lf, lfOn = this.lfOn, U = this.U, V = this.V, ct = this.cth, st = this.sth;
   const rmax = Math.max(f.rmax, 5), eta = f.eta || 0, tc = f.etdir || 0, ctc = Math.cos(tc), stc = Math.sin(tc);
   const sh = f.shear, sdc = Math.cos(f.shdir), sds = Math.sin(f.shdir), rfd = f.head - Math.PI / 4, crf = Math.cos(rfd), srf = Math.sin(rfd);
-  const trA = clamp(f.spd / 8, 0, 1) * 0.45, vent = clamp(sh / 12, 0, 1.5) * (1 - 0.4 * sm01(f.vmax, 45, 70));
-  const Qc = P.Qc, Qs = Qc * (P.Qstar + 0.05 * clamp((f.sst - 27) / 2, -1.5, 1)) * (0.6 + 0.4 * sm01(f.sst, 23, 27.5)), Qe = Qc * clamp(P.Qenv + P.QenvV * sm01(f.vmax, 10, 30) + 0.12 * (f.rh - 0.7), 0.6, 0.95);
+  const trA = clamp(f.spd / 8, 0, 1) * 0.45, ventK = 1 - 0.4 * sm01(f.vmax, 45, 70), eQs = this.eQs, eQb = this.eQb, eQc = this.eQc, eBg = this.eBg, eVent = this.eVent, qeV = P.QenvV * sm01(f.vmax, 10, 30);
+  const Qc = P.Qc;
   const aEnv = dt / P.tauEnv, pm = P.Pmax * this.g * f.conv, aW = P.aW * clamp(this.g, 0.5, 1.8), aUp = 1 - Math.exp(-dt / P.tauUp), aDn = Math.exp(-dt / P.tauC2), aS = Math.exp(-dt / P.tauS), bS = 1 - aS;
-  const wBg = P.wBg * (0.3 + 0.7 * sm01(f.sst, 25.5, 28.5)) * sm01(f.rh, 0.4, 0.8), kr = P.kr[0] + (P.kr[1] - P.kr[0]) * sm01(this.vNest, 22, 50), orgS = sm01(this.vNest, 30, 50), vEff = sm01(f.vmax, P.vOn[0], P.vOn[1]), iH = 1 / P.H, ventR = 150 + 3 * rmax, edgeS = this.edgeS, bdm = this.bd, rb = this.rbin, msk = 1 - P.meanStretch, zc = P.zCap;
+  const kr = P.kr[0] + (P.kr[1] - P.kr[0]) * sm01(this.vNest, 22, 50), orgS = sm01(this.vNest, 30, 50), vEff = sm01(f.vmax, P.vOn[0], P.vOn[1]), iH = 1 / P.H, ventR = 150 + 3 * rmax, edgeS = this.edgeS, bdm = this.bd, rb = this.rbin, msk = 1 - P.meanStretch, zc = P.zCap;
   const eyeR = P.eye * this.rmaxN, eyeA = sm01(this.vNest, 24, 42);                                            // the eye: inside the nest's own radius of maximum wind, once the vortex is strong enough to have one
   for (let k = 0; k < NN; k++) {
     const r = rr[k], l = lfOn ? lf[k] : 0, c = ct[k], s = st[k];
     const sp = Math.sqrt(U[k] * U[k] + V[k] * V[k] + P.u0 * P.u0), nz = Math.max(0, 1 + P.sq * qn[k] + P.sc * cl[k] * (1 - (1 - sm01(r, 1.2 * rmax, 3 * rmax)) * orgS)) * edgeS[k];
     const gs = Math.min(1, r / (1.5 * rmax)) * Math.exp(-r / (6 * rmax + 60));
-    let q = Q[k];
+    let q = Q[k]; const Qs = eQs[k], Qe = Qc * clamp(eQb[k] + qeV, 0.6, 0.95), Qck = eQc[k], vent = eVent[k] * ventK, wBg = P.wBg * eBg[k];
     // surface evaporation (the sea only; WISHE: it grows with the wind) and the boundary layer's moisture convergence, stronger on the right-front side
     const E = P.kE * sp * Math.max(0, Qs - q) * nz * (1 - 0.92 * l);
     let w = wb[k]; w *= 1 + trA * gs * (c * crf + s * srf);
@@ -300,7 +337,7 @@ Nest.prototype.convect = function (f, dt, fcor) {
     if (vent > 0 && r < ventR) { const cu = -(c * sdc + s * sds); if (cu > 0) relax += dt * vent * cu * cu / 5400 * sm01(r, 0.5 * rmax, 2 * rmax); }
     if (eta > 0.02) relax += dt * eta * dry * 0.6 / 3600;
     let ey = 0; if (eyeA > 0 && r < eyeR) ey = eyeA * sm01(eyeR - r, 0, 0.35 * eyeR + 2);
-    const p0 = q > Qc ? (q - Qc) / P.tauC : 0, p = p0 > 0 ? pm * (1 - Math.exp(-p0 / pm)) * (1 - ey) : 0;
+    const p0 = q > Qck ? (q - Qck) / P.tauC : 0, p = p0 > 0 ? pm * (1 - Math.exp(-p0 / pm)) * (1 - ey) : 0;
     q = q + dt * (E + Sq - p); q += relax * (Qe - q); if (ey > 0) q += ey * (1 - Math.exp(-dt / 600)) * (0.7 * Qe - q);
     Q[k] = q < 0 ? 0 : q > 2 * Qc ? 2 * Qc : q; Pr[k] = p;
     // the mass flux out of the layer stretches the vorticity; the boundary layer's ascent spins it down
@@ -384,6 +421,6 @@ function dbzOf(rc, rs) {                                                       /
 }
 Nest.prototype.dbz = function (out) { const rc = this.rc, rs = this.rs; for (let k = 0; k < NN; k++) out[k] = dbzOf(rc[k], rs[k]); return out; };
 
-root.HFNest = { N, NC, DX, NR, PAR, create: (o) => new Nest(o), dbzOf, lerpForcing, vorticityOf, forcingOf, landGrid, sm01 };
+root.HFNest = { N, NC, DX, NR, NE, PAR, create: (o) => new Nest(o), dbzOf, lerpForcing, vorticityOf, forcingOf, landGrid, envGridOf, sm01 };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
 /* ==== STORM NEST END ==== */

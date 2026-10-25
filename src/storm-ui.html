@@ -37,7 +37,8 @@
 </div>
 <div id="ww-legend" class="card" aria-label="Watches and warnings"></div>
 <div id="wf-legend" class="card" aria-label="Wind field key"></div>
-<div id="fl-legend" class="card" aria-label="Radar reflectivity key"><b>Reflectivity <small>dBZ</small></b><i></i><span><u>10</u><u>20</u><u>30</u><u>40</u><u>50</u><u>60</u><u>70</u></span></div>
+<div id="fl-legend-v" class="card" aria-label="Doppler velocity key"><b>Velocity <small>kt, + away from the radar</small></b><i></i><span><u>-64</u><u>-36</u><u>-16</u><u>0</u><u>16</u><u>36</u><u>64</u></span></div>
+<div id="fl-legend" class="card" aria-label="Radar reflectivity key"><b>Reflectivity <small>dBZ</small></b><i></i><span><u>5</u><u>15</u><u>25</u><u>35</u><u>45</u><u>55</u><u>65</u><u>75</u></span></div>
 </div>
 <aside id="storm-card" class="card" hidden aria-label="Storm details">
   <button id="sc-close" aria-label="Close storm details" title="Close (Esc)">&times;</button>
@@ -71,7 +72,7 @@
 <div id="fl-bar" class="card" hidden role="region" aria-label="Radar floater">
   <div id="fl-head"><b id="fl-name">Radar</b><span id="fl-time"></span><button id="fl-close" type="button" aria-label="Close the radar floater" title="Close (Esc)">&times;</button></div>
   <div id="fl-sub"></div>
-  <div id="fl-ctl"><label>Radar <select id="fl-site"></select></label><label id="fl-tilt-l">Tilt <select id="fl-tilt"><option value="0.5">0.5°</option><option value="1.5">1.5°</option><option value="3">3°</option><option value="6">6°</option></select></label></div>
+  <div id="fl-ctl"><label>Radar <select id="fl-site"></select></label><label id="fl-prod-l">Product <select id="fl-prod"><option value="z">Reflectivity</option><option value="v">Velocity</option></select></label><label id="fl-tilt-l">Tilt <select id="fl-tilt"><option value="0.5">0.5°</option><option value="1.5">1.5°</option><option value="3">3°</option><option value="6">6°</option></select></label></div>
   <div id="fl-prog"><i></i></div>
 </div>
 <aside id="sum-card" class="card" hidden role="dialog" aria-label="Season summary">
