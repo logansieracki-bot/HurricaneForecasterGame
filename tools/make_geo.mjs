@@ -8,6 +8,7 @@ import * as turf from '@turf/turf';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { isSliver, dropSpikes } from './geo_repair.mjs';        // the antimeridian artifacts of a clip (tools/geo_repair.mjs also repairs a finished file)
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const NM = join(ROOT, 'node_modules');
@@ -58,6 +59,7 @@ function isEmptyRing(ring) {
 }
 
 function isSliverRing(ring) {
+  if (isSliver(ring)) return true;                                 // (the shared test: under 0.3 degrees in one direction, over 3 in the other, 30 points or fewer; Fiji's antimeridian sliver is 0.14 tall)
   // turf.bboxClip on a huge multi-part polygon (e.g. every landmass on Earth as one feature)
   // can emit a spurious degenerate ring as a clipping artifact: very few points, spanning a
   // huge distance in one dimension while being almost zero-width in the other -- not real
@@ -118,8 +120,12 @@ function clipToBox(fc, box) {
       try {
         const clipped = turf.bboxClip(f, b);
         if (!clipped.geometry) continue;
-        const geom = dropSliverPolygons(clipped.geometry);
-        if (geom && geom.coordinates.length) out.features.push({ ...clipped, geometry: geom });
+        let geom = dropSliverPolygons(clipped.geometry);
+        if (geom && geom.coordinates.length) {                       // a ring that crosses the antimeridian (Vanua Levu) leaves a spike of two far vertices on its island: take them out
+          const fix = (rings) => rings.map((r) => dropSpikes(r, b[1], b[3]));
+          geom = geom.type === 'Polygon' ? { ...geom, coordinates: fix(geom.coordinates) } : geom.type === 'MultiPolygon' ? { ...geom, coordinates: geom.coordinates.map(fix) } : geom;
+          out.features.push({ ...clipped, geometry: geom });
+        }
       } catch { /* skip degenerate geometry */ }
     }
   }
