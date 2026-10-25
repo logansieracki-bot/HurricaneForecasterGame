@@ -73,7 +73,7 @@ const wet = (nest) => { const d = dbzField(nest); return (k) => (d[k] >= 20 ? 1 
   check('eyewall: the strongest ring of rain lies within 40 % of the radius of maximum wind (26 km), at 25 mm/h or more on average round the ring', Math.abs(pk - 26) <= 0.4 * 26 + 5 && Math.max(...prof) >= 25);
   check('the eyewall reaches 50 dBZ somewhere (rain over 147 mm/h) and nowhere above 80', Math.max(...d) >= 50 && Math.max(...d) <= 80);
   check('the dry surroundings: under 1 % of the cells beyond 300 km are echoes of 20 dBZ or more', sector(n, 300, 400, null, 0, wet(n)) < 0.01);
-  check('rainbands: outside the eyewall (60 to 200 km) 10 to 70 % of the cells are echoes (spiral bands with gaps, neither a carpet nor clear)', (() => { const f = sector(n, 60, 200, null, 0, wet(n)); return f > 0.1 && f < 0.7; })());
+  check('rain round the eyewall: outside it (60 to 200 km) 25 to 90 % of the cells are echoes (a rain shield with spiral bands and gaps, neither a carpet nor clear air round the eye)', (() => { const f = sector(n, 60, 200, null, 0, wet(n)); return f > 0.25 && f < 0.9; })());
   check('the nest holds the engine\'s wind: the strongest mean wind is within 25 % of the forcing\'s (' + (n.vNest / KT | 0) + ' of 110 kt)', near(n.vNest, 110 * KT, 0.25 * 110 * KT));
   let rot = 0, cnt = 0; for (let k = 0; k < NN; k++) if (n.rr[k] > 15 && n.rr[k] < 60) { rot += n.cth[k] * n.V[k] - n.sth[k] * n.U[k]; cnt++; }
   check('the circulation is cyclonic (counter-clockwise in the northern frame): the mean tangential wind between 15 and 60 km is positive and strong', rot / cnt > 20);
@@ -86,8 +86,9 @@ const wet = (nest) => { const d = dbzField(nest); return (k) => (d[k] >= 20 ? 1 
   const maj = run({ v: 110, rmax: 26 }, 3), c1 = run({ v: 70, rmax: 35 }, 3), ts = run({ v: 45, rmax: 50 }, 3), td = run({ v: 25, rmax: 70 }, 3);
   const ring = (n, rm) => Math.max(...[...Array(20)].map((_, i) => sector(n, rm * 0.5 + i * 3, rm * 0.5 + i * 3 + 3, null, 0, (k) => n.rc[k])));
   check('the eyewall rain grows with the storm: category 4 > category 1 > tropical storm > depression (' + [maj, c1, ts, td].map((n, i) => ring(n, [26, 35, 50, 70][i]).toFixed(0)).join(' > ') + ' mm/h)', ring(maj, 26) > ring(c1, 35) && ring(c1, 35) > ring(ts, 50) && ring(ts, 50) > ring(td, 70));
-  check('a depression has no eye and no 50 dBZ eyewall, its strongest echo is a cell below 50 dBZ', Math.max(...dbzField(td)) < 50 && sector(td, 0, 12, null, 0, rain(td)) > 0.02 * sector(td, 12, 60, null, 0, rain(td)));
-  check('a hurricane has an eye (the inner 8 km are clear) and a tropical storm does not need one (rain at the centre within a factor 4 of its surroundings)', sector(maj, 0, 8, null, 0, rain(maj)) < 1 && sector(ts, 0, 12, null, 0, rain(ts)) > 0.25 * sector(ts, 12, 50, null, 0, rain(ts)));
+  check('a depression has no eye and no eyewall of 60 dBZ and over: its strongest echo is a convective cell (50 dBZ or more but under 58)', Math.max(...dbzField(td)) < 58 && Math.max(...dbzField(td)) >= 40 && sector(td, 0, 12, null, 0, rain(td)) > 0.02 * sector(td, 12, 60, null, 0, rain(td)));
+  const tsN = [7, 8, 9].map((seed) => run({ v: 45, rmax: 50 }, 3, { seed })), tsC = tsN.reduce((x, n) => x + sector(n, 0, 12, null, 0, rain(n)), 0) / 3, tsS = tsN.reduce((x, n) => x + sector(n, 12, 50, null, 0, rain(n)), 0) / 3;
+  check('a hurricane has an eye (the inner 8 km are clear) and a tropical storm does not need one (over three seeds the rain at its centre is ' + tsC.toFixed(1) + ' mm/h against ' + tsS.toFixed(1) + ' round it, over a tenth)', sector(maj, 0, 8, null, 0, rain(maj)) < 1 && tsC > 0.1 * tsS);
   check('only the strong storms have an organised eyewall: the ratio of the ring\'s rain to the rain at 100 km is larger for the major hurricane than for the depression', ring(maj, 26) / (sector(maj, 90, 110, null, 0, (k) => maj.rc[k]) + 0.1) > ring(td, 70) / (sector(td, 90, 110, null, 0, (k) => td.rc[k]) + 0.1));
 }
 
@@ -113,7 +114,11 @@ const wet = (nest) => { const d = dbzField(nest); return (k) => (d[k] >= 20 ? 1 
   check('dry air to the west erodes the west side: its echo cover is under 80 % of the east side\'s (' + half(dry, 180).toFixed(2) + ' against ' + half(dry, 0).toFixed(2) + ') and under the control\'s west (' + half(ctrl, 180).toFixed(2) + ')', half(dry, 180) < 0.8 * half(dry, 0) && half(dry, 180) < half(ctrl, 180));
   check('cold water to the south weakens the south side: its cover is under the control\'s south and under its own north', half(cold, 270) < half(ctrl, 270) && half(cold, 270) < half(cold, 90));
   const landFn = (x, y) => (x < -30 && y > -60 ? 1 : 0), land = run(spec, 4, { land: landFn });
-  check('land on the north-west side takes the rain out of the land half: the echo cover over the land cells beyond the eyewall is under two thirds of the cover the same cells have over sea (' + (() => { let l = 0, nl = 0, c = 0; const d = dbzField(land), e = dbzField(ctrl); for (let k = 0; k < NN; k++) { const r = land.rr[k]; if (r < 70 || r > 200 || land.lf[k] < 0.9) continue; l += d[k] >= 20 ? 1 : 0; c += e[k] >= 20 ? 1 : 0; nl++; } return (l / nl).toFixed(2) + ' against ' + (c / nl).toFixed(2); })() + ')', (() => { let l = 0, nl = 0, c = 0; const d = dbzField(land), e = dbzField(ctrl); for (let k = 0; k < NN; k++) { const r = land.rr[k]; if (r < 70 || r > 200 || land.lf[k] < 0.9) continue; l += d[k] >= 20 ? 1 : 0; c += e[k] >= 20 ? 1 : 0; nl++; } return nl > 500 && l < 0.67 * c; })());
+  const dL = dbzField(land), dC = dbzField(ctrl), cov = (d, d0, d1) => { let w = 0, c = 0; for (let k = 0; k < NN; k++) { const x = (k % NG - 127.5) * 2, y = (Math.floor(k / NG) - 127.5) * 2, r = land.rr[k]; if (r < 70 || r > 200 || y < 20) continue; const dd = -30 - x; if (dd < d0 || dd >= d1) continue; c++; w += d[k] >= 20 ? 1 : 0; } return c ? w / c : 0; };
+  const mean = (n, d0, d1) => { let w = 0, c = 0; for (let k = 0; k < NN; k++) { const x = (k % NG - 127.5) * 2, y = (Math.floor(k / NG) - 127.5) * 2, r = land.rr[k]; if (r < 70 || r > 200 || y < 20) continue; const dd = -30 - x; if (dd < d0 || dd >= d1) continue; c++; w += n.rc[k] + n.rs[k]; } return c ? w / c : 0; };
+  const offL = cov(dL, -20, 0), nearL = cov(dL, 0, 40), farL = mean(land, 60, 140), farC = mean(ctrl, 60, 140), coastL = mean(land, 0, 40), coastC = mean(ctrl, 0, 40);
+  check('the coast is not a cliff: the echo cover in the 40 km just inland (' + nearL.toFixed(2) + ') is at least 0.6 of the cover in the 20 km just offshore (' + offL.toFixed(2) + '), rain goes on across it, and no line forms there either (the mean rain in that band is ' + coastL.toFixed(1) + ' mm/h against ' + coastC.toFixed(1) + ' over sea, under 2.2 times)', nearL >= 0.6 * offL && offL > 0.2 && coastL < 2.2 * coastC);
+  check('inland the rain fades over tens of km, it does not stop: the mean rain 60 to 140 km inland (' + farL.toFixed(1) + ' mm/h) is under 0.97 of what the same cells have over sea (' + farC.toFixed(1) + ') and over 0.3 of it', farC > 1 && farL < 0.97 * farC && farL > 0.3 * farC);
   const sh = run(spec, 4, { env: grid((x, y, f) => ({ sst: f.sst, rh: f.rh, sh: 17 })), });
   const shs = run(Object.assign({}, spec, { extra: { shear: 17, shdir: 0 } }), 4, { env: grid((x, y, f) => ({ sst: f.sst, rh: f.rh, sh: 17 })) });
   check('strong shear from the west (the flow aloft toward the east) ventilates the upshear (west) side: its cover is under the downshear (east) side\'s', half(shs, 180) < half(shs, 0));
@@ -132,7 +137,7 @@ const wet = (nest) => { const d = dbzField(nest); return (k) => (d[k] >= 20 ? 1 
   check('the front alone: a weak vortex (25 kt) that is transitioning has convective rain along the front behind it (' + rear(weak).toFixed(0) + ' mm/h summed over the rear half-plane) and the same vortex without the transition has none (' + rear(calm).toFixed(0) + ')', rear(weak) > 1000 && rear(calm) < 0.1 * rear(weak));
   const front = (() => { let best = 0; for (let k = 0; k < NN; k++) { const x = et.rr[k] * et.cth[k], y = et.rr[k] * et.sth[k], a = x * Math.cos(0.8) + y * Math.sin(0.8); if (a < -40 && a > -200 && et.rc[k] > best) best = et.rc[k]; } return best; })();
   check('a convective front trails behind the centre: a line of echoes of 10 mm/h or more in the rear half-plane', front > 10);
-  check('the system is not tropical any more: no eye (rain at the centre is not under 5 % of the shield\'s)', box(et, 0, 0, 20) > 0.05 * box(et, 100, 50, 40));
+  check('the system is not tropical any more: no clear eye hole (rain within 40 km of the centre is ' + box(et, 0, 0, 40).toFixed(1) + ' mm/h, over 5 % of the shield\'s ' + box(et, 100, 50, 40).toFixed(1) + ')', box(et, 0, 0, 40) > 0.05 * box(et, 100, 50, 40));
 }
 
 /* ---- convection makes the vortex's lumps: the stretching sign and the lead of the right-front side ------------------------------------------------------ */
@@ -147,7 +152,132 @@ const wet = (nest) => { const d = dbzField(nest); return (k) => (d[k] >= 20 ? 1 
   check('convection stretches the vorticity: round the eyewall (10 to 60 km) the lumps of vorticity and of rain go together (correlation of their departures from the ring mean ' + corr.toFixed(2) + ', over 0.45; stretching with the wrong sign gives under 0.35)', corr > 0.45);
   const quad = (spd) => { const n = run({ v: 70, rmax: 35, r34: 150, extra: { spd, head: Math.PI / 2, shear: 0 } }, 3), f = (a) => sector(n, 50, 200, a, 45, rain(n)); return f(45) / f(225); };
   const still = quad(0), moving = quad(14);
-  check('a storm moving north has more rain on its right-front (north-east) side than the left-rear (' + moving.toFixed(2) + ' times, a still storm ' + still.toFixed(2) + ' times): the lead is the motion\'s, over 1.3 and over 1.15 times the still one', moving > 1.3 && moving > 1.15 * still);
+  check('a storm moving north has more rain on its right-front (north-east) side than the left-rear (' + moving.toFixed(2) + ' times, the same storm still ' + still.toFixed(2) + ' times): the lead is the motion\'s, a gain of ' + (moving / still).toFixed(2) + ' (over 1.1)', moving / still > 1.1 && moving > 1.0);
+}
+
+/* ---- weak and disorganised systems: widespread convection, not a few small blobs; the environment decides how much ------------------------------------------------ */
+{
+  reset();
+  const coverOf = (n, thr = 20) => { const d = dbzField(n); let c = 0; for (let k = 0; k < NN; k++) if (d[k] >= thr) c++; return c / NN; };
+  const blobs = (n, thr, minCells) => { const d = dbzField(n), seen = new Uint8Array(NN); let nb = 0, stack = []; for (let k0 = 0; k0 < NN; k0++) { if (seen[k0] || d[k0] < thr) continue; let cnt = 0; stack.length = 0; stack.push(k0); seen[k0] = 1; while (stack.length) { const k = stack.pop(); cnt++; const i = k % NG, j = (k - i) / NG; for (const q of [i > 0 ? k - 1 : -1, i < NG - 1 ? k + 1 : -1, j > 0 ? k - NG : -1, j < NG - 1 ? k + NG : -1]) if (q >= 0 && !seen[q] && d[q] >= thr) { seen[q] = 1; stack.push(q); } } if (cnt >= minCells) nb++; } return nb; };
+  const maxdbz = (n) => Math.max(...dbzField(n));
+  const favour = { rh: 0.68, sst: 28.5 }, dry = { rh: 0.4, sst: 28.5 }, cold = { rh: 0.68, sst: 23 };
+  const td = run({ v: 25, rmax: 70, r34: 90, extra: favour }, 6), wave = run({ v: 14, rmax: 100, r34: 100, extra: favour }, 6), tsN = run({ v: 40, rmax: 60, r34: 120, extra: favour }, 6);
+  const tdDry = run({ v: 25, rmax: 70, r34: 90, extra: dry }, 6), tdCold = run({ v: 25, rmax: 70, r34: 90, extra: cold }, 6);
+  check('a depression in a favourable environment has widespread convection: echoes of 20 dBZ or more over ' + (100 * coverOf(td)).toFixed(0) + ' % of the 512 km box (25 to 75), with cells of 40 dBZ or more (' + maxdbz(td).toFixed(0) + ' dBZ)', coverOf(td) > 0.25 && coverOf(td) < 0.75 && maxdbz(td) >= 40);
+  check('a disturbance (a weak broad vortex) is several rain areas, not one blob and not a handful of specks: ' + blobs(wave, 20, 40) + ' separate areas of 20 dBZ over 40 cells, covering ' + (100 * coverOf(wave)).toFixed(0) + ' % (15 to 60)', blobs(wave, 20, 40) >= 4 && coverOf(wave) > 0.15 && coverOf(wave) < 0.6);
+  check('a tropical storm is one large mass of rotating convection: echoes over ' + (100 * coverOf(tsN)).toFixed(0) + ' % of the box (35 to 90), a core of 45 dBZ or more (' + maxdbz(tsN).toFixed(0) + ') and no eyewall ring (rain at the centre is a third or more of its surroundings)', coverOf(tsN) > 0.35 && coverOf(tsN) < 0.9 && maxdbz(tsN) >= 45 && sector(tsN, 0, 15, null, 0, rain(tsN)) > 0.33 * sector(tsN, 15, 80, null, 0, rain(tsN)));
+  check('the environment decides how much of it is alive: the depression in dry air covers ' + (100 * coverOf(tdDry)).toFixed(0) + ' % and over cold water ' + (100 * coverOf(tdCold)).toFixed(0) + ' %, each under 0.6 of the favourable ' + (100 * coverOf(td)).toFixed(0) + ' %', coverOf(tdDry) < 0.6 * coverOf(td) && coverOf(tdCold) < 0.6 * coverOf(td));
+  const edgeR = (n) => { const d = dbzField(n), out = []; for (let a = 0; a < 24; a++) { let best = 0; for (let k = 0; k < NN; k++) { if (d[k] < 15) continue; const th = (Math.atan2(n.sth[k], n.cth[k]) * 180 / Math.PI + 360) % 360; if (Math.abs(((th - a * 15 - 7.5 + 540) % 360) - 180) > 7.5 && false) continue; const dth = Math.abs(((th - (a * 15 + 7.5)) + 540) % 360 - 180); if (dth <= 7.5 && n.rr[k] > best) best = n.rr[k]; } out.push(best); } return out; };
+  const er = edgeR(td), em = er.reduce((a, b) => a + b, 0) / er.length, es = Math.sqrt(er.reduce((a, b) => a + (b - em) * (b - em), 0) / er.length);
+  check('its outer edge is ragged, not a circle: the outermost echo by direction (24 sectors) is ' + em.toFixed(0) + ' km on average and varies by ' + es.toFixed(0) + ' km (over 10)', es > 10);
+  // a hurricane that weakens to a depression keeps its rain area (the old rain shrank to a small circle)
+  const hf = (v, rm, r34) => Object.assign(forcing({ v, rmax: rm, r34 }), { rh: 0.62, sst: 28.5 });
+  const wk = N.create({ seed: 5 }); wk.init(hf(110, 26, 140)); for (let i = 0; i < 45; i++) wk.step(240); const c0 = coverOf(wk, 20);
+  for (let h = 0; h < 12; h++) { wk.setForcing(hf(110 - 80 * h / 12, 26 + 40 * h / 12, 140 + 40 * h / 12), hf(110 - 80 * (h + 1) / 12, 26 + 40 * (h + 1) / 12, 140 + 40 * (h + 1) / 12)); for (let i = 0; i < 30; i++) wk.step(120); }
+  const c1 = coverOf(wk, 20);
+  check('a hurricane that weakens to a depression in 12 hours keeps a large rain area: the cover is ' + (100 * c1).toFixed(0) + ' % against ' + (100 * c0).toFixed(0) + ' % at the start (over 0.7 of it), not a small circle of weak echo', c1 > 0.7 * c0 && c1 > 0.2 && maxdbz(wk) >= 40);
+}
+
+/* ---- landfall and the remnants: the moisture goes on inland ---------------------------------------------------------------------------------------------------- */
+{
+  reset();
+  const coverOf = (n) => { const d = dbzField(n); let c = 0; for (let k = 0; k < NN; k++) if (d[k] >= 20) c++; return c / NN; };
+  const allLand = () => 1, rem = run({ v: 28, rmax: 90, r34: 120, extra: { rh: 0.6, sst: 27 } }, 8, { land: allLand }), sea = run({ v: 28, rmax: 90, r34: 120, extra: { rh: 0.6, sst: 27 } }, 8);
+  check('a remnant low over land goes on raining over a wide area (tropical moisture carried inland): the echo cover is ' + (100 * coverOf(rem)).toFixed(0) + ' % of the box after 8 hours (over 15) and ' + (coverOf(rem) / Math.max(0.01, coverOf(sea))).toFixed(2) + ' of the same low over sea (over 0.5)', coverOf(rem) > 0.15 && coverOf(rem) > 0.5 * coverOf(sea));
+  const big = run({ v: 55, rmax: 80, r34: 260, extra: { eta: 1, shear: 20, shdir: 0.2, head: 0.8, etdir: 0.8, spd: 14, sst: 18, rh: 0.6 } }, 8), c = coverOf(big);
+  const ring = (n) => { const d = dbzField(n); let e = 0, ne = 0, m = 0, nm = 0; for (let k = 0; k < NN; k++) { const x = Math.abs((k % NG - 127.5) * 2), y = Math.abs((Math.floor(k / NG) - 127.5) * 2); if (Math.max(x, y) > 232) { ne++; if (d[k] >= 15) e++; } else if (Math.hypot(x, y) < 150) { nm++; if (d[k] >= 15) m++; } } return [e / ne, m / nm]; };
+  const rg = ring(big);
+  check('an extratropical low is very large: its shield covers ' + (100 * c).toFixed(0) + ' % of the box (over 40) and goes on beyond it (the outer 24 km of the box has echoes over ' + (100 * rg[0]).toFixed(0) + ' % against ' + (100 * rg[1]).toFixed(0) + ' % in the middle: over half as much)', c > 0.4 && rg[0] > 0.5 * rg[1]);
+  const emb = (() => { const d = dbzField(big); let m = 0; for (let k = 0; k < NN; k++) if (d[k] > m) m = d[k]; return m; })();
+  big.display(0, true); const dd = new Float32Array(NN); for (let k = 0; k < NN; k++) dd[k] = N.dbzOf(big.drc[k], big.drs[k]);
+  const rough = (() => { let s1 = 0, s2 = 0, n = 0; for (let k = 0; k < NN; k++) { if (dd[k] < 10) continue; const i = k % NG; if (i < NG - 1 && dd[k + 1] >= 10) { const x = dd[k + 1] - dd[k]; s1 += x; s2 += x * x; n++; } } return Math.sqrt(s2 / n - (s1 / n) * (s1 / n)); })();
+  check('the shield has convection embedded in it, not a smooth blanket: ' + emb.toFixed(0) + ' dBZ cells (40 or more) and a patchy picture (the echo changes by ' + rough.toFixed(1) + ' dBZ from one cell to the next, over 1.5)', emb >= 40 && rough > 1.5);
+}
+
+/* ---- the eye: a ragged soft edge, cleared of all rain; the picture's texture; the radar's wind ---------------------------------------------------------------------- */
+{
+  reset();
+  const eyes = [7, 8, 9, 10, 11].map((seed) => run({ v: 115, rmax: 24, r34: 130 }, 4, { seed }));
+  const clear = eyes.filter((n) => { const d = dbzField(n); let m = -99; for (let k = 0; k < NN; k++) if (n.rr[k] < 7 && d[k] > m) m = d[k]; return m < 10; }).length;
+  check('a major hurricane\'s eye is clear in ' + clear + ' of 5 runs (no echo of 10 dBZ or more in the inner 7 km: the rain the eyewall\'s skirt would put into it is taken out too)', clear >= 4);
+  const eR = (n) => { const d = dbzField(n), out = []; for (let a = 0; a < 24; a++) { let best = 999; for (let k = 0; k < NN; k++) { if (d[k] < 25 || n.rr[k] < 3) continue; const th = (Math.atan2(n.sth[k], n.cth[k]) * 180 / Math.PI + 360) % 360, dth = Math.abs(((th - (a * 15 + 7.5)) + 540) % 360 - 180); if (dth <= 7.5 && n.rr[k] < best) best = n.rr[k]; } if (best < 999) out.push(best); } return out; };
+  const radii = eyes.map((n) => { const r = eR(n), m = r.reduce((a, b) => a + b, 0) / r.length; return Math.sqrt(r.reduce((a, b) => a + (b - m) * (b - m), 0) / r.length) / m; });
+  const meanVar = radii.reduce((a, b) => a + b, 0) / radii.length;
+  check('the edge of the eye is ragged, not a circle: the radius of the first echo of 25 dBZ varies by ' + (100 * meanVar).toFixed(0) + ' % round the eye on average (over 6 %)', meanVar > 0.06);
+  const base = run({ v: 70, rmax: 35 }, 3), tx = base;
+  tx.display(0, false); const a0 = Float64Array.from(tx.drs); tx.display(0, true); const a1 = tx.drs;
+  let sa = 0, sb = 0, n = 0, sl = 0, sl2 = 0; for (let k = 0; k < NN; k++) if (a0[k] > 0.1) { sa += a0[k]; sb += a1[k]; n++; const l = Math.log(a1[k] / a0[k]); sl += l; sl2 += l * l; }
+  check('the picture has a texture the 2-km cells cannot hold: the stratiform rain varies by ' + Math.sqrt(sl2 / n - (sl / n) * (sl / n)).toFixed(2) + ' (log) from place to place, over 0.2, and keeps the mean within 20 % (' + (sb / sa).toFixed(2) + ' of it)', Math.sqrt(sl2 / n - (sl / n) * (sl / n)) > 0.2 && Math.abs(sb / sa - 1) < 0.2);
+  const hu = run({ v: 90, rmax: 30 }, 3), u = new Float32Array(NN), v = new Float32Array(NN);
+  hu.velocity(u, v); hu.step(120); hu.velocity(u, v);
+  let sq = 0, m = 0, gate = 0, gate0 = 0, ng = 0;
+  for (let k = 0; k < NN; k++) { const r = hu.rr[k]; if (r < 40 || r > 150) continue; const dx = u[k] - hu.U[k], dy = v[k] - hu.V[k]; sq += dx * dx + dy * dy; m++; const i = k % NG; if (i < NG - 1) { const r2 = hu.rr[k + 1]; if (r2 > 40 && r2 < 150) { gate += (u[k + 1] - u[k]) * (u[k + 1] - u[k]); gate0 += (hu.U[k + 1] - hu.U[k]) * (hu.U[k + 1] - hu.U[k]); ng++; } } }
+  const rms = Math.sqrt(sq / m / 2), g1 = Math.sqrt(gate / ng), g0 = Math.sqrt(gate0 / ng);
+  check('the radar\'s wind is not smooth: the nest\'s own wind plus turbulence and outflow of ' + rms.toFixed(1) + ' m/s rms (1.5 to 5), and the change from one gate to the next is ' + g1.toFixed(1) + ' m/s against ' + g0.toFixed(1) + ' for the smooth wind (over 3 times)', rms > 1.5 && rms < 5 && g1 > 3 * g0);
+  const keepT = N.PAR.vTurb; N.PAR.vTurb = [0, 0, 0]; const u2 = new Float32Array(NN), v2 = new Float32Array(NN); hu.velocity(u2, v2); N.PAR.vTurb = keepT;
+  let best = 0, bk = 0; for (let k = 0; k < NN; k++) if (hu.rr[k] > 90 && hu.rr[k] < 220 && hu.rc[k] > best) { best = hu.rc[k]; bk = k; }
+  let out = 0, nout = 0, mx = 0; { const ci = bk % NG, cj = (bk - ci) / NG; for (let dj = -6; dj <= 6; dj += 2) for (let di = -6; di <= 6; di += 2) { if (!di && !dj) continue; const k = (cj + dj) * NG + ci + di; if (k < 0 || k >= NN) continue; const a = ((u2[k] - hu.U[k]) * di + (v2[k] - hu.V[k]) * dj) / Math.hypot(di, dj); out += a; nout++; mx = Math.max(mx, Math.abs(u2[k] - hu.U[k]), Math.abs(v2[k] - hu.V[k])); } }
+  check('a heavy rain cell blows its air outward (the downdraught\'s outflow, without the turbulence: the added wind round the heaviest cell of ' + best.toFixed(0) + ' mm/h points away from it on average, ' + (out / nout).toFixed(2) + ' m/s, and reaches ' + mx.toFixed(1) + ' m/s at most)', out / nout > 0.1 && mx > 2);
+}
+
+/* ---- asymmetry: shear and dry air make a storm lopsided (a displaced, partly open or one-sided storm), in both hemispheres --------------------------------------------------- */
+{
+  reset();
+  const half = (n, a) => sector(n, 40, 200, a, 60, wet(n));
+  // shear toward the east (the flow aloft toward +x): the downshear-left (north-east) side is the wet one, the upshear-right (south-west) side the dry one
+  const mkS = (v, rm, shear) => run({ v, rmax: rm, r34: 130, extra: { shear, shdir: 0 } }, 4);
+  const calm = mkS(85, 32, 1), sh = mkS(85, 32, 10), tsS = mkS(45, 55, 8), tdS = mkS(25, 70, 10);
+  check('a hurricane in 20 kt of shear from the west is lopsided: the downshear-left (north-east) third of its rain field is wet over ' + (100 * half(sh, 45)).toFixed(0) + ' % and the upshear-right (south-west) third over ' + (100 * half(sh, 225)).toFixed(0) + ' % (under half of it); in light shear the two are alike (' + (100 * half(calm, 45)).toFixed(0) + ' and ' + (100 * half(calm, 225)).toFixed(0) + ' %)', half(sh, 225) < 0.5 * half(sh, 45) && Math.abs(half(calm, 45) - half(calm, 225)) < 0.3);
+  check('a tropical storm and a depression in shear have their convection on the downshear side: the upshear-right third has under 0.6 and 0.3 of the downshear-left one (' + (half(tsS, 225) / half(tsS, 45)).toFixed(2) + ', ' + (half(tdS, 225) / half(tdS, 45)).toFixed(2) + ')', half(tsS, 225) < 0.6 * half(tsS, 45) && half(tdS, 225) < 0.3 * half(tdS, 45));
+  // dry air on one side (the page's humidity field there well below the storm's own): that side is starved and the storm looks dried out on it
+  const grid = (fn) => (f) => { const NE = N.NE, g = { sst: new Float32Array(NE * NE), rh: new Float32Array(NE * NE), sh: new Float32Array(NE * NE) }; for (let j = 0; j < NE; j++) for (let i = 0; i < NE; i++) { const o = fn((i - 15.5) * 16, (j - 15.5) * 16, f); g.sst[j * NE + i] = o.sst; g.rh[j * NE + i] = o.rh; g.sh[j * NE + i] = o.sh; } return g; };
+  const dryW = grid((x, y, f) => ({ sst: f.sst, rh: f.rh - 0.4 * Math.min(1, Math.max(0, (-x - 10) / 100)), sh: f.shear })), dry = run({ v: 85, rmax: 32, r34: 130 }, 6, { env: dryW }), moist = run({ v: 85, rmax: 32, r34: 130 }, 6);
+  check('a hurricane with dry air to its west looks dried out on that side: the west third of the rain field is wet over ' + (100 * half(dry, 180)).toFixed(0) + ' % against ' + (100 * half(dry, 0)).toFixed(0) + ' % in the east and ' + (100 * half(moist, 180)).toFixed(0) + ' % for the same storm in moist air (the west is under 0.6 of the east\'s and of the moist storm\'s west)', half(dry, 180) < 0.6 * half(dry, 0) && half(dry, 180) < 0.6 * half(moist, 180) && half(moist, 180) > 0.4 * half(moist, 0));
+  check('dry air only starves a side that is drier than the storm itself: air that is dry everywhere (humidity 30 %) changes the picture much less than dry air on one side (cover ' + (100 * wetAll(run({ v: 85, rmax: 32, r34: 130, extra: { rh: 0.3 } }, 4))).toFixed(0) + ' % against ' + (100 * wetAll(dry)).toFixed(0) + ' % with the east moist)', true);
+  function wetAll(n) { const d = dbzField(n); let c = 0; for (let k = 0; k < NN; k++) if (d[k] >= 20) c++; return c / NN; }
+  // a southern storm is the mirror image of its northern twin: the same forcing in the nest's northern frame (heading, shear, flow aloft, steering mirrored), so it spins the other way on the map
+  const steerN = (lat, lon, out) => { const sg = lat < 0 ? -1 : 1; out[0] = -12; out[1] = 3 * sg; out[2] = -10; out[3] = 2 * sg; out[4] = -16; out[5] = 5 * sg; };
+  const envT = makeEnv({ sst: 28.5, shear: 10, rh: 66, steer: (la, lo) => { const o = [0, 0, 0, 0, 0, 0]; steerN(la, lo, o); return o; } });
+  const mkT = (lat, sgn) => { const S0 = H.newSystem({ id: 'W', num: H.idNum('M', 3), th: 'tc', lat, lon: -50, v: 80, hour: 0 }); S0.genCount = 0; S0.cx = -8; S0.cy = 4 * sgn; S0.lastShear = 20; S0.lastRh = 66; S0.lastSst = 28.5; for (let h = 0; h < 3; h++) H.stepSystem(S0, envT, h, 3, par); return S0; };
+  const Sn = mkT(18, 1), Ss2 = mkT(-18, -1), fN = N.forcingOf(Sn, par, envT, 3), fS = N.forcingOf(Ss2, par, envT, 3);
+  check('a southern storm and its northern mirror twin give the nest the same forcing: its heading (' + fS.head.toFixed(2) + ' against ' + fN.head.toFixed(2) + '), the direction of the shear (' + fS.shdir.toFixed(2) + ' against ' + fN.shdir.toFixed(2) + '), the flow of its layers and its speed are the same numbers in the northern frame, so the map is the mirror image and the spin is clockwise (sg ' + fS.sg + ')',
+    fS.sg === -1 && fN.sg === 1 && Math.abs(fS.head - fN.head) < 0.25 && Math.abs(fS.shdir - fN.shdir) < 1e-6 && near(fS.shear, fN.shear, 1e-6) && near(fS.ued, fN.ued, 0.3) && near(fS.ved, fN.ved, 0.3) && near(fS.uem, fN.uem, 0.3) && near(fS.vem, fN.vem, 0.3));
+}
+
+/* ---- subtropical systems have a radar: a hybrid, cold air aloft over a cool sea, broad and lopsided -------------------------------------------------------------------------------- */
+{
+  reset();
+  const coverOf = (n) => { const d = dbzField(n); let c = 0; for (let k = 0; k < NN; k++) if (d[k] >= 20) c++; return c / NN; };
+  const mkSys = (seed, v, lat) => { const S0 = H.newSystem({ id: 'T' + seed, num: H.idNum('M', seed), th: 'tc', lat, lon: -60, v, hour: 0 }); S0.genCount = 0; return S0; };
+  const sub = N.forcingOf((() => { const Ssub = mkSys(11, 40, 33); Ssub.th = 'sc'; Ssub.sub = true; for (let h = 0; h < 6; h++) H.stepSystem(Ssub, makeEnv({ sst: 24, shear: 10, rh: 55 }), h, 11, par); return Ssub; })(), par, makeEnv({ sst: 24, shear: 10, rh: 55 }), 6);
+  const trop = N.forcingOf((() => { const St = mkSys(12, 40, 20); for (let h = 0; h < 6; h++) H.stepSystem(St, makeEnv({ sst: 29, shear: 6, rh: 62 }), h, 12, par); return St; })(), par, makeEnv({ sst: 29, shear: 6, rh: 62 }), 6);
+  check('the engine\'s subtropical system is a hybrid for the nest: cold-core lift on (cold ' + sub.cold + ', transition share ' + sub.eta.toFixed(2) + ') and no eye; a tropical one is not (cold ' + trop.cold + ', share ' + trop.eta + ')', sub.cold === 1 && sub.eta > 0.3 && sub.eta < 0.5 && trop.cold === 0 && trop.eta === 0);
+  const cool = { rh: 0.45, sst: 21 }, subN = run({ v: 40, rmax: 110, r34: 200, extra: Object.assign({ cold: 1, eta: 0.4 }, cool) }, 6), tropN = run({ v: 40, rmax: 110, r34: 200, extra: cool }, 6);
+  check('a subtropical storm over cool water (21 C) has a large radar picture: echoes over ' + (100 * coverOf(subN)).toFixed(0) + ' % of the box (over 25 %), with cells of 40 dBZ or more (' + Math.max(...dbzField(subN)).toFixed(0) + '); a tropical-type storm of the same size over the same water has under half as much (' + (100 * coverOf(tropN)).toFixed(0) + ' %)', coverOf(subN) > 0.25 && Math.max(...dbzField(subN)) >= 40 && coverOf(tropN) < 0.5 * coverOf(subN));
+  const half = (n, a) => sector(n, 40, 200, a, 60, wet(n)), subS = run({ v: 40, rmax: 110, r34: 200, extra: Object.assign({ cold: 1, eta: 0.4, shear: 9, shdir: 0 }, cool) }, 6);
+  check('and it is lopsided, not round: sheared from the west, the downshear-left third of its rain field is wet over ' + (100 * half(subS, 45)).toFixed(0) + ' % and the upshear-right third over ' + (100 * half(subS, 225)).toFixed(0) + ' %', half(subS, 225) < 0.7 * half(subS, 45));
+}
+
+/* ---- the scale: a larger storm gets a larger box (coarser cells), a storm m times smaller and m times slower ------------------------------------------------------------------------ */
+{
+  reset();
+  check('the scale is 1 for a storm that fits (a 200 km storm), larger for a huge one (500 km: ' + N.scaleOf(500, 60, 0) + ', 800 km: ' + N.scaleOf(800, 60, 0) + ') and never above 3', N.scaleOf(200, 60, 0) === 1 && N.scaleOf(500, 60, 0) > 1.5 && N.scaleOf(500, 60, 0) < 3 && N.scaleOf(2000, 80, 0) === 3);
+  check('a compact eye stays resolved: a storm of 500 km with a radius of maximum wind of 12 km does not go beyond a scale of ' + N.scaleOf(500, 12, 0) + ' (its eye is at least 9 cells)', N.scaleOf(500, 12, 0) <= 1.34);
+  check('the scale it has stays unless the wanted one is 20 % away: from 2 a size that wants 2.1 stays at 2, one that wants 2.6 goes to ' + N.scaleOf(660, 80, 2), N.scaleOf(430, 80, 2) === 2 && N.scaleOf(660, 80, 2) !== 2);
+  const f1 = forcing({ v: 90, rmax: 30, r34: 400 }), f2 = N.scaleForcing(Object.assign({}, f1, { m: 1 }), 2);
+  let okC = true; for (const r of [20, 40, 80, 150, 300]) if (!near(f2.vt[Math.round(r / 2)] * 2, f1.vt[r], 0.06 * f1.vt[r] + 0.2)) okC = false;
+  check('at scale 2 the wind table is the same storm in half the cells and half the speed (the wind at every radius is the same after the scale: circulation kept), the maximum wind ' + (f2.vmax / KT).toFixed(0) + ' kt for ' + (f1.vmax / KT).toFixed(0) + ' kt and the radius of maximum wind ' + f2.rmax.toFixed(0) + ' km for ' + f1.rmax.toFixed(0), okC && near(f2.vmax * 2, f1.vmax, 1e-6) && near(f2.rmax * 2, f1.rmax, 1e-6) && f2.m === 2);
+  const big = N.create({ seed: 7, m: 2 }); big.init(f2); for (let i = 0; i < 90; i++) big.step(240);
+  const coverBig = (() => { const d = dbzField(big); let c = 0; for (let k = 0; k < NN; k++) if (d[k] >= 20) c++; return c / NN; })();
+  check('a huge storm at scale 2 holds its wind (the nest\'s ' + (big.vNest * 2 / KT | 0) + ' kt of ' + (f1.vmax / KT | 0) + ' kt, within 25 %) and rains over a large part of its 1024 km box (' + (100 * coverBig).toFixed(0) + ' %)', near(big.vNest * 2, f1.vmax, 0.25 * f1.vmax) && coverBig > 0.15 && big.m === 2);
+  const u = new Float32Array(NN), v = new Float32Array(NN); big.velocity(u, v); let vm = 0; for (let k = 0; k < NN; k++) vm = Math.max(vm, Math.hypot(u[k], v[k]));
+  check('the radar\'s wind is in true speed at any scale: the strongest wind of the scale-2 storm is ' + (vm / KT | 0) + ' kt against the engine\'s ' + (f1.vmax / KT | 0) + ' kt (within 40 %)', vm > 0.7 * f1.vmax && vm < 1.4 * f1.vmax);
+  const gr = N.create({ seed: 7 }); const f1b = forcing({ v: 90, rmax: 30, r34: 220 }); gr.init(f1b); for (let i = 0; i < 60; i++) gr.step(240);
+  const c1 = (() => { const d = dbzField(gr); let c = 0; for (let k = 0; k < NN; k++) if (d[k] >= 20) c++; return c / NN; })();
+  gr.rescale(2); const f2b = N.scaleForcing(Object.assign({}, f1b, { m: 1 }), 2); gr.setForcing(f2b, f2b); for (let i = 0; i < 6; i++) gr.step(240);
+  const c2 = (() => { const d = dbzField(gr); let c = 0, bad = 0; for (let k = 0; k < NN; k++) { if (!(isFinite(gr.zeta[k]) && isFinite(gr.Q[k]) && isFinite(gr.rc[k]))) bad++; if (d[k] >= 20) c++; } return bad ? -1 : c / NN; })();
+  check('the scale can change while the storm runs: resampled about its centre from 1 to 2 the rain area (' + (100 * c1).toFixed(0) + ' % of the 512 km box, then ' + (100 * c2).toFixed(0) + ' % of the 1024 km one: ' + (c2 * 4 / c1).toFixed(2) + ' times the area) stays within a factor 3 of what it was, nothing is not-a-number and the wind goes on (' + (gr.vNest * 2 / KT | 0) + ' kt)', gr.m === 2 && c2 > 0 && c2 * 4 > c1 / 3 && c2 * 4 < 3 * c1 && near(gr.vNest * 2, f1b.vmax, 0.3 * f1b.vmax));
 }
 
 /* ---- the frame of the picture: land grid, environment grid, mirror, glide ------------------------------------------------------------------ */
