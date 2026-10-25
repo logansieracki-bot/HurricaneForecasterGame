@@ -8,6 +8,7 @@ $('stens').onchange = () => { $('stdens').disabled = !$('stens').checked; ensPac
 $('st-auto').onchange = () => { stormAuto = $('st-auto').checked; if (stormMgr) stormMgr.auto = stormAuto; markDirty(); };
 $('p-stact').oninput = () => { stormActivity = parseFloat($('p-stact').value); $('p-stact-o').textContent = stormActivity.toFixed(1) + '×'; if (stormMgr) stormMgr.autoRate = stormActivity; markDirty(); };
 $('sc-close').onclick = closeStormCard; $('ac-close').onclick = closeStormCard;
+flBind();                                                         // the radar floater: its buttons, the playback buttons while it is open
 /* the layer buttons: each is the face of one or two of the checkboxes in the panel (kept there, hidden), so everything that reads or sets those checkboxes still works */
 const LYR = { stens: ['stens'], stcone: ['stcone'], stdens: ['stdens'], stwf: ['stwf'], stww: ['stww'], jetline: ['jetline'], hl: ['highs', 'stlows'], nhc: ['stwaves', 'stdist'], steer: ['steerarrows'] };
 function lyrSync() {
@@ -132,6 +133,17 @@ const STORM_API = {
   simRestore() { const s = window.__snap; simRestore(s.weather); if (s.storms) { stormMgr = HFStorms.restore(JSON.parse(s.storms), { maps: stormMapsNow() }); stormCitiesBind(); stormFieldsDirty = true; kfFieldHour = -1; } return true; },
   stormLabRecord() { return stormLab ? stormLab.map(labRecord) : []; },
   stormLabStop() { stormLab = null; },
+  floaterOpen(id) { return flOpen(id); }, floaterClose() { flClose(); return !flOn; },
+  floaterState() {                                                      // what the radar floater is doing (tests and tools)
+    if (!flOn || !flNest) return { on: false };
+    const n = flNest, f = n.cur || n.f0; let rmax = 0, dmax = -99, cells = 0; for (let k = 0; k < n.rc.length; k++) { if (n.rc[k] > rmax) rmax = n.rc[k]; const d = HFNest.dbzOf(n.rc[k], n.rs[k]); if (d > dmax) dmax = d; if (d > 20) cells++; }
+    return { on: true, id: flId, spin: flSpinN / FL_SPIN, speed: flSpeed, rate: FL_SPEEDS[flSpeed], play: flPlay, minutes: flMinutes(), t: n.t, steps: n.steps, site: flSite ? flSite.name : null, tilt: flTilt, gone: flGone, g: n.g, vNest: n.vNest, vTarget: f.vmax, rcMax: rmax, dbzMax: dmax, cells, clat: f.clat, clon: f.clon, hour: simHour, sites: flSites.map((c) => c.name), text: $('fl-time').textContent, sub: $('fl-sub').textContent };
+  },
+  floaterSet(o) { if (o.speed != null) { flSpeed = Math.max(0, Math.min(FL_SPEEDS.length - 1, o.speed)); flSpeedUI(); } if (o.play != null) { flPlay = !!o.play; flSetPlayUI(); } if (o.site !== undefined) { $('fl-site').value = o.site == null ? '' : String(o.site); $('fl-site').onchange(); } if (o.tilt != null) { $('fl-tilt').value = String(o.tilt); $('fl-tilt').onchange(); } flDirty = true; return true; },
+  floaterRun(sec) { if (!flOn) return 0; while (flSpinN < FL_SPIN) flSpin(1e9); const n = flWork(sec, 1e9); flRender(); stormsDirty = true; return n; },                      // synchronous: run the floater's clock `sec` seconds (the frame loop does the same a little at a time)
+  floaterProfile() { if (!flOn || !flNest) return null; while (flSpinN < FL_SPIN) flSpin(1e9); const m = (fn, k) => { const t0 = performance.now(); for (let i = 0; i < k; i++) fn(); return (performance.now() - t0) / k; }; return { step: m(() => flNest.step(FL_DT), 6), land: m(flLandUpdate, 3), render: m(flRender, 4), display: m(() => flNest.display(0.5), 4) }; },
+  floaterGrid() { return flNest ? { dbz: Array.from(flDbz || []), n: HFNest.N } : null; },
+  floaterPos() { const S = flSystem(); const p = S ? flPos(S) : null; return p; },
   stormPlace(spec) { const S = stormMgr.place(spec); stormsDirty = true; drawStorms(); markDirty(); return S.id; },
   stormForce(id, patch) { const S = stormMgr.get(id); Object.assign(S, patch); stormsDirty = true; drawStorms(); return !!S; },
   stormAuto(on) { stormAuto = !!on; if (stormMgr) stormMgr.auto = stormAuto; },

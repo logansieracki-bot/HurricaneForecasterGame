@@ -1748,6 +1748,15 @@ Manager.prototype._outlookRaw = function (F, c, pr) {
 };
 
 /* a forecast / preview: the same physics through an environment source, on a copy, with the noise the placed storm would have */
+/* a live system one hour on, stepped by the engine's own physics on a copy (nothing of the real state changes): the radar floater's look-ahead, so it can run inside the hour between two real states.
+   The real step also runs the manager's merges after it; the copy does not, so a system that a merge removes at that hour is still there in the look-ahead. */
+Manager.prototype.peek = function (id, envSrc) {
+  const S0 = this.byId[id]; if (!S0 || !S0.alive) return null;
+  const h = this.hour, env = envSrc && typeof envSrc.at === 'function' ? envSrc.at(h) : envSrc, doy = this.doyAt(h), ctx = { maps: this.maps, tw: null, diag: null };
+  if (env && env.beginHour) env.beginHour(h);                                  // (told the hour, as the real step is; asking twice about the same hour changes nothing)
+  if (this.maps) { ctx.tw = timeWeights(doy + (((h % 24) + 24) % 24) / 24); ctx.act = activityFactor(this.par, this.seed, seasonYearOf(this.startMs + h * HOUR_MS, this.seasonMonth), h); ensoOf(this.par, env, ctx); }
+  const S = cloneSystem(S0); stepSystem(S, env, h, this.seed, this.par, doy, ctx); return S;
+};
 Manager.prototype.forecast = function (spec, envSrc, horizonH) {
   const S = this.pendingPlacement(spec), par = this.par, fixes = [];
   let h = S.born, ace = 0, peak = { v: 0, h, p: 1020 }, named = false, td = S.th === 'tc' || S.th === 'sc';

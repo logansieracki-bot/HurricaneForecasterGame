@@ -37,6 +37,7 @@
 </div>
 <div id="ww-legend" class="card" aria-label="Watches and warnings"></div>
 <div id="wf-legend" class="card" aria-label="Wind field key"></div>
+<div id="fl-legend" class="card" aria-label="Radar reflectivity key"><b>Reflectivity <small>dBZ</small></b><i></i><span><u>10</u><u>20</u><u>30</u><u>40</u><u>50</u><u>60</u><u>70</u></span></div>
 </div>
 <aside id="storm-card" class="card" hidden aria-label="Storm details">
   <button id="sc-close" aria-label="Close storm details" title="Close (Esc)">&times;</button>
@@ -51,6 +52,7 @@
     <div><span>Damage</span><b id="sc-dmg">—</b></div><div><span>Deaths</span><b id="sc-dth">—</b></div>
     <div class="wide"><span>Formed</span><b id="sc-formed">–</b><small id="sc-invest"></small></div>
   </div>
+  <button id="sc-radar" class="fl-btn" type="button" title="A 2-km storm-scale model of this system, drawn as radar over the map, with the clock slowed far below the main one"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="2"/><path d="M12 12 19 6M4 12a8 8 0 0 1 8-8M7 12a5 5 0 0 1 5-5M20 12a8 8 0 0 1-8 8"/></svg>Radar floater</button>
   <p id="sc-note">Showing only this system. Click the empty map or press Esc to show all.</p>
 </aside>
 <aside id="aoi-card" class="card" hidden aria-label="Disturbance details">
@@ -63,8 +65,15 @@
     <div><span>Shear</span><b id="ac-sh">–</b></div><div><span>SST</span><b id="ac-sst">–</b></div>
     <div class="wide"><span>Formation most likely</span><b id="ac-win">–</b></div>
   </div>
+  <button id="ac-radar" class="fl-btn" type="button" title="A 2-km storm-scale model of this disturbance, drawn as radar over the map"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="2"/><path d="M12 12 19 6M4 12a8 8 0 0 1 8-8M7 12a5 5 0 0 1 5-5M20 12a8 8 0 0 1-8 8"/></svg>Radar floater</button>
   <p id="ac-note">Showing only this disturbance and its area. Click the empty map or press Esc to show all.</p>
 </aside>
+<div id="fl-bar" class="card" hidden role="region" aria-label="Radar floater">
+  <div id="fl-head"><b id="fl-name">Radar</b><span id="fl-time"></span><button id="fl-close" type="button" aria-label="Close the radar floater" title="Close (Esc)">&times;</button></div>
+  <div id="fl-sub"></div>
+  <div id="fl-ctl"><label>Radar <select id="fl-site"></select></label><label id="fl-tilt-l">Tilt <select id="fl-tilt"><option value="0.5">0.5°</option><option value="1.5">1.5°</option><option value="3">3°</option><option value="6">6°</option></select></label></div>
+  <div id="fl-prog"><i></i></div>
+</div>
 <aside id="sum-card" class="card" hidden role="dialog" aria-label="Season summary">
   <button id="sum-close" aria-label="Close season summary" title="Close (Esc)">&times;</button>
   <div id="sum-head"><button id="sum-prev" aria-label="Previous season" title="Previous season">&#8249;</button><div><b id="sum-title">{{BASIN_LABEL}}</b><span id="sum-sub"></span></div><button id="sum-next" aria-label="Next season" title="Next season">&#8250;</button></div>

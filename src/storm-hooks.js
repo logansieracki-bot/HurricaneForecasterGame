@@ -264,6 +264,7 @@ function labRecord(m) {
   return out;
 }
 function stormsReset() {
+  if (flOn) flClose();
   stormMgr = HFStorms.create({ seed: stormSeed(), startMs: START_MS, hour0: simHour, auto: stormAuto, autoRate: stormActivity, maps: stormMapsNow(), basin: STORM_BASIN }); stormCitiesBind();
   stormLab = null; shadow = null; stormFieldsDirty = true; kfBreak = true; kfFieldHour = -1; stormSel = null; olSel = null; plainSel = null; ensPack = null; coneMem = null; wwPack = null; wwCones = {}; ensHot = -1; stormHot = null; stormHits = []; olHeld = null; olEagerSlot = -1e9; olHits = []; stormsDirty = true;
   sumArch = 0; if (sumOpen) closeSummary();
@@ -306,7 +307,7 @@ function stormsSwitch(on, force) {
   if (!STORMS_READY && !force) return false;                        // a page without its climatology yet can not be switched on by a visitor (the fitting tools force it: they are what makes the climatology)
   if (on === stormsOn) return stormsOn;
   stormsOn = !!on;
-  if (!stormsOn) { stormSel = null; olSel = null; plainSel = null; ensPack = null; wwPack = null; for (const id of ['storm-card', 'aoi-card']) { const c = $(id); if (c) c.hidden = true; } }          // (no card of a system that is not on the map)
+  if (!stormsOn) { if (flOn) flClose(); stormSel = null; olSel = null; plainSel = null; ensPack = null; wwPack = null; for (const id of ['storm-card', 'aoi-card']) { const c = $(id); if (c) c.hidden = true; } }          // (no card of a system that is not on the map)
   if (!stormsOn && typeof placeSet === 'function') placeSet(false);
   if (stormsOn) stormsReset();                                     // storms resume from the current hour with a fresh season
   stormsDirty = true; drawStorms(); updateSeasonBar();
@@ -668,7 +669,8 @@ function fillAoiCard() {
   $('ac-sst').textContent = lat == null ? '–' : (stormEnv.sst(lat, lon) * 9 / 5 + 32).toFixed(1) + ' °F';
   $('ac-iss').textContent = stormDate(OL.issued);
   $('ac-win').textContent = a.kind === 'unborn' ? 'Forms ' + abs(Math.max(0, a.birth - OL.hour)) + ' or later' : (a.t0 <= 1 ? 'Now' : abs(a.t0)) + ' – ' + abs(a.t1);
-  card.hidden = false;
+  $('ac-radar').style.display = S && flEligible(S) && !flOn ? '' : 'none';
+  card.hidden = flOn;
 }
 function openAoiCard(a) {
   stormSel = null; $('storm-card').hidden = true; $('storm-tip').style.display = 'none';
@@ -980,7 +982,7 @@ function drawStorms() {
   g.lineJoin = 'round'; g.lineCap = 'round';
   for (const S of list) {
     const fx = S.fixes, pts = fx.map((f) => { const p = toPx(f.lat, f.lon); return { x: p.x, y: p.y, f }; });
-    if (S.alive) { const p = toPx(S.lat, S.lon), f = HFStorms.makeFix(S, stormMgr.hour, S.ace); f.lat = S.lat; f.lon = S.lon; pts.push({ x: p.x, y: p.y, f, live: true }); }
+    if (S.alive) { const fp = flPos(S), p = toPx(fp ? fp.lat : S.lat, fp ? fp.lon : S.lon), f = HFStorms.makeFix(S, stormMgr.hour, S.ace); f.lat = fp ? fp.lat : S.lat; f.lon = fp ? fp.lon : S.lon; pts.push({ x: p.x, y: p.y, f, live: true }); }       // (the radar floater says where a system is between two hours)
     if (pts.length === 0) continue;
     if (pts.every((q) => q.x < -60 || q.y < -60 || q.x > W + 60 || q.y > H + 60)) continue;
     // pre-genesis trail: faint and dotted
@@ -1051,10 +1053,11 @@ function fillStormCard() {
     row.style.display = ph || live ? '' : 'none';
     $('sc-erc').textContent = ph === 'forming' ? 'Outer eyewall forming' : ph === 'weakening' ? 'Eyewall replacement: inner eyewall weakening' : ph === 're-intensifying' ? 'Eyewall replacement: outer eyewall taking over' : 'Single eyewall'; }
   { const im = S.imp, hasI = im && (im.d > 0 || im.k > 0 || im.i > 0); $('sc-dmg').textContent = hasI ? stormUsd(im.d) : '—'; $('sc-dth').textContent = hasI ? im.k.toLocaleString('en-US') : '—'; $('sc-dmg').title = hasI ? im.i.toLocaleString('en-US') + ' injured' : ''; }
-  card.hidden = false;
+  flCardButtons(S);
+  card.hidden = flOn;                                                     // (the radar floater has the screen: its bar says what the card would)
 }
 function openStormCard(S, f, live) { olSel = null; plainSel = null; $('aoi-card').hidden = true; stormSel = { id: S.id, h: live ? -1 : f.h }; lastStormCardAt = 0; fillStormCard(); stormsDirty = true; drawStorms(); }
-function closeStormCard() { stormSel = null; olSel = null; plainSel = null; $('storm-card').hidden = true; $('aoi-card').hidden = true; stormsDirty = true; drawStorms(); }
+function closeStormCard() { if (flOn) { flClose(); return; } stormSel = null; olSel = null; plainSel = null; $('storm-card').hidden = true; $('aoi-card').hidden = true; stormsDirty = true; drawStorms(); }
 function stormPick(cx, cy) {
   let best = null, bd = 1e9;
   for (const h of stormHits) { const d = Math.hypot(cx - h.x, cy - h.y) - (h.live ? 0.75 : 0) - (h.aoi ? 1.5 : 0); if (d + (h.live ? 0.75 : 0) + (h.aoi ? 1.5 : 0) <= h.r && d < bd) { bd = d; best = h; } }       // (the live head wins over the advisory dot under it: the last fix is where the storm is, to a fraction of a pixel; the X of an area of interest wins over the wave or low it is drawn on)
@@ -1104,7 +1107,7 @@ function stormClick(cx, cy) {
   else if (h && h.aoi) openAoiCard(h.aoi);                          // the X of a disturbance: look at it and its area alone
   else if (stormsOn && !h && !stormSel && olAreaAt(cx, cy)) openAoiCard(olAreaAt(cx, cy));        // the area itself (a cyclone, wave or L under the pointer wins over it)
   else if (h && (h.wave || h.low)) selectPlain(h);                  // a plain wave or L (no area of interest): picked to look at alone, and to show its ensembles
-  else if (stormSel || olSel || plainSel) closeStormCard();
+  else if ((stormSel || olSel || plainSel) && !flOn) closeStormCard();
 }
 let seasonText = '';
 function updateSeasonBar() {

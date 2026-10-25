@@ -37,8 +37,8 @@ body.steer-on #panel{max-height:calc(100% - 606px)}
 #storm-tip div{font-size:11.5px;color:var(--dim);margin-top:3px;line-height:1.5}
 #lg-stack{position:absolute;left:64px;bottom:82px;z-index:900;display:flex;flex-direction:column-reverse;align-items:flex-start;gap:8px;pointer-events:none}
 #lg-stack .card{position:static}
-#ol-legend, #ww-legend, #wf-legend{width:206px;padding:6px 10px 7px;display:none;font-size:11px;line-height:1.4;pointer-events:none}
-#ol-legend b, #ww-legend b, #wf-legend b{font-size:11.5px}
+#ol-legend, #ww-legend, #wf-legend, #fl-legend{width:206px;padding:6px 10px 7px;display:none;font-size:11px;line-height:1.4;pointer-events:none}
+#ol-legend b, #ww-legend b, #wf-legend b, #fl-legend b{font-size:11.5px}
 #ol-legend i, #ww-legend i, #wf-legend i{width:20px;height:9px}
 #ol-legend b{font-size:12px;font-weight:600;display:block;margin-bottom:3px}
 #ol-legend div{display:flex;align-items:center;gap:8px;color:var(--dim)}
@@ -138,3 +138,26 @@ body.no-waves .st-waves { display: none; }      /* a basin without a wave train 
 #ww-legend small, #wf-legend small{display:block;font-size:10.5px;color:var(--dim);margin-top:2px;line-height:1.3}
 @media (max-height:820px) and (min-width:641px){#lyr-dock{gap:4px}.lyr{height:28px;font-size:12px;padding:0 12px 0 9px}#panel{max-height:calc(100% - 444px)}body.steer-on #panel{max-height:calc(100% - 554px)}}
 @media (max-height:820px) and (min-width:641px) and (max-width:1040px){#panel{max-height:calc(100% - 524px)}body.steer-on #panel{max-height:calc(100% - 634px)}}
+
+/* the radar floater */
+.fl-btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;box-sizing:border-box;height:32px;margin-top:10px;border:1px solid var(--line);border-radius:10px;background:rgba(255,255,255,.07);color:var(--text);font:inherit;font-size:12.5px;font-weight:600;cursor:pointer}
+.fl-btn svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.fl-btn:hover{background:rgba(255,255,255,.14)}
+#fl-bar{left:50%;top:56px;transform:translateX(-50%);width:min(440px,calc(100% - 28px));box-sizing:border-box;padding:9px 14px 10px;z-index:930}
+#fl-bar[hidden]{display:none}
+#fl-head{display:flex;align-items:baseline;gap:10px;padding-right:26px}
+#fl-name{font-size:14.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#fl-time{font-size:13px;color:var(--text);font-variant-numeric:tabular-nums;margin-left:auto;white-space:nowrap}
+#fl-close{position:absolute;right:8px;top:7px;width:26px;height:26px;border:0;background:transparent;color:var(--dim);border-radius:6px;cursor:pointer;font-size:17px;line-height:1}
+#fl-close:hover{background:rgba(255,255,255,.09);color:var(--text)}
+#fl-sub{font-size:11.5px;color:var(--dim);margin-top:2px;line-height:1.4}
+#fl-ctl{display:flex;gap:12px;margin-top:7px;flex-wrap:wrap}
+#fl-ctl label{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--dim)}
+#fl-ctl select{background:rgba(255,255,255,.08);color:var(--text);border:1px solid var(--line);border-radius:8px;font:inherit;font-size:12px;padding:3px 6px;max-width:210px}
+#fl-prog{height:4px;border-radius:2px;background:rgba(255,255,255,.12);margin-top:8px;overflow:hidden}
+#fl-prog i{display:block;height:100%;width:0;background:var(--ice)}
+#fl-legend i{display:block;height:9px;margin:5px 0 2px;border-radius:2px;background:linear-gradient(to right,#646464 0%,#04e9e7 7%,#019ff4 14%,#0300f4 21%,#02fd02 28%,#01c501 36%,#008e00 43%,#fdf802 50%,#e5bc00 57%,#fd9500 64%,#fd0000 71%,#d40000 79%,#bc0000 86%,#f800fd 93%,#9854c6 100%)}
+#fl-legend span{display:flex;justify-content:space-between;font-size:10px;color:var(--dim)}
+#fl-legend u{text-decoration:none}
+body.fl-on #toast{top:150px}
+body.fl-on #b-restart{opacity:.4;pointer-events:none}
