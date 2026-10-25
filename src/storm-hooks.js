@@ -256,7 +256,7 @@ function labRecord(m) {
       etLat: (fx.find((f) => f.th === 'ex') || {}).lat, etV: (fx.find((f) => f.th === 'ex') || {}).v,
       sub: tcFx.some((f) => f.th === 'sc'), subNamed: fx.some((f) => f.st === 'SS'), et: S.namedHour >= 0 && fx.some((f) => f.th === 'ex'), hours: nf && lastN ? lastN.h - nf.h : 0,
       tdMonth: S.tdHour >= 0 ? mon(S.tdHour) : -1, namedMonth: S.namedHour >= 0 ? mon(S.namedHour) : -1,
-      gen: first ? [first.lat, first.lon, first.v, first.sst, first.sh, first.rh, first.h] : null, genN: nf ? [nf.lat, nf.lon, nf.v, nf.sst, nf.sh, nf.rh] : null, rows, trk, kind: S.kind, sub0: S.sub };
+      gen: first ? [first.lat, first.lon, first.v, first.sst, first.sh, first.rh, first.h] : null, genN: nf ? [nf.lat, nf.lon, nf.v, nf.sst, nf.sh, nf.rh] : null, rows, trk, kind: S.kind, sub0: S.sub, erc: S.ercN || 0, wf: fx.map((f) => [f.v, THC[f.th], f.w ? f.w[0] : 0, f.w ? f.w[1] : 0, f.w ? f.w[2] : 0, f.ec ? 1 : 0, f.h, f.lat, f.land ? 1 : 0]) };
   });
   for (const st of out.storms) { if (st.tdMonth >= 0) out.depByMonth[st.tdMonth]++; if (st.namedMonth >= 0) out.namedByMonth[st.namedMonth]++; }
   out.diag = m.diagPacked ? m.diagPacked() : null; out.waves = m.n.W; out.seeds = m.n.N;

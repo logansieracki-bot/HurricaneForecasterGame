@@ -68,7 +68,7 @@ function rndn(seed, a, b, c) {                                                  
   return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
 }
 // streams (the `c` argument): one per purpose, so adding a draw somewhere never shifts another
-const ST = { VOL: 1, WX: 2, WY: 3, PRES: 4, RIT: 5, RID: 6, RIR: 7, SPAWN: 8, POS: 9, V0: 10, SUBC: 11, ETC: 12, LIFE: 13, WAVE: 14, LOWSEED: 15, PLACE: 16, Q: 17, Q0: 18, GEN: 19, LIFEN: 20, SEEDPOS: 21, ACT: 22, ETL: 23, ETD: 24, ETS: 25, GENC: 26, ENDH: 27, FLOOR: 28, CONV: 29, LEAD: 30, ENS: 31, SIZE: 32, SIZEQ: 33 };
+const ST = { VOL: 1, WX: 2, WY: 3, PRES: 4, RIT: 5, RID: 6, RIR: 7, SPAWN: 8, POS: 9, V0: 10, SUBC: 11, ETC: 12, LIFE: 13, WAVE: 14, LOWSEED: 15, PLACE: 16, Q: 17, Q0: 18, GEN: 19, LIFEN: 20, SEEDPOS: 21, ACT: 22, ETL: 23, ETD: 24, ETS: 25, GENC: 26, ENDH: 27, FLOOR: 28, CONV: 29, LEAD: 30, ENS: 31, SIZE: 32, SIZEQ: 33, ERC: 34, ERCP: 35, EXG: 36, ABS: 37, IMP: 38, SUBX: 39 };
 const NS = { W: 1, N: 2, M: 3, L: 4, F: 5 };                                                          // id namespaces
 const idNum = (ns, k) => NS[ns] * 1000000 + k;
 
@@ -363,11 +363,18 @@ function structureParams() {
     // relaxes toward it (the real wind falls 5 kt a day, and one in six gains 10 kt or more within two days: an episode of re-intensification, chance exDeep.p in a strong jet)
     bc: { shear: [20, 60], v: [20, 55], lat: [28, 40], kTc: 1 / 48, exTau: 72 },
     exDeep: { p: 0.35, rate: [0.5, 1.5], dur: [12, 36] },
-    exLife: [30, 1.1, 4, 200],                   // hours a post-tropical cyclone lasts after its transition: lognormal median, log-sd, minimum, maximum (real: 3 / 12 / 30 / 60 / 102 h at the 10 / 25 / 50 / 75 / 90th percentile)
+    // the life of a post-tropical cyclone. It is not given a lifetime: its wind relaxes toward what the baroclinic zone supports times a life-cycle factor (full for `occ[0]` hours after the transition, then the occlusion and
+    // the friction wear it down with an e-folding of `occ[1]` hours), and it ends when it has filled (below fill[0] kt for fill[1] hours it is a weak non-tropical low, which then fills as a remnant low does), when it is
+    // absorbed (a hazard per hour, 1 / absTau for a weak low in the westerlies, none for one of gale force: absV, absLat; and a merger with a stronger post-tropical or non-tropical low within `mergeD` degrees, chance
+    // `mergeP` an hour for the weaker one) or when it is very old (maxAge). Real best tracks stop following them after a median of 30 hours; that is the forecasters stopping, not the low
+    ex: { occ: [48, 100], fill: [20, 12], absTau: 36, absV: [22, 38], absLat: [30, 36], mergeD: 3, mergeP: 0.15, maxAge: [240, 336] },
     nlLife: [24, 1.0, 6, 120], nlV: 20,           // a remnant low: lognormal lifetime (real 6 / 12 / 24 / 57 / 84 h) and the wind it hovers at (real 25 kt)
     // translation of a post-tropical cyclone by age (hours since the transition) relative to the all-ages mean of the extratropical map at its place: the 1,654 six-hourly pairs of the 208 named storms of 1980-2024 that
     // became post-tropical (the first row is 3 kt faster to the east and 7 kt faster to the north than the mean at its latitude, 25 kt in all against 19; from three days on it is 8 kt slower east and 5 north)
     exAge: { t: [0, 6, 12, 18, 24, 33, 48, 69, 90], du: [3.3, 3.8, 3.2, 2.3, 2.0, 0.7, -0.9, -2.5, -8.1], dv: [7.2, 5.0, 3.6, 2.7, 0.9, -1.6, -4.1, -5.7, -5.2] },
+    // a developing disturbance is subtropical rather than tropical more and more often over cooler water poleward of the tropics (60 % of 197 Atlantic subtropical cyclones formed over water above 25 C, in weak static stability, Guishard et al. 2009):
+    // the share of the tropical developments that are subtropical instead is max x ramp(|latitude| lat[0] to lat[1]) x (1 - ramp(sea temperature sst[0] to sst[1])); the number of developments is the same
+    subShift: { max: 0.9, lat: [22, 30], sst: [25, 27] },
     exLandMul: 0.25,                              // a baroclinic low does not spin down over land the way a warm-core storm does
     vpLat: 0, vpLatB: [18, 38],                   // the wind a storm can reach falls poleward by up to this share between these latitudes (the real share of tropical rows of 96 kt or more: 13-16 % at 15-25N, 10 % at 25-30N, 4 % at 30-35N, 1.5 % at 35-40N)
     perfEnv: { sst: [25.5, 27.5], shear: 2.2, rh: [52, 64] }, vpRelief: 0.9,  // ... but that fall is the stand-in for everything the page's fields do not carry poleward (upper-level cold air, a trough nearby, the heat content of the sea): where
@@ -440,15 +447,25 @@ function structureParams() {
       shear: 0.25, sst: 0.4, rh: 4, ramp: 48,                                      // the weather the storm feels: shear x (1 + e), sea temperature (C) and humidity (points), reaching full size after ramp hours
       foot: [0.6, 1.4],                                                            // the track density: the radius (degrees) round a member's track that counts as "there", at the start and at a week
     },
-    // the wind field (stepWind, windRadii): how far the 34, 50 and 64 kt winds reach. The mean 34 kt radius R34 (nmi) is a slow quantity of its own that follows the intensity and the latitude and drifts at random; Rmax comes from
-    // the intensity and the latitude; the outer profile V ~ r^-x (x = 0.46, so the 64 kt radius is a quarter of the 34 kt radius and the 50 kt radius two fifths) gives R50 and R64 from R34 (Knaff and Chavas: the outer winds decide Rmax, and R34 grows with latitude; a storm that strengthens grows, one that weakens shrinks)
+    // the wind field (stepWind, windAt, windRadii). Three slow quantities of their own and a profile: the mean 34 kt radius R34 (nmi) follows the latitude, the storm's own size (a slow draw: size is almost independent of intensity, r about 0.3,
+    // Merrill 1984, Chavas and Emanuel 2010), only weakly the intensity (R34 ~ V^0.42), its age and the eyewall replacement cycles and the transition that grow it; Rmax follows the intensity, the latitude and the storm's size (Willoughby et
+    // al. 2006, Chavas and Knaff 2022), contracts in rapid intensification and jumps in an eyewall replacement; outside Rmax the wind falls as a power law V = Vmax (Rmax / r)^x, x fixed by Vmax at Rmax and 34 kt at R34 (so R64 and R50 follow
+    // the intensity and the eyewall, not a fixed share of R34), steeper beyond R34. The wind at a point is the profile plus a share of the storm's speed on its right-front side; the radii are the roots of that same function
     wind: {
-      r0: 92, latSlope: 0.021, lat0: 15,                                         // R34 of a 55-kt storm: 92 nmi at 15 degrees, growing 2.1 % a degree poleward of it
-      kv: 0.55, tau: 20,                                                         // the share of the intensity change it follows (R34 ~ V^0.55) and how fast (hours): strengthening grows the field, weakening shrinks it
-      sd: 0.32, szTau: 48, aqSd: 0.10, aqTau: 36,                               // the size anomaly (log, sd) and its memory (hours); the anomalies of the four quadrants and theirs
-      land: 0.35, etRate: 0.03, etCap: 0.8, exBase: 0.15, nlBase: -0.2,           // landfall takes this much (log) at full land; a post-tropical cyclone grows by etRate a hour to etCap (x2.2) and starts a little larger; a remnant low is smaller
-      x: 0.46, rm: [24, -0.011, 0.012], rmCap: [6, 70, 95],                                // Rmax (nmi) = 24 exp(-0.011 (V - 60) + 0.012 (|lat| - 20)), between 6 and 70 (95 post-tropical)
-      asym: [0.2, 0.012, 0.45],                                                 // the right-front quadrant's lead: 0.16 and 0.012 per kt of the storm's speed, at most 0.4
+      r0: 76, latSlope: 0.021, lat0: 15,                                         // R34 of a 55-kt storm: 76 nmi at 15 degrees, growing 2.1 % a degree poleward of it
+      kv: 0.42, tau: 36,                                                         // the share of the intensity change R34 follows (R34 ~ V^0.42) and how fast (hours): the 34 kt field is the slow one
+      sd: 0.34, szTau: 60, aqSd: 0.10, aqTau: 36,                               // the size anomaly (log, sd) and its memory (hours); the anomalies of the four quadrants and theirs
+      age: [0.18, 168],                                                          // a storm's field grows as it ages (outer winds spin up after the peak): up to +18 % (log), with this time constant (hours)
+      land: 0.35, nlBase: -0.2,                                                  // landfall takes this much (log) at full land (the outer winds spin down slower than the core); a remnant low is smaller
+      ex: { T: 60, g0: 0.15, g1: 0.45, gSd: 0.25, rm: 0.5, tau: 36 },            // a post-tropical cyclone grows over T hours toward a size gain (log) g0 + g1 (jet shear share) + noise, a minority smaller; its eyewall (Rmax) grows by this share more
+      rm: [24, -0.011, 0.012], rmCap: [6, 70, 95], rmSz: 0.4, rmTau: 12, rmRI: -0.16,      // Rmax (nmi) = 24 exp(-0.011 (V - 60) + 0.012 (|lat| - 20)) x (R34 / its climate)^rmSz, between 6 and 70 (95 post-tropical), relaxing over rmTau hours; contracts by rmRI (log) in rapid intensification
+      xMin: 0.12, xMax: 1.3, xOut: 0.6, nIn: 1.0,                                // the outer exponent's limits, the steeper exponent beyond R34, the inner power law's exponent
+      asym: [0.35, 0.5],                                                         // the right-front side's lead: this share of the storm's speed (kt) added to the wind there (Shapiro 1983: about a half), at most this share of the wind
+      pSz: 6, pErc: 0.5,                                                         // central pressure: this many hPa lower per e-fold of R34 (a larger storm has a lower pressure for the same wind, Kossin 2015), and this share of an eyewall replacement's wind loss does not show in it
+      // the eyewall replacement cycle (stepErc). A hurricane that has held 90 kt or more for half a day or so, over warm water and not on land or in rapid intensification, forms a secondary eyewall at a rate (per hour) rate x g; the cycle is
+      // three phases (Sitkowski, Kossin and Rozoff 2011): the outer eyewall forms (d0 hours: the inner one contracts), the inner one weakens as the outer takes over (d1 hours: the wind falls by `loss` kt, about 10 m/s on average, Rmax jumps to rmx
+      // times, the 34 kt field grows by sz), and the storm re-intensifies (d2 hours: it takes back rec of the loss, Rmax contracts to rm2 of its peak value). The wind loss fades over tDef hours, the larger eye over tRm, the larger field over tSz
+      erc: { rate: 0.08, vR: [76, 102], hi: [6, 14], sst: [25.5, 27.5], shear: 2.5, land: [0.05, 0.25], cool: [36, 84], d0: [6, 12], d1: [12, 24], d2: [12, 30], loss: [19, 7, 8, 38], rec: [0.7, 1.0], rmx: [1.8, 2.8], rm0: 0.85, rm2: 0.7, sz: [0.10, 0.18], tDef: 36, tRm: 48, tSz: 96 },
     },
     // watches and warnings (alertsOf), the NHC's: a warning is for conditions EXPECTED within 36 hours of the onset of tropical-storm-force winds, a watch for conditions POSSIBLE within 48; a cell the forecast's wind radius reaches (expected: plus
     // mExp of the cone's error circle [its share, nmi added], possible: plus mPos) gets one; once there, one stays while the threat is anywhere in the next keepH hours; a post-tropical cyclone's large field makes a high wind warning (hwwH hours ahead, kept to hwwKeep)
@@ -636,7 +653,7 @@ function newSystem(o) {
     id: o.id, num: o.num, origin: o.origin || '', born: o.hour, th: o.th, sub: !!o.sub, dev: -1, life: o.life || 0, kind: o.kind || '',
     lat: o.lat, lon: o.lon, v: o.v, vr: o.v, p: 1008, cx: o.cx || 0, cy: o.cy || 0, wx: 0, wy: 0, zv: 0, zp: 0,
     q: o.q || 0, dist: false, invest: '', ck: '', shSm: null, rhSm: null, cw: 0, ri: null, riCoolUntil: -1, riTotal: 0, onLand: false, genCount: 0, lowCount: 0, landLow: 0, convCount: 0, nlTill: -1,
-    exDeep: 0, exEp: null, exLift: 0, ux: 0, uy: 0, etAt: -1, remnant: false, alive: true, end: null, endReason: '', depNum: 0, name: '', tdHour: -1, namedHour: -1,
+    exDeep: 0, exEp: null, exLift: 0, ux: 0, uy: 0, etAt: -1, remnant: false, erc: null, ercDef: 0, ercRm: 0, ercSz: 0, ercCool: -1, ercN: 0, ercPh: '', hiH: 0, alive: true, end: null, endReason: '', depNum: 0, name: '', tdHour: -1, namedHour: -1,
     peakV: 0, peakP: 1020, peakHour: -1, ace: 0, season: 0, fixes: [], st: 'WV', lastShear: 15, lastRh: 50, lastSst: 27, lastLf: 0, kill: false,
   };
 }
@@ -679,6 +696,8 @@ function disHazard6(par, alat, sst, shear, v, age, lf) {
   const D = par.disHaz, f = smooth01(alat, D.lat0, D.lat1) * smooth01(age == null ? 1e9 : age, D.age[0], D.age[1]) * (1 - smooth01(lf || 0, 0.2, 0.5));          // (over land the intensity law's decay and the weak-storm rule end a cyclone: the water hazard fades out with the share of land)
   return f <= 0 ? 0 : f / (1 + Math.exp(-(D.b0 + D.lat * alat + D.sst * sst + D.shear * shear + D.wind * v)));
 }
+/* the share of tropical developments over water of this temperature at this latitude that are subtropical instead (par.subShift) */
+function subShare(par, alat, sst) { const Z = par.subShift; return Z.max * smooth01(alat, Z.lat[0], Z.lat[1]) * (1 - smooth01(sst, Z.sst[0], Z.sst[1])); }
 /* the fastest a tropical cyclone of wind V loses wind over water, kt per hour: a soft limit (the rate bends toward c0 + c1 (V/60)^2 and never reaches it; real, 24 h north of 33N: -5 kt for 50-80 kt storms, -20 kt for 80 kt and more) */
 function decayLimit(par, x, V) { return satur(x, par.decayCap[0] + par.decayCap[1] * (V / 60) * (V / 60)); }
 /* piecewise-linear table lookup, held at the ends */
@@ -689,24 +708,32 @@ function tableAt(xs, ys, x) {
 }
 /* lifetimes are lognormal (median, log-sd, minimum, maximum); the draw is a pure function of the system and the hour */
 function lifetimeH(L, seed, id, h, stream) { return Math.max(L[2], satur(L[0] * Math.exp(L[1] * rndn(seed, id, h, stream)), L[3], 4)); }       // (the long end bends toward L[3], the short end is the least a system lasts)
-/* a tropical or subtropical cyclone becomes post-tropical at the end of hour h: it keeps its wind and position, and gets the life (and, in a strong jet, the chance of a
+/* a tropical or subtropical cyclone becomes post-tropical at the end of hour h: it keeps its wind and position, and gets the growth and the life cycle (and, in a strong jet, the chance of a
    re-intensification episode) of an extratropical cyclone */
 function becomePostTropical(S, h, seed, par, shear) {
-  S.th = 'ex'; S.etAt = h + 1; S.lowCount = 0;
-  S.nlTill = h + 1 + lifetimeH(par.exLife, seed, S.num, h, ST.ETL);
+  S.th = 'ex'; S.etAt = h + 1; S.lowCount = 0; S.erc = null; S.ercPh = ''; S.nlTill = -1; S.exLowH = 0;
+  { const X = par.wind.ex; S.exG = Math.max(-0.1, X.g0 + X.g1 * smooth01(shear, 15, 50) + X.gSd * rndn(seed, S.num, h, ST.EXG)); }
   const D = par.exDeep;
   if (rnd(seed, S.num, h, ST.ETD) < D.p * smooth01(shear, 20, 50)) {
     const dur = D.dur[0] + (D.dur[1] - D.dur[0]) * rnd(seed, S.num, h, ST.ETS), rate = D.rate[0] + (D.rate[1] - D.rate[0]) * rnd(seed, S.num, h + 7919, ST.ETS);
     S.exEp = { t0: h + 1 + Math.floor(6 * rnd(seed, S.num, h + 104729, ST.ETS)), dur, rate };
-    S.nlTill = Math.max(S.nlTill, S.exEp.t0 + dur + 12);                    // a cyclone that re-intensifies is not absorbed in the middle of it
   }
 }
-function becomeRemnantLow(S, h, seed, par) { S.th = 'nl'; S.remnant = true; S.nlTill = h + 1 + lifetimeH(par.nlLife, seed, S.num, h, ST.LIFE); }
+function becomeRemnantLow(S, h, seed, par) { S.th = 'nl'; S.remnant = true; S.erc = null; S.ercPh = ''; S.nlTill = h + 1 + lifetimeH(par.nlLife, seed, S.num, h, ST.LIFE); }
 /* ---- the wind field ------------------------------------------------------------------------------------------------------------------------------------------------------
-   Each hour the mean radius of the 34 kt winds follows its target: the climatology of the latitude (72 nmi at 15 degrees, growing poleward), the size anomaly this storm happens to have (a slow draw: some storms are big, some small), the intensity (a
-   strengthening storm grows, a weakening one shrinks: R34 ~ V^0.55, with a day's memory) and the land (a landfall costs size); a post-tropical cyclone broadens over a day or so to about twice that (the extratropical lows far north have the largest
-   fields), a remnant low is smaller. Rmax comes from the intensity and the latitude, and the outer profile V ~ r^-0.46 out from R34 gives R50 and R64: a hurricane's 64 kt radius is a quarter of its 34 kt radius and its 50 kt radius two fifths (a large field of tropical-storm-force winds round a small core of hurricane force, as the NHC draws them), a weak storm has none.
-   The quadrants differ by the storm's motion (the right-front quadrant, the right of the track in the north and the left in the south, is the strong one: the winds add to the storm's own speed) and by a slow anomaly of each. */
+   A storm's wind field is a profile, three slow quantities and a few episodes. The profile: outside the radius of maximum wind (Rmax) the wind falls as a power law, V = Vmax (Rmax / r)^x, with x fixed by the two things a forecaster
+   knows -- Vmax at Rmax and 34 kt at R34 (so a stronger storm has a larger R64 / R34, and an eyewall that moves out moves the 64 kt radius more than the 34 kt radius, as the best tracks show) -- and steeper beyond R34 where the vortex
+   dies away; inside Rmax the wind rises about linearly to the eyewall. The storm's own motion adds a share of its speed on its right-front side (the left-front in the south) and takes it away on the other: the wind at a point is the profile plus
+   that, and the radii of the 34, 50 and 64 kt winds in the four quadrants are the roots of that same function (windAt, windRadii), so the picture, the watches and warnings and the cities never disagree.
+   The slow quantities: the 34 kt radius R34 follows the latitude, the size this storm happens to have (a slow draw: size is almost independent of intensity), only weakly the intensity (R34 ~ V^0.42), the age (outer winds spin up after the peak) and the
+   episodes below; Rmax follows the intensity, the latitude and the storm's size, contracts in rapid intensification and jumps in an eyewall replacement; the quadrants have anomalies of their own. The episodes: an eyewall replacement cycle (stepErc: the wind
+   dips by about 10 m/s while Rmax jumps out, the hurricane-force radius and the 34 kt field grow and stay grown, then the wind comes back) and a post-tropical cyclone's growth (the large fields of the extratropical lows, reached over a day or two). */
+const sm3 = (u) => (u <= 0 ? 0 : u >= 1 ? 1 : u * u * (3 - 2 * u));
+const sizeClim = (par, alat) => Math.log(par.wind.r0) + par.wind.latSlope * Math.max(0, alat - par.wind.lat0);           // ln R34 (nmi) of a 55 kt storm of an ordinary size at this latitude
+const rmaxBase = (par, V, A) => par.wind.rm[0] * Math.exp(par.wind.rm[1] * (V - 60) + par.wind.rm[2] * (A - 20));       // Rmax (nmi) before the storm's own size, eyewall and episodes
+const exGrowth = (S, par, h) => { const X = par.wind.ex; if (S.th !== 'ex' || !(S.etAt >= 0)) return 0; return (S.exG === undefined ? X.g0 + 0.3 * X.g1 : S.exG) * sm3((h - S.etAt) / X.T); };     // the log growth of a post-tropical cyclone's 34 kt field so far
+/* the size this storm has beyond what its latitude and intensity give any storm (log): what Rmax and the central pressure take from it */
+const sizeAnom = (S, par, alat) => (S.lr === undefined ? 0 : S.lr - sizeClim(par, alat) - par.wind.kv * Math.log(Math.max(S.vr + (S.ercDef || 0), 30) / 55));
 function stepWind(S, par, seed, h, alat, lf) {
   const W = par.wind;
   if (S.th === 'wv') { S.w = null; return; }
@@ -714,34 +741,96 @@ function stepWind(S, par, seed, h, alat, lf) {
   const a = Math.exp(-1 / W.szTau), b = Math.exp(-1 / W.aqTau);
   S.rs = a * S.rs + Math.sqrt(1 - a * a) * W.sd * rndn(seed, S.num, h, ST.SIZE);
   for (let q = 0; q < 4; q++) S.rq[q] = b * S.rq[q] + Math.sqrt(1 - b * b) * W.aqSd * rndn(seed, S.num, h * 4 + q, ST.SIZEQ);
-  let base = Math.log(W.r0) + W.latSlope * Math.max(0, alat - W.lat0);
-  if (S.th === 'ex') base += W.exBase + Math.min(W.etCap, W.etRate * Math.max(0, S.etAt >= 0 ? h - S.etAt : 0)); else if (S.th === 'nl') base += W.nlBase;
-  const target = base + S.rs + W.kv * Math.log(Math.max(S.v, 30) / 55) - W.land * lf;
+  const Vu = S.vr + (S.ercDef || 0), age = Math.max(0, h - (S.tdHour >= 0 ? S.tdHour : S.born));
+  const clim = sizeClim(par, alat);
+  const target = clim + (S.th === 'nl' ? W.nlBase : 0) + exGrowth(S, par, h) + S.rs + W.kv * Math.log(Math.max(Vu, 30) / 55) + W.age[0] * (1 - Math.exp(-age / W.age[1])) + (S.ercSz || 0) - W.land * lf;
   S.lr = S.lr === undefined ? target : S.lr + (target - S.lr) / W.tau;
-  const R = windScale(S, par, alat); S.w = R ? [Math.round(R[0]), Math.round(R[1]), Math.round(R[2])] : [0, 0, 0];
+  const cap = S.th === 'ex' ? W.rmCap[2] : W.rmCap[1];
+  const lt = clamp(Math.log(rmaxBase(par, Vu, alat)) + W.rmSz * sizeAnom(S, par, alat) + (S.ercRm || 0) + (S.ri ? W.rmRI : 0) + (S.th === 'ex' && S.etAt >= 0 ? W.ex.rm * sm3((h - S.etAt) / W.ex.T) : 0), Math.log(W.rmCap[0]), Math.log(cap));
+  S.rm = S.rm === undefined ? lt : S.rm + (lt - S.rm) / W.rmTau;
+  const R = windRadii(S, par), m = (k) => Math.round((R[k][0] + R[k][1] + R[k][2] + R[k][3]) / 4);
+  S.w = R.r34.some((x) => x > 0) ? [m('r34'), m('r50'), m('r64')] : [0, 0, 0];
 }
-/* the mean radii [R34, R50, R64] and Rmax (nmi) of a system, or null where it has no 34 kt winds */
+/* the profile of a system: its wind and Rmax, R34, the exponents, and the lead its motion gives the right-front side */
+function windProfile(S, par, A) {
+  const W = par.wind, V = Math.max(S.vr, 1), alat = A == null ? Math.abs(S.lat) : A, cap = S.th === 'ex' ? W.rmCap[2] : W.rmCap[1];
+  const rmax = S.rm !== undefined ? clamp(Math.exp(S.rm), W.rmCap[0], cap) : clamp(rmaxBase(par, V, alat), W.rmCap[0], cap);
+  const r34 = clamp(S.lr !== undefined ? Math.exp(S.lr) : Math.exp(sizeClim(par, alat) + W.kv * Math.log(Math.max(V, 30) / 55)), 1.05 * rmax, 700);
+  const spd = Math.hypot(S.cx || 0, S.cy || 0), dmax = Math.min(W.asym[1] * V, W.asym[0] * spd), Vs = V - dmax;
+  const x = Vs > 34.5 ? clamp(Math.log(Vs / 34) / Math.log(r34 / rmax), W.xMin, W.xMax) : 0.5;
+  return { V, Vs, dmax, spd, rmax, r34, x, xo: Math.max(x, W.xOut), n: W.nIn, vr34: Vs * Math.pow(rmax / r34, x) };
+}
+function profileAt(P, r) {                                                      // the symmetric part of the wind (kt) at r nmi from the centre
+  if (r <= P.rmax) return P.Vs * Math.pow(Math.max(r, 0) / P.rmax, P.n);
+  if (r <= P.r34) return P.Vs * Math.pow(P.rmax / r, P.x);
+  return P.vr34 * Math.pow(P.r34 / r, P.xo);
+}
+function profileRoot(P, v) {                                                    // the radius where the symmetric wind falls to v (kt): 0 where it is never as strong
+  if (!(P.Vs > v) || v <= 0) return 0;
+  return v >= P.vr34 ? P.rmax * Math.pow(P.Vs / v, 1 / P.x) : P.r34 * Math.pow(P.vr34 / v, 1 / P.xo);
+}
+const heading = (S) => (Math.atan2(S.cx || 0, S.cy || 0) / DEG + 360) % 360;
+/* the four quadrant values [NE, SE, SW, NW] (centres at 45, 135, 225, 315 degrees) smoothly interpolated at an azimuth (degrees clockwise from north) */
+function quadAt(arr, az) { const k = (((az % 360) + 360) % 360 - 45) / 90, i = Math.floor(k), f = k - i, i0 = ((i % 4) + 4) % 4; return arr[i0] + (arr[(i0 + 1) % 4] - arr[i0]) * f * f * (3 - 2 * f); }
+/* the sustained wind (kt, 1-minute) a system gives a point: the profile plus the lead of the right-front side (it fades beyond twice R34, where the roots of the radii never go), at the radius stretched by the quadrant anomalies */
+function windAt(S, par, lat, lon, P) {
+  P = P || windProfile(S, par, null);
+  const k = Math.cos(((lat + S.lat) / 2) * DEG), dx = (lon - S.lon) * 60 * k, dy = (lat - S.lat) * 60, r = Math.hypot(dx, dy), az = (Math.atan2(dx, dy) / DEG + 360) % 360;
+  const rf = heading(S) + (S.lat < 0 ? -60 : 60), d = P.dmax * Math.cos((az - rf) * DEG) * Math.min(1, r / P.rmax) * (1 - sm3((r - 2 * P.r34) / (2 * P.r34)));
+  const rr = r / Math.exp(S.rq ? quadAt(S.rq, az) : 0);
+  return Math.max(0, profileAt(P, rr) + d);
+}
+/* the mean radii [R34, R50, R64] and Rmax (nmi) of a system's symmetric profile, or null where it has no 34 kt winds (the radii by quadrant are windRadii) */
 function windScale(S, par, alat) {
-  const W = par.wind, V = S.vr;
+  const V = S.vr;
   if (S.lr === undefined || !(V > 34.5)) return null;
-  const A = alat == null ? Math.abs(S.lat) : alat, cap = S.th === 'ex' ? W.rmCap[2] : W.rmCap[1];
-  const rmax = clamp(W.rm[0] * Math.exp(W.rm[1] * (V - 60) + W.rm[2] * (A - 20)), W.rmCap[0], cap);
-  const r34 = clamp(Math.exp(S.lr) * smooth01(V, 34, 41), 1.05 * rmax, 700);
-  const at = (v) => (V > v ? Math.max(rmax, r34 * Math.pow(34 / v, 1 / W.x)) * smooth01(V, v, v + 10) : 0);          // (the radius of a wind: the profile outward from R34, never inside the eyewall, and none as the wind falls to it)
-  const r50 = Math.min(at(50), r34);
-  return [r34, r50, Math.min(at(64), r50 || r34), rmax];
+  const P = windProfile(S, par, alat), fd = (v) => Math.max(P.rmax, profileRoot(P, v)) * smooth01(P.V, v, v + 4);
+  const r34 = P.r34 * smooth01(V, 34, 38), r50 = Math.min(fd(50), r34);
+  return [r34, r50, Math.min(fd(64), r50 || r34), P.rmax];
 }
-/* the radii by quadrant [NE, SE, SW, NW] of the 34, 50 and 64 kt winds, in nautical miles (0 where the wind is below the threshold) */
+/* the radii by quadrant [NE, SE, SW, NW] of the 34, 50 and 64 kt winds, in nautical miles (0 where the wind is below the threshold): the roots of the wind of windAt along the centre line of each quadrant */
 function windRadii(S, par) {
-  const R = windScale(S, par, null), W = par.wind, out = { r34: [0, 0, 0, 0], r50: [0, 0, 0, 0], r64: [0, 0, 0, 0], rmax: 0, heading: 0, speed: 0 };
-  if (!R) return out;
-  const spd = Math.hypot(S.cx, S.cy), head = (Math.atan2(S.cx, S.cy) / DEG + 360) % 360, A = Math.min(W.asym[2], W.asym[0] + W.asym[1] * spd), rf = head + (S.lat < 0 ? -45 : 45);
+  const out = { r34: [0, 0, 0, 0], r50: [0, 0, 0, 0], r64: [0, 0, 0, 0], rmax: 0, heading: 0, speed: 0 };
+  if (S.lr === undefined || !(S.vr > 34.5)) return out;
+  const P = windProfile(S, par, null), head = heading(S), rf = head + (S.lat < 0 ? -60 : 60);
   for (let q = 0; q < 4; q++) {
-    const f = Math.max(0.35, 1 + A * Math.cos((45 + 90 * q - rf) * DEG) + (S.rq ? S.rq[q] : 0));
-    out.r34[q] = Math.round(R[0] * f); out.r50[q] = Math.round(R[1] * f); out.r64[q] = Math.round(R[2] * f);
+    const d = P.dmax * Math.cos((45 + 90 * q - rf) * DEG), f = Math.exp(S.rq ? S.rq[q] : 0);
+    const at = (v) => { const m = P.Vs + d; return m > v ? Math.max(P.rmax * f, profileRoot(P, v - d) * f) * smooth01(m, v, v + 4) : 0; };
+    const a = Math.min(at(34), 700), b = Math.min(at(50), a), c = Math.min(at(64), b || a);
+    out.r34[q] = Math.round(a); out.r50[q] = Math.round(b); out.r64[q] = Math.round(c);
   }
-  out.rmax = Math.round(R[3]); out.heading = Math.round(head); out.speed = Math.round(spd);
+  out.rmax = Math.round(P.rmax); out.heading = Math.round(head); out.speed = Math.round(P.spd);
   return out;
+}
+/* ---- the eyewall replacement cycle ----------------------------------------------------------------------------------------------------------------------------------------------
+   Three phases (Sitkowski, Kossin and Rozoff 2011): the outer eyewall forms and the inner one contracts; the inner one weakens as the outer takes over (the wind dips, Rmax jumps out and the fields grow); the storm
+   re-intensifies as the new eyewall contracts. The dip is a deficit S.ercDef on the reported wind (the intensity law keeps its own wind, which the reported one returns to as the deficit fades), the eye's growth S.ercRm
+   (log) multiplies Rmax, the field's S.ercSz (log) is added to R34. After the episode all three fade (the wind loss in tDef hours, the larger eye in tRm, the larger field in tSz). */
+function ercShape(E, X, t) {                                                    // [wind deficit (kt), log Rmax factor, log R34 gain] t hours into the episode X, or null when it is over
+  const a = X.d0, b = a + X.d1, c = b + X.d2;
+  if (t >= c) return null;
+  if (t < a) return [0, Math.log(E.rm0) * sm3(t / a), 0];
+  if (t < b) { const s = sm3((t - a) / X.d1); return [X.loss * s, Math.log(E.rm0) + (Math.log(X.rmx) - Math.log(E.rm0)) * s, X.sz * s]; }
+  const s = sm3((t - b) / X.d2); return [X.loss * (1 - X.rec * s), Math.log(X.rmx) + Math.log(E.rm2) * s, X.sz];
+}
+function stepErc(S, par, seed, h, lf, shT, sstE) {
+  const E = par.wind.erc;
+  S.hiH = S.v >= 90 ? (S.hiH || 0) + 1 : S.v < 80 ? 0 : (S.hiH || 0);            // hours as a mature hurricane: an inner core that has held its strength
+  if (S.erc && S.th !== 'tc') { S.erc = null; S.ercPh = ''; }                       // a transition ends it
+  if (S.erc) {
+    const t = h + 1 - S.erc.t0, sh = ercShape(E, S.erc, t);
+    if (sh) { S.ercDef = sh[0]; S.ercRm = sh[1]; S.ercSz = sh[2]; S.ercPh = t < S.erc.d0 ? 'forming' : t < S.erc.d0 + S.erc.d1 ? 'weakening' : 're-intensifying'; return; }
+    S.erc = null; S.ercPh = ''; S.ercCool = h + 1 + E.cool[0] + (E.cool[1] - E.cool[0]) * rnd(seed, S.num, h, ST.ERCP);
+  }
+  S.ercDef = (S.ercDef || 0) * Math.exp(-1 / E.tDef); S.ercRm = (S.ercRm || 0) * Math.exp(-1 / E.tRm); S.ercSz = (S.ercSz || 0) * Math.exp(-1 / E.tSz);
+  if (S.th !== 'tc' || S.ri || h < (S.ercCool || -1)) return;
+  const g = smooth01(S.v, E.vR[0], E.vR[1]) * smooth01(S.hiH, E.hi[0], E.hi[1]) * smooth01(sstE, E.sst[0], E.sst[1]) * (1 - smooth01(lf, E.land[0], E.land[1])) / (1 + Math.pow(shT / E.shear, 3));
+  if (g > 0 && rnd(seed, S.num, h, ST.ERC) < E.rate * g) {
+    const z = (k) => rnd(seed, S.num, h * 8 + k, ST.ERCP), u = (r, k) => r[0] + (r[1] - r[0]) * z(k);
+    const loss = clamp((E.loss[0] + E.loss[1] * rndn(seed, S.num, h, ST.ERCP)) * clamp(S.v / 115, 0.7, 1.2), E.loss[2], E.loss[3]);
+    S.erc = { t0: h + 1, d0: u(E.d0, 1), d1: u(E.d1, 2), d2: u(E.d2, 3), loss, rec: u(E.rec, 4), rmx: u(E.rmx, 5), sz: u(E.sz, 6) };
+    S.ercN = (S.ercN || 0) + 1; S.ercPh = 'forming';
+  }
 }
 function stepSystem(S, env, h, seed, par, doy, ctx) {
   const lat = S.lat, lon = S.lon, id = S.num;
@@ -855,7 +944,7 @@ function stepSystem(S, env, h, seed, par, doy, ctx) {
       if (ctx.diag) diagExposure(ctx, S.kind, tw, lat, lon, eT, eS);
       const u = rnd(seed, id, h, ST.GEN);
       if (u < hT + hS) {
-        S.dev = h + 1; S.sub = u >= hT;
+        S.dev = h + 1; S.sub = u >= hT || (hT > 0 && rnd(seed, id, h, ST.SUBX) < subShare(par, alat, sst));
         if (ctx.diag) diagGenesis(ctx, S.kind, S.sub, tw, lat, lon);
       }
     } else if (h - S.dev > 48) S.dev = -1;                                                  // it never organised: back to being a disturbance
@@ -892,7 +981,7 @@ function stepSystem(S, env, h, seed, par, doy, ctx) {
       const landF = 1 - smooth01(lf, 0.1, 0.4);                                    // an episode fades as the coast comes in, and cannot start on one
       if (S.ri) {
         dV += S.ri.rate * Math.sin(Math.PI * (h - S.ri.t0 + 0.5) / S.ri.dur) * landF * smooth01(1 - V / Math.max(vcap, 1), 0.02, 0.10);       // ... and tapers off as the wind comes up to the potential wind
-      } else if (h >= S.riCoolUntil && landF > 0) {
+      } else if (h >= S.riCoolUntil && landF > 0 && !S.erc) {
         const cond = smooth01(sstE, R.sst[0], R.sst[1]) / (1 + Math.pow(shT / R.shear, 3)) * smooth01(rh, R.rh[0], R.rh[1])
           * smooth01(V, R.vLow[0], R.vLow[1]) * (1 - smooth01(V, R.vHigh[0], R.vHigh[1])) * smooth01(1 - V / Math.max(vcap, 1), R.room[0], R.room[1]) * gL * landF;
         if (rnd(seed, id, h, ST.RIT) < R.haz * Math.pow(cond, R.hp) * smooth01(cond, 0.005, 0.015)) {
@@ -912,7 +1001,8 @@ function stepSystem(S, env, h, seed, par, doy, ctx) {
     // tropical cyclone hovers at a weak wind until it fills
     if (th === 'ex') {
       const lift = S.exLift || 0;                                                // what an episode of re-intensification has added to the wind the baroclinic zone supports: it stays, and fades over days
-      dV = -(V - baroclinicV(par, shear, alat) - lift) / par.bc.exTau;
+      const lc = Math.exp(-Math.max(0, h + 1 - S.etAt - par.ex.occ[0]) / par.ex.occ[1]);                 // the life cycle: a post-tropical cyclone is held up for a day or two, then the occlusion and the friction wear it down
+      dV = -(V - baroclinicV(par, shear, alat) * lc - lift * lc) / par.bc.exTau;
       S.exLift = lift * (1 - 1 / (2 * par.bc.exTau));
       const ep = S.exEp; if (ep && h >= ep.t0 && h < ep.t0 + ep.dur) { const e = ep.rate * Math.sin(Math.PI * (h - ep.t0 + 0.5) / ep.dur); dV += e; S.exLift += e; }
       S.exDeep += 0.15 * smooth01(shear, 25, 55) * (1 - S.exDeep / 40);                        // (the extra deepening saturates toward 40 hPa)
@@ -931,10 +1021,11 @@ function stepSystem(S, env, h, seed, par, doy, ctx) {
   }
   const rhoV = Math.exp(-1 / par.noiseTau);
   S.zv = rhoV * S.zv + Math.sqrt(1 - rhoV * rhoV) * rndn(seed, id, h, ST.VOL);
-  S.vr = S.v * Math.exp(par.noiseRel * S.zv);
+  if (th !== 'wv') stepErc(S, par, seed, h, lf, shear / par.shearK, sstE);
+  S.vr = Math.max(1, S.v * Math.exp(par.noiseRel * S.zv) - (S.ercDef || 0));                  // (an eyewall replacement's dip is on the reported wind only)
   const rhoP = Math.exp(-1 / par.pressureTau);
   S.zp = rhoP * S.zp + Math.sqrt(1 - rhoP * rhoP) * rndn(seed, id, h, ST.PRES);
-  S.p = th === 'wv' ? 1010 - 0.12 * S.vr + 0.8 * S.zp : pressureFromWind(S.vr, S.lat) - (th === 'ex' ? S.exDeep : 0) + par.pressureSd * S.zp;
+  S.p = th === 'wv' ? 1010 - 0.12 * S.vr + 0.8 * S.zp : pressureFromWind(S.vr + par.wind.pErc * (S.ercDef || 0), S.lat) - par.wind.pSz * clamp(sizeAnom(S, par, alat), -0.6, 0.9) - (th === 'ex' ? S.exDeep : 0) + par.pressureSd * S.zp;       // (a larger storm has a lower pressure for the same wind, and part of an eyewall replacement's wind loss does not show in it)
 
   // ---- transitions and endings
   const lat2 = S.lat;
@@ -979,7 +1070,17 @@ function stepSystem(S, env, h, seed, par, doy, ctx) {
       else S.lowCount = 0;
     }
   } else if (th === 'ex' || th === 'nl') {
-    if ((h + 1 >= S.nlTill && !(ctx && ctx.keep)) || S.v < 12) { S.alive = false; S.endReason = th === 'ex' ? 'absorbed' : 'dissipated'; S.end = h + 1; }
+    const keep = ctx && ctx.keep, timed = S.nlTill > 0 && h + 1 >= S.nlTill && !keep;                    // (a hard end: a remnant low's life, or one a test or a placement gave a post-tropical cyclone)
+    if (timed || S.v < 12) { S.alive = false; S.endReason = th === 'ex' ? 'absorbed' : 'dissipated'; S.end = h + 1; }
+    else if (th === 'ex') {
+      const X = par.ex, age = h + 1 - S.etAt;
+      S.exLowH = S.v < X.fill[0] ? (S.exLowH || 0) + 1 : 0;
+      if (S.exLowH >= X.fill[1]) { S.th = 'nl'; S.nlTill = h + 1 + lifetimeH(par.nlLife, seed, S.num, h, ST.LIFE); }          // it has filled: a weak low that goes on a while longer
+      else if (!keep) {
+        const hz = (1 - smooth01(S.v, X.absV[0], X.absV[1])) * smooth01(alat, X.absLat[0], X.absLat[1]) / X.absTau + smooth01(age, X.maxAge[0], X.maxAge[1]) / 24;
+        if (hz > 0 && rnd(seed, id, h, ST.ABS) < hz) { S.alive = false; S.endReason = 'absorbed'; S.end = h + 1; }
+      }
+    }
   }
   // a circulation that is nearly gone is finished: a hazard that grows as the wind falls (over land from 22 kt on, over water from 10 kt), not a threshold
   if (S.alive && S.th === 'tc' && lf > 0) { const w = smooth01(lf, 0.3, 0.6) * (1 - smooth01(S.v, 12, 22)); if (w > 0 && rnd(seed, id, h, ST.ENDH + 100) < 0.5 * w) { S.alive = false; S.endReason = 'dissipated over land'; S.end = h + 1; } }
@@ -994,6 +1095,7 @@ function makeFix(S, h, aceTotal) {
     h, lat: r1(S.lat), lon: r1(S.lon), v: S.th === 'wv' ? Math.round(S.vr) : round5(S.vr), p: Math.round(S.p), st: statusOf(S), th: S.th,
     dir: Math.round((Math.atan2(S.cx, S.cy) / DEG + 360) % 360), spd: Math.round(spd), sst: r1(S.lastSst), sh: Math.round(S.lastShear), rh: Math.round(S.lastRh),
     ace: Math.round(aceTotal * 100) / 100, land: S.lastLf > 0.5, w: S.w ? S.w.slice() : null,       // w: the mean radii of the 34, 50 and 64 kt winds (nmi)
+    ec: S.ercPh || undefined,                                                                      // ec: the phase of an eyewall replacement cycle under way
   };
 }
 
@@ -1191,7 +1293,7 @@ Manager.prototype._updateLows = function (h, env) {
       if (u < hT + hS) {
         this.lows._finish(t, h); t.became = true;
         if (!t.invest) this._invest(t);                                          // (a depression that grows from a low was an invest first, whether or not the six-hourly look saw it flagged)
-        const S = this._seedSystem('N', 'wv', t.lat, t.lon, 22, h, 'low', u >= hT);
+        const S = this._seedSystem('N', 'wv', t.lat, t.lon, 22, h, 'low', u >= hT || (hT > 0 && rnd(this.seed, idNum('L', +t.id.slice(1)), h, ST.SUBX) < subShare(par, Math.abs(t.lat), sst)));
         S.dev = h; S.invest = t.invest; S.ck = t.id;
         S.fixes = t.fixes.map(([hh, la, lo, pp]) => ({ h: hh, lat: la, lon: lo, v: 20, p: pp, st: 'LO', th: 'wv', dir: 0, spd: 0, sst: 0, sh: 0, rh: 0, ace: 0, land: false }));      // the low's own path leads into the depression's
         if (ctx.diag) diagGenesis(ctx, 'L', S.sub, tw, t.lat, t.lon);
@@ -1276,6 +1378,16 @@ Manager.prototype._cleanup = function (h) {
   if (this.prev && !this.systems.some((S) => S.alive && S.season === this.prev.year && S.th !== 'wv')) this._finalizePrev();
 };
 
+/* two post-tropical or non-tropical lows that come within par.ex.mergeD degrees of each other merge: the weaker is absorbed (a chance of par.ex.mergeP an hour) */
+Manager.prototype._merge = function (h) {
+  const L = this.systems.filter((S) => S.alive && (S.th === 'ex' || S.th === 'nl')), X = this.par.ex;
+  for (let i = 0; i < L.length; i++) for (let j = i + 1; j < L.length; j++) {
+    const a = L[i], b = L[j]; if (!a.alive || !b.alive) continue;
+    if (Math.hypot(a.lat - b.lat, (a.lon - b.lon) * Math.cos(((a.lat + b.lat) / 2) * DEG)) >= X.mergeD) continue;
+    const w = a.vr < b.vr ? a : b;
+    if (rnd(this.seed, w.num, h, ST.ABS + 100) < X.mergeP) { w.alive = false; w.endReason = 'absorbed'; w.end = h + 1; }
+  }
+};
 Manager.prototype.advanceTo = function (target, envSrc) {
   while (this.hour < target) {
     const h = this.hour, env = envSrc && typeof envSrc.at === 'function' ? envSrc.at(h) : envSrc;
@@ -1285,6 +1397,7 @@ Manager.prototype.advanceTo = function (target, envSrc) {
     if (this.maps) { this.ctx.tw = timeWeights(doy + (((h % 24) + 24) % 24) / 24); this.ctx.act = activityFactor(this.par, this.seed, seasonYearOf(this.startMs + h * HOUR_MS, this.seasonMonth), h); ensoOf(this.par, env, this.ctx); }
     if (this.auto) this._spawn(h, env);
     for (const S of this.systems) if (S.alive) stepSystem(S, env, h, this.seed, this.par, doy, this.ctx);
+    this._merge(h);
     this.hour = h + 1;
     if (this.hour % 3 === 0) this._record(this.hour, env);
     if (this.hour % 6 === 0) { this._updateLows(this.hour, env); this._assignInvests(); this._cleanup(this.hour); }
@@ -1423,6 +1536,7 @@ function outlookFollow(mgr, F, c) {
         lamS = satur(par.hazMul * hazAt(par, M, M.haz.S, tw, lat, lon, F.shift) * eS, par.hazMax);
       }
     }
+    { const qs = subShare(par, alat, sst); if (qs > 0 && lamT > 0) { if (!(gS > 0)) gS = devGrowth(par, env, true, lat, sst, rh, shear, doy, par.sstOffset); lamS += qs * lamT; lamT *= 1 - qs; } }       // (the share of the tropical developments that are subtropical instead: the same draw as the genesis rule's)
     // the chance a development event becomes a depression: the doors the genesis rule closes (land, the equator, cold water) and the growth gate the new depression must hold (tdMargin)
     const sd = c.q != null ? Math.sqrt(Math.max(0.0025, 1 - Math.pow(rq, 2 * dh))) : 1, mq = c.q != null ? Math.pow(rq, dh) * c.q : 0;
     const sustP = (g, G) => { if (!(par.tdMargin > 0)) return 1; if (!(g > 0)) return 0; if (!(par.qSd > 0)) return g >= G.gCrit + par.tdMargin ? 1 : 0; return 1 - normCdf((Math.log((G.gCrit + par.tdMargin) / g) / par.qSd - mq) / sd); };
@@ -1644,7 +1758,7 @@ Manager.prototype.forecast = function (spec, envSrc, horizonH) {
    genesis). The sizes grow with lead and are scaled by how well a system of that strength can be forecast (ensFactor): a wave is a wide fan, a hurricane a tight one. A member's coefficients are a pure function of the
    seed, the system and the member, never of the hour of the issue, so a fan made six hours later is the same fan moved on by what changed, not a new one. */
 const ENS_FAM = [['GEFS', 'p', 10], ['ECENS', 'e', 8], ['CMCE', 'c', 6]];
-function cloneSystem(S) { const C = Object.assign({}, S); C.fixes = []; C.ri = S.ri ? Object.assign({}, S.ri) : null; C.exEp = S.exEp ? Object.assign({}, S.exEp) : null; C.rq = S.rq ? S.rq.slice() : S.rq; C.w = S.w ? S.w.slice() : S.w; return C; }
+function cloneSystem(S) { const C = Object.assign({}, S); C.fixes = []; C.ri = S.ri ? Object.assign({}, S.ri) : null; C.exEp = S.exEp ? Object.assign({}, S.exEp) : null; C.rq = S.rq ? S.rq.slice() : S.rq; C.erc = S.erc ? Object.assign({}, S.erc) : null; C.w = S.w ? S.w.slice() : S.w; return C; }
 const ensFactor = (E, v) => E.f[0] + (E.f[1] - E.f[0]) * smooth01(v, E.f[2], E.f[3]);
 function ensCoef(seed, tid, k) {
   const z = (j) => rndn(seed, tid, k * 32 + j, ST.ENS);
@@ -1893,7 +2007,7 @@ root.HFStorms = {
   VERSION, create: (o) => new Manager(o), restore: (o, extra) => Manager.restore(o, extra), defaultParams, mergeParams,
   prepareMaps, timeWeights, mapAt, driftAt, climAt, steerRing, envFactor, activityFactor, structureParams, CALIBRATED, calibrated: (on) => { const was = useCalibrated; if (on != null) useCalibrated = !!on; return was; },
   category, ktToMph, aceOf, round5, gustKt, compass, pressureFromWind, windFromPressure, WP, vPot, statusOf, describe, nameFor, NAME_SETS, NAME_SUPPLEMENTAL, BASINS, basinInfo: basinOf, stormName, seasonYearOf,
-  smooth01, rnd, rndn, hash5, idNum, stepSystem, newSystem, makeFix, seasonalWeight, WAVE_SEASON, LowTracker, etHazard6, disHazard6, baroclinicV, satur, softMin, lowWeight, keepSide, SCALES, scaleOf, classOf, investLetter, capsule, swath, swathFull, outlookClass, outlookFollow, cloneSystem, windRadii, windScale, stepWind, alertsOf, unmercY, ensFactor, ensDensity, mercY, coneOf, coneRadius, coneLetter, sstGateAt, growthG, decayLimit,
+  smooth01, rnd, rndn, hash5, idNum, stepSystem, newSystem, makeFix, seasonalWeight, WAVE_SEASON, LowTracker, etHazard6, disHazard6, subShare, baroclinicV, satur, softMin, lowWeight, keepSide, SCALES, scaleOf, classOf, investLetter, capsule, swath, swathFull, outlookClass, outlookFollow, cloneSystem, windRadii, windScale, windAt, windProfile, profileAt, profileRoot, stepWind, stepErc, ercShape, sizeClim, rmaxBase, alertsOf, unmercY, ensFactor, ensDensity, mercY, coneOf, coneRadius, coneLetter, sstGateAt, growthG, decayLimit,
 };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
 /* ==== STORMS ENGINE END ==== */

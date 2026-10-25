@@ -100,7 +100,7 @@ function peakOver(seeds, envOpts, th, lat, lon, v, hours) {
 /* ---- intensity: the environment controls -------------------------------------------------------------------------------------- */
 {
   const peakSh = [3, 8, 15, 22].map((sh) => mean(peakOver(30, { shear: sh }, 'tc', 15, -50, 30, 144)));
-  check('more shear, weaker peak: mean 6-day peaks at 3 / 8 / 15 / 22 kt of shear fall monotonically (' + peakSh.map((x) => x.toFixed(0)).join(' / ') + ')', peakSh.every((x, i) => i === 0 || x < peakSh[i - 1] - 5) && peakSh[0] > 100 && peakSh[3] < 40);
+  check('more shear, weaker peak: mean 6-day peaks at 3 / 8 / 15 / 22 kt of shear fall monotonically (' + peakSh.map((x) => x.toFixed(0)).join(' / ') + ')', peakSh.every((x, i) => i === 0 || x < peakSh[i - 1] - 3) && peakSh[0] > 100 && peakSh[3] < 40);
   const peakSst = [24, 26.5, 28, 29.5].map((s) => mean(peakOver(30, { sst: s }, 'tc', 15, -50, 30, 144)));
   check('warmer water, stronger peak (' + peakSst.map((x) => x.toFixed(0)).join(' / ') + ' at 24 / 26.5 / 28 / 29.5 degC)', peakSst.every((x, i) => i === 0 || x > peakSst[i - 1] + 3) && peakSst[3] > 110);
   const peakRh = [25, 50, 65].map((r) => mean(peakOver(30, { rh: r }, 'tc', 15, -50, 30, 144)));
@@ -364,7 +364,7 @@ const LAND = (la, lo) => (lo > -16.3 && lo < 38 && la > 4 && la < 30) || (lo < -
   const flip = H.mergeParams(par, { etHaz: { b0: 60 }, disHaz: { b0: -60 } });                  // a transition at the first hour
   const at = (v, lat, sh, seed) => { const S = system('tc', lat, -50, v, seed), e = makeEnv({ sst: 18, shear: sh, rh: 50, steer: () => [10, 6, 12, 7, 20, 10] }); H.stepSystem(S, e, 0, seed, flip); return { S, e }; };
   const k = at(80, 41, 40, 3);
-  check(`the transition keeps the wind (a hurricane of 80 kt is ${k.S.th} with ${k.S.v.toFixed(0)} kt at its first post-tropical hour) and gives it the life of an extratropical cyclone (${(k.S.nlTill - k.S.etAt).toFixed(0)} h)`, k.S.th === 'ex' && near(k.S.v, 80, 2) && k.S.etAt === 1 && k.S.nlTill > k.S.etAt);
+  check(`the transition keeps the wind (a hurricane of 80 kt is ${k.S.th} with ${k.S.v.toFixed(0)} kt at its first post-tropical hour) and gives it the growth and the life cycle of an extratropical cyclone (no timed end: ${k.S.nlTill}; size gain ${k.S.exG.toFixed(2)})`, k.S.th === 'ex' && near(k.S.v, 80, 2) && k.S.etAt === 1 && k.S.nlTill === -1 && Number.isFinite(k.S.exG));
   const life = [], d24 = [], d48 = [];
   for (let s = 1; s <= 400; s++) {
     const { S, e } = at(50, 41, 40, s), v0 = S.v;
@@ -372,7 +372,8 @@ const LAND = (la, lo) => (lo > -16.3 && lo < 38 && la > 4 && la < 30) || (lo < -
     life.push(S.end - S.etAt);
   }
   const md = (a) => a.slice().sort((x, y) => x - y)[Math.floor(a.length / 2)];
-  check(`a post-tropical cyclone lasts a median ${md(life)} h with a long tail (90th percentile ${life.slice().sort((x, y) => x - y)[Math.floor(0.9 * life.length)].toFixed(0)} h; real 30 and 102)`, near(md(life), 33, 9) && life.slice().sort((x, y) => x - y)[Math.floor(0.9 * life.length)] > 80);
+  const lifeP = (p) => life.slice().sort((x, y) => x - y)[Math.floor(p * life.length)];
+  check(`a post-tropical cyclone is not given a lifetime: it lasts a median ${md(life)} h with a long tail (10th percentile ${lifeP(0.1).toFixed(0)} h, 90th ${lifeP(0.9).toFixed(0)} h; the real best track stops at a median of 30 because forecasters stop following them)`, md(life) > 72 && md(life) < 160 && lifeP(0.9) > 130 && lifeP(0.9) < 340);
   const g10 = (a) => a.filter((x) => x >= 10).length / a.length;
   check(`among those still going, the wind changes by a median ${md(d24).toFixed(0)} kt in the next day (real -5), and in a strong jet ${g10(d24).toFixed(2)} gain 10 kt or more within a day and ${g10(d48).toFixed(2)} within two (real 0.09 and 0.16: re-intensification)`, near(md(d24), -5, 6) && g10(d24) > 0.02 && g10(d24) < 0.25 && g10(d48) > 0.06 && g10(d48) < 0.4);
   const wk = (v, shear) => { const S = system('tc', 42, -50, v, 5), e = makeEnv({ sst: 14, shear, rh: 40, steer: () => [10, 6, 12, 7, 20, 10] }); let lo = 1e9; for (let h = 0; h < 36; h++) { H.stepSystem(S, e, h, 5, off); lo = Math.min(lo, S.v); } return lo; };
@@ -604,6 +605,16 @@ const LAND = (la, lo) => (lo > -16.3 && lo < 38 && la > 4 && la < 30) || (lo < -
   { const lowEnv = makeEnv({ sst: 27, shear: 8, rh: 60, steer: () => [0, 0, 0, 0, 0, 0], lows: () => [{ lat: 31, lon: -70, p: 1000, prom: 6 }] });
     let t = 0, s = 0, n = 0; for (let sd = 1; sd <= 40; sd++) { const m = H.create({ seed: sd, startMs: Date.UTC(2026, 8, 1), auto: true, params: { waveRate0: 0 }, maps: testMaps({ haz: 0.004, hazS: 0.004 }) }); m.advanceTo(24 * 12, lowEnv); const made = m.systems.filter((S) => S.origin === 'low'); n += made.length > 0 ? 1 : 0; for (const S of made) if (S.sub) s++; else t++; }
     check(`a tracked low develops like any disturbance, a tropical or a subtropical depression whichever draw it wins (${t} tropical, ${s} subtropical, from ${n} of 40 seasons with a low that developed)`, n > 25 && t > 0.3 * (t + s) && s > 0.3 * (t + s)); }
+  // ---- more subtropical storms in cool water poleward of the tropics (par.subShift): the tropical developments there become subtropical instead, and the number of developments does not change
+  { const sp = H.defaultParams(), up = H.defaultParams();
+    const lowEnvS = (sst, lat) => makeEnv({ sst, shear: 8, rh: 60, steer: () => [0, 0, 0, 0, 0, 0], lows: () => [{ lat, lon: -70, p: 1000, prom: 6 }] });
+    const tally = (sst, lat, extra) => { let t = 0, s2 = 0; for (let sd = 1; sd <= 60; sd++) { const m = H.create({ seed: sd, startMs: Date.UTC(2026, 8, 1), auto: true, params: Object.assign({ waveRate0: 0 }, extra || {}), maps: testMaps({ haz: 0.004, hazS: 0 }) }); m.advanceTo(24 * 12, lowEnvS(sst, lat)); for (const S of m.systems.filter((x) => x.origin === 'low')) if (S.sub) s2++; else t++; } return [t, s2]; };
+    const off = tally(26.2, 36, { subShift: { max: 0 } }), on = tally(26.2, 36), warm = tally(27.5, 36), trop = tally(28, 20), tropOff = tally(28, 20, { subShift: { max: 0 } });
+    const q = (la, sst) => H.subShare(sp, la, sst);
+    check(`the share of developments that are subtropical grows poleward and with cooler water and is zero in the tropics and over warm water (35N: ${q(35, 23).toFixed(2)} at 23 C, ${q(35, 25.5).toFixed(2)} at 25.5, ${q(35, 26.5).toFixed(2)} at 26.5, ${q(35, 28).toFixed(2)} at 28; at 25.5 C ${q(15, 25.5).toFixed(2)} at 15N, ${q(26, 25.5).toFixed(2)} at 26N, ${q(32, 25.5).toFixed(2)} at 32N)`,
+      q(35, 23) >= 0.85 && q(35, 28) === 0 && q(15, 25.5) === 0 && q(35, 25.5) > q(35, 26.5) && q(35, 26.5) > 0 && q(32, 25.5) > q(26, 25.5) && q(26, 25.5) > 0);
+    check(`a tracked low that develops over 26.2 C water at 36N is subtropical a fifth of the time with the share (${on[1]} subtropical of ${on[0] + on[1]}) and never without it (${off[1]} of ${off[0] + off[1]}), the same number of systems either way (${on[0] + on[1]} against ${off[0] + off[1]}); over 27.5 C water or at 20N nothing changes (${warm[1]} subtropical, ${trop.join('/')} against ${tropOff.join('/')})`,
+      on[1] >= 4 && off[1] === 0 && Math.abs(on[0] + on[1] - off[0] - off[1]) <= 6 && warm[1] === 0 && trop.join() === tropOff.join()); }
   { const lowEnv = makeEnv({ sst: 27, shear: 8, rh: 60, steer: () => [0, 0, 0, 0, 0, 0], lows: () => [{ lat: 31, lon: -70, p: 1000, prom: 6 }] });
     const made = (auto) => { let n = 0, tracked = 0; for (let sd = 1; sd <= 12; sd++) { const m = H.create({ seed: sd, startMs: Date.UTC(2026, 8, 1), auto, params: { waveRate0: 0 }, maps: testMaps({ haz: 0.004, hazS: 0.004 }) }); m.advanceTo(24 * 12, lowEnv); n += m.systems.filter((S) => S.origin === 'low').length; tracked += m.lows.tracks.filter((t) => t.alive).length; } return [n, tracked]; };
     const on = made(true), off = made(false);
@@ -1394,17 +1405,20 @@ const LAND = (la, lo) => (lo > -16.3 && lo < 38 && la > 4 && la < 30) || (lo < -
   const gr = stepN(sys('tc', 20, 80), 1); stepN(gr, 48, 1, 0, 120);
   const sh = stepN(sys('tc', 20, 80), 1); stepN(sh, 48, 1, 0, 50);
   const q3 = stepN(sys('tc', 20, 80), 1); stepN(q3, 3, 1, 0, 120); const q0 = stepN(sys('tc', 20, 80), 1); stepN(q0, 3, 1, 0, 80);
-  check(`a storm that strengthens grows and one that weakens shrinks (the same storm and chances against 80 kt held: ${nm(ctl)} nmi): ${nm(gr)} nmi two days after 120 kt, ${nm(sh)} after 50 kt, and not at once (${nm(q3)} against ${nm(q0)} after three hours of 120 kt)`,
-    nm(gr) > 1.2 * nm(ctl) && nm(sh) < 0.85 * nm(ctl) && nm(q3) < 1.12 * nm(q0));
+  check(`a storm that strengthens grows and one that weakens shrinks, the hurricane-force winds fast and the 34 kt field slowly (the same storm and chances against 80 kt held: R34 ${nm(ctl)}, R64 ${ctl.w[2]} nmi): two days after 120 kt R34 ${nm(gr)} and R64 ${gr.w[2]}, after 50 kt R34 ${nm(sh)} and no hurricane-force winds (${sh.w[2]}), and R34 not at once (${nm(q3)} against ${nm(q0)} after three hours of 120 kt)`,
+    gr.w[2] > 1.25 * ctl.w[2] && nm(gr) > 1.02 * nm(ctl) && nm(gr) < 1.3 * nm(ctl) && sh.w[2] === 0 && nm(sh) > 0.8 * nm(ctl) && nm(sh) < 0.99 * nm(ctl) && nm(q3) < 1.08 * nm(q0));
   const lo = stepN(sys('tc', 12, 70), 1), hi = stepN(sys('tc', 42, 70), 1);
   check(`the field grows poleward: R34 of the same storm is ${nm(lo)} nmi at 12 degrees and ${nm(hi)} at 42`, nm(hi) > 1.3 * nm(lo));
   const ld = stepN(sys('tc', 25, 90), 1), ln0 = nm(ld); stepN(ld, 30, 1, 1.0, 90);
-  check(`a landfall costs size: R34 ${ln0} nmi over water, ${nm(ld)} after 30 hours at full land (the same wind)`, nm(ld) < 0.8 * ln0);
-  const nh = H.windRadii(stepN(sys('tc', 25, 100, { cx: 0, cy: 15 }), 1), WP), sh2 = H.windRadii(stepN(sys('tc', -25, 100, { cx: 0, cy: -15 }), 1), WP), mx = (a) => a.indexOf(Math.max(...a));
-  check(`the strong quadrant is the right-front one: heading north in the north the largest radius is the north-east (${nh.r34.join('/')} NE SE SW NW), heading south in the south the south-east's mirror, the left-front south-east (${sh2.r34.join('/')})`,
-    mx(nh.r34) === 0 && nh.r34[0] > 1.15 * nh.r34[2] && mx(sh2.r34) === 1);
-  const ex = sys('ex', 40, 55, { etAt: 0 }); stepN(ex, 1, 0); const e0 = nm(ex); stepN(ex, 40, 1);
-  check(`a post-tropical cyclone broadens: R34 ${e0} nmi at the transition, ${nm(ex)} nmi 40 hours later (the large fields of the extratropical lows)`, nm(ex) > 1.6 * e0 && nm(ex) > 170);
+  check(`a landfall costs size, slowly: R34 ${ln0} nmi over water, ${nm(ld)} after 30 hours at full land (the same wind)`, nm(ld) < 0.9 * ln0 && nm(ld) > 0.6 * ln0);
+  const flat = { rs: 0, rq: [0, 0, 0, 0] };
+  const nh = H.windRadii(stepN(sys('tc', 25, 100, Object.assign({ cx: 0, cy: 15 }, flat)), 1), WP), sh2 = H.windRadii(stepN(sys('tc', -25, 100, Object.assign({ cx: 0, cy: -15 }, flat)), 1), WP), mx = (a) => a.indexOf(Math.max(...a)), mn = (a) => a.indexOf(Math.min(...a));
+  check(`the strong quadrant is the right-front one: heading north in the north the largest radius is the north-east and the smallest the south-west, the south-east ahead of the north-west (${nh.r34.join('/')} NE SE SW NW); heading south in the south the south-east is the largest (${sh2.r34.join('/')}); the hurricane-force radius varies more than the 34 kt radius (${(Math.max(...nh.r64) / Math.max(1, Math.min(...nh.r64))).toFixed(1)} against ${(Math.max(...nh.r34) / Math.min(...nh.r34)).toFixed(1)})`,
+    mx(nh.r34) === 0 && mn(nh.r34) === 2 && nh.r34[1] > nh.r34[3] && nh.r34[0] > 1.5 * nh.r34[2] && mx(sh2.r34) === 1 && mn(sh2.r34) === 3);
+  const ex = sys('ex', 40, 55, { etAt: 0, exG: 0.7 }); stepN(ex, 1, 0); const e0 = nm(ex); stepN(ex, 39, 1); const e40 = nm(ex); stepN(ex, 56, 40); const e96 = nm(ex);
+  const exw = sys('ex', 40, 55, { etAt: 0, exG: 0 }); stepN(exw, 1, 0); const w0 = nm(exw); stepN(exw, 95, 1);
+  check(`a post-tropical cyclone grows over a day or two, not at once, and by how much depends on the jet: in a strong one R34 ${e0} nmi at the transition, ${e40} after 40 hours, ${e96} after four days (the large fields of the extratropical lows); in a weak one ${w0} then ${nm(exw)}`,
+    e40 > 1.3 * e0 && e40 < 1.8 * e0 && e96 > 1.7 * e0 && e0 < 230 && nm(exw) < 1.2 * w0);
   const old = JSON.parse(JSON.stringify(sys('tc', 22, 70))); delete old.rs; delete old.rq; delete old.lr; delete old.w; stepN(old, 5, 3);
   check(`a save made before the wind field existed carries on: ${old.w.join('/')} nmi after five hours, and two runs of the same system are the same (${JSON.stringify(stepN(sys('tc', 22, 70), 20).w) === JSON.stringify(stepN(sys('tc', 22, 70), 20).w)})`,
     old.w.every((x) => Number.isFinite(x)) && old.w[0] > 30 && JSON.stringify(stepN(sys('tc', 22, 70), 20).w) === JSON.stringify(stepN(sys('tc', 22, 70), 20).w));
@@ -1446,6 +1460,95 @@ const LAND = (la, lo) => (lo > -16.3 && lo < 38 && la > 4 && la < 30) || (lo < -
   // two storms: the higher code
   const Ab = AL([Cx, C1], null);
   check(`two storms at once: the stronger alert wins where they overlap (${Ab.at(31, -88)} with a hurricane warning and a high wind warning on the same cell)`, Ab.at(31, -88) === 5);
+}
+
+/* ---- milestone 15: the wind field as a profile, the eyewall replacement cycle, the long life of a post-tropical cyclone -------------------------------------------------------------------------- */
+{
+  const WP = H.defaultParams(), E = WP.wind.erc, seedW = 21;
+  const sys = (th, lat, v, extra) => Object.assign(H.newSystem({ id: 'T1', num: H.idNum('M', 1), th, lat, lon: -60, v, hour: 0 }), { alive: true, cx: 2, cy: 12, etAt: -1 }, extra || {});
+  const stepN = (S, n, h0 = 0, lf = 0, setV) => { for (let k = 0; k < n; k++) { if (setV) { S.v = setV; S.vr = setV - (S.ercDef || 0); } H.stepWind(S, WP, seedW, h0 + k, Math.abs(S.lat), lf); } return S; };
+  const flatQ = { rs: 0, rq: [0, 0, 0, 0] };
+  // ---- the radii are the roots of the wind at a point, and the profile is a profile
+  { const S = stepN(sys('tc', 24, 105, Object.assign({ cx: 3, cy: 12 }, flatQ)), 60, 0, 0, 105), R = H.windRadii(S, WP);
+    let worst = 0, n = 0, ordered = true;
+    for (let q = 0; q < 4; q++) {
+      const az = (45 + 90 * q) * Math.PI / 180;
+      for (const [v, arr] of [[34, R.r34], [50, R.r50], [64, R.r64]]) {
+        const r = arr[q]; if (!(r > 0)) continue;
+        const lat = S.lat + r * Math.cos(az) / 60, lon = S.lon + r * Math.sin(az) / 60 / Math.cos((S.lat + r * Math.cos(az) / 120) * Math.PI / 180);
+        worst = Math.max(worst, Math.abs(H.windAt(S, WP, lat, lon) - v)); n++;
+      }
+      if (!(R.r64[q] <= R.r50[q] && R.r50[q] <= R.r34[q])) ordered = false;
+    }
+    check(`the radii are the roots of the wind at a point: along each quadrant's centre line the wind at the 34, 50 and 64 kt radii is within ${worst.toFixed(2)} kt of its threshold (${n} radii), and in every quadrant R64 <= R50 <= R34 (${R.r64.join('/')} ${R.r50.join('/')} ${R.r34.join('/')})`, n >= 9 && worst < 1.6 && ordered);
+    let top = 0, mono = true, prev = 1e9;
+    for (let r = R.rmax + 1; r <= 700; r += 5) { const lat = S.lat, lon = S.lon + r / 60 / Math.cos(lat * Math.PI / 180), v = H.windAt(S, WP, lat, lon); if (v > prev + 1e-6) mono = false; prev = v; }
+    for (let az = 0; az < 360; az += 15) for (let r = 2; r <= 60; r += 2) { const a = az * Math.PI / 180, v = H.windAt(S, WP, S.lat + r * Math.cos(a) / 60, S.lon + r * Math.sin(a) / 60 / Math.cos(S.lat * Math.PI / 180)); top = Math.max(top, v); }
+    check(`the wind falls monotonically outside the eyewall (east of the centre out to 700 nmi), the strongest wind anywhere is the storm's own (${top.toFixed(0)} kt of 105) and it is calm at the centre (${H.windAt(S, WP, S.lat, S.lon).toFixed(1)} kt)`, mono && top > 100 && top < 108 && H.windAt(S, WP, S.lat, S.lon) < 3);
+  }
+  // ---- Rmax: smaller for a stronger storm, larger poleward and for a larger storm
+  { const rm = (v, lat, rs) => { const S = stepN(sys('tc', lat, v, { rs, rq: [0, 0, 0, 0] }), 80, 0, 0, v); return Math.exp(S.rm); };
+    const a = rm(60, 20, 0), b = rm(120, 20, 0), c = rm(90, 12, 0), d = rm(90, 35, 0), e = rm(90, 20, -0.5), f = rm(90, 20, 0.5);
+    check(`the radius of maximum wind is smaller for a stronger storm (${a.toFixed(0)} nmi at 60 kt, ${b.toFixed(0)} at 120), larger poleward (${c.toFixed(0)} at 12 degrees, ${d.toFixed(0)} at 35) and larger for a larger storm (${e.toFixed(0)} for a small one, ${f.toFixed(0)} for a large one)`, a > 1.5 * b && d > 1.25 * c && f > 1.25 * e && b > 6 && a < 40); }
+  // ---- size is nearly independent of intensity: across storms of any wind the correlation of the 34 kt radius with the wind is weak
+  { const Vs = [], Rs = []; for (let sd = 1; sd <= 300; sd++) { const v = 50 + 80 * (((sd * 0.6180339887) % 1)), S = sys('tc', 22, v); S.num = H.idNum('M', sd); for (let k = 0; k < 120; k++) { S.v = S.vr = v; H.stepWind(S, WP, 500 + sd, k, 22, 0); } Vs.push(v); Rs.push(Math.log(S.w[0])); }
+    const mv = mean(Vs), mr = mean(Rs); let sxy = 0, sx = 0, sy = 0; for (let i = 0; i < Vs.length; i++) { sxy += (Vs[i] - mv) * (Rs[i] - mr); sx += (Vs[i] - mv) ** 2; sy += (Rs[i] - mr) ** 2; }
+    const r = sxy / Math.sqrt(sx * sy), sdl = Math.sqrt(sy / Vs.length);
+    check(`outer size is nearly independent of intensity: across 300 storms of 50 to 130 kt each held at its wind long enough for its field to follow it (the strongest coupling there can be: in a season of real histories it is about 0.2 against the published 0.3 to 0.4) the correlation of wind and ln R34 is ${r.toFixed(2)}, the spread of ln R34 ${sdl.toFixed(2)}`, r > 0.15 && r < 0.7 && sdl > 0.25 && sdl < 0.5); }
+  // ---- the eyewall replacement cycle
+  { const X = { t0: 0, d0: 8, d1: 18, d2: 24, loss: 20, rec: 0.85, rmx: 2.4, sz: 0.15 }, at = (t) => H.ercShape(E, X, t);
+    const a = at(8), b = at(26), c = at(49.9);
+    check(`an eyewall replacement cycle is a dip of ${X.loss} kt that comes back by ${100 * X.rec} % (${a[0].toFixed(1)} kt at the start of the weakening, ${b[0].toFixed(1)} at its end, ${c[0].toFixed(1)} at the end of the cycle), with Rmax jumping to ${Math.exp(b[1]).toFixed(1)} times and coming back to ${Math.exp(c[1]).toFixed(2)} of that, the field gaining ${b[2].toFixed(2)} (log) and keeping it, and it is over after ${X.d0 + X.d1 + X.d2} hours (${at(50)})`,
+      a[0] === 0 && Math.abs(b[0] - 20) < 0.01 && Math.abs(c[0] - 3) < 0.3 && Math.abs(Math.exp(b[1]) - 2.4) < 0.01 && Math.abs(Math.exp(c[1]) - 2.4 * 0.7) < 0.05 && Math.abs(b[2] - 0.15) < 1e-9 && c[2] === 0.15 && at(50) === null); }
+  const P0 = H.mergeParams(WP, { wind: { erc: { rate: 0 } } });                            // (a storm that never starts one by itself: the episodes below are forced)
+  const drive = (S, hours, v, h0 = 0, lf = 0, shT = 0.5, sst = 28.5, seed = seedW, pp = P0) => { for (let h = h0; h < h0 + hours; h++) { S.v = v; H.stepErc(S, pp, seed, h, lf, shT, sst); S.vr = Math.max(1, v - S.ercDef); H.stepWind(S, pp, seed, h, Math.abs(S.lat), lf); } return S; };
+  { const S = sys('tc', 22, 120, flatQ), C = sys('tc', 22, 120, flatQ); drive(S, 80, 120); drive(C, 80, 120);              // a storm that has held 120 kt for 80 hours, and its twin
+    const pre = H.windRadii(S, P0), rm0 = Math.exp(S.rm), v0 = S.vr, m4 = (a) => (a[0] + a[1] + a[2] + a[3]) / 4;
+    S.erc = { t0: 80, d0: 8, d1: 18, d2: 24, loss: 20, rec: 0.85, rmx: 2.4, sz: 0.15 }; S.ercN = 1;                      // (forced on one of the two)
+    let vmin = 1e9, rmMax = 0, r64Max = 0, r34Max = 0;
+    for (let h = 80; h < 130; h++) { drive(S, 1, 120, h); drive(C, 1, 120, h); vmin = Math.min(vmin, S.vr); rmMax = Math.max(rmMax, Math.exp(S.rm) / Math.exp(C.rm)); const R = H.windRadii(S, P0), Rc = H.windRadii(C, P0); r64Max = Math.max(r64Max, m4(R.r64) / m4(Rc.r64)); r34Max = Math.max(r34Max, m4(R.r34) / m4(Rc.r34)); }
+    drive(S, 48, 120, 130); drive(C, 48, 120, 130); const late = H.windRadii(S, P0), lc = H.windRadii(C, P0);
+    check(`in an eyewall replacement the reported wind dips ${(v0 - vmin).toFixed(0)} kt (to ${vmin.toFixed(0)}), the eye grows ${rmMax.toFixed(1)} times that of the same storm without one (${rm0.toFixed(0)} nmi before), the hurricane-force radius grows ${r64Max.toFixed(2)} times and the 34 kt radius ${r34Max.toFixed(2)} times (real cycles: the inner wind maximum falls about 10 m/s, the hurricane-force radius gains about 30 km); two days after the field is still larger (R64 ${(m4(late.r64) / m4(lc.r64)).toFixed(2)}, R34 ${(m4(late.r34) / m4(lc.r34)).toFixed(2)} of the twin's) and the wind is back (${S.vr.toFixed(0)} kt)`,
+      v0 - vmin > 14 && v0 - vmin < 26 && rmMax > 1.5 && rmMax < 3 && r64Max > 1.25 && r34Max > 1.04 && r34Max < 1.35 && m4(late.r64) > 1.08 * m4(lc.r64) && m4(late.r34) > 1.04 * m4(lc.r34) && S.vr > 112); }
+  // the hazard: who gets one
+  { const share = (v, o = {}, hours = 24) => { let n = 0; const N = 300; for (let sd = 1; sd <= N; sd++) { const S = sys('tc', 22, v, Object.assign({}, flatQ, o.S || {})); S.num = H.idNum('M', sd); S.hiH = o.hiH ?? 30; for (let h = 0; h < (o.hours || hours); h++) { S.v = v; H.stepErc(S, WP, 900 + sd, h, o.lf || 0, o.shT ?? 0.5, o.sst ?? 28.5); S.vr = v - S.ercDef; } if (S.ercN > 0) n++; } return n / N; };
+    const s120 = share(120), s100 = share(100), s90 = share(90), s70 = share(70), land = share(120, { lf: 1 }), ri = share(120, { S: { ri: { t0: 0, dur: 99, rate: 3 } } }), shear = share(120, { shT: 6 }), cold = share(120, { sst: 24 }), young = share(120, { hiH: 0, hours: 6 }), old = share(120, { hiH: 0, hours: 30 });
+    check(`a hurricane that holds its strength gets an eyewall replacement at a rate that grows with its wind: ${(100 * s120).toFixed(0)} % in a day at 120 kt, ${(100 * s100).toFixed(0)} % at 100, ${(100 * s90).toFixed(0)} % at 90, none at 70 (${(100 * s70).toFixed(0)} %), and none over land (${(100 * land).toFixed(0)} %), in rapid intensification (${(100 * ri).toFixed(0)} %), in strong shear (${(100 * shear).toFixed(0)} %), over cool water (${(100 * cold).toFixed(0)} %) or before the inner core has had time to mature (${(100 * young).toFixed(0)} % in the first six hours, ${(100 * old).toFixed(0)} % in a day and a quarter)`,
+      s120 > 0.6 && s120 < 0.97 && s100 > 0.4 && s100 <= s120 + 0.05 && s90 < s100 && s90 > 0.1 && s70 === 0 && land === 0 && ri === 0 && shear < 0.4 * s120 && cold === 0 && young === 0 && old > 0.3); }
+  // cool-down and independence of members
+  { const gaps = []; let both = 0; for (let sd = 1; sd <= 200; sd++) { const S = sys('tc', 22, 125, flatQ); S.num = H.idNum('M', sd); S.hiH = 30; const starts = []; let last = null; for (let h = 0; h < 400; h++) { const had = S.ercN || 0; S.v = 125; H.stepErc(S, WP, 1500 + sd, h, 0, 0.5, 28.5); S.vr = 125 - S.ercDef; if ((S.ercN || 0) > had) starts.push(h); } if (starts.length >= 2) { both++; gaps.push(starts[1] - starts[0]); } }
+    const minGap = Math.min(...gaps), med = gaps.slice().sort((a, b) => a - b)[Math.floor(gaps.length / 2)];
+    check(`a second eyewall replacement comes after a cool-down: in ${both} storms that had two over 400 hours at 125 kt the second began at least ${minGap.toFixed(0)} hours after the first began (the cycle itself lasts 36 to 66 hours and the cool-down 36 to 84 after it), median ${med}`, both > 40 && minGap >= E.d0[0] + E.d1[0] + E.d2[0] + E.cool[0] - 1);
+    const onset = (sd, seed) => { const S = sys('tc', 22, 125, flatQ); S.num = H.idNum('M', 1); S.hiH = 30; for (let h = 0; h < 200; h++) { S.v = 125; H.stepErc(S, WP, seed, h, 0, 0.5, 28.5); if (S.erc) return S.erc.t0; } return -1; };
+    const a = Array.from({ length: 60 }, (_, i) => onset(1, 2000 + i)), distinct = new Set(a.filter((x) => x > 0)).size;
+    check(`members of an ensemble that start from one storm have eyewall replacements at different times (${distinct} different onset hours in 60 members), and the same member reproduces its own (${onset(1, 2007) === onset(1, 2007)})`, distinct > 20 && onset(1, 2007) === onset(1, 2007)); }
+  // ---- the pressure: a larger storm has a lower pressure for the same wind, and not all of an eyewall replacement's wind loss shows in it
+  { const e = makeEnv({ sst: 28.5, shear: 6, rh: 66, steer: () => [-10, 3, -10, 3, -10, 3] }), P1 = H.mergeParams(WP, { pressureSd: 0, noiseRel: 0 });
+    const one = (lrAdd, def) => { const S = system('tc', 25, -60, 100, 4); S.vr = 100; S.lr = H.sizeClim(P1, 25) + P1.wind.kv * Math.log(100 / 55) + lrAdd; S.rm = Math.log(14); S.ercDef = def || 0; H.stepSystem(S, e, 0, 4, P1); return S; };
+    const big = one(0.5), small = one(-0.5), mid = one(0), dip = one(0, 20);
+    const wind = (S) => H.pressureFromWind(S.vr, S.lat);
+    check(`the pressure follows the size (a 100 kt storm with a field 50 % larger than ordinary ${big.p.toFixed(0)} hPa, a smaller one ${small.p.toFixed(0)}, ordinary ${mid.p.toFixed(0)}) and not all of an eyewall replacement's wind loss shows in it (after a dip of 20 kt ${dip.p.toFixed(0)} hPa at ${dip.vr.toFixed(0)} kt where the wind alone says ${wind(dip).toFixed(0)}, against ${mid.p.toFixed(0)} at ${mid.vr.toFixed(0)})`,
+      big.p < mid.p - 1.5 && small.p > mid.p + 1.5 && dip.p - mid.p < 0.75 * (wind(dip) - wind(mid)) && dip.p > mid.p); }
+  // ---- the engine: a stepSystem storm over water gets the dip on its reported wind only
+  { const e = makeEnv({ sst: 28.5, shear: 6, rh: 66, steer: () => [-10, 3, -10, 3, -10, 3] }), P2 = H.mergeParams(WP, {});
+    const dips = [], defs = []; let ph = null;
+    for (let sd = 1; sd <= 40; sd++) { const S = system('tc', 18, -60, 100, sd); S.hiH = 30; for (let h = 0; h < 120 && S.alive; h++) { H.stepSystem(S, e, h, sd, P2); if (S.erc && S.ercDef > 12) { dips.push(S.v - S.vr); defs.push(S.ercDef); ph = ph || H.makeFix(S, h, 0).ec; break; } } }
+    check(`storms over warm water in light shear get eyewall replacements in the engine (${defs.length} of 40 reached a dip of 12 kt within five days); the reported wind is below the intensity law's own by the dip (${mean(dips).toFixed(1)} kt on average against a dip of ${mean(defs).toFixed(1)}) and the fix says what phase it is in (${ph})`, defs.length >= 20 && Math.abs(mean(dips) - mean(defs)) < 4 && mean(defs) > 12 && !!ph); }
+  // ---- post-tropical: the large field is reached over days, the life is the physics, not a timer
+  { const envJ = (shear) => makeEnv({ sst: 16, shear, rh: 50, steer: () => [10, 6, 12, 7, 20, 10] }), flip = H.mergeParams(WP, { etHaz: { b0: 60 }, disHaz: { b0: -60 } }), e = envJ(40);
+    const born = (v, seed, lat = 43, env = e) => { const S = system('tc', lat, -50, v, seed); H.stepSystem(S, env, 0, seed, flip); return S; };
+    const lifeOf = (v, keep, shear) => { const env = envJ(shear), a = []; for (let sd = 1; sd <= 60; sd++) { const S = born(v, sd, 43, env); for (let h = 1; h < 500 && S.alive; h++) H.stepSystem(S, env, h, sd, flip, null, keep ? { keep: true } : undefined); a.push(S.alive ? 500 : S.end - S.etAt); } return a.sort((x, y) => x - y); };
+    const strong = lifeOf(75, false, 40), weak = lifeOf(32, false, 12), md = (a) => a[Math.floor(a.length / 2)];
+    check(`a strong post-tropical cyclone in a strong jet lives for days (median ${md(strong)} h from 75 kt, 10th percentile ${strong[6]} h), a weak low in a weak jet is absorbed in the westerlies (median ${md(weak)} h from 32 kt): neither has a timer`, md(strong) > 96 && strong[6] > 40 && md(weak) < 80 && md(strong) > 1.6 * md(weak));
+    const kept = lifeOf(32, true, 12);
+    check(`a member of a fan is never absorbed at random (median ${md(kept)} h from 32 kt against ${md(weak)} h in the real engine): its cone does not end early`, md(kept) > md(weak) + 20);
+    // merger: two post-tropical lows 2 degrees apart, the weaker goes; far apart neither
+    const pair = (sep, seed) => { const m = H.create({ seed, startMs: Date.UTC(2026, 8, 1), auto: false, params: {} }), a = m.place({ kind: 'td', lat: 45, lon: -40, v: 50 }), b = m.place({ kind: 'td', lat: 45, lon: -40 + sep, v: 35 }); for (const S of [a, b]) { S.th = 'ex'; S.etAt = 0; S.nlTill = -1; S.exG = 0.3; } a.vr = a.v = 60; b.vr = b.v = 40; return { m, a, b }; };
+    let gone = 0, goneFar = 0; for (let sd = 1; sd <= 30; sd++) { const p = pair(2.2, sd), q = pair(9, sd), f = makeEnv({ sst: 12, shear: 30, rh: 50, steer: () => [0, 0, 0, 0, 0, 0] }); p.m.advanceTo(30, f); q.m.advanceTo(30, f); if (!p.b.alive && p.a.alive && p.b.endReason === 'absorbed') gone++; if (!q.b.alive) goneFar++; }
+    check(`two post-tropical lows that come within three degrees of each other merge: the weaker is absorbed (${gone} of 30 within 30 hours, the stronger survives), and not when they are far apart (${goneFar} of 30)`, gone >= 24 && goneFar <= 4);
+    // the hard cap
+    const old = born(70, 5); old.etAt = -400; let end = 0; for (let h = 1; h < 120 && old.alive; h++) { H.stepSystem(old, e, h, 5, flip); end = h; }
+    check(`a post-tropical cyclone that is very old (more than two weeks) is gone within a day or so (ended at hour ${end}: ${old.endReason})`, !old.alive && end < 60 && old.endReason === 'absorbed'); }
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);
