@@ -141,7 +141,7 @@ function flLoop(now) {
 }
 function flPos(S) {                                                              // where the floater says the system is now (between the hour's two states), for the storm canvas and the picture
   if (!flOn || !flNest || !flNest.cur || S.id !== flId || flSpinN < FL_SPIN) return null;
-  const n = flNest, f = n.cur, g = n.f1 || f, k = Math.max(0, Math.min(1, (n.t - n.tF0 + (flPlay ? flAcc : 0)) / 3600));
+  const n = flNest, f = n.f0, g = n.f1 || f, k = Math.max(0, Math.min(1, (n.t - n.tF0 + (flPlay ? flAcc : 0)) / 3600));
   return { lat: f.clat + (g.clat - f.clat) * k, lon: f.clon + (g.clon - f.clon) * k };
 }
 

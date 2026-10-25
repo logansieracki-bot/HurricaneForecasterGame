@@ -4,7 +4,7 @@
 // program does, which docs/roadmap.md names). Needs a clean tree and Chromium for the browser drivers:
 //   PLAYWRIGHT_CHROMIUM_PATH=/path/to/chromium node tools/storm_mutants.mjs [--dry] [--base] [--only X1,S4] [--drivers node,save] [--jobs 3]
 // --dry   only checks that every edit anchor occurs exactly once and that the mutated file still parses; --base runs every driver on the unmodified tree (all must pass first);
-// --only  a comma list of mutant ids; --drivers  restricts the drivers to run (node, nest, storms, summary, place, save, gate, env, look, alerts, impacts, floater); --jobs  how many mutants run at once (default 3; each builds into its own directory under $MUT_DIR or the
+// --only  a comma list of mutant ids; --drivers  restricts the drivers to run (node, nest, storms, summary, place, save, gate, env, look, alerts, impacts, floater, floaterS); --jobs  how many mutants run at once (default 3; each builds into its own directory under $MUT_DIR or the
 //         temp directory). It changes src/storms.js, src/template.html or index.html for the few seconds a build takes and puts them back itself;
 //         if it is killed in between, `git checkout -- src index.html` restores them. The drivers are the check functions cut out of tests/run.mjs
 //         by their opening comments (`// The storm layer on the Atlantic page`, `// Save / resume`, `async function checkEnsoHold`): keep them.
@@ -318,8 +318,8 @@ const mutants = [
   M('N1', NS, [E("let ey = 0; if (eyeA > 0 && r < eyeR) ey = eyeA * sm01(eyeR - r, 0, 0.35 * eyeR + 2);", "let ey = 0;")], ['nest'], 'no eye: convection fills the middle of a hurricane'),
   M('N2', NS, [E("250 * Math.pow(rc, 1.2)", "300 * Math.pow(rc, 1.4)")], ['nest'], 'the default Z-R relation for convective rain'),
   M('N3', NS, [E("200 * Math.pow(rs, 1.6)", "200 * Math.pow(rs, 1.2)")], ['nest'], 'stratiform rain with the convective exponent'),
-  M('N4', NS, [E("qb[k] = P.Qenv + 0.12 * (rh - 0.7);", "qb[k] = P.Qenv;")], ['nest'], 'dry air on one side of a storm does nothing'),
-  M('N5', NS, [E("qs[k] = Qc * (P.Qstar + 0.05 * clamp((sst - 27) / 2, -1.5, 1)) * (0.6 + 0.4 * sm01(sst, 23, 27.5));", "qs[k] = Qc * P.Qstar;"), E("qc[k] = Qc * (1 + 0.12 * clamp((27.5 - sst) / 4, -0.5, 1.5));", "qc[k] = Qc;")], ['nest'], 'cold water on one side of a storm does nothing'),
+  M('N4', NS, [E("qb[k] = P.Qenv + 0.12 * (rh - 0.7);", "qb[k] = P.Qenv;"), E("bg[k] = (0.3 + 0.7 * sm01(sst, 25.5, 28.5)) * sm01(rh, 0.4, 0.8);", "bg[k] = (0.3 + 0.7 * sm01(sst, 25.5, 28.5));")], ['nest'], 'dry air on one side of a storm does nothing (neither its moisture nor its lift)'),
+  M('N5', NS, [E("qs[k] = Qc * (P.Qstar + 0.05 * clamp((sst - 27) / 2, -1.5, 1)) * (0.6 + 0.4 * sm01(sst, 23, 27.5));", "qs[k] = Qc * P.Qstar;"), E("qc[k] = Qc * (1 + 0.12 * clamp((27.5 - sst) / 4, -0.5, 1.5));", "qc[k] = Qc;"), E("bg[k] = (0.3 + 0.7 * sm01(sst, 25.5, 28.5)) * sm01(rh, 0.4, 0.8);", "bg[k] = sm01(rh, 0.4, 0.8);")], ['nest'], 'cold water on one side of a storm does nothing (neither its evaporation, its threshold nor its lift)'),
   M('N6', NS, [E("if (vent > 0 && r < ventR) {", "if (false) {")], ['nest'], 'shear does not ventilate the upshear side'),
   M('N7', NS, [E("let relax = aEnv * (1 + 18 * l);", "let relax = aEnv;")], ['nest'], 'land does not dry the column'),
   M('N8', NS, [E("strat = eta * warm * P.gsW * edgeS[k]", "strat = 0 * warm * P.gsW * edgeS[k]")], ['nest'], 'no stratiform shield in the warm sector of a transition'),
@@ -340,14 +340,14 @@ const mutants = [
   M('F3', FL, [E("  }, true);\n  window.addEventListener('keydown'", "  }, false);\n  window.addEventListener('keydown'")], ['floater'], 'the playback buttons keep steering the main clock'),
   M('F4', FL, [E("makeCanvas(458)", "makeCanvas(462)")], ['floater'], 'the radar is drawn over the storm layers'),
   M('F5', FL, [E("  setPlaying(flPrevPlay); updateSpeedUI();", "  setPlaying(flPrevPlay);")], ['floater'], 'closing leaves the floater\'s speed label on the main clock'),
-  M('F6', FL, [E("      if (bh >= top + 0.5) { dbz[k] = -20; continue; }", "      if (false) { dbz[k] = -20; continue; }")], ['floater'], 'a radar beam never passes over an echo'),
+  M('F6', FL, [E("bh = flBeam(r, tilt);", "bh = 0;")], ['floater'], 'the height of the beam never counts: every tilt sees the same'),
   M('F7', FL, [E("function flEligible(S) { return !!S && S.alive && (S.th !== 'wv' || S.dist || S.kind === 'N' || !!S.invest); }", "function flEligible(S) { return !!S && S.alive; }")], ['floater'], 'a plain tropical wave can have a floater'),
   M('F8', FL, [E("const FL_DT = 120, FL_SPIN = 30,", "const FL_DT = 120, FL_SPIN = 1,")], ['floater'], 'no spin-up: the radar opens on a model with no convection yet'),
   M('F9', FL, [E("flSpeed = 5, flPlay = true,", "flSpeed = 0, flPlay = true,")], ['floater'], 'the floater opens at a quarter speed'),
   M('F10', FL, [E("  $('storm-card').hidden = true; $('aoi-card').hidden = true;\n  const f0 = flForcing(S, simHour);", "  const f0 = flForcing(S, simHour);")], ['floater'], 'the storm card stays over the radar'),
   M('F11', FL, [E("k = Math.max(0, Math.min(1, (n.t - n.tF0 + (flPlay ? flAcc : 0)) / 3600));", "k = 0;")], ['floater'], 'the radar stays where the system was at the hour'),
   M('F13', FL, [E("vr[k] = (ue * sx + ve * sy) / r * MS; }", "vr[k] = -(ue * sx + ve * sy) / r * MS; }")], ['floater'], 'the Doppler velocity has the wrong sign: winds toward the radar are red'),
-  M('F14', FL, [E("ve = sg * (V[k] + cy);", "ve = V[k] + cy;")], ['floater'], 'the velocity of a southern storm is not mirrored back'),
+  M('F14', FL, [E("ve = sg * (V[k] + cy);", "ve = V[k] + cy;")], ['floaterS'], 'the velocity of a southern storm is not mirrored back'),
   M('F12', FL, [E("lut[i * 4 + 3] = 226;", "lut[i * 4 + 3] = 226; if (i % 2) lut[i * 4] = 255 - lut[i * 4];")], ['floater'], 'every other half dBZ is a colour of its own: a gradient of noise, not steps'),
 ];
 
@@ -404,6 +404,19 @@ await checkStormGate(page, '${GATE_BASIN}', GATE_DIST);
 await checkStormGateOff(browser, '${GATE_BASIN}', GATE_DIST);
 await browser.close();
 `
+    : which === 'floaterS'
+    ? `const browser = await chromium.launch(launchOpts);
+const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+await page.route('**://**/*', (route) => route.request().url().startsWith('file://') ? route.continue() : route.abort());
+const errors = []; page.on('pageerror', (e) => errors.push(e.message));
+await page.goto(pathToFileURL(AUS_DIST).href, { waitUntil: 'load', timeout: 30000 });
+await page.waitForFunction(() => window.__ready === true, { timeout: 30000 });
+await page.waitForTimeout(800);
+await page.evaluate(() => { window.SSTSIM.storms(false); });
+await checkFloaterSite(page, 'Australian Region', 'aus');
+check('no page errors (' + errors.length + ')', errors.length === 0);
+await browser.close();
+`
     : which === 'look'
     ? `const browser = await chromium.launch(launchOpts);
 const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
@@ -442,7 +455,7 @@ await browser.close();
 function snapshot(id, mutatedIndexHtml) {
   const dir = join(OUT, id); rmSync(dir, { recursive: true, force: true });
   for (const d of ['dist', 'tests', 'src']) mkdirSync(join(dir, d), { recursive: true });
-  for (const f of new Set(['atlantic', GATE_BASIN, 'westpacific'])) copyFileSync(join(REPO, `dist/${f}-sst-simulator.html`), join(dir, `dist/${f}-sst-simulator.html`));
+  for (const f of new Set(['atlantic', GATE_BASIN, 'westpacific', 'aus'])) copyFileSync(join(REPO, `dist/${f}-sst-simulator.html`), join(dir, `dist/${f}-sst-simulator.html`));
   if (!existsSync(join(dir, 'data'))) symlinkSync(join(REPO, 'data'), join(dir, 'data'));
   writeFileSync(join(dir, 'index.html'), mutatedIndexHtml);
   copyFileSync(join(REPO, 'package.json'), join(dir, 'package.json'));
@@ -479,7 +492,7 @@ async function runMutant(m, results) {
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------------
-let list = base ? [M('base', S, [], ['node', 'nest', 'storms', 'summary', 'place', 'save', 'gate', 'env', 'look', 'alerts', 'impacts', 'floater'], 'unmutated')] : (only ? mutants.filter((m) => only.includes(m.id)) : mutants);
+let list = base ? [M('base', S, [], ['node', 'nest', 'storms', 'summary', 'place', 'save', 'gate', 'env', 'look', 'alerts', 'impacts', 'floater', 'floaterS'], 'unmutated')] : (only ? mutants.filter((m) => only.includes(m.id)) : mutants);
 if (drivers) list = list.map((m) => ({ ...m, drivers: m.drivers.filter((d) => drivers.includes(d)) })).filter((m) => m.drivers.length);
 if (dry) { let bad = 0; for (const m of mutants) { try { parses(m.file, applyEdits(readFileSync(join(REPO, m.file), 'utf8'), m.edits, m.id)); } catch (e) { bad++; console.log(m.id + ': ' + e.message); } } console.log(bad ? bad + ' of ' + mutants.length + ' mutants broken (an anchor that is not found exactly once, or a mutated file that does not parse)' : 'all ' + mutants.length + ' anchors found exactly once and every mutated file parses'); process.exit(bad ? 1 : 0); }
 mkdirSync(OUT, { recursive: true });

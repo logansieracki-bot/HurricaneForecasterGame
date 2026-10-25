@@ -125,9 +125,29 @@ const wet = (nest) => { const d = dbzField(nest); return (k) => (d[k] >= 20 ? 1 
   const et = run({ v: 55, rmax: 80, r34: 220, extra: { eta: 1, shear: 20, shdir: 0.2, head: 0.8, etdir: 0.8, spd: 14, sst: 18, rh: 0.6 } }, 4);
   const box = (n, along, across, hw) => { const c = Math.cos(0.8), s = Math.sin(0.8); let sum = 0, cnt = 0; for (let k = 0; k < NN; k++) { const x = n.rr[k] * n.cth[k], y = n.rr[k] * n.sth[k], a = x * c + y * s, b = -x * s + y * c; if (Math.abs(a - along) < hw && Math.abs(b - across) < hw) { sum += n.rc[k] + n.rs[k]; cnt++; } } return sum / cnt; };
   check('the warm sector ahead of and to the left of the motion has a stratiform rain shield (' + box(et, 100, 50, 40).toFixed(1) + ' mm/h), the dry slot to the rear right has almost none (' + box(et, -90, -110, 40).toFixed(1) + ')', box(et, 100, 50, 40) > 1.0 && box(et, -90, -110, 40) < 0.35 * box(et, 100, 50, 40));
+  const boxS = (n, along, across, hw) => { const c = Math.cos(0.8), s = Math.sin(0.8); let sum = 0, cnt = 0; for (let k = 0; k < NN; k++) { const x = n.rr[k] * n.cth[k], y = n.rr[k] * n.sth[k], a = x * c + y * s, b = -x * s + y * c; if (Math.abs(a - along) < hw && Math.abs(b - across) < hw) { sum += n.rs[k]; cnt++; } } return sum / cnt; };
+  check('the shield is stratiform rain (the warm sector\'s stratiform rate ' + boxS(et, 100, 50, 40).toFixed(2) + ' mm/h against ' + boxS(et, -90, -110, 40).toFixed(2) + ' in the dry slot), not only convective cells', boxS(et, 100, 50, 40) > 1.2 && boxS(et, -90, -110, 40) < 0.2 * boxS(et, 100, 50, 40));
+  const weak = run({ v: 25, rmax: 100, r34: 200, extra: { eta: 1, shear: 20, shdir: 0.2, head: 0.8, etdir: 0.8, spd: 14, sst: 18, rh: 0.6 } }, 4), calm = run({ v: 25, rmax: 100, r34: 200, extra: { eta: 0, shear: 20, shdir: 0.2, head: 0.8, etdir: 0.8, spd: 14, sst: 18, rh: 0.6 } }, 4);
+  const rear = (n) => { const c = Math.cos(0.8), s = Math.sin(0.8); let sum = 0; for (let k = 0; k < NN; k++) { const x = n.rr[k] * n.cth[k], y = n.rr[k] * n.sth[k], a = x * c + y * s, b = -x * s + y * c; if (a > -130 && a < -40 && Math.abs(b) < 150) sum += n.rc[k]; } return sum; };
+  check('the front alone: a weak vortex (25 kt) that is transitioning has convective rain along the front behind it (' + rear(weak).toFixed(0) + ' mm/h summed over the rear half-plane) and the same vortex without the transition has none (' + rear(calm).toFixed(0) + ')', rear(weak) > 1000 && rear(calm) < 0.1 * rear(weak));
   const front = (() => { let best = 0; for (let k = 0; k < NN; k++) { const x = et.rr[k] * et.cth[k], y = et.rr[k] * et.sth[k], a = x * Math.cos(0.8) + y * Math.sin(0.8); if (a < -40 && a > -200 && et.rc[k] > best) best = et.rc[k]; } return best; })();
   check('a convective front trails behind the centre: a line of echoes of 10 mm/h or more in the rear half-plane', front > 10);
   check('the system is not tropical any more: no eye (rain at the centre is not under 5 % of the shield\'s)', box(et, 0, 0, 20) > 0.05 * box(et, 100, 50, 40));
+}
+
+/* ---- convection makes the vortex's lumps: the stretching sign and the lead of the right-front side ------------------------------------------------------ */
+{
+  reset();
+  const hot = run({ v: 100, rmax: 25 }, 3);
+  const nb = 40, sz = new Float64Array(nb), sr = new Float64Array(nb), cn = new Float64Array(nb);
+  for (let k = 0; k < NN; k++) { const b = Math.floor(hot.rr[k] / 4); if (b < nb) { sz[b] += hot.zeta[k]; sr[b] += hot.rc[k] + hot.rs[k]; cn[b]++; } }
+  let sxy = 0, sxx = 0, syy = 0;
+  for (let k = 0; k < NN; k++) { const r = hot.rr[k], b = Math.floor(r / 4); if (r < 10 || r > 60) continue; const x = hot.zeta[k] - sz[b] / cn[b], y = hot.rc[k] + hot.rs[k] - sr[b] / cn[b]; sxy += x * y; sxx += x * x; syy += y * y; }
+  const corr = sxy / Math.sqrt(sxx * syy);
+  check('convection stretches the vorticity: round the eyewall (10 to 60 km) the lumps of vorticity and of rain go together (correlation of their departures from the ring mean ' + corr.toFixed(2) + ', over 0.45; stretching with the wrong sign gives under 0.35)', corr > 0.45);
+  const quad = (spd) => { const n = run({ v: 70, rmax: 35, r34: 150, extra: { spd, head: Math.PI / 2, shear: 0 } }, 3), f = (a) => sector(n, 50, 200, a, 45, rain(n)); return f(45) / f(225); };
+  const still = quad(0), moving = quad(14);
+  check('a storm moving north has more rain on its right-front (north-east) side than the left-rear (' + moving.toFixed(2) + ' times, a still storm ' + still.toFixed(2) + ' times): the lead is the motion\'s, over 1.3 and over 1.15 times the still one', moving > 1.3 && moving > 1.15 * still);
 }
 
 /* ---- the frame of the picture: land grid, environment grid, mirror, glide ------------------------------------------------------------------ */
