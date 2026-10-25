@@ -666,6 +666,8 @@ async function checkStorms(page, label) {
     const pts = cs.pts.map((q) => ({ lead: q.lead, letter: q.letter, v: q.v, px: S.conePoint(q.lead) })); return { cs, ink: pts.filter((q) => q.px && rd(q.px)[3] > 200).length, n: pts.length, pressed: document.querySelector('#lyr-dock [data-l="stcone"]').getAttribute('aria-pressed'), tid: cs.tid, leads: cs.pts.map((q) => q.lead).join(), ok: cs.pts.every((q) => q.letter === (q.v < 34 ? 'D' : q.v < 64 ? 'S' : q.v < 96 ? 'H' : 'M')) }; });
   check(`[${label}] with Cones on, the picked cyclone gets its cone: ${cn1.n} forecast points at +${cn1.leads} h with letters by the wind (${cn1.cs.pts.map((q) => q.letter).join('')}), painted on the map (${cn1.ink} of ${cn1.n}), the outline drawn (${cn1.cs.poly}) and the button lit (${cn1.pressed})`,
     cn1.tid === i1 && cn1.n >= 4 && cn1.leads.startsWith('12,24,36,48') && cn1.ok && cn1.ink === cn1.n && cn1.cs.poly && cn1.pressed === 'true');
+  const cw = await ev(() => { const S = window.SSTSIM, cs = S.coneState(), c = document.getElementById('storm-canvas'), d = c.width / c.clientWidth, g = c.getContext('2d'); return cs.pts.map((q) => { const p = S.conePoint(q.lead), r = Math.round(9 * d), a = g.getImageData(Math.round(p.x * d) - r, Math.round(p.y * d) - r, 2 * r + 1, 2 * r + 1).data; let white = 0, dark = 0; for (let y = -r; y <= r; y++) for (let x = -r; x <= r; x++) if (x * x + y * y <= (7 * d) * (7 * d)) { const i = ((y + r) * (2 * r + 1) + x + r) * 4; if (a[i + 3] === 255 && Math.min(a[i], a[i + 1], a[i + 2]) >= 225) white++; else if (a[i + 3] === 255 && Math.max(a[i], a[i + 1], a[i + 2]) <= 70) dark++; } return [q.letter, white, dark]; }); });
+  check(`[${label}] the letters of the forecast points are white with a thin dark edge, not black (white pixels in each circle: ${cw.map((q) => q[0] + ' ' + q[1]).join(', ')}; solid dark ones, which would be a black letter: ${cw.map((q) => q[2]).join(', ')})`, cw.length >= 4 && cw.every((q) => q[1] >= 7 && q[1] > 3 * q[2]));
   const cp = await ev(() => window.SSTSIM.conePoint(24));
   await page.mouse.move(cp.x + 50, cp.y + 50); await page.mouse.move(cp.x, cp.y, { steps: 5 }); await page.waitForTimeout(200);
   const cn2 = await ev(() => { const t = document.getElementById('storm-tip'); return { shown: t.style.display === 'block', title: t.querySelector('b').textContent, body: t.querySelector('div').innerText.replace(/\n/g, ' | '), hot: window.SSTSIM.coneState().hot }; });
@@ -676,28 +678,32 @@ async function checkStorms(page, label) {
   const cn4 = await ev(() => { const S = window.SSTSIM; const r = { cone: S.coneState(), ens: S.ensState() }; document.querySelector('#lyr-dock [data-l="stcone"]').click(); return r; });
   check(`[${label}] moving off the point un-rings it (${cn3}) and with nothing picked there is no cone and no fan (${JSON.stringify(cn4.cone)}, ${JSON.stringify(cn4.ens)})`, cn3 === -1 && cn4.cone === null && cn4.ens === null);
 
-  // ---- the layer buttons: seven pills at the bottom right standing for the checkboxes (kept in the panel, hidden)
+  // ---- the layer buttons: nine pills at the bottom right standing for the checkboxes (kept in the panel, hidden)
   const ld = await ev(() => { const S = document, btn = (l) => S.querySelector('#lyr-dock [data-l="' + l + '"]'), st = (l) => btn(l).getAttribute('aria-pressed'), el = (id) => S.getElementById(id);
     const labels = [...S.querySelectorAll('#lyr-dock .lyr')].map((b) => b.innerText.trim()), before = { hl: st('hl'), nhc: st('nhc'), steer: st('steer'), jet: st('jetline'), dens: btn('stdens').disabled };
     btn('hl').click(); const hl1 = { b: st('hl'), highs: el('highs').checked, lows: el('stlows').checked }; btn('hl').click(); const hl2 = { b: st('hl'), highs: el('highs').checked, lows: el('stlows').checked };
     btn('nhc').click(); const n1 = { b: st('nhc'), w: el('stwaves').checked, d: el('stdist').checked }; btn('nhc').click(); const n2 = { b: st('nhc'), w: el('stwaves').checked, d: el('stdist').checked };
     btn('steer').click(); const s1 = { b: st('steer'), c: el('steerarrows').checked }; btn('steer').click(); btn('jetline').click(); const j1 = { b: st('jetline'), c: el('jetline').checked }; btn('jetline').click();
     btn('stens').click(); const e1 = { b: st('stens'), c: el('stens').checked, densOff: btn('stdens').disabled }; btn('stens').click(); const e2 = { c: el('stens').checked, densOff: btn('stdens').disabled };
-    const hidden = ['jetline', 'steerarrows', 'highs', 'stlows', 'stwaves', 'stdist', 'stens', 'stdens', 'stcone'].every((id) => el(id).closest('label').offsetParent === null), kept = ['cities', 'l265', 'l2', 'stlabels', 'show-sst', 'borders'].every((id) => el(id).closest('label').offsetParent !== null);
-    return { labels, before, hl1, hl2, n1, n2, s1, j1, e1, e2, hidden, kept }; });
-  check(`[${label}] the seven layer buttons (${ld.labels.join(', ')}): Highs & lows drives both the highs and the lows, NHC disturbances both the waves and the areas, Streamlines the steering arrows, Jet stream the jet line, Ensembles lights and frees Track density (${ld.e1.densOff ? 'still disabled' : 'enabled'}, disabled again ${ld.e2.densOff}); the panel keeps the rest and hides these`,
-    ld.labels.join() === 'Ensembles,Cones,Track density,Jet stream,Highs & lows,NHC disturbances,Streamlines' && ld.before.dens === true && ld.hl1.b === 'true' && ld.hl1.highs && ld.hl1.lows && ld.hl2.b === 'false' && !ld.hl2.highs && !ld.hl2.lows && ld.n1.b === 'false' && !ld.n1.w && !ld.n1.d && ld.n2.b === 'true' && ld.n2.w && ld.n2.d
+    const disp = (id) => getComputedStyle(el(id)).display, k0 = { ww: disp('ww-legend'), wf: disp('wf-legend') };
+    btn('stww').click(); btn('stwf').click(); const k1 = { ww: disp('ww-legend'), wf: disp('wf-legend'), b: [st('stww'), st('stwf')], c: [el('stww').checked, el('stwf').checked] }; btn('stww').click(); btn('stwf').click(); const k2 = { ww: disp('ww-legend'), wf: disp('wf-legend'), b: [st('stww'), st('stwf')] };
+    const hidden = ['jetline', 'steerarrows', 'highs', 'stlows', 'stwaves', 'stdist', 'stens', 'stdens', 'stcone', 'stwf', 'stww'].every((id) => el(id).closest('label').offsetParent === null), kept = ['cities', 'l265', 'l2', 'stlabels', 'show-sst', 'borders'].every((id) => el(id).closest('label').offsetParent !== null);
+    return { labels, before, hl1, hl2, n1, n2, s1, j1, e1, e2, k0, k1, k2, hidden, kept }; });
+  check(`[${label}] the nine layer buttons (${ld.labels.join(', ')}): Wind fields and Watches & warnings light and show their own small key only while they are on (${ld.k0.ww}/${ld.k0.wf} off, ${ld.k1.ww}/${ld.k1.wf} on, ${ld.k2.ww}/${ld.k2.wf} off again), Highs & lows drives both the highs and the lows, NHC disturbances both the waves and the areas, Streamlines the steering arrows, Jet stream the jet line, Ensembles lights and frees Track density (${ld.e1.densOff ? 'still disabled' : 'enabled'}, disabled again ${ld.e2.densOff}); the panel keeps the rest and hides these`,
+    ld.labels.join() === 'Ensembles,Cones,Track density,Wind fields,Watches & warnings,Jet stream,Highs & lows,NHC disturbances,Streamlines' && ld.k0.ww === 'none' && ld.k0.wf === 'none' && ld.k1.ww === 'block' && ld.k1.wf === 'block' && ld.k1.b.join() === 'true,true' && ld.k1.c.join() === 'true,true' && ld.k2.ww === 'none' && ld.k2.wf === 'none' && ld.k2.b.join() === 'false,false' && ld.before.dens === true && ld.hl1.b === 'true' && ld.hl1.highs && ld.hl1.lows && ld.hl2.b === 'false' && !ld.hl2.highs && !ld.hl2.lows && ld.n1.b === 'false' && !ld.n1.w && !ld.n1.d && ld.n2.b === 'true' && ld.n2.w && ld.n2.d
     && ld.s1.b === 'true' && ld.s1.c && ld.j1.b === 'true' && ld.j1.c && ld.e1.b === 'true' && ld.e1.c && ld.e1.densOff === false && ld.e2.c === false && ld.e2.densOff === true && ld.hidden && ld.kept);
-  const dl = [];
+  const dl = []; await lyrSet(page, 'stww', true); await lyrSet(page, 'stwf', true);                      // (both keys on, with the outlook's: the three of them stand one over the other at the left)
   for (const [w, h, steer] of [[1280, 800, false], [1280, 800, true], [900, 700, false], [390, 844, false], [390, 844, true]]) {
     await page.setViewportSize({ width: w, height: h }); await lyrSet(page, 'steerarrows', steer); await page.waitForTimeout(200);
     dl.push(await ev(({ w, h, steer }) => { const rect = (e) => { const b = e.getBoundingClientRect(); return { l: b.left, t: b.top, r: b.right, b: b.bottom }; }, hit = (p, q) => p.l < q.r - 0.5 && q.l < p.r - 0.5 && p.t < q.b - 0.5 && q.t < p.b - 0.5;
       const btns = [...document.querySelectorAll('#lyr-dock .lyr')].filter((b) => b.offsetParent), others = ['clock', 'panel', 'dock', 'legend', 'season', 'readout'].concat(steer ? ['steer-legend'] : []).map((id) => [id, document.getElementById(id)]).filter(([, e]) => e && e.offsetParent !== null);
       const bad = []; for (const b of btns) { const r = rect(b); if (r.l < -0.5 || r.t < 0 || r.b > h + 0.5) { if (!(w <= 640 && r.l < w)) bad.push(b.innerText.trim() + ' off screen'); } for (const [id, e] of others) if (hit(r, rect(e))) bad.push(b.innerText.trim() + ' over ' + id); }
-      const pr = rect(document.getElementById('panel')); return { w, h, steer, n: btns.length, bad, panelInside: pr.t >= 0 && pr.b <= h && pr.r <= w }; }, { w, h, steer }));
+      const keys = w < 641 ? [] : ['ol-legend', 'ww-legend', 'wf-legend'].map((id) => [id, document.getElementById(id)]).filter(([, e]) => e && getComputedStyle(e).display !== 'none');       // (the phone layout has its own, older arrangement for the outlook's key)
+      for (const [id, e] of keys) { const r = rect(e); if (r.t < 0 || r.l < 0 || r.b > h || r.r > w) bad.push(id + ' off screen'); for (const [oid, o] of others.concat(btns.map((b) => [b.innerText.trim(), b]))) if (hit(r, rect(o))) bad.push(id + ' over ' + oid); for (const [id2, e2] of keys) if (id2 < id && hit(r, rect(e2))) bad.push(id + ' over ' + id2); }
+      const pr = rect(document.getElementById('panel')); return { w, h, steer, n: btns.length, keys: keys.length, bad, panelInside: pr.t >= 0 && pr.b <= h && pr.r <= w }; }, { w, h, steer }));
   }
-  await lyrSet(page, 'steerarrows', false); await page.setViewportSize({ width: 1280, height: 800 }); await page.waitForTimeout(150);
-  check(`[${label}] the layer buttons fit and overlap nothing (the clock, panel, playback dock, colour bars, season bar) at 1280, 900 and 390 px wide, with the steering legend on and off (${dl.map((x) => x.w + (x.steer ? '+steer' : '') + ': ' + x.n + ' buttons' + (x.bad.length ? ' ' + x.bad.join(', ') : ' ok')).join('; ')})`, dl.every((x) => x.n === 7 && x.bad.length === 0 && x.panelInside));
+  await lyrSet(page, 'steerarrows', false); await lyrSet(page, 'stww', false); await lyrSet(page, 'stwf', false); await page.setViewportSize({ width: 1280, height: 800 }); await page.waitForTimeout(150);
+  check(`[${label}] the layer buttons and the three keys (wind field, watches and warnings, outlook) fit and overlap nothing (the clock, panel, playback dock, colour bars, season bar, each other) at 1280, 900 and 390 px wide, with the steering legend on and off (${dl.map((x) => x.w + (x.steer ? '+steer' : '') + ': ' + x.n + ' buttons, ' + x.keys + ' keys' + (x.bad.length ? ' ' + x.bad.join(', ') : ' ok')).join('; ')})`, dl.every((x) => x.n === 9 && x.keys === (x.w > 1040 ? 3 : x.w > 640 ? 1 : 0) && x.bad.length === 0 && x.panelInside));
 
   // a plain wave (no area of interest) can be picked, alone, and gets a fan too
   const pw = await ev(() => { const S = window.SSTSIM; if (!document.getElementById('stens').checked) document.getElementById('stens').click(); document.getElementById('stdist').click(); S.stormAuto(false); const id = S.stormPlace({ kind: 'wave', lat: 17, lon: -42 }); S.stormDraw(); return { id, px: S.stormPx(id), hits: S.stormDrawn() }; });
@@ -1356,6 +1362,68 @@ async function checkForecastSkill(page, label) {
   check(`[${label}] and the turns come on time: the consensus turns ${med > 0 ? '+' : ''}${med} h from the real storm's turn in the median, ${mae.toFixed(0)} h on average in ${terr.length} turning cases (late and early alike)`, terr.length >= 20 && Math.abs(med) <= 6 && mae < 22);
   check(`[${label}] the fan is as wide as a forecast's error: ${mean(sp24).toFixed(0)} km at 24 h (the NHC's mean error 75) and ${mean(sp120).toFixed(0)} km at 120 h (the NHC's 410)`, mean(sp24) > 45 && mean(sp24) < 130 && mean(sp120) > 300 && mean(sp120) < 900);
   check(`[${label}] the centre line is smooth on the page's weather: the sharpest bend between two six-hour legs is ${Math.max(...bend).toFixed(0)} degrees over ${bend.length} bends and the line swings back and forth (a bend over 15 degrees the other way) in ${flips} of ${R.samples.length} cones; ${n120} of ${R.samples.length} cones reach their 120-hour point (the others end where the system dissipates over land or leaves the map)`, Math.max(...bend) < 50 && flips <= 0.06 * R.samples.length && n120 >= 0.5 * R.samples.length);
+}
+
+// Watches and warnings (one map for every storm, the NHC's colours, solid and sharp, over the land and along the coast) and the wind fields (the radii of the 34, 50 and 64 kt winds, per storm). A hurricane is put in the Gulf and a second storm far out in the
+// Atlantic, 105 kt and 70 kt, and run 18 hours so that the wind field has grown into them.
+async function checkAlerts(page, label) {
+  const ev = (fn, arg) => page.evaluate(fn, arg);
+  const setup = await ev(() => {
+    const S = window.SSTSIM; S.setPlaying(false); S.applySeed(4242); S.setPlaying(false); S.storms(true); S.stormAuto(false); S.tick(24 * 100);
+    const a = S.stormPlace({ kind: 'td', lat: 25, lon: -90, v: 60 }), b = S.stormPlace({ kind: 'td', lat: 15, lon: -45, v: 60 }); S.tick(6); S.advance(0);
+    for (let k = 0; k < 18; k++) { S.stormForce(a, { th: 'tc', v: 105, vr: 105, p: 950 }); S.stormForce(b, { th: 'tc', v: 70, vr: 70, p: 985 }); S.tick(1); S.advance(0); }
+    S.stormForce(a, { th: 'tc', v: 105, vr: 105, p: 950 }); S.stormForce(b, { th: 'tc', v: 70, vr: 70, p: 985 });
+    const e = document.getElementById('borders'); if (e.checked) e.click();
+    const st = S.stormState().systems; return { a, b, A: st.find((x) => x.id === a), B: st.find((x) => x.id === b) };
+  });
+  const view = (id) => ev((id) => { const S = window.SSTSIM, s = S.stormState().systems.find((x) => x.id === id); S.map.setView([s.lat + 2.5, s.lon], 6, { animate: false }); S.stormDraw(); }, id);
+  await view(setup.a); await lyrSet(page, 'stww', true); await page.waitForTimeout(500);
+  const cells = await ev(() => { const S = window.SSTSIM, st = S.wwState(), out = { 5: null, 3: null, 1: null, st }; if (!st) return out;
+    const [x0, , nx, , cell] = st.box;
+    for (let la = 36; la > 26; la -= 0.25) for (let lo = -93; lo < -83; lo += 0.25) {
+      if (!S.isLand(la, lo)) continue; const c = S.wwAt(la, lo), around = [[.2, 0], [-.2, 0], [0, .2], [0, -.2]].every(([dy, dx]) => S.wwAt(la + dy, lo + dx) === c && S.isLand(la + dy, lo + dx));
+      const key = c === 5 ? 5 : c === 3 ? 3 : c === 1 ? 1 : 0; if (key && !out[key] && around) out[key] = [la, lo];
+    }
+    return out; });
+  const read = (pt) => ev((pt) => { const S = window.SSTSIM, p = S.placePx(pt[0], pt[1]), c = document.getElementById('storm-canvas'), d = c.width / c.clientWidth, a = c.getContext('2d').getImageData(Math.round(p.x * d), Math.round(p.y * d), 1, 1).data; return { p, c: [a[0], a[1], a[2], a[3]] }; }, pt);
+  const px5 = cells[5] ? await read(cells[5]) : null, px3 = cells[3] ? await read(cells[3]) : null, px1 = cells[1] ? await read(cells[1]) : null, same = (c, r) => c && c.c[0] === r[0] && c.c[1] === r[1] && c.c[2] === r[2] && c.c[3] === 255;
+  check(`[${label}] with Watches & warnings on, a hurricane about to make landfall has a hurricane warning inland (${cells[5]}: ${px5 && px5.c.join(',')}, solid red), tropical storm warning around it (${cells[3]}: ${px3 && px3.c.join(',')}, solid blue) and a tropical storm watch beyond (${cells[1]}: ${px1 && px1.c.join(',')}, solid yellow); cells ${JSON.stringify(cells.st && cells.st.counts)}`,
+    !!cells[5] && !!cells[3] && !!cells[1] && same(px5, [255, 26, 26]) && same(px3, [42, 82, 255]) && same(px1, [255, 238, 0]));
+  // sharp: along a line over the land across the colours every pixel is a colour of the key at full strength (no blur), none is see-through
+  const sharp = cells[5] ? await ev(({ la, lo }) => { const S = window.SSTSIM, p0 = S.placePx(la, lo), c = document.getElementById('storm-canvas'), d = c.width / c.clientWidth, y = Math.round(p0.y * d), x0 = Math.max(0, Math.round((p0.x - 330) * d)), w = Math.min(c.width - x0, Math.round(660 * d)), a = c.getContext('2d').getImageData(x0, y, w, 1).data;
+    const key = ['255,26,26', '42,82,255', '255,238,0', '255,143,200', '218,165,32'], seen = {}, odd = []; for (let i = 0; i < w; i++) { const k = a[i * 4] + ',' + a[i * 4 + 1] + ',' + a[i * 4 + 2], al = a[i * 4 + 3]; if (!al) continue; seen[k] = (seen[k] || 0) + 1; if (al !== 255 || !key.includes(k)) odd.push(k + '/' + al); }
+    return { seen, odd: odd.length, ex: odd.slice(0, 4) }; }, { la: cells[5][0], lo: cells[5][1] }) : null;
+  check(`[${label}] and the colours are solid and sharp: along a line over the land ${sharp ? Object.keys(sharp.seen).length : 0} colours of the key (${sharp ? Object.entries(sharp.seen).map(([k, v]) => k + 'x' + v).join(' ') : ''}), ${sharp ? sharp.odd : '-'} pixels blended or see-through (${sharp ? sharp.ex.join(' ') : ''})`, !!sharp && Object.keys(sharp.seen).length >= 3 && sharp.odd === 0);
+  const hv = cells[5] ? await (async () => { const q = await ev((pt) => window.SSTSIM.placePx(pt[0], pt[1]), cells[5]); await page.mouse.move(q.x + 30, q.y + 30); await page.mouse.move(q.x, q.y, { steps: 4 }); await page.waitForTimeout(200); return ev(() => { const t = document.getElementById('storm-tip'); return { shown: t.style.display === 'block', title: t.querySelector('b').textContent, body: t.querySelector('div').innerText.replace(/\n/g, ' | ') }; }); })() : null;
+  check(`[${label}] hovering the warned land names the alert and its time (${hv && hv.title} | ${hv && hv.body})`, !!hv && hv.shown && hv.title === 'Hurricane Warning' && /hurricane conditions are expected within 36 hours/.test(hv.body) && /issued \d\dz [A-Z][a-z]{2} \d+ \d{4}/.test(hv.body));
+  const key1 = await ev(() => { const w = document.getElementById('ww-legend'); return { shown: getComputedStyle(w).display !== 'none', text: w.innerText.replace(/\s+/g, ' '), wf: getComputedStyle(document.getElementById('wf-legend')).display }; });
+  check(`[${label}] the small key shows only while the layer is on and has the NHC's names and the high wind warning ("${key1.text}"; the wind field's key stays hidden: ${key1.wf})`, key1.shown && /Hurricane Watch/.test(key1.text) && /Tropical Storm Watch/.test(key1.text) && /Hurricane Warning/.test(key1.text) && /Tropical Storm Warning/.test(key1.text) && /High Wind Warning/.test(key1.text) && /Hurricane Watch \+ TS Warning/.test(key1.text) && /Issued \d\dZ/.test(key1.text) && key1.wf === 'none');
+  // not per storm: picking the hurricane (or the other storm) leaves the alerts as they are, and both storms are in them
+  const before = await ev(() => window.SSTSIM.wwState()), qa = await ev((id) => window.SSTSIM.stormPx(id), setup.a);
+  await page.mouse.click(qa.x, qa.y); await page.waitForTimeout(300);
+  const picked = await ev(() => ({ st: window.SSTSIM.wwState(), sel: !document.getElementById('storm-card').hidden })), px5b = cells[5] ? await read(cells[5]) : null;
+  check(`[${label}] the alerts are not per storm: with the hurricane picked they are the same map (${JSON.stringify(picked.st && picked.st.counts)} against ${JSON.stringify(before && before.counts)}, ${picked.st && picked.st.n} storms in it, the card ${picked.sel ? 'open' : 'closed'}) and the warning is still painted (${px5b && px5b.c.join(',')})`,
+    picked.sel && picked.st.n === 2 && before.n === 2 && JSON.stringify(picked.st.counts) === JSON.stringify(before.counts) && same(px5b, [255, 26, 26]));
+  await page.keyboard.press('Escape'); await lyrSet(page, 'stww', false); await page.waitForTimeout(150);
+  const off = await ev(() => ({ st: window.SSTSIM.wwState(), leg: getComputedStyle(document.getElementById('ww-legend')).display })), px5c = cells[5] ? await read(cells[5]) : null;
+  check(`[${label}] with the layer off nothing is painted (${px5c && px5c.c.join(',')}) and there is no key (${off.leg})`, off.st === null && off.leg === 'none' && px5c && px5c.c[3] === 0);
+
+  // the wind fields: the radii of the strong winds are a third and a half of the 34 kt radius, painted round the picked storm only (or each when none is)
+  const rad = await ev((id) => window.SSTSIM.windRadiiOf(id), setup.a), radB = await ev((id) => window.SSTSIM.windRadiiOf(id), setup.b);
+  await lyrSet(page, 'stwf', true);
+  const wfProbe = (id, f) => ev(({ id, f }) => { const S = window.SSTSIM, s = S.stormState().systems.find((x) => x.id === id), R = S.windRadiiOf(id), r = R.r34[0] * f, p = S.placePx(s.lat + (r * Math.SQRT1_2) / 60, s.lon + (r * Math.SQRT1_2) / (60 * Math.cos(s.lat * Math.PI / 180))), c = document.getElementById('storm-canvas'), d = c.width / c.clientWidth, a = c.getContext('2d').getImageData(Math.round(p.x * d), Math.round(p.y * d), 1, 1).data; return { c: [a[0], a[1], a[2], a[3]], r }; }, { id, f });
+  await view(setup.a); await page.waitForTimeout(100);
+  const aIn = await wfProbe(setup.a, 0.8), aOut = await wfProbe(setup.a, 1.3);
+  await view(setup.b); const bIn = await wfProbe(setup.b, 0.8);
+  await view(setup.a); const qa2 = await ev((id) => window.SSTSIM.stormPx(id), setup.a); await page.mouse.click(qa2.x, qa2.y); await page.waitForTimeout(300);
+  const aSel = await wfProbe(setup.a, 0.8); await view(setup.b); const bBlind = await wfProbe(setup.b, 0.8);
+  check(`[${label}] a hurricane's wind field is the NHC's: R34 / R50 / R64 ${rad.r34[0]} / ${rad.r50[0]} / ${rad.r64[0]} nmi in the north-east quadrant (${(rad.r50[0] / rad.r34[0]).toFixed(2)} and ${(rad.r64[0] / rad.r34[0]).toFixed(2)} of R34), larger ahead and to the right than behind (${rad.r34.join('/')} NE SE SW NW), and the 70 kt storm's is smaller at the strong end (${radB.r64[0]} nmi of R64 against ${rad.r64[0]})`,
+    rad.r64[0] / rad.r34[0] > 0.18 && rad.r64[0] / rad.r34[0] < 0.34 && rad.r50[0] / rad.r34[0] > 0.37 && rad.r50[0] / rad.r34[0] < 0.5 && rad.r34.every((x) => x > 30) && Math.max(...rad.r34) > 1.1 * Math.min(...rad.r34) && radB.r64[0] < rad.r64[0] && radB.r34[0] > 20);
+  check(`[${label}] and it is painted round the storm and nowhere else: inside the 34 kt radius ${aIn.c.join(',')} (coloured), outside ${aOut.c.join(',')} (clear); with no storm picked each has one (${aIn.c[3] > 100}, ${bIn.c[3] > 100}), with the hurricane picked it still has its own (${aSel.c[3] > 100}) and the other storm has none (${bBlind.c.join(',')})`,
+    aIn.c[3] > 100 && aOut.c[3] === 0 && bIn.c[3] > 100 && aSel.c[3] > 100 && bBlind.c[3] === 0);
+  const kf = await ev(() => ({ wf: getComputedStyle(document.getElementById('wf-legend')).display, text: document.getElementById('wf-legend').innerText.replace(/\s+/g, ' ') }));
+  check(`[${label}] the wind field has its own small key while it is on ("${kf.text}")`, kf.wf === 'block' && /Hurricane force/.test(kf.text) && /Tropical storm force/.test(kf.text));
+  await page.keyboard.press('Escape'); await lyrSet(page, 'stwf', false); const e = await ev(() => { const b = document.getElementById('borders'); if (!b.checked) b.click(); return 1; });
 }
 
 async function checkEnsoHold(page, label) {
@@ -2569,6 +2637,7 @@ await checkBasin('Atlantic', ATLANTIC_DIST, async (page, label) => {
   await checkStorms(page, label);
   await checkForecastSkill(page, label);
   await checkLook(page, label, 'atlantic');
+  await checkAlerts(page, label);
   await checkPlace(page, label);
   await checkSummary(page, label);
   await checkCityMarkers(page, label, 25.76, -80.19, 'Miami');

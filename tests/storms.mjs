@@ -1376,5 +1376,77 @@ const LAND = (la, lo) => (lo > -16.3 && lo < 38 && la > 4 && la < 30) || (lo < -
       tm(0) >= 0.95 && tm(24) >= 0.85 && tm(72) < tm(24) && tm(168) < 0.6 && fmax(same) > 0.99 && D.nx > 20 && D.ny > 20 && D.dlon === D.dmy && (cellOf(40, -20) || 0) < 0.05); }
 }
 
+/* ---- milestone 14: the wind field (radii of the 34, 50 and 64 kt winds) and the watches and warnings -------------------------------------------------------------------------- */
+{
+  const WP = H.defaultParams(), seedW = 11;
+  const sys = (th, lat, v, extra) => Object.assign(H.newSystem({ id: 'T1', num: H.idNum('M', 1), th, lat, lon: -50, v, hour: 0 }), { alive: true, cx: 0, cy: 12, etAt: -1 }, extra || {});
+  const stepN = (S, n, h0 = 0, lf = 0, setV) => { for (let k = 0; k < n; k++) { if (setV) { S.v = setV; S.vr = setV; } H.stepWind(S, WP, seedW, h0 + k, Math.abs(S.lat), lf); } return S; };
+  const nm = (S) => S.w ? S.w[0] : 0;
+  const hur = stepN(sys('tc', 20, 100), 1), rad = H.windRadii(hur, WP);
+  check(`a hurricane's wind field is the size of a real one: 100 kt at 20N has 34 / 50 / 64 kt winds out to ${hur.w.join(' / ')} nmi (mean of the quadrants), a radius of maximum wind of ${rad.rmax} nmi, and every radius is larger than the next and none is zero`,
+    hur.w[0] > 80 && hur.w[0] < 190 && hur.w[2] > 15 && hur.w[2] < 60 && hur.w[0] > hur.w[1] && hur.w[1] > hur.w[2] && rad.rmax >= 8 && rad.rmax <= 35);
+  check(`the stronger winds do not reach nearly as far as the weaker: a hurricane's 64 kt radius is ${(hur.w[2] / hur.w[0]).toFixed(2)} of its 34 kt radius and its 50 kt radius ${(hur.w[1] / hur.w[0]).toFixed(2)} (real: about 0.25 and 0.43), and the same in every quadrant (${rad.r64.map((x, i) => (x / rad.r34[i]).toFixed(2)).join(' ')})`,
+    hur.w[2] / hur.w[0] > 0.2 && hur.w[2] / hur.w[0] < 0.32 && hur.w[1] / hur.w[0] > 0.37 && hur.w[1] / hur.w[0] < 0.5 && rad.r64.every((x, i) => x / rad.r34[i] > 0.18 && x / rad.r34[i] < 0.34));
+  const weak = stepN(sys('tc', 20, 30), 1), ts = stepN(sys('tc', 20, 45), 1), td = H.windRadii(weak, WP);
+  check(`a depression has no 34 kt winds at all (${weak.w.join('/')}), a 45 kt storm has them and no 64 kt (${ts.w.join('/')}), and the quadrants of the depression are all zero (${td.r34.join('/')})`,
+    weak.w.join() === '0,0,0' && ts.w[0] > 20 && ts.w[2] === 0 && td.r34.every((x) => x === 0));
+  const ctl = stepN(sys('tc', 20, 80), 1); stepN(ctl, 48, 1, 0, 80);
+  const gr = stepN(sys('tc', 20, 80), 1); stepN(gr, 48, 1, 0, 120);
+  const sh = stepN(sys('tc', 20, 80), 1); stepN(sh, 48, 1, 0, 50);
+  const q3 = stepN(sys('tc', 20, 80), 1); stepN(q3, 3, 1, 0, 120); const q0 = stepN(sys('tc', 20, 80), 1); stepN(q0, 3, 1, 0, 80);
+  check(`a storm that strengthens grows and one that weakens shrinks (the same storm and chances against 80 kt held: ${nm(ctl)} nmi): ${nm(gr)} nmi two days after 120 kt, ${nm(sh)} after 50 kt, and not at once (${nm(q3)} against ${nm(q0)} after three hours of 120 kt)`,
+    nm(gr) > 1.2 * nm(ctl) && nm(sh) < 0.85 * nm(ctl) && nm(q3) < 1.12 * nm(q0));
+  const lo = stepN(sys('tc', 12, 70), 1), hi = stepN(sys('tc', 42, 70), 1);
+  check(`the field grows poleward: R34 of the same storm is ${nm(lo)} nmi at 12 degrees and ${nm(hi)} at 42`, nm(hi) > 1.3 * nm(lo));
+  const ld = stepN(sys('tc', 25, 90), 1), ln0 = nm(ld); stepN(ld, 30, 1, 1.0, 90);
+  check(`a landfall costs size: R34 ${ln0} nmi over water, ${nm(ld)} after 30 hours at full land (the same wind)`, nm(ld) < 0.8 * ln0);
+  const nh = H.windRadii(stepN(sys('tc', 25, 100, { cx: 0, cy: 15 }), 1), WP), sh2 = H.windRadii(stepN(sys('tc', -25, 100, { cx: 0, cy: -15 }), 1), WP), mx = (a) => a.indexOf(Math.max(...a));
+  check(`the strong quadrant is the right-front one: heading north in the north the largest radius is the north-east (${nh.r34.join('/')} NE SE SW NW), heading south in the south the south-east's mirror, the left-front south-east (${sh2.r34.join('/')})`,
+    mx(nh.r34) === 0 && nh.r34[0] > 1.15 * nh.r34[2] && mx(sh2.r34) === 1);
+  const ex = sys('ex', 40, 55, { etAt: 0 }); stepN(ex, 1, 0); const e0 = nm(ex); stepN(ex, 40, 1);
+  check(`a post-tropical cyclone broadens: R34 ${e0} nmi at the transition, ${nm(ex)} nmi 40 hours later (the large fields of the extratropical lows)`, nm(ex) > 1.6 * e0 && nm(ex) > 170);
+  const old = JSON.parse(JSON.stringify(sys('tc', 22, 70))); delete old.rs; delete old.rq; delete old.lr; delete old.w; stepN(old, 5, 3);
+  check(`a save made before the wind field existed carries on: ${old.w.join('/')} nmi after five hours, and two runs of the same system are the same (${JSON.stringify(stepN(sys('tc', 22, 70), 20).w) === JSON.stringify(stepN(sys('tc', 22, 70), 20).w)})`,
+    old.w.every((x) => Number.isFinite(x)) && old.w[0] > 30 && JSON.stringify(stepN(sys('tc', 22, 70), 20).w) === JSON.stringify(stepN(sys('tc', 22, 70), 20).w));
+  // the size of the fields over a season of a real engine: the median hurricane
+  const sizes = []; for (let sd = 1; sd <= 30; sd++) { const S = sys('tc', 18 + (sd % 9), 85); S.num = H.idNum('M', sd); stepN(S, 1, 0); for (let k = 1; k <= 60; k++) { const q = Math.min(1, k / 5); S.v = S.vr = 85; H.stepWind(S, WP, 100 + sd, k, S.lat, 0); } sizes.push(S.w); }
+  const med = (i) => sizes.map((w) => w[i]).sort((a, b) => a - b)[Math.floor(sizes.length / 2)];
+  check(`over 30 storms of 85 kt the median field is R34 ${med(0)} / R50 ${med(1)} / R64 ${med(2)} nmi (the NHC's hurricanes: about 110 / 60 / 30), the largest at least twice the smallest (${Math.max(...sizes.map((w) => w[0]))} against ${Math.min(...sizes.map((w) => w[0]))})`,
+    med(0) > 95 && med(0) < 170 && med(2) > 22 && med(2) < 50 && Math.max(...sizes.map((w) => w[0])) > 1.7 * Math.min(...sizes.map((w) => w[0])));
+  // the cones carry the radii
+  const mkCone = (pts) => { const E = { init: 0, id: 'S', members: Array.from({ length: 8 }, () => ({ pts: pts.map((q) => q.slice()) })) }; return H.coneOf(E, WP, null); };
+  const trk = (v, r34, r64, th, dlat = 0.6, lat0 = 25, lon = -88) => Array.from({ length: 41 }, (_, i) => [lat0 + i * dlat, lon, v, th || 'tc', 960, r34, 0.6 * r34, r64]);
+  const cone = mkCone(trk(100, 110, 40));
+  check(`a cone carries the median wind radii of its members hour by hour (R34 ${cone.rows[10].r34.toFixed(0)}, R64 ${cone.rows[10].r64.toFixed(0)} nmi at 30 hours; the line at hour 31: ${cone.line[31].r34.toFixed(0)}/${cone.line[31].r64.toFixed(0)}) and its post-tropical hours`,
+    Math.abs(cone.rows[10].r34 - 110) < 1 && Math.abs(cone.rows[10].r64 - 40) < 1 && Math.abs(cone.line[31].r34 - 110) < 1.5 && cone.line.every((q) => q.th === 'tc'));
+
+  // ---- the watches and warnings: a hurricane moving north at 0.2 degrees an hour (12 kt) from 25N towards a coast at 30N
+  const envL = makeEnv({ land: (la) => la > 30 }), AL = (cones, prev) => H.alertsOf(cones, Object.assign(envL, { box: { lat0: 10, lat1: 45, lon0: -110, lon1: -60 } }), WP, prev);
+  const landAt = (A, la, lo) => A.at(la, lo);
+  const C1 = mkCone(trk(100, 110, 40, 'tc', 0.6, 25, -88)), A1 = AL([C1], null);
+  const at1 = (la, lo) => A1.at(la, lo), dE = (deg) => -88 + deg;                      // (a degree of longitude is 51 nmi at the coast)
+  check(`a hurricane that makes landfall within the day is a hurricane warning where its hurricane-force winds are expected and a tropical storm warning along the coast either side (inland ${at1(31, dE(0))}, 2.5 degrees east ${at1(31, dE(2.5))}, 2.5 west ${at1(31, dE(-2.5))}) with watches beyond (3.5 degrees ${at1(31, dE(3.5))}) and nothing far off (${at1(31, dE(9))}, ${at1(31, dE(-9))})`,
+    at1(31, dE(0)) === 5 && [3, 4].includes(at1(31, dE(2.5))) && [3, 4].includes(at1(31, dE(-2.5))) && [1, 2].includes(at1(31, dE(3.5))) && at1(31, dE(9)) === 0 && at1(31, dE(-9)) === 0);
+  const A3 = AL([mkCone(trk(100, 110, 40, 'tc', 0.6, 20.5, -88))], null), A4 = AL([mkCone(trk(100, 110, 40, 'tc', 0.6, 27.6, -88))], null), A5 = AL([mkCone(trk(100, 110, 40, 'tc', 0.6, 17, -88))], null);
+  check(`the clock decides: the same storm with the first tropical-storm winds 38 hours away has a hurricane watch and no warning yet (${A3.at(31, -88)}), 10 hours from the coast a hurricane warning (${A4.at(31, -88)}), and at 65 hours nothing (${A5.at(31, -88)})`, A3.at(31, -88) === 2 && A4.at(31, -88) === 5 && A5.at(31, -88) === 0);
+  const Aw = AL([mkCone(trk(50, 120, 0, 'tc', 0.6, 25, -88))], null), Ag = AL([mkCone(trk(62, 110, 0, 'tc', 0.6, 25, -88).map((q) => (q[6] = 70, q)))], null);
+  check(`a 50 kt storm gets a tropical storm warning only (${Aw.at(31, -88)}) and a storm forecast just under hurricane strength (62 kt) a hurricane watch with it (${Ag.at(31, -88)}, the 50 kt radius counting for half)`, Aw.at(31, -88) === 3 && Ag.at(31, -88) === 4);
+  // hysteresis: the landfall slips by 12 hours, the warning is kept; with no memory it is not given
+  const Cs = mkCone(trk(100, 110, 40, 'tc', 0.6, 25, -88)), Cm = mkCone(trk(100, 110, 40, 'tc', 0.6, 20.5, -88));
+  const Ap = AL([Cs], null), Ak = AL([Cm], Ap), An = AL([Cm], null);
+  check(`a warning is not dropped and picked up again as the forecast wobbles: the same place is a warning (${Ap.at(31, dE(2.5))}), kept at the next issue when the arrival slips by a day (${Ak.at(31, dE(2.5))}) and not given at a first issue with that forecast (${An.at(31, dE(2.5))})`,
+    [3, 4, 5].includes(Ap.at(31, dE(2.5))) && [3, 4, 5].includes(Ak.at(31, dE(2.5))) && An.at(31, dE(2.5)) < 3 && An.at(31, dE(2.5)) >= 0);
+  // a cancelled storm leaves nothing
+  const Ax = AL([], Ap);
+  check(`when the storm is gone the alerts are gone (${Ax.n} cones, code ${Ax.at(31, -88)} where there was a warning)`, Ax.n === 0 && Ax.at(31, -88) === 0);
+  // a post-tropical low with a large field: a high wind warning, from up to 24 hours ahead, and no tropical alert for it
+  const Cx = mkCone(trk(55, 260, 0, 'ex', 0.6, 25, -88)), Ah = AL([Cx], null);
+  check(`a post-tropical cyclone with a field 260 nmi across the coast gives a high wind warning (${Ah.at(31, -88)} inland, ${Ah.at(32, -85)} a few hundred miles away) and no tropical storm or hurricane alert (${[Ah.at(31, -88), Ah.at(31, -84)].filter((c) => c >= 1 && c <= 5).length})`,
+    Ah.at(31, -88) === 6 && [0, 6].includes(Ah.at(32, -85)) && Ah.at(31, -84) !== 5 && Ah.at(31, -88) !== 3);
+  // two storms: the higher code
+  const Ab = AL([Cx, C1], null);
+  check(`two storms at once: the stronger alert wins where they overlap (${Ab.at(31, -88)} with a hurricane warning and a high wind warning on the same cell)`, Ab.at(31, -88) === 5);
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed) process.exit(1);

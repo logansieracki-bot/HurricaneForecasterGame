@@ -265,7 +265,7 @@ function labRecord(m) {
 }
 function stormsReset() {
   stormMgr = HFStorms.create({ seed: stormSeed(), startMs: START_MS, hour0: simHour, auto: stormAuto, autoRate: stormActivity, maps: stormMapsNow(), basin: STORM_BASIN });
-  stormLab = null; shadow = null; stormFieldsDirty = true; kfBreak = true; kfFieldHour = -1; stormSel = null; olSel = null; plainSel = null; ensPack = null; coneMem = null; ensHot = -1; stormHot = null; stormHits = []; olHeld = null; olEagerSlot = -1e9; olHits = []; stormsDirty = true;
+  stormLab = null; shadow = null; stormFieldsDirty = true; kfBreak = true; kfFieldHour = -1; stormSel = null; olSel = null; plainSel = null; ensPack = null; coneMem = null; wwPack = null; wwCones = {}; ensHot = -1; stormHot = null; stormHits = []; olHeld = null; olEagerSlot = -1e9; olHits = []; stormsDirty = true;
   sumArch = 0; if (sumOpen) closeSummary();
   const card = $('storm-card'), tip = $('storm-tip'), acard = $('aoi-card'); if (card) card.hidden = true; if (acard) acard.hidden = true; if (tip) tip.style.display = 'none';
   updateSeasonBar();
@@ -306,7 +306,7 @@ function stormsSwitch(on, force) {
   if (!STORMS_READY && !force) return false;                        // a page without its climatology yet can not be switched on by a visitor (the fitting tools force it: they are what makes the climatology)
   if (on === stormsOn) return stormsOn;
   stormsOn = !!on;
-  if (!stormsOn) { stormSel = null; olSel = null; plainSel = null; ensPack = null; for (const id of ['storm-card', 'aoi-card']) { const c = $(id); if (c) c.hidden = true; } }          // (no card of a system that is not on the map)
+  if (!stormsOn) { stormSel = null; olSel = null; plainSel = null; ensPack = null; wwPack = null; for (const id of ['storm-card', 'aoi-card']) { const c = $(id); if (c) c.hidden = true; } }          // (no card of a system that is not on the map)
   if (!stormsOn && typeof placeSet === 'function') placeSet(false);
   if (stormsOn) stormsReset();                                     // storms resume from the current hour with a fresh season
   stormsDirty = true; drawStorms(); updateSeasonBar();
@@ -493,7 +493,6 @@ const STORM_BY5 = [];                                             // class index
 const stormClassIdx = (v) => { const k = Math.max(0, Math.round(v / 5)); return STORM_BY5[k] != null ? STORM_BY5[k] : (STORM_BY5[k] = HFStorms.classOf(STORM_BASIN, k * 5, 'tc').idx); };
 function stormColor(fix) { if (fix.th === 'ex' || fix.th === 'nl') return STORM_GREY; return SCALE.cols[stormClassIdx(fix.v)]; }       // the basin's own palette (src/storms.js, SCALES)
 const stormTag = (v) => SCALE.tag[stormClassIdx(v)];
-const inkOn = (hex) => { const n = parseInt(hex.slice(1), 16), L = 0.299 * (n >> 16) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255); return L > 168 ? '#14100a' : '#ffffff'; };       // text on a colour: dark on the pale ones
 function stormDate(h) { const d = simDate(h); return String(d.getUTCHours()).padStart(2, '0') + 'Z ' + MON[d.getUTCMonth()] + ' ' + d.getUTCDate(); }
 function stormDateFull(h) { const d = simDate(h); return String(d.getUTCHours()).padStart(2, '0') + 'z ' + MON[d.getUTCMonth()] + ' ' + d.getUTCDate() + ' ' + d.getUTCFullYear(); }
 function stormKindName(S, fix) {                                    // the long status text of a fix
@@ -717,11 +716,11 @@ function drawCone(g, toPx, part) {                                        // the
   g.lineWidth = 5.4; g.strokeStyle = 'rgba(10,16,30,.55)'; g.stroke(); g.lineWidth = 3; g.strokeStyle = 'rgba(232,238,250,.95)'; g.stroke();
   const hot = ensHot < 0 && coneHot >= 0 ? coneHot : -1;
   for (const q of C.pts) {
-    const p = toPx(q.lat, q.lon), r = q.lead === hot ? 12 : 10.5, col = stormColor({ th: q.th, v: q.v }), ink = inkOn(col), n = q.letter.length, fs = n <= 1 ? 13 : n === 2 ? 11.5 : 10, hw = Math.max(r, 0.32 * fs * n + 5);       // (a letter or two sits in a circle, the agency's longer abbreviations in a pill)
+    const p = toPx(q.lat, q.lon), r = q.lead === hot ? 12 : 10.5, col = stormColor({ th: q.th, v: q.v }), n = q.letter.length, fs = n <= 1 ? 14 : n === 2 ? 12 : 10.5, hw = Math.max(r, 0.32 * fs * n + 5);       // (a letter or two sits in a circle, the agency's longer abbreviations in a pill)
     g.beginPath();
     if (hw > r + 0.5) { g.moveTo(p.x - hw + r, p.y - r); g.lineTo(p.x + hw - r, p.y - r); g.arc(p.x + hw - r, p.y, r, -Math.PI / 2, Math.PI / 2); g.lineTo(p.x - hw + r, p.y + r); g.arc(p.x - hw + r, p.y, r, Math.PI / 2, 1.5 * Math.PI); g.closePath(); } else g.arc(p.x, p.y, r, 0, 7);
     g.fillStyle = col; g.fill(); g.lineWidth = q.lead === hot ? 3 : 1.8; g.strokeStyle = q.lead === hot ? '#ffffff' : 'rgba(255,255,255,.85)'; g.stroke();
-    g.font = '700 ' + fs + 'px Georgia, "Times New Roman", serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.lineWidth = 2.6; g.strokeStyle = ink === '#ffffff' ? 'rgba(20,14,6,.95)' : 'rgba(255,255,255,.6)'; g.strokeText(q.letter, p.x, p.y + 0.5); g.fillStyle = ink; g.fillText(q.letter, p.x, p.y + 0.5);
+    g.font = '700 ' + fs + 'px Georgia, "Times New Roman", serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.lineJoin = 'round'; g.lineWidth = 1.7; g.strokeStyle = 'rgba(10,10,18,.8)'; g.strokeText(q.letter, p.x, p.y + 0.5); g.fillStyle = '#ffffff'; g.fillText(q.letter, p.x, p.y + 0.5);       // (white, with a thin dark edge: a thick one swallows the letter)
     stormHits.push({ x: p.x, y: p.y, r: Math.max(12, hw), cone: q });
   }
   g.restore();
@@ -785,12 +784,119 @@ function plainCheck() {                                                   // the
   if (S && S.alive) { stormSel = { id: S.id, h: -1 }; lastStormCardAt = 0; fillStormCard(); }
 }
 
+/* ---- watches and warnings, and the wind fields (the engine: HFStorms.alertsOf, HFStorms.windRadii) ------------------------------------------------------------
+   Watches and warnings are not for one storm: every active cyclone's cone (a small fan of 10 members, 60 hours) goes into one map of alerts on a grid, made at each six-hour issue and drawn only where it is land or coast (the cell image is
+   stretched over the map in its projection, solid and sharp, then cut to the land polygons: colour inland and a thick coloured line along the shore, as the NHC draws it, with the state lines drawn over it). The wind field is the radii of the 34, 50 and 64 kt winds in the four quadrants,
+   round the storm you selected (every storm when none is). */
+const WW_COL = { 1: [255, 238, 0], 2: [255, 143, 200], 3: [42, 82, 255], 4: [42, 82, 255], 5: [255, 26, 26], 6: [218, 165, 32] };
+const WW_NAME = { 1: 'Tropical Storm Watch', 2: 'Hurricane Watch', 3: 'Tropical Storm Warning', 4: 'Hurricane Watch and Tropical Storm Warning', 5: 'Hurricane Warning', 6: 'High Wind Warning' };
+const WW_TEXT = { 1: 'tropical storm conditions are possible within 48 hours', 2: 'hurricane conditions are possible within 48 hours', 3: 'tropical storm conditions are expected within 36 hours', 4: 'tropical storm conditions are expected within 36 hours, hurricane conditions are possible', 5: 'hurricane conditions are expected within 36 hours', 6: 'damaging winds from a post-tropical cyclone are expected within 24 hours' };
+let wwPack = null, wwCones = {}, wwAt = 0, wwOut = null, wwMask = null, wwTmp = null, wwPat = null;
+const wwName = (c) => hurrWord(WW_NAME[c]);
+function wwRefresh() {
+  if (!$('stww').checked) { wwPack = null; return; }
+  const slot = Math.floor(stormMgr.hour / 6), fast = playing && SPEEDS[speedIdx] >= 8, now = performance.now();
+  if (wwPack && (wwPack.slot === slot || (playing && now - wwAt < 1000) || (fast && stormMgr.hour - wwPack.hour < 12))) return;     // (an issue every six hours; while the clock runs no more than one a second, a few hundred milliseconds each with several storms, and at 8x and above one every twelve hours)
+  if (!shadow || simHour - shadow.t0 >= 12) shadowBuild();
+  const cones = [], seen = {}, hz = Math.min(60, shadow.t0 + SHADOW_H - stormMgr.hour);
+  for (const S of stormMgr.systems) {
+    if (!S.alive || !(S.depNum > 0) || S.th === 'wv' || hz < 24) continue;
+    const E = stormMgr.ensemble(S.id, { at: shadowEnv }, { n: 10, horizon: hz }); if (!E) continue;
+    const C = HFStorms.coneOf(E, stormMgr.par, wwCones[S.id] || null, SCALE); if (!C) continue;
+    wwCones[S.id] = C; seen[S.id] = 1; cones.push(C);
+  }
+  for (const id of Object.keys(wwCones)) if (!seen[id]) delete wwCones[id];
+  wwPack = { A: HFStorms.alertsOf(cones, stormEnv, stormMgr.par, wwPack ? wwPack.A : null), slot, hour: stormMgr.hour, img: null, key: '' }; wwAt = now;
+}
+const WW_UP = 3, WW_ORDER = [6, 1, 2, 3, 5];                            // (the codes drawn in plain colour, the least severe first; code 4 is the hatching)
+function wwSolid(A, code) {                                              // the cells of one code as a solid colour with smooth, sharp contours: the cells blown up three times with smoothing, then every pixel more than half in is fully the colour and the rest nothing (no blur, no staircase)
+  const sx = A.nx, sy = A.ny, small = document.createElement('canvas'); small.width = sx; small.height = sy;
+  const sc = small.getContext('2d'), im = sc.createImageData(sx, sy), d = im.data; let n = 0;
+  for (let j = 0; j < sy; j++) for (let i = 0; i < sx; i++) if (A.code[j * sx + i] === code) { const o = ((sy - 1 - j) * sx + i) * 4; d[o] = d[o + 1] = d[o + 2] = d[o + 3] = 255; n++; }
+  if (!n) return null;
+  sc.putImageData(im, 0, 0);
+  const big = document.createElement('canvas'); big.width = sx * WW_UP; big.height = sy * WW_UP;
+  const bc = big.getContext('2d'); bc.imageSmoothingEnabled = true; bc.imageSmoothingQuality = 'high'; bc.drawImage(small, 0, 0, big.width, big.height);
+  const bi = bc.getImageData(0, 0, big.width, big.height), p = bi.data, col = WW_COL[code];
+  for (let k = 0; k < p.length; k += 4) { if (p[k + 3] >= 128) { p[k] = col[0]; p[k + 1] = col[1]; p[k + 2] = col[2]; p[k + 3] = 255; } else p[k + 3] = 0; }
+  bc.putImageData(bi, 0, 0); return big;
+}
+function wwCompose(minX, minY, ws) {                                     // the alert cells, hatched where a hurricane watch comes with a tropical storm warning, cut to the land and the coast
+  const A = wwPack.A, la = (my) => HFStorms.unmercY(my), pw = Math.round(W * DPR), ph = Math.round(H * DPR);
+  const mk = () => { const c = document.createElement('canvas'); c.width = pw; c.height = ph; return c; };
+  if (!wwOut || wwOut.width !== pw || wwOut.height !== ph) { wwOut = mk(); wwMask = mk(); wwTmp = mk(); }
+  if (!wwPack.img) { wwPack.img = {}; for (const c of WW_ORDER.concat([4])) wwPack.img[c] = wwSolid(A, c); }
+  const a = map.latLngToContainerPoint([la(A.y0 + A.ny * A.cell), A.x0]), b = map.latLngToContainerPoint([la(A.y0), A.x0 + A.nx * A.cell]), dw = b.x - a.x, dh = b.y - a.y;
+  const o = wwOut.getContext('2d'); o.setTransform(DPR, 0, 0, DPR, 0, 0); o.clearRect(0, 0, W, H); o.imageSmoothingEnabled = false;                       // (nearest: the contours are already smooth at a third of a cell, and a colour next to another stays pure to the pixel)
+  for (const c of WW_ORDER) if (wwPack.img[c]) o.drawImage(wwPack.img[c], a.x, a.y, dw, dh);
+  if (wwPack.img[4]) {
+    const t = wwTmp.getContext('2d'); t.setTransform(DPR, 0, 0, DPR, 0, 0); t.clearRect(0, 0, W, H); t.globalCompositeOperation = 'source-over'; t.imageSmoothingEnabled = false;
+    t.drawImage(wwPack.img[4], a.x, a.y, dw, dh); t.globalCompositeOperation = 'source-in';
+    if (!wwPat) { const p = document.createElement('canvas'); p.width = p.height = 8; const q = p.getContext('2d'), im = q.createImageData(8, 8); for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) { const o = (y * 8 + x) * 4, blue = ((x + y) & 7) < 4; im.data[o] = blue ? 42 : 255; im.data[o + 1] = blue ? 82 : 143; im.data[o + 2] = blue ? 255 : 200; im.data[o + 3] = 255; } q.putImageData(im, 0, 0); wwPat = p; }       // (diagonal stripes of the two colours, pixel by pixel, so that none is blended)
+    t.fillStyle = t.createPattern(wwPat, 'repeat'); t.fillRect(0, 0, W, H); t.globalCompositeOperation = 'source-over';
+    o.setTransform(1, 0, 0, 1, 0, 0); o.drawImage(wwTmp, 0, 0);
+  }
+  const m = wwMask.getContext('2d'); m.setTransform(DPR, 0, 0, DPR, 0, 0); m.clearRect(0, 0, W, H); m.fillStyle = '#000'; m.strokeStyle = '#000'; m.lineWidth = 6; m.lineJoin = 'round';
+  clipLand(m, minX, minY, ws);
+  o.globalCompositeOperation = 'destination-in'; o.setTransform(1, 0, 0, 1, 0, 0); o.drawImage(wwMask, 0, 0); o.globalCompositeOperation = 'source-over';
+}
+function drawWW(g) {
+  if (!$('stww').checked || !wwPack || !wwPack.A.nx) return;
+  const z = map.getZoom(), ws = 256 * Math.pow(2, z), pb = map.getPixelBounds(), key = [pb.min.x, pb.min.y, z, W, H, DPR].join();
+  if (wwPack.key !== key || !wwOut) { wwCompose(pb.min.x, pb.min.y, ws); wwPack.key = key; }
+  g.save(); g.setTransform(1, 0, 0, 1, 0, 0); g.drawImage(wwOut, 0, 0); g.restore();
+  if ($('borders').checked && typeof drawBorders === 'function') { g.save(); drawBorders(g, pb.min.x, pb.min.y, ws, z); g.restore(); }       // (the state and country lines stay on top of the colour)
+}
+function wwHover(cx, cy) {                                               // the alert under the pointer: over the land or within a few pixels of the coast
+  if (!$('stww').checked || !wwPack || !wwPack.A.nx) return null;
+  const A = wwPack.A, ll = map.containerPointToLatLng([cx, cy]); let c = A.at(ll.lat, ll.lng);
+  if (!c) return null;
+  const land = isLand(ll.lat, ll.lng) || [[6, 0], [-6, 0], [0, 6], [0, -6]].some(([dx, dy]) => { const q = map.containerPointToLatLng([cx + dx, cy + dy]); return isLand(q.lat, q.lng); });
+  if (!land) return null;
+  return { code: c, title: wwName(c), lines: [WW_TEXT[c] ? hurrWord(WW_TEXT[c]) : '', 'issued ' + stormDateFull(wwPack.hour)] };
+}
+function updateWWLegend() {
+  const w = $('ww-legend'), f = $('wf-legend'); if (!w || !f) return;
+  const on = stormsOn && $('stww').checked, fon = stormsOn && $('stwf').checked;
+  w.style.display = on ? 'block' : 'none'; f.style.display = fon ? 'block' : 'none'; document.body.classList.toggle('ww-key', on);
+  if (on && !w.dataset.done) {
+    const sw = (bg) => '<i style="background:' + bg + '"></i>';
+    w.innerHTML = '<b>Watches &amp; warnings</b><div>' + sw('#ff8fc8') + hurrWord('Hurricane Watch') + '</div><div>' + sw('#ffee00') + 'Tropical Storm Watch</div><div>' + sw('#ff1a1a') + hurrWord('Hurricane Warning') + '</div><div>' + sw('#2a52ff') + 'Tropical Storm Warning</div><div>' + sw('#daa520') + 'High Wind Warning</div>'
+      + '<div>' + sw('repeating-linear-gradient(135deg,#2a52ff 0 3px,#ff8fc8 3px 6px)') + hurrWord('Hurricane Watch + TS Warning') + '</div><small id="ww-issued"></small>';
+    w.dataset.done = '1';
+  }
+  if (on && wwPack) { const e = $('ww-issued'); const t = 'Issued ' + stormDate(wwPack.hour); if (e && e.textContent !== t) e.textContent = t; }
+  if (fon && !f.dataset.done) { f.innerHTML = '<b>Wind field</b><div><i style="background:#d6281e"></i>' + hurrWord('Hurricane') + ' force · 74 mph</div><div><i style="background:#f07a28"></i>58 mph</div><div><i style="background:#f4ae3a"></i>Tropical storm force · 39 mph</div>'; f.dataset.done = '1'; }
+}
+const WF_COL = { r34: ['rgba(244,174,58,.52)', 'rgba(255,200,92,.95)'], r50: ['rgba(240,122,40,.60)', 'rgba(255,150,70,.95)'], r64: ['rgba(214,40,30,.72)', 'rgba(255,90,70,.95)'] };
+function windPoly(S, r) {                                                // the contour through the four quadrant radii (NE, SE, SW, NW at 45, 135, 225, 315 degrees), smooth between them
+  const pts = [], cl = Math.max(0.3, Math.cos(S.lat * DEG));
+  for (let k = 0; k < 72; k++) {
+    const th = k * 5, w = ((th - 45 + 360) % 360) / 90, q = Math.floor(w), t = w - q, u = t * t * (3 - 2 * t), R = r[q % 4] * (1 - u) + r[(q + 1) % 4] * u;
+    pts.push([S.lat + (R * Math.cos(th * DEG)) / 60, S.lon + (R * Math.sin(th * DEG)) / (60 * cl)]);
+  }
+  return pts;
+}
+function drawWindFields(g, toPx, only) {
+  if (!$('stwf').checked) return;
+  for (const S of stormMgr.systems) {
+    if (!S.alive || S.th === 'wv' || !(S.depNum > 0) || (only && S.id !== only)) continue;
+    const R = HFStorms.windRadii(S, stormMgr.par); if (!R.r34.some((x) => x > 0)) continue;
+    const c = toPx(S.lat, S.lon); if (c.x < -400 || c.y < -400 || c.x > W + 400 || c.y > H + 400) continue;
+    for (const k of ['r34', 'r50', 'r64']) {
+      if (!R[k].some((x) => x > 0)) continue;
+      g.beginPath(); windPoly(S, R[k]).forEach((q, i) => { const p = toPx(q[0], q[1]); if (i) g.lineTo(p.x, p.y); else g.moveTo(p.x, p.y); }); g.closePath();
+      g.fillStyle = WF_COL[k][0]; g.fill(); g.lineWidth = 1.6; g.strokeStyle = WF_COL[k][1]; g.stroke();
+    }
+  }
+}
+
 /* ---- drawing -------------------------------------------------------------------------------------------------------- */
 function drawStorms() {
   stormsDirty = false;
   const g = stormCanvas.getContext('2d'); g.setTransform(DPR, 0, 0, DPR, 0, 0); g.clearRect(0, 0, W, H);
   stormHits = [];
-  if (!stormsOn || !stormMgr) { updateOutlookLegend(false, null); return; }              // (storms off: no legend of the outlook either)
+  if (!stormsOn || !stormMgr) { updateOutlookLegend(false, null); updateWWLegend(); return; }              // (storms off: no legend of the outlook either)
   const toPx = (lat, lon) => map.latLngToContainerPoint([lat, lon]);
   olSelCheck();                                                     // (a disturbance picked to look at alone that has formed becomes a cyclone pick here)
   plainCheck();
@@ -809,6 +915,8 @@ function drawStorms() {
   olHits = [];
   if (OL) drawOutlookAreas(g, toPx, OL, showNames);
   updateOutlookLegend(showDist && stormsOn, OLall);
+  wwRefresh(); updateWWLegend();
+  drawWW(g); drawWindFields(g, toPx, only);                         // (the alerts under everything, then the wind fields: the alerts are for every storm, a wind field for the one you picked, or each when none is)
   ensRefresh(ensTarget());
   if (ensPack && $('stens').checked && $('stdens').checked) { if (!ensPack.dens) ensPack.dens = ensDensImage(HFStorms.ensDensity(ensPack.members, { foot: stormMgr.par.ens.foot })); drawEnsDensity(g, toPx, ensPack.dens); }
   if (showLows || (plainSel && plainSel.low)) for (const t of stormMgr.lows.tracks) {
@@ -897,7 +1005,7 @@ function fillStormCard() {
   const d = HFStorms.describe(S, f), over = !!f.land;
   $('sc-name').textContent = S.name || stormTitle(S, f);
   $('sc-cat').textContent = stormKindName(S, f);
-  { const tg = $('sc-tag'), col = stormColor(f); tg.style.display = f.th === 'wv' ? 'none' : ''; tg.textContent = HFStorms.classOf(STORM_BASIN, f.v, 'tc').short; tg.style.background = col; tg.style.color = inkOn(col); }       // the class in the basin's own letters and colour (VT on red, C4 on pink ...)
+  { const tg = $('sc-tag'), col = stormColor(f); tg.style.display = f.th === 'wv' ? 'none' : ''; tg.textContent = HFStorms.classOf(STORM_BASIN, f.v, 'tc').short; tg.style.background = col; }       // the class in the basin's own letters and colour (VT on red, C4 on pink ...)
   $('sc-mph').textContent = d.windMph; $('sc-p').textContent = d.pressure;
   $('sc-peak').style.display = (f.h === S.peakHour && f.v === S.peakV && f.th !== 'wv') ? '' : 'none';
   $('sc-ace').textContent = f.ace.toFixed(1);
@@ -908,6 +1016,8 @@ function fillStormCard() {
   $('sc-formed').textContent = S.tdHour >= 0 ? stormDateFull(S.tdHour) : '—';
   $('sc-invest').textContent = S.invest ? 'as Invest ' + S.invest : '';                  // the number it had as a disturbance
   $('sc-time').textContent = stormDate(f.h);
+  { let a = 0, c = 0; if (stormSel.h < 0) { const R = HFStorms.windRadii(S, stormMgr.par); a = Math.max(...R.r34); c = Math.max(...R.r64); } else if (f.w) { a = f.w[0]; c = f.w[2]; }       // (how far the winds reach: the largest quadrant of the live storm, the mean of a past advisory)
+    const mi = (n) => Math.round(n * 1.15078 / 5) * 5; $('sc-wf').textContent = a ? '39 mph out to ' + mi(a) + ' mi' + (c ? ' · 74 mph out to ' + mi(c) + ' mi' : '') : 'no tropical-storm-force winds'; }
   card.hidden = false;
 }
 function openStormCard(S, f, live) { olSel = null; plainSel = null; $('aoi-card').hidden = true; stormSel = { id: S.id, h: live ? -1 : f.h }; lastStormCardAt = 0; fillStormCard(); stormsDirty = true; drawStorms(); }
@@ -928,14 +1038,15 @@ function stormHover(cx, cy) {
     tip.style.left = Math.max(8, Math.min(W - 236, cx + 16)) + 'px'; tip.style.top = Math.max(8, Math.min(H - 110, cy + 16)) + 'px'; tip.style.display = 'block';
     return true;
   }
-  const area = h || only_() ? null : olAreaAt(cx, cy);
+  const area = h || only_() ? null : olAreaAt(cx, cy), ww = !h && !area ? wwHover(cx, cy) : null;
   const key = h ? (h.S ? h.S.id + ':' + (h.live ? 'live' : h.f.h) : h.cone ? 'cone:' + h.cone.lead : h.low ? h.low.id : h.aoi ? 'aoi:' + h.aoi.key : h.wave.id) : area ? 'area:' + area.key : null;
   const ch = h && h.cone ? h.cone.lead : -1; if (ch !== coneHot) { coneHot = ch; stormsDirty = true; drawStorms(); }
   if (key !== stormHot) { stormHot = key; stormCanvas.style.cursor = ''; }
-  if (!h && !area) { tip.style.display = 'none'; map.getContainer().style.cursor = ''; return false; }
+  if (!h && !area && !ww) { tip.style.display = 'none'; map.getContainer().style.cursor = ''; return false; }
   map.getContainer().style.cursor = h || area ? 'pointer' : '';         // (an area can be clicked too)
   let title, lines;
-  if (area) [title, lines] = olTip(area, null);
+  if (ww) { title = ww.title; lines = ww.lines; }
+  else if (area) [title, lines] = olTip(area, null);
   else if (h.cone) {
     const q = h.cone, mph = HFStorms.ktToMph(q.v), gust = HFStorms.ktToMph(HFStorms.gustKt(q.v, false));
     title = '+' + q.lead + ' h' + (q.post ? ' · Post-tropical' : '') + ' · ' + mph + ' mph (1-min)';

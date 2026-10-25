@@ -2,13 +2,14 @@
 /* the storm controls */
 $('b-place').onclick = () => placeSet(!placeMode);
 document.querySelectorAll('#place-menu button').forEach((b) => { b.onclick = () => { placeKind = b.dataset.kind; document.querySelectorAll('#place-menu button').forEach((x) => x.setAttribute('aria-checked', x === b ? 'true' : 'false')); placeRefresh(); }; });
-$('stwaves').onchange = $('stlows').onchange = $('stdist').onchange = $('stlabels').onchange = $('stdens').onchange = $('stcone').onchange = () => { stormsDirty = true; drawStorms(); };
+$('stwaves').onchange = $('stlows').onchange = $('stdist').onchange = $('stlabels').onchange = $('stdens').onchange = $('stcone').onchange = $('stwf').onchange = () => { stormsDirty = true; drawStorms(); };
+$('stww').onchange = () => { wwPack = null; stormsDirty = true; drawStorms(); };
 $('stens').onchange = () => { $('stdens').disabled = !$('stens').checked; ensPack = null; ensHot = -1; stormsDirty = true; drawStorms(); };
 $('st-auto').onchange = () => { stormAuto = $('st-auto').checked; if (stormMgr) stormMgr.auto = stormAuto; markDirty(); };
 $('p-stact').oninput = () => { stormActivity = parseFloat($('p-stact').value); $('p-stact-o').textContent = stormActivity.toFixed(1) + '×'; if (stormMgr) stormMgr.autoRate = stormActivity; markDirty(); };
 $('sc-close').onclick = closeStormCard; $('ac-close').onclick = closeStormCard;
 /* the layer buttons: each is the face of one or two of the checkboxes in the panel (kept there, hidden), so everything that reads or sets those checkboxes still works */
-const LYR = { stens: ['stens'], stcone: ['stcone'], stdens: ['stdens'], jetline: ['jetline'], hl: ['highs', 'stlows'], nhc: ['stwaves', 'stdist'], steer: ['steerarrows'] };
+const LYR = { stens: ['stens'], stcone: ['stcone'], stdens: ['stdens'], stwf: ['stwf'], stww: ['stww'], jetline: ['jetline'], hl: ['highs', 'stlows'], nhc: ['stwaves', 'stdist'], steer: ['steerarrows'] };
 function lyrSync() {
   document.querySelectorAll('#lyr-dock .lyr').forEach((b) => { const ids = LYR[b.dataset.l]; b.setAttribute('aria-pressed', ids.every((id) => $(id).checked) ? 'true' : 'false'); b.disabled = ids.some((id) => $(id).disabled); });
   const jn = $('jet-note'); if (jn) $('lyr-dock').querySelector('[data-l="jetline"]').title = 'The jet stream: the axis of strongest shear' + (jn.textContent ? ' ' + jn.textContent.trim() : '');
@@ -76,7 +77,7 @@ function applySave(s) {
   initSim(P.seed);                                                                // the static structure of this seed (waves, jet modes ...) and a throw-away new season
   simRestoreLight(s.weather);
   stormMgr = HFStorms.restore(JSON.parse(s.storms), { maps: stormMapsNow() });
-  stormLab = null; shadow = null; stormSel = null; olSel = null; plainSel = null; ensPack = null; coneMem = null; ensHot = -1; $('aoi-card').hidden = true; stormHot = null; stormHits = []; olHeld = null; olEagerSlot = -1e9; olHits = []; stormsDirty = true; sumArch = stormMgr.archive.length; if (sumOpen) closeSummary();
+  stormLab = null; shadow = null; stormSel = null; olSel = null; plainSel = null; ensPack = null; coneMem = null; wwPack = null; wwCones = {}; ensHot = -1; $('aoi-card').hidden = true; stormHot = null; stormHits = []; olHeld = null; olEagerSlot = -1e9; olHits = []; stormsDirty = true; sumArch = stormMgr.archive.length; if (sumOpen) closeSummary();
   lowsStamp = -1; kfBreak = true; stormKeyframe(true); stormFieldsDirty = false;      // fresh keyframes of the steering and the fields at the restored hour
   if (s.kf0 && simHour === kfHour) { for (let i = 0; i < 3; i++) { b64f32(s.kf0.u[i], kfU0[i]); b64f32(s.kf0.v[i], kfV0[i]); } kfHour0 = s.kf0.h; wkHour = -1e9; stormEnv.beginHour(simHour); }
   seasonText = ''; acc = 0; lastClock = ''; updateClock(); updateSeasonBar(); refresh();
@@ -148,9 +149,12 @@ const STORM_API = {
   stormEnvAt(name, lat, lon) { return stormEnv[name](lat, lon); },                                       // the page's own sea temperature / humidity / shear at a place and the hour of the last keyframe (tools and tests)
   ensState() { return ensPack ? { tid: ensPack.tid, n: ensPack.members.length, init: ensPack.E.init, factor: ensPack.E.factor, names: ensPack.members.map((m) => m.name), hot: ensHot, dens: !!ensPack.dens } : null; },
   coneState() { const C = ensPack && ensPack.cone; return C ? { tid: ensPack.tid, init: C.init, n: C.rows.length, pts: C.pts.map((q) => ({ lead: q.lead, v: q.v, letter: q.letter, post: q.post, th: q.th, lat: q.lat, lon: q.lon })), line: C.line.map((q) => [q.lat, q.lon]), hot: coneHot, poly: !!C.poly } : null; },
+  wwState() { const A = wwPack && wwPack.A; return A ? { hour: wwPack.hour, n: A.n, cells: A.code.length, counts: Array.from(A.code).reduce((c, v) => { c[v] = (c[v] || 0) + 1; return c; }, {}), box: [A.x0, A.y0, A.nx, A.ny, A.cell] } : null; },
+  wwAt(lat, lon) { return wwPack && wwPack.A ? wwPack.A.at(lat, lon) : 0; },
+  windRadiiOf(id) { const S = stormMgr && stormMgr.get(id); return S ? HFStorms.windRadii(S, stormMgr.par) : null; },
   conePoint(lead) { const q = ensPack && ensPack.cone && ensPack.cone.pts.find((p) => p.lead === lead); if (!q) return null; const p = map.latLngToContainerPoint([q.lat, q.lon]); return { x: p.x, y: p.y }; },
   coneFor(id, ens) { if (!stormMgr) return null; if (!shadow || simHour - shadow.t0 >= 12) shadowBuild(); const E = stormMgr.ensemble(id, { at: shadowEnv }, { horizon: Math.max(24, Math.min(stormMgr.par.ens.horizon, shadow.t0 + SHADOW_H - stormMgr.hour)), ens }); if (!E) return null; const C = HFStorms.coneOf(E, stormMgr.par, null, SCALE); return C ? { init: E.init, line: C.line.map((q) => [q.lat, q.lon, q.v]), pts: C.pts, mean: E.members.map((m) => m.pts) } : null; },       // the cone and the fan of a system as the page would make them now (tools and tests)
-  fixesOf(id) { const S = stormMgr && stormMgr.get(id); return S ? S.fixes.map((f) => [f.h, f.lat, f.lon, f.v, f.th]) : null; },
+  fixesOf(id) { const S = stormMgr && stormMgr.get(id); return S ? S.fixes.map((f) => [f.h, f.lat, f.lon, f.v, f.th, f.w]) : null; },
   ensPoint(k, i) { const px = ensPx[k]; return px && px[i] ? { x: px[i].x, y: px[i].y } : null; }, plainSelState() { return plainSel; },
   outlook() { return outlookNow(); }, outlookFresh() { if (stormMgr) stormMgr._ol = null; olHeld = null; olEagerSlot = -1e9; const t = performance.now(), r = outlookNow(); return { ms: performance.now() - t, areas: r ? r.areas.length : -1 }; }, outlookForce(res) { olForced = res || null; stormsDirty = true; drawStorms(); return !!olForced; },        // the areas of interest the page shows (tests: force a list of areas to draw, null puts the engine's back)
   outlookMemSlot() { return stormMgr && stormMgr.olMem ? stormMgr.olMem.slot : null; },                                   // the six-hour slot of the last issue the engine made (tests: the issues are made by the clock)

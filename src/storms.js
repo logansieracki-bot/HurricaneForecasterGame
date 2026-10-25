@@ -68,7 +68,7 @@ function rndn(seed, a, b, c) {                                                  
   return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
 }
 // streams (the `c` argument): one per purpose, so adding a draw somewhere never shifts another
-const ST = { VOL: 1, WX: 2, WY: 3, PRES: 4, RIT: 5, RID: 6, RIR: 7, SPAWN: 8, POS: 9, V0: 10, SUBC: 11, ETC: 12, LIFE: 13, WAVE: 14, LOWSEED: 15, PLACE: 16, Q: 17, Q0: 18, GEN: 19, LIFEN: 20, SEEDPOS: 21, ACT: 22, ETL: 23, ETD: 24, ETS: 25, GENC: 26, ENDH: 27, FLOOR: 28, CONV: 29, LEAD: 30, ENS: 31 };
+const ST = { VOL: 1, WX: 2, WY: 3, PRES: 4, RIT: 5, RID: 6, RIR: 7, SPAWN: 8, POS: 9, V0: 10, SUBC: 11, ETC: 12, LIFE: 13, WAVE: 14, LOWSEED: 15, PLACE: 16, Q: 17, Q0: 18, GEN: 19, LIFEN: 20, SEEDPOS: 21, ACT: 22, ETL: 23, ETD: 24, ETS: 25, GENC: 26, ENDH: 27, FLOOR: 28, CONV: 29, LEAD: 30, ENS: 31, SIZE: 32, SIZEQ: 33 };
 const NS = { W: 1, N: 2, M: 3, L: 4, F: 5 };                                                          // id namespaces
 const idNum = (ns, k) => NS[ns] * 1000000 + k;
 
@@ -440,6 +440,19 @@ function structureParams() {
       shear: 0.25, sst: 0.4, rh: 4, ramp: 48,                                      // the weather the storm feels: shear x (1 + e), sea temperature (C) and humidity (points), reaching full size after ramp hours
       foot: [0.6, 1.4],                                                            // the track density: the radius (degrees) round a member's track that counts as "there", at the start and at a week
     },
+    // the wind field (stepWind, windRadii): how far the 34, 50 and 64 kt winds reach. The mean 34 kt radius R34 (nmi) is a slow quantity of its own that follows the intensity and the latitude and drifts at random; Rmax comes from
+    // the intensity and the latitude; the outer profile V ~ r^-x (x = 0.46, so the 64 kt radius is a quarter of the 34 kt radius and the 50 kt radius two fifths) gives R50 and R64 from R34 (Knaff and Chavas: the outer winds decide Rmax, and R34 grows with latitude; a storm that strengthens grows, one that weakens shrinks)
+    wind: {
+      r0: 92, latSlope: 0.021, lat0: 15,                                         // R34 of a 55-kt storm: 92 nmi at 15 degrees, growing 2.1 % a degree poleward of it
+      kv: 0.55, tau: 20,                                                         // the share of the intensity change it follows (R34 ~ V^0.55) and how fast (hours): strengthening grows the field, weakening shrinks it
+      sd: 0.32, szTau: 48, aqSd: 0.10, aqTau: 36,                               // the size anomaly (log, sd) and its memory (hours); the anomalies of the four quadrants and theirs
+      land: 0.35, etRate: 0.03, etCap: 0.8, exBase: 0.15, nlBase: -0.2,           // landfall takes this much (log) at full land; a post-tropical cyclone grows by etRate a hour to etCap (x2.2) and starts a little larger; a remnant low is smaller
+      x: 0.46, rm: [24, -0.011, 0.012], rmCap: [6, 70, 95],                                // Rmax (nmi) = 24 exp(-0.011 (V - 60) + 0.012 (|lat| - 20)), between 6 and 70 (95 post-tropical)
+      asym: [0.2, 0.012, 0.45],                                                 // the right-front quadrant's lead: 0.16 and 0.012 per kt of the storm's speed, at most 0.4
+    },
+    // watches and warnings (alertsOf), the NHC's: a warning is for conditions EXPECTED within 36 hours of the onset of tropical-storm-force winds, a watch for conditions POSSIBLE within 48; a cell the forecast's wind radius reaches (expected: plus
+    // mExp of the cone's error circle [its share, nmi added], possible: plus mPos) gets one; once there, one stays while the threat is anywhere in the next keepH hours; a post-tropical cyclone's large field makes a high wind warning (hwwH hours ahead, kept to hwwKeep)
+    alerts: { cell: 0.125, warnH: 36, watchH: 48, keepH: 72, mExp: [0.5, 10], mPos: [1.1, 25], hwwH: 24, hwwKeep: 48, hwwM: 0.3 },
     // the cone of uncertainty (coneOf): the NHC's mean track errors (nautical miles) by hour, a circle of that size round each forecast point; the points; how far a new cone moves from the last one
     cone: { h: [0, 12, 24, 36, 48, 60, 72, 96, 120], nmi: [8, 26, 41, 55, 70, 88, 102, 151, 220], pts: [12, 24, 36, 48, 72, 96, 120], blend: [6, 36, 0.5], minAlive: 0.5 },
   };
@@ -689,6 +702,47 @@ function becomePostTropical(S, h, seed, par, shear) {
   }
 }
 function becomeRemnantLow(S, h, seed, par) { S.th = 'nl'; S.remnant = true; S.nlTill = h + 1 + lifetimeH(par.nlLife, seed, S.num, h, ST.LIFE); }
+/* ---- the wind field ------------------------------------------------------------------------------------------------------------------------------------------------------
+   Each hour the mean radius of the 34 kt winds follows its target: the climatology of the latitude (72 nmi at 15 degrees, growing poleward), the size anomaly this storm happens to have (a slow draw: some storms are big, some small), the intensity (a
+   strengthening storm grows, a weakening one shrinks: R34 ~ V^0.55, with a day's memory) and the land (a landfall costs size); a post-tropical cyclone broadens over a day or so to about twice that (the extratropical lows far north have the largest
+   fields), a remnant low is smaller. Rmax comes from the intensity and the latitude, and the outer profile V ~ r^-0.46 out from R34 gives R50 and R64: a hurricane's 64 kt radius is a quarter of its 34 kt radius and its 50 kt radius two fifths (a large field of tropical-storm-force winds round a small core of hurricane force, as the NHC draws them), a weak storm has none.
+   The quadrants differ by the storm's motion (the right-front quadrant, the right of the track in the north and the left in the south, is the strong one: the winds add to the storm's own speed) and by a slow anomaly of each. */
+function stepWind(S, par, seed, h, alat, lf) {
+  const W = par.wind;
+  if (S.th === 'wv') { S.w = null; return; }
+  if (S.rs === undefined) { S.rs = W.sd * rndn(seed, S.num, 0, ST.SIZE); S.rq = [0, 1, 2, 3].map((q) => W.aqSd * rndn(seed, S.num, 4 + q, ST.SIZEQ)); }
+  const a = Math.exp(-1 / W.szTau), b = Math.exp(-1 / W.aqTau);
+  S.rs = a * S.rs + Math.sqrt(1 - a * a) * W.sd * rndn(seed, S.num, h, ST.SIZE);
+  for (let q = 0; q < 4; q++) S.rq[q] = b * S.rq[q] + Math.sqrt(1 - b * b) * W.aqSd * rndn(seed, S.num, h * 4 + q, ST.SIZEQ);
+  let base = Math.log(W.r0) + W.latSlope * Math.max(0, alat - W.lat0);
+  if (S.th === 'ex') base += W.exBase + Math.min(W.etCap, W.etRate * Math.max(0, S.etAt >= 0 ? h - S.etAt : 0)); else if (S.th === 'nl') base += W.nlBase;
+  const target = base + S.rs + W.kv * Math.log(Math.max(S.v, 30) / 55) - W.land * lf;
+  S.lr = S.lr === undefined ? target : S.lr + (target - S.lr) / W.tau;
+  const R = windScale(S, par, alat); S.w = R ? [Math.round(R[0]), Math.round(R[1]), Math.round(R[2])] : [0, 0, 0];
+}
+/* the mean radii [R34, R50, R64] and Rmax (nmi) of a system, or null where it has no 34 kt winds */
+function windScale(S, par, alat) {
+  const W = par.wind, V = S.vr;
+  if (S.lr === undefined || !(V > 34.5)) return null;
+  const A = alat == null ? Math.abs(S.lat) : alat, cap = S.th === 'ex' ? W.rmCap[2] : W.rmCap[1];
+  const rmax = clamp(W.rm[0] * Math.exp(W.rm[1] * (V - 60) + W.rm[2] * (A - 20)), W.rmCap[0], cap);
+  const r34 = clamp(Math.exp(S.lr) * smooth01(V, 34, 41), 1.05 * rmax, 700);
+  const at = (v) => (V > v ? Math.max(rmax, r34 * Math.pow(34 / v, 1 / W.x)) * smooth01(V, v, v + 10) : 0);          // (the radius of a wind: the profile outward from R34, never inside the eyewall, and none as the wind falls to it)
+  const r50 = Math.min(at(50), r34);
+  return [r34, r50, Math.min(at(64), r50 || r34), rmax];
+}
+/* the radii by quadrant [NE, SE, SW, NW] of the 34, 50 and 64 kt winds, in nautical miles (0 where the wind is below the threshold) */
+function windRadii(S, par) {
+  const R = windScale(S, par, null), W = par.wind, out = { r34: [0, 0, 0, 0], r50: [0, 0, 0, 0], r64: [0, 0, 0, 0], rmax: 0, heading: 0, speed: 0 };
+  if (!R) return out;
+  const spd = Math.hypot(S.cx, S.cy), head = (Math.atan2(S.cx, S.cy) / DEG + 360) % 360, A = Math.min(W.asym[2], W.asym[0] + W.asym[1] * spd), rf = head + (S.lat < 0 ? -45 : 45);
+  for (let q = 0; q < 4; q++) {
+    const f = Math.max(0.35, 1 + A * Math.cos((45 + 90 * q - rf) * DEG) + (S.rq ? S.rq[q] : 0));
+    out.r34[q] = Math.round(R[0] * f); out.r50[q] = Math.round(R[1] * f); out.r64[q] = Math.round(R[2] * f);
+  }
+  out.rmax = Math.round(R[3]); out.heading = Math.round(head); out.speed = Math.round(spd);
+  return out;
+}
 function stepSystem(S, env, h, seed, par, doy, ctx) {
   const lat = S.lat, lon = S.lon, id = S.num;
   const M = ctx && ctx.maps && ctx.tw ? ctx.maps : null, tw = M ? ctx.tw : null;                       // the climatology-anchored model, when the host supplied maps
@@ -930,6 +984,7 @@ function stepSystem(S, env, h, seed, par, doy, ctx) {
   // a circulation that is nearly gone is finished: a hazard that grows as the wind falls (over land from 22 kt on, over water from 10 kt), not a threshold
   if (S.alive && S.th === 'tc' && lf > 0) { const w = smooth01(lf, 0.3, 0.6) * (1 - smooth01(S.v, 12, 22)); if (w > 0 && rnd(seed, id, h, ST.ENDH + 100) < 0.5 * w) { S.alive = false; S.endReason = 'dissipated over land'; S.end = h + 1; } }
   if (S.alive && (S.th === 'tc' || S.th === 'sc')) { const w = 1 - smooth01(S.v, 4, 10); if (w > 0 && rnd(seed, id, h, ST.ENDH + 200) < 0.5 * w) { S.alive = false; S.endReason = 'dissipated'; S.end = h + 1; } }
+  if (S.alive) stepWind(S, par, seed, h, alat, lf);
 }
 
 /* ---- best-track fixes -------------------------------------------------------------------------------------------------- */
@@ -938,7 +993,7 @@ function makeFix(S, h, aceTotal) {
   return {
     h, lat: r1(S.lat), lon: r1(S.lon), v: S.th === 'wv' ? Math.round(S.vr) : round5(S.vr), p: Math.round(S.p), st: statusOf(S), th: S.th,
     dir: Math.round((Math.atan2(S.cx, S.cy) / DEG + 360) % 360), spd: Math.round(spd), sst: r1(S.lastSst), sh: Math.round(S.lastShear), rh: Math.round(S.lastRh),
-    ace: Math.round(aceTotal * 100) / 100, land: S.lastLf > 0.5,
+    ace: Math.round(aceTotal * 100) / 100, land: S.lastLf > 0.5, w: S.w ? S.w.slice() : null,       // w: the mean radii of the 34, 50 and 64 kt winds (nmi)
   };
 }
 
@@ -1589,7 +1644,7 @@ Manager.prototype.forecast = function (spec, envSrc, horizonH) {
    genesis). The sizes grow with lead and are scaled by how well a system of that strength can be forecast (ensFactor): a wave is a wide fan, a hurricane a tight one. A member's coefficients are a pure function of the
    seed, the system and the member, never of the hour of the issue, so a fan made six hours later is the same fan moved on by what changed, not a new one. */
 const ENS_FAM = [['GEFS', 'p', 10], ['ECENS', 'e', 8], ['CMCE', 'c', 6]];
-function cloneSystem(S) { const C = Object.assign({}, S); C.fixes = []; C.ri = S.ri ? Object.assign({}, S.ri) : null; C.exEp = S.exEp ? Object.assign({}, S.exEp) : null; return C; }
+function cloneSystem(S) { const C = Object.assign({}, S); C.fixes = []; C.ri = S.ri ? Object.assign({}, S.ri) : null; C.exEp = S.exEp ? Object.assign({}, S.exEp) : null; C.rq = S.rq ? S.rq.slice() : S.rq; C.w = S.w ? S.w.slice() : S.w; return C; }
 const ensFactor = (E, v) => E.f[0] + (E.f[1] - E.f[0]) * smooth01(v, E.f[2], E.f[3]);
 function ensCoef(seed, tid, k) {
   const z = (j) => rndn(seed, tid, k * 32 + j, ST.ENS);
@@ -1635,7 +1690,7 @@ Manager.prototype.ensemble = function (target, envSrc, opts) {
   for (let k = 0; k < n; k++) {
     const L = labels[k % labels.length], C = ensCoef(this.seed, tid, k), W = ensEnv(E, f, C, Cc), S = cloneSystem(S0);
     S.lat += E.pos * f * (C.pla + E.common * Cc.pla); S.lon += (E.pos * f * (C.plo + E.common * Cc.plo)) / Math.max(0.3, Math.cos(S.lat * DEG)); { const dv = E.dv * f * (C.pv + E.common * Cc.pv); S.v = Math.max(5, S.v + dv); S.vr = Math.max(5, S.vr + dv); }
-    run.push({ k, L, C, W, S, ctx: { maps: this.maps, tw: null, diag: null, keep: true }, pts: [[S.lat, S.lon, Math.round(S.vr), S.th, Math.round(S.p)]], peak: S.vr });
+    run.push({ k, L, C, W, S, ctx: { maps: this.maps, tw: null, diag: null, keep: true }, pts: [[S.lat, S.lon, Math.round(S.vr), S.th, Math.round(S.p), S.w ? S.w[0] : 0, S.w ? S.w[1] : 0, S.w ? S.w[2] : 0]], peak: S.vr });
   }
   for (let q = 0; q < horizon; q++) {                                       // hour by hour, all members together: the page's weather carries its steering forward in place, so the environment of an hour has to be read at that hour and used before the next is asked for
     const h = H0 + q, base = envSrc && typeof envSrc.at === 'function' ? envSrc.at(h) : envSrc, doy = this.doyAt(h), cx = { maps: this.maps, tw: null, diag: null };
@@ -1645,7 +1700,7 @@ Manager.prototype.ensemble = function (target, envSrc, opts) {
       m.ctx.tw = cx.tw; m.ctx.act = cx.act; m.ctx.shift = cx.shift;
       stepSystem(S, m.W.at(base, q), h, m.C.salt, par, doy, m.ctx);
       if (S.vr > m.peak) m.peak = S.vr;
-      if ((q + 1) % 3 === 0 || !S.alive) m.pts.push([S.lat, S.lon, Math.round(S.vr), S.th, Math.round(S.p)]);
+      if ((q + 1) % 3 === 0 || !S.alive) m.pts.push([S.lat, S.lon, Math.round(S.vr), S.th, Math.round(S.p), S.w ? S.w[0] : 0, S.w ? S.w[1] : 0, S.w ? S.w[2] : 0]);
     }
   }
   for (const m of run) members.push({ k: m.k, name: m.L[0] + ' ' + m.L[1], fam: m.L[0], pts: m.pts, peak: Math.round(m.peak), hours: Math.min(horizon, (m.pts.length - 1) * 3), alive: m.S.alive });
@@ -1684,7 +1739,8 @@ function coneOf(E, par, prev, scale) {
     const med = (j) => { const v = A.map((m) => m.pts[i][j]).sort((a, b) => a - b); return v[Math.floor((v.length - 1) / 2)]; };
     const la = A.reduce((t, m) => t + m.pts[i][0], 0) / A.length, lo = A.reduce((t, m) => t + m.pts[i][1], 0) / A.length, post = A.filter((m) => m.pts[i][3] === 'ex' || m.pts[i][3] === 'nl').length > A.length / 2;
     const th = post ? (A.filter((m) => m.pts[i][3] === 'nl').length > A.filter((m) => m.pts[i][3] === 'ex').length ? 'nl' : 'ex') : (A.filter((m) => m.pts[i][3] === 'wv').length > A.length / 2 ? 'wv' : A.filter((m) => m.pts[i][3] === 'sc').length > A.length / 2 ? 'sc' : 'tc');
-    rows.push({ lat: la, lon: lo, v: med(2), p: med(4), th, lead: i * 3, t: E.init + i * 3 });
+    const mr = (j) => { const v = A.map((m) => m.pts[i][j] || 0).sort((a, b) => a - b); return v[Math.floor((v.length - 1) / 2)]; };       // (the wind radii the members carry: the median, 0 where fewer than half have such winds)
+    rows.push({ lat: la, lon: lo, v: med(2), p: med(4), r34: mr(5), r50: mr(6), r64: mr(7), th, lead: i * 3, t: E.init + i * 3 });
   }
   if (!rows.length) return null;
   const last = (rows.length - 1) * 3, leads = []; for (let l = 0; l <= last; l += 12) leads.push(l); if (last % 12) leads.push(last);
@@ -1694,21 +1750,68 @@ function coneOf(E, par, prev, scale) {
     for (let d = -2; d <= 2; d++) { const r = rows[i + d]; if (!r) continue; const w = 3 - Math.abs(d); sw += w; sx += w * d; sy += w * r[key]; sxx += w * d * d; sxy += w * d * r[key]; }
     const den = sw * sxx - sx * sx; return den > 1e-9 ? (sy * sxx - sx * sxy) / den : sy / sw;
   };
-  let ctrl = leads.map((l) => ({ lead: l, lat: sm(l / 3, 'lat'), lon: sm(l / 3, 'lon'), v: sm(l / 3, 'v'), p: sm(l / 3, 'p') }));
+  const KEYS = ['lat', 'lon', 'v', 'p', 'r34', 'r50', 'r64'];
+  let ctrl = leads.map((l) => { const c = { lead: l }; for (const k of KEYS) c[k] = sm(l / 3, k); return c; });
   if (prev && prev.init < E.init && E.init - prev.init <= 24 && prev.at) {
     ctrl = ctrl.map((c) => {
       const o = prev.at(E.init + c.lead - prev.init); if (!o) return c;
       const w = 1 - (1 - K.blend[2]) * smooth01(c.lead, K.blend[0], K.blend[1]);
-      return { lead: c.lead, lat: o.lat + w * (c.lat - o.lat), lon: o.lon + w * (c.lon - o.lon), v: o.v + w * (c.v - o.v), p: o.p + w * (c.p - o.p) };
+      const r = { lead: c.lead }; for (const k of KEYS) r[k] = o[k] + w * (c[k] - o[k]); return r;
     });
   }
-  const xs = ctrl.map((c) => c.lead), f = {}; for (const k of ['lat', 'lon', 'v', 'p']) f[k] = pchip(xs, ctrl.map((c) => c[k]));
-  const at = (lead) => (lead < 0 || lead > last + 1e-9 ? null : { lat: f.lat(lead), lon: f.lon(lead), v: f.v(lead), p: f.p(lead) });
-  const out = rows.map((r) => { const q = at(r.lead); return { lat: q.lat, lon: q.lon, v: q.v, p: Math.round(q.p), th: r.th, lead: r.lead, t: r.t }; });
+  const xs = ctrl.map((c) => c.lead), f = {}; for (const k of KEYS) f[k] = pchip(xs, ctrl.map((c) => c[k]));
+  const at = (lead) => (lead < 0 || lead > last + 1e-9 ? null : { lat: f.lat(lead), lon: f.lon(lead), v: f.v(lead), p: f.p(lead), r34: Math.max(0, f.r34(lead)), r50: Math.max(0, f.r50(lead)), r64: Math.max(0, f.r64(lead)) });
+  const out = rows.map((r) => { const q = at(r.lead); return { lat: q.lat, lon: q.lon, v: q.v, p: Math.round(q.p), r34: q.r34, r50: q.r50, r64: q.r64, th: r.th, lead: r.lead, t: r.t }; });
   const leadsP = K.pts.filter((h) => h <= last), pre = leadsP.length ? leadsP[leadsP.length - 1] : 0;
   if (last >= K.pts[0] && last - pre >= 6 && last % 3 === 0) leadsP.push(last);                    // a cone that ends early (the system is gone by then) still ends in a point, the last hour of the forecast
   const pts = leadsP.map((h) => { const q = at(h), v = Math.max(5, round5(q.v)), th = out[h / 3].th; return { lead: h, t: E.init + h, lat: q.lat, lon: q.lon, v, p: Math.round(q.p), th, letter: coneLetter(v, scale), post: th === 'ex' || th === 'nl', end: K.pts.indexOf(h) < 0 }; });
-  return { init: E.init, id: E.id, rows: out, pts, chain: out.map((q) => [q.lat, q.lon, coneRadius(K, q.lead)]), ctrl, at: (T) => at(T), line: Array.from({ length: last + 1 }, (_, l) => at(l)) };
+  return { init: E.init, id: E.id, rows: out, pts, chain: out.map((q) => [q.lat, q.lon, coneRadius(K, q.lead)]), ctrl, at: (T) => at(T), line: Array.from({ length: last + 1 }, (_, l) => Object.assign(at(l), { th: out[Math.min(out.length - 1, Math.round(l / 3))].th })) };
+}
+/* ---- watches and warnings -----------------------------------------------------------------------------------------------------------------------------------------------
+   The cones of all the active cyclones (the consensus track, intensity and wind radii every hour to 72, each with the NHC's error circle) become one map of alerts on a grid in (longitude, Mercator y), an eighth of a degree a cell, land or sea (the page paints
+   only the land and the coast). For each cell and each cone: Te, the first hour the forecast's 34 kt radius plus a part of the error circle (the winds are expected there) reaches the cell, and Tp, the same with all of the error circle (they are possible).
+   Hurricane force the same with the 64 kt radius (a storm forecast at 60 kt or more counts for half of its 50 kt radius). The codes: 1 tropical storm watch, 2 hurricane watch, 3 tropical storm warning, 4 hurricane watch with a tropical storm warning,
+   5 hurricane warning, 6 high wind warning (a post-tropical or remnant cyclone's field, Th within 24 hours). A warning is Te <= 36 h, a watch Tp <= 48 h; the NHC times both from the onset of tropical-storm-force winds, so a hurricane warning is the cell
+   where hurricane force is expected and tropical-storm force arrives within 36 hours. The last issue is remembered (prev): a cell that had a warning keeps one while the threat is anywhere in the next 72 hours, a watch likewise, so an area is not dropped
+   and picked up again as the forecast wobbles; it is cancelled when the forecast no longer reaches it (the storm has passed or has dissipated). Overlapping cyclones take the higher code. */
+const unmercY = (y) => (2 * Math.atan(Math.exp(y * DEG)) - Math.PI / 2) / DEG;
+const ALERT_RANK = [0, 2, 3, 4, 5, 6, 1];                                        // the order of severity of the codes (a high wind warning is the least)
+function alertsOf(cones, env, par, prev) {
+  const A = par.alerts, K = par.cone, d = A.cell, H = Math.min(A.keepH, 72);
+  const cs = (cones || []).filter((C) => C && C.line && C.line.length > 1);
+  if (!cs.length) return { init: cones && cones[0] ? cones[0].init : null, cell: d, x0: 0, y0: 0, nx: 0, ny: 0, code: new Uint8Array(0), at: () => 0, n: 0 };
+  const tracks = cs.map((C) => { const L = []; for (let t = 0; t <= H && t < C.line.length; t++) { const q = C.line[t], cone = coneRadius(K, t) * 60, post = q.th === 'ex' || q.th === 'nl', r34 = q.r34 > 0 ? q.r34 : q.v >= 30 ? 25 : 0, hr = q.v >= 64 ? q.r64 : q.v >= 60 ? 0.5 * q.r50 : 0; L.push({ lat: q.lat, lon: q.lon, post, r34, r64: q.r64 > 1 ? q.r64 : 0, hr, cone, v: q.v }); } return L; });
+  let la0 = 90, la1 = -90, lo0 = 1e9, lo1 = -1e9;
+  for (const L of tracks) { L.bb = [90, -90, 1e9, -1e9]; for (const q of L) { const reach = (Math.max(q.r34, 25) + A.mPos[0] * q.cone + A.mPos[1] + 15) / 60, lr = reach / Math.max(0.3, Math.cos(q.lat * DEG)); la0 = Math.min(la0, q.lat - reach); la1 = Math.max(la1, q.lat + reach); lo0 = Math.min(lo0, q.lon - lr); lo1 = Math.max(lo1, q.lon + lr); L.bb[0] = Math.min(L.bb[0], q.lat - reach); L.bb[1] = Math.max(L.bb[1], q.lat + reach); L.bb[2] = Math.min(L.bb[2], q.lon - lr); L.bb[3] = Math.max(L.bb[3], q.lon + lr); } }
+  const B = env && env.box; if (B) { la0 = Math.max(la0, B.lat0); la1 = Math.min(la1, B.lat1); lo0 = Math.max(lo0, B.lon0); lo1 = Math.min(lo1, B.lon1); }
+  const x0 = Math.floor(lo0 / d) * d, y0 = Math.floor(mercY(la0) / d) * d, nx = Math.max(1, Math.ceil((lo1 - x0) / d)), ny = Math.max(1, Math.ceil((mercY(la1) - y0) / d)), code = new Uint8Array(nx * ny);
+  const at = (lat, lon) => { const i = Math.floor((lon - x0) / d), j = Math.floor((mercY(lat) - y0) / d); return i < 0 || j < 0 || i >= nx || j >= ny ? 0 : code[j * nx + i]; };
+  for (let j = 0; j < ny; j++) {
+    const lat = unmercY(y0 + (j + 0.5) * d), cl = Math.cos(lat * DEG) * 60;
+    for (let i = 0; i < nx; i++) {
+      const lon = x0 + (i + 0.5) * d, pc = prev && prev.at ? prev.at(lat, lon) : 0; let best = 0;
+      for (const L of tracks) {
+        if (lat < L.bb[0] || lat > L.bb[1] || lon < L.bb[2] || lon > L.bb[3]) continue;                // (a cell far from this storm's whole swath)
+        let Te = 1e9, Tp = 1e9, Th = 1e9, hurrE = false, hurrP = false;
+        for (let t = 0; t < L.length; t++) {
+          const q = L[t], dn = Math.hypot((lon - q.lon) * cl, (lat - q.lat) * 60);
+          if (q.post) { if (Th === 1e9 && q.r34 > 0 && dn <= q.r34 + A.hwwM * q.cone + 10) Th = t; continue; }
+          if (Te === 1e9 && q.r34 > 0 && dn <= q.r34 + A.mExp[0] * q.cone + A.mExp[1]) Te = t;
+          if (Tp === 1e9 && q.r34 > 0 && dn <= q.r34 + A.mPos[0] * q.cone + A.mPos[1]) Tp = t;
+          if (q.r64 > 0 && dn <= q.r64 + A.mExp[0] * q.cone + A.mExp[1]) hurrE = true;
+          if (q.hr > 0 && dn <= Math.max(q.r64, q.hr) + A.mPos[0] * q.cone + A.mPos[1]) hurrP = true;
+        }
+        const warnHad = pc >= 3 && pc <= 5, watchHad = pc >= 1 && pc <= 5;
+        const warn = Te <= A.warnH || (warnHad && Te <= A.keepH), watch = warn || Tp <= A.watchH || (watchHad && Tp <= A.keepH);
+        let c = 0;
+        if (warn && hurrE) c = 5; else if (warn) c = hurrP ? 4 : 3; else if (watch) c = hurrP ? 2 : 1;
+        else if (Th <= A.hwwH || (pc === 6 && Th <= A.hwwKeep)) c = 6;
+        if (ALERT_RANK[c] > ALERT_RANK[best]) best = c;
+      }
+      code[j * nx + i] = best;
+    }
+  }
+  return { init: cs[0].init, cell: d, x0, y0, nx, ny, code, at, n: cs.length };
 }
 /* the track density: the share of the members that pass within a footprint of each cell of a grid in (longitude, Mercator y), both in degrees, so that it lands exactly on the page's projection */
 const mercY = (lat) => (Math.log(Math.tan(Math.PI / 4 + Math.min(85, Math.max(-85, lat)) * DEG / 2)) / DEG);
@@ -1790,7 +1893,7 @@ root.HFStorms = {
   VERSION, create: (o) => new Manager(o), restore: (o, extra) => Manager.restore(o, extra), defaultParams, mergeParams,
   prepareMaps, timeWeights, mapAt, driftAt, climAt, steerRing, envFactor, activityFactor, structureParams, CALIBRATED, calibrated: (on) => { const was = useCalibrated; if (on != null) useCalibrated = !!on; return was; },
   category, ktToMph, aceOf, round5, gustKt, compass, pressureFromWind, windFromPressure, WP, vPot, statusOf, describe, nameFor, NAME_SETS, NAME_SUPPLEMENTAL, BASINS, basinInfo: basinOf, stormName, seasonYearOf,
-  smooth01, rnd, rndn, hash5, idNum, stepSystem, newSystem, makeFix, seasonalWeight, WAVE_SEASON, LowTracker, etHazard6, disHazard6, baroclinicV, satur, softMin, lowWeight, keepSide, SCALES, scaleOf, classOf, investLetter, capsule, swath, swathFull, outlookClass, outlookFollow, cloneSystem, ensFactor, ensDensity, mercY, coneOf, coneRadius, coneLetter, sstGateAt, growthG, decayLimit,
+  smooth01, rnd, rndn, hash5, idNum, stepSystem, newSystem, makeFix, seasonalWeight, WAVE_SEASON, LowTracker, etHazard6, disHazard6, baroclinicV, satur, softMin, lowWeight, keepSide, SCALES, scaleOf, classOf, investLetter, capsule, swath, swathFull, outlookClass, outlookFollow, cloneSystem, windRadii, windScale, stepWind, alertsOf, unmercY, ensFactor, ensDensity, mercY, coneOf, coneRadius, coneLetter, sstGateAt, growthG, decayLimit,
 };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
 /* ==== STORMS ENGINE END ==== */

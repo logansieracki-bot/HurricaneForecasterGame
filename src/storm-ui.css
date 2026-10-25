@@ -23,9 +23,9 @@ body.steer-on #lyr-dock{bottom:218px}
 .lyr:disabled{opacity:.45;cursor:default}
 .lyr-src{display:none!important}
 body.no-storms .lyr.st-only{display:none}
-#panel{max-height:calc(100% - 420px)}
-body.steer-on #panel{max-height:calc(100% - 530px)}
-@media (max-width:1040px){#lyr-dock{bottom:196px}body.steer-on #lyr-dock{bottom:298px}#panel{max-height:calc(100% - 500px)}body.steer-on #panel{max-height:calc(100% - 610px)}}
+#panel{max-height:calc(100% - 496px)}
+body.steer-on #panel{max-height:calc(100% - 606px)}
+@media (max-width:1040px){#lyr-dock{bottom:196px}body.steer-on #lyr-dock{bottom:298px}#panel{max-height:calc(100% - 576px)}body.steer-on #panel{max-height:calc(100% - 686px)}}
 @media (max-width:640px){#lyr-dock{left:14px;right:14px;bottom:186px;flex-direction:row;justify-content:flex-start;overflow-x:auto;pointer-events:auto;padding-bottom:2px}body.steer-on #lyr-dock{bottom:264px}.lyr{flex:none}#panel{bottom:236px;max-height:30%}body.steer-on #panel{bottom:314px;max-height:26%}}
 /* storms: season bar, hover tooltip, stat card */
 #season{left:50%;top:14px;transform:translateX(-50%);display:flex;align-items:center;padding:7px 4px;font-size:12.5px;white-space:nowrap}
@@ -35,10 +35,14 @@ body.steer-on #panel{max-height:calc(100% - 530px)}
 #storm-tip{padding:9px 12px;max-width:236px;pointer-events:none;display:none;z-index:960}
 #storm-tip b{font-size:13px;font-weight:600;display:block}
 #storm-tip div{font-size:11.5px;color:var(--dim);margin-top:3px;line-height:1.5}
-#ol-legend{left:64px;bottom:82px;width:226px;padding:8px 12px 9px;display:none;font-size:12px;line-height:1.5;pointer-events:none}
+#lg-stack{position:absolute;left:64px;bottom:82px;z-index:900;display:flex;flex-direction:column-reverse;align-items:flex-start;gap:8px;pointer-events:none}
+#lg-stack .card{position:static}
+#ol-legend, #ww-legend, #wf-legend{width:206px;padding:6px 10px 7px;display:none;font-size:11px;line-height:1.4;pointer-events:none}
+#ol-legend b, #ww-legend b, #wf-legend b{font-size:11.5px}
+#ol-legend i, #ww-legend i, #wf-legend i{width:20px;height:9px}
 #ol-legend b{font-size:12px;font-weight:600;display:block;margin-bottom:3px}
 #ol-legend div{display:flex;align-items:center;gap:8px;color:var(--dim)}
-#ol-legend i{display:inline-block;width:26px;height:12px;border:2px solid;border-radius:3px;flex:none}
+#ol-legend i{display:inline-block;width:20px;height:9px;border:2px solid;border-radius:3px;flex:none}
 #ol-legend i.low{border-color:#ffe24d;background:repeating-linear-gradient(135deg,#ffe24d 0 1.4px,rgba(255,226,77,.1) 1.4px 5px)}
 #ol-legend i.medium{border-color:#ff9d2e;background:repeating-linear-gradient(135deg,#ff9d2e 0 1.7px,rgba(255,157,46,.1) 1.7px 4.6px)}
 #ol-legend i.high{border-color:#ff3b30;background:repeating-linear-gradient(135deg,#ff3b30 0 2px,rgba(255,59,48,.1) 2px 4.2px)}
@@ -52,7 +56,7 @@ body.steer-on #panel{max-height:calc(100% - 530px)}
 #sc-name, #ac-name{font-size:17px;font-weight:600;display:block;padding-right:26px}
 #sc-note, #ac-note{margin:10px 0 0;padding-top:8px;border-top:1px solid var(--line);font-size:11px;line-height:1.4;color:var(--dim)}
 #sc-cat, #ac-type{font-size:12.5px;color:var(--dim)}
-#sc-tag{display:inline-block;min-width:24px;box-sizing:border-box;text-align:center;font:700 11px/1 system-ui,sans-serif;font-style:normal;border-radius:6px;padding:3px 6px;margin:0 7px 0 0;vertical-align:1px}
+#sc-tag{display:inline-block;min-width:24px;box-sizing:border-box;text-align:center;font:700 11px/1 system-ui,sans-serif;font-style:normal;border-radius:6px;padding:3px 6px;margin:0 7px 0 0;vertical-align:1px;color:#fff;text-shadow:0 0 2px rgba(0,0,0,.75),0 1px 1px rgba(0,0,0,.6)}
 .sc-main{display:flex;align-items:flex-end;gap:18px;margin:10px 0 9px}
 .sc-main b{font-size:30px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1}
 .sc-main small{display:block;font-size:11px;color:var(--dim);margin-top:3px}
@@ -93,7 +97,9 @@ body.steer-on #panel{max-height:calc(100% - 530px)}
 #sum-empty{color:var(--dim);font-size:12px;padding:8px 0}
 
 @media (max-width:1040px){
-  #ol-legend{bottom:150px}
+  #lg-stack{bottom:150px}
+  #wf-legend{display:none!important}                      /* (the three keys do not fit one over another on a small screen: the wind field's colours are the storm's own, the watches and warnings' key replaces the outlook's) */
+  body.ww-key #ol-legend{display:none!important}
   #season{left:14px;top:209px;transform:none;display:grid;grid-template-columns:repeat(3,1fr);width:max-content;min-width:236px;row-gap:5px;padding:8px 2px;font-size:12px}
   #season span{padding:0 8px}
   #season span:first-child{grid-column:1/3;padding:0 12px 4px}
@@ -103,7 +109,9 @@ body.steer-on #panel{max-height:calc(100% - 530px)}
   #sum-card{top:14px;max-height:none;width:min(492px,calc(100% - 28px))}
 }
 @media (max-width:640px){
-  #ol-legend{bottom:112px;width:208px}
+  #ww-legend{display:none!important}
+  #lg-stack{bottom:112px}
+  #ol-legend, #ww-legend, #wf-legend{width:190px}
   #season{top:192px;font-size:11.5px}
   #storm-card, #aoi-card{left:14px;right:14px;width:auto;bottom:120px}
   #sum-card{left:14px;right:14px;width:auto;transform:none;padding:12px 12px 8px}
@@ -118,5 +126,12 @@ body.steer-on #panel{max-height:calc(100% - 530px)}
   #place-menu{bottom:96px}
 }
 /* a basin whose page has no storm climatology yet (STORMS_READY, src/storm-hooks.js) shows none of the storm controls */
-body.no-storms .st-only, body.no-storms #season, body.no-storms #storm-tip, body.no-storms #ol-legend, body.no-storms #storm-card, body.no-storms #aoi-card, body.no-storms #sum-card, body.no-storms #b-place, body.no-storms #place-menu { display: none !important; }
+body.no-storms .st-only, body.no-storms #season, body.no-storms #storm-tip, body.no-storms #lg-stack, body.no-storms #storm-card, body.no-storms #aoi-card, body.no-storms #sum-card, body.no-storms #b-place, body.no-storms #place-menu { display: none !important; }
 body.no-waves .st-waves { display: none; }      /* a basin without a wave train of its own (BASINS[..].waves in src/storms.js) has no waves to show or hide */
+/* the key of watches and warnings and of the wind field (the NHC's colours; high wind warning: the National Weather Service's goldenrod) */
+#ww-legend b, #wf-legend b{font-weight:600;display:block;margin:0 0 2px}
+#ww-legend div, #wf-legend div{display:flex;align-items:center;gap:7px;color:var(--dim)}
+#ww-legend i, #wf-legend i{display:inline-block;border-radius:2px;border:1px solid rgba(0,0,0,.4);flex:none}
+#ww-legend small, #wf-legend small{display:block;font-size:10.5px;color:var(--dim);margin-top:2px;line-height:1.3}
+@media (max-height:820px) and (min-width:641px){#lyr-dock{gap:4px}.lyr{height:28px;font-size:12px;padding:0 12px 0 9px}#panel{max-height:calc(100% - 444px)}body.steer-on #panel{max-height:calc(100% - 554px)}}
+@media (max-height:820px) and (min-width:641px) and (max-width:1040px){#panel{max-height:calc(100% - 524px)}body.steer-on #panel{max-height:calc(100% - 634px)}}

@@ -6,6 +6,8 @@
         <label class="chk st-only"><input type="checkbox" id="stens"><span> Ensembles: a fan of tracks for the system you select</span></label>
         <label class="chk st-only"><input type="checkbox" id="stcone"><span> Cones: the cone of uncertainty of the cyclone you select</span></label>
         <label class="chk st-only"><input type="checkbox" id="stdens" disabled><span> Track density: where the ensembles agree (red) and spread</span></label>
+        <label class="chk st-only"><input type="checkbox" id="stwf"><span> Wind fields: how far the 34, 50 and 64 kt winds reach round a storm</span></label>
+        <label class="chk st-only"><input type="checkbox" id="stww"><span> Watches and warnings for the coasts and the land inland</span></label>
 <!--[advanced]-->
           <label class="chk st-only"><input type="checkbox" id="st-auto" checked><span> Storms form on their own</span></label>
           <div class="row st-only">
@@ -19,16 +21,22 @@
   <button class="lyr st-only" data-l="stens" aria-pressed="false" title="A fan of ensemble tracks for the system you select"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20C6 13 9 8 12 4M5 20C8 14 13 10 19 8M5 20C9 17 15 15 20 15"/></svg><span>Ensembles</span></button>
   <button class="lyr st-only" data-l="stcone" aria-pressed="false" title="The cone of uncertainty of the cyclone you select"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12 20 5v14z"/></svg><span>Cones</span></button>
   <button class="lyr st-only" data-l="stdens" aria-pressed="false" title="Where the ensembles agree (red) and spread" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="10.5"/></svg><span>Track density</span></button>
+  <button class="lyr st-only" data-l="stwf" aria-pressed="false" title="Wind fields: how far the 34, 50 and 64 kt winds reach round a storm (the one you select, or every storm)"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="2"/><path d="M12 4a8 8 0 0 1 8 8M12 20a8 8 0 0 1-8-8M12 8a4 4 0 0 1 4 4M12 16a4 4 0 0 1-4-4"/></svg><span>Wind fields</span></button>
+  <button class="lyr st-only" data-l="stww" aria-pressed="false" title="Watches and warnings for the coasts and the land inland: hurricane and tropical storm, high wind"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 3 20h18zM12 10v4M12 17.2v.1"/></svg><span>Watches &amp; warnings</span></button>
   <button class="lyr" data-l="jetline" aria-pressed="false" title="The jet stream: the axis of strongest shear"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 15c4-8 9 4 13-4 2-3 4-3 5-2M3 19c4-6 9 3 13-3"/></svg><span>Jet stream</span></button>
   <button class="lyr" data-l="hl" aria-pressed="false" title="Highs (H) and lows (L) with their sea-level pressure"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5v8M5 9h5M10 5v8M15 15v4h5"/></svg><span>Highs &amp; lows</span></button>
   <button class="lyr st-only" data-l="nhc" aria-pressed="false" title="The NHC-style outlook: tropical waves, areas of interest and invests"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5l14 14M19 5 5 19"/></svg><span>NHC disturbances</span></button>
   <button class="lyr" data-l="steer" aria-pressed="false" title="Streamlines: the steering flow, colour = speed"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8h13l-3-3M3 13h18l-3-3M3 18h11l-3-3"/></svg><span>Streamlines</span></button>
 </div>
+<div id="lg-stack">
 <div id="ol-legend" class="card" aria-label="Areas of interest: the chance of formation in 7 days">
   <b>7-day chance of formation</b>
   <div><i class="low"></i>Low · 0–30 %</div><div><i class="medium"></i>Medium · 40–60 %</div><div><i class="high"></i>High · 70–100 %</div>
-  <small><u>✕</u> a disturbance · <u>→</u> where it may form · labels: 2-day · 7-day chance · click one to look at it alone</small>
+  <small><u>✕</u> disturbance · <u>→</u> where it may form · 2-day · 7-day chance</small>
   <small id="ol-issued"></small>
+</div>
+<div id="ww-legend" class="card" aria-label="Watches and warnings"></div>
+<div id="wf-legend" class="card" aria-label="Wind field key"></div>
 </div>
 <aside id="storm-card" class="card" hidden aria-label="Storm details">
   <button id="sc-close" aria-label="Close storm details" title="Close (Esc)">&times;</button>
@@ -38,6 +46,7 @@
     <div><span>ACE</span><b id="sc-ace">0.0</b></div><div><span>Advisory</span><b id="sc-time">–</b></div>
     <div><span>Shear</span><b id="sc-sh">–</b></div><div><span>Gusts</span><b id="sc-gust">–</b></div>
     <div><span>Movement</span><b id="sc-mv">–</b></div><div><span>SST</span><b id="sc-sst">–</b></div>
+    <div class="wide"><span>Wind field</span><b id="sc-wf">–</b></div>
     <div><span>Damage</span><b>—</b></div><div><span>Formed</span><b id="sc-formed">–</b><small id="sc-invest"></small></div>
   </div>
   <p id="sc-note">Showing only this system. Click the empty map or press Esc to show all.</p>
