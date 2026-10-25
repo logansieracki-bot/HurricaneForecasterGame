@@ -123,6 +123,7 @@ body.steer-on #panel{max-height:calc(100% - 606px)}
   #sum-table td,#sum-table th{padding-right:6px}
   #sum-table .u{display:none}
   #sum-table th:nth-child(2)::after{content:" (mph)"}
+  #sum-table th:nth-child(3),#sum-table td:nth-child(3){display:none}
   #b-place{margin-left:0;padding:0 10px}
   #b-place span{display:none}
   #place-menu{bottom:96px}
