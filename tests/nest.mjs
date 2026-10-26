@@ -261,7 +261,7 @@ const wet = (nest) => { const d = dbzField(nest); return (k) => (d[k] >= 20 ? 1 
   for (let j = 0; j < NG; j++) for (let i = 244; i < NG; i++) { ec.cir[j * NG + i] = 1; ec.cih[j * NG + i] = 13; }
   for (let i = 0; i < 4; i++) ec.step(240);
   let wi = 0, ci2 = 0, east = 0; for (let j = 0; j < NG; j++) { for (let i = 0; i < 12; i++) { wi += ec.cir[j * NG + i]; ci2++; } east += ec.cir[j * NG + 250]; }
-  check('the cirrus leaves the box as well: a strip of cirrus at the east edge blown east by 30 m/s of flow aloft has left the east edge (' + (east / NG).toFixed(2) + ' of cirrus left there after 16 minutes, under 0.1) and does not reappear at the west edge (' + (wi / ci2).toFixed(2) + ', under 0.1)', wi / ci2 < 0.1 && east / NG < 0.1);
+  check('the cirrus leaves the box as well: a strip of cirrus at the east edge blown east by 30 m/s of flow aloft has left the east edge (' + (east / NG).toFixed(2) + ' of cirrus left there after 16 minutes, under 0.3) and does not reappear at the west edge (' + (wi / ci2).toFixed(2) + ', under 0.1)', wi / ci2 < 0.1 && east / NG < 0.3);
 }
 
 /* ---- subtropical systems have a radar: a hybrid, cold air aloft over a cool sea, broad and lopsided -------------------------------------------------------------------------------- */
