@@ -470,8 +470,8 @@ check that Satellite still resolves to something usable.
   system alone with its past path and its place (moving between two hours), the **cone**, the **ensembles**, the **wind fields**. **Radar** chooses a composite (every echo of the model) or the radar of a
   nearby city: range rings (50 to 460 km), the beam's height at the **tilt** you pick (0.5, 1.5, 3, 6 degrees: the beam passes over low echoes far away and weakens them near their tops, 4/3 earth radius),
   and with a site the **velocity** product too (Doppler: green toward the radar, red away, the couplet of the storm's circulation plus its own motion).
-  **View** switches the picture to **Satellite (infrared)**: the brightness temperature of the model's clouds in the colours of the usual enhanced infrared picture (brown sea, dark low cloud, grey to white middle cloud and
-  cirrus, a thin black line at -40 C, then green, yellow, orange and red for the cold tops, white and black for the coldest; the key shows +20 to -80 C). The cirrus is made by the model's convection and carried by its own
+  **View** switches the picture to **Satellite (infrared)**: the brightness temperature of the model's clouds in the colours of the usual enhanced infrared picture (a grey ramp from black at +40 C to white at -20 C, then cyan, blue, green, yellow,
+  orange and red for the cold tops, black at -70 C, grey to white, and pink and purple at -80 to -90 C; the key, laid out like the colour bar it was made from, shows +40 to -90 C). The cirrus is made by the model's convection and carried by its own
   upper-level flow (an outflow, the shear blowing it downshear), the tops of the clouds and the tropopause follow the latitude. The land is outlined in **white** over either picture so a landfall is easy to see, and
   there are two more clock speeds, **30 and 45 minutes a second** (nothing faster: the model steps four minutes at a time there, so they cost no more than 20 minutes a second).
   *What the model is, honestly:* the balanced limit of the moist-convective rotating shallow-water model (Bouchut et al. 2009, Rostami and Zeitlin 2017-2022: the gravity waves left out), with no vertical
