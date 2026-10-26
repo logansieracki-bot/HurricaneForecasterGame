@@ -253,10 +253,10 @@ const wet = (nest) => { const d = dbzField(nest); return (k) => (d[k] >= 20 ? 1 
   const cvr = sector(hur, 45, 100, null, 0, (k) => (d[k] >= 20 ? 1 : 0)), mr = sector(hur, 45, 100, null, 0, rain(hur));
   check('there is rain round the eye of a major hurricane in the page\'s typical humidity (50 %): 45 to 100 km out the echoes cover ' + (100 * cvr).toFixed(0) + ' % (over 90) and the mean rain is ' + mr.toFixed(1) + ' mm/h (over 6): a rain shield with cells, not clear air', cvr > 0.9 && mr > 6);
   const e = N.create({ seed: 7 }), fe = forcing({ v: 15, rmax: 60 }); fe.uem = 30; fe.eta = 0; e.init(fe);
-  for (let j = 0; j < NG; j++) for (let i = 244; i < NG; i++) e.rs[j * NG + i] = 30;
+  for (let j = 0; j < NG; j++) for (let i = 244; i < NG; i++) { e.rs[j * NG + i] = 30; e.rc[j * NG + i] = 40; }
   for (let i = 0; i < 4; i++) e.step(240);
-  let w = 0, cc = 0; for (let j = 0; j < NG; j++) for (let i = 0; i < 12; i++) { w += e.rs[j * NG + i]; cc++; }
-  check('the box\'s edge is open: a strip of stratiform rain at the east edge carried east by a 30 m/s wind leaves, it does not come back at the west edge (' + (w / cc).toFixed(1) + ' mm/h there after 16 minutes, under 3)', w / cc < 3);
+  let w = 0, wc = 0, cc = 0; for (let j = 0; j < NG; j++) for (let i = 0; i < 12; i++) { w += e.rs[j * NG + i]; wc += e.rc[j * NG + i]; cc++; }
+  check('the box\'s edge is open: strips of stratiform (30 mm/h) and convective (40 mm/h) rain at the east edge carried east by a 30 m/s wind leave, they do not come back at the west edge (' + (w / cc).toFixed(1) + ' and ' + (wc / cc).toFixed(1) + ' mm/h there after 16 minutes, both under 3)', w / cc < 3 && wc / cc < 3);
 }
 
 /* ---- subtropical systems have a radar: a hybrid, cold air aloft over a cool sea, broad and lopsided -------------------------------------------------------------------------------- */
