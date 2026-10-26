@@ -415,6 +415,13 @@ const wet = (nest) => { const d = dbzField(nest); return (k) => (d[k] >= 20 ? 1 
   const cm = (a, r0, r1) => sector(n, r0, r1, null, 0, (k) => a[k]);
   check('the convection makes the cirrus: thick (' + cm(n.cir, 15, 50).toFixed(2) + ') and high (' + cm(n.cih, 15, 50).toFixed(1) + ' km) over the eyewall, none in the eye (' + cm(n.cir, 0, 8).toFixed(2) + '), spread outward beyond 100 km (' + cm(n.cir, 100, 200).toFixed(2) + ' thick)', cm(n.cir, 15, 50) > 0.7 && cm(n.cih, 15, 50) > 13 && cm(n.cir, 0, 8) < 0.1 && cm(n.cir, 100, 200) > 0.3);
   {
+    const q = N.create({ seed: 3 }), fq = forcing({ v: 20, rmax: 80, r34: 120, extra: { conv: 0, sst: 18, rh: 0.3 } }); fq.ued = 20; q.init(fq);
+    for (let k = 0; k < NN; k++) { const x = (k % NG - 127.5) * 2, y = (Math.floor(k / NG) - 127.5) * 2; q.cir[k] = Math.exp(-((x + 80) * (x + 80) + y * y) / (2 * 25 * 25)); q.cih[k] = 12; }
+    const cx = () => { let t = 0, w = 0; for (let k = 0; k < NN; k++) { t += q.cir[k] * (k % NG - 127.5) * 2; w += q.cir[k]; } return t / w; }, x0 = cx();
+    for (let i = 0; i < 24; i++) q.step(120);
+    check('the cirrus is carried by the upper flow at its speed even though it is advected every few minutes, not at every step: a blob of cirrus in 20 m/s of flow aloft has moved ' + (cx() - x0).toFixed(0) + ' km in 48 minutes (57.6 km expected, within 6)', near(cx() - x0, 57.6, 6));
+  }
+  {
     const q = N.create({ seed: 3 }); q.init(forcing({ v: 20, rmax: 80, r34: 120, extra: { conv: 0, sst: 18, rh: 0.3 } })); q.cir.fill(1); q.cih.fill(12);
     for (let i = 0; i < 45; i++) q.step(240);
     const mean = (a) => { let t = 0; for (let k = 0; k < NN; k++) t += a[k]; return t / NN; };

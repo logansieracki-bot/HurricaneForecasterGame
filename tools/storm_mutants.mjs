@@ -383,6 +383,8 @@ const mutants = [
   M('G20', NS, [E("shx = 0.8 * f.shear * Math.cos(f.shdir), shy = 0.8 * f.shear * Math.sin(f.shdir)", "shx = 0, shy = 0")], ['nest'], 'shear does not blow the anvil downshear'),
   M('G21', NS, [E("this.gatherOpen([this.cir, this.cih], [sc[0], sc[1]], [true, true]);", "this.gather([this.cir, this.cih], [sc[0], sc[1]], [true, true]);")], ['nest'], 'the cirrus leaving the box comes back at the other side'),
   M('G22', NS, [E("ciTex: [0.2, 0.25],", "ciTex: [0, 0],")], ['nest'], 'the cirrus has no texture'),
+  M('G23', NS, [E("ciDt: 300,", "ciDt: 3000,")], ['nest'], 'the cirrus is advected only every fifty minutes'),
+  M('G24', NS, [E("this.departure(this.uc, this.vc, this.ciAcc);", "this.departure(this.uc, this.vc, dt);")], ['nest'], 'the cirrus advected every few minutes only goes as far as one step of the model (a third of its speed)'),
   M('H1', FL, [E("1200, 1800, 2700]", "1200, 1800]")], ['sat'], 'no 45 minutes a second'),
   M('H2', FL, [E("function flStepDt() { return FL_SPEEDS[flSpeed] >= 1800 ? 2 * FL_DT : FL_DT; }", "function flStepDt() { return FL_DT; }")], ['sat'], 'the two fastest clocks step the model by two minutes like the others (twice the work, lag)'),
   M('H3', FL, [E("d = rem > 1 && rem < dts ? rem : dts;", "d = dts;")], ['sat'], 'a four-minute step goes past the hour'),

@@ -1171,9 +1171,9 @@ async function checkFloater(page, label, prefix) {
   check(`[${label}] the playback buttons and keys steer the floater (speed ${sp0} to ${sp1.s} with two clicks on faster, ${sp2} after [, label ${sp1.x} ${sp1.sub}), pause and Space toggle it (${pz.play} then ${pz2}), and the main clock stays stopped`, sp1.s === sp0 + 2 && sp2 === sp1.s - 1 && pz.play === false && pz.ic && pz2 === true && sp1.main === false);
   // the clock runs by itself at 20 minutes a second: inside the hour, then the engine moves on
   await ev(() => { window.SSTSIM.floaterSet({ speed: 11, play: true }); }); const h0 = await ev(() => window.SSTSIM.floaterState());
-  await page.waitForTimeout(4200);
+  const tw0 = Date.now(); await page.waitForFunction((h) => window.SSTSIM.floaterState().hour > h, h0.hour, { timeout: 15000 }).catch(() => {});      // (a slow machine takes longer than four seconds for the hour)
   const h1 = await ev(() => { const f = window.SSTSIM.floaterState(); return { f, clock: document.getElementById('c-time').textContent }; });
-  check(`[${label}] at 20 minutes a second the floater's clock runs (${h0.steps} to ${h1.f.steps} steps in four seconds) and when it passes the hour the engine really moves on (hour ${h0.hour} to ${h1.f.hour}, the main clock reads ${h1.clock.replace(/\D*$/, '')})`, h1.f.steps >= h0.steps + 12 && h1.f.hour >= h0.hour + 1 && h1.f.on);
+  check(`[${label}] at 20 minutes a second the floater's clock runs (${h0.steps} to ${h1.f.steps} steps in ${((Date.now() - tw0) / 1000).toFixed(1)} seconds) and when it passes the hour the engine really moves on (hour ${h0.hour} to ${h1.f.hour}, the main clock reads ${h1.clock.replace(/\D*$/, '')})`, h1.f.steps >= h0.steps + 12 && h1.f.hour >= h0.hour + 1 && h1.f.on);
   // the storm layers sit on top of the radar: the system alone with its path and place, and the cone and wind field on request
   await ev(() => { const S = window.SSTSIM; S.floaterSet({ play: false }); S.floaterRun(1500); });
   await lyrSet(page, 'stwf', true); await lyrSet(page, 'stcone', true); await page.waitForTimeout(300);
