@@ -449,7 +449,7 @@ Nest.prototype.convect = function (f, dt, fcor) {
     const R = p * 3600 * kr * (1 + Math.min(P.pcx, p / pcS)), rcn = rc[k] + (R - rc[k]) * (R > rc[k] ? aUp : 1 - aDn);
     rc[k] = ey > 0 ? rcn * (1 - P.eyeClr * ey) : rcn;
     { const e0 = cir[k] * aCi, z0 = cih[k] - dzCi;                                                                    // the cirrus: a cell's top (km) and how opaque it is; the old cirrus thins and sinks, the highest top stays
-      if (rcn > 0.05) { const zc = 8.5 + 2.2 * Math.log(1 + rcn / 3), es = 1 - Math.exp(-rcn / 2.5); if (es > e0) { cir[k] = es; cih[k] = e0 > 0.15 && z0 > zc ? z0 : zc; } else { cir[k] = e0; cih[k] = z0 < 6 ? 6 : z0; } } else { cir[k] = e0; cih[k] = z0 < 6 ? 6 : z0; }
+      if (rcn > 0.05) { const zc = 8.5 + 2.0 * Math.log(1 + rcn / 3), es = 1 - Math.exp(-rcn / 2.5); if (es > e0) { cir[k] = es; cih[k] = e0 > 0.15 && z0 > zc ? z0 : zc; } else { cir[k] = e0; cih[k] = z0 < 6 ? 6 : z0; } } else { cir[k] = e0; cih[k] = z0 < 6 ? 6 : z0; }
       if (ey > 0) cir[k] *= 1 - 0.8 * P.eyeClr * ey; }
     const sSrc = P.sigS * (P.tauS / P.tauC2) * rcn + P.gsC * rcB[k] + P.gs * Math.min(1, Math.max(0, w * vEff) / 0.4) * (1 - 0.7 * eta * dry) + strat;
     rs[k] = ey > 0 ? (rs[k] * aS + bS * sSrc * (1 - 0.95 * ey)) * (1 - 0.25 * ey) : rs[k] * aS + bS * sSrc;
@@ -559,8 +559,8 @@ Nest.prototype.texture = function (ir) {
 /* ---- the infrared picture: the brightness temperature (C) of every cell: the sea (or the land) seen through what is above it, layer by layer: scattered low clouds from the water of the column, the tops of the
    rain clouds (convective tops from the rain rate, stratiform tops lower), the cirrus the convection spread (its thickness and top), the colder the higher; a tropical atmosphere reaches about -72 C at 15 km
    (a cell that overshoots goes colder), the tropopause is lower and warmer poleward; what a 2-km model cannot hold is the texture on the cirrus ---- */
-const IR_STOPS = [[30, [75, 48, 26]], [20, [82, 52, 28]], [14, [58, 37, 21]], [8, [30, 22, 16]], [1, [12, 12, 12]], [-8, [70, 70, 70]], [-20, [150, 150, 150]], [-30, [215, 215, 215]], [-38, [255, 255, 255]], [-39.6, [255, 255, 255]], [-40.2, [18, 18, 18]], [-41.2, [18, 18, 18]], [-41.8, [30, 160, 60]], [-48, [120, 210, 50]], [-53, [250, 240, 40]], [-60, [255, 170, 20]], [-66, [250, 80, 10]], [-72, [200, 10, 10]], [-77, [130, 0, 0]], [-79.5, [255, 255, 255]], [-86, [255, 255, 255]], [-88, [0, 0, 0]], [-110, [0, 0, 0]]];
-function irColor(t) {                                                          // the colour of a brightness temperature (C): brown sea, dark low cloud, grey to white middle cloud, a black line, then green to yellow to orange to red for the cold tops, white and black for the coldest
+const IR_STOPS = [[40, [6, 6, 6]], [30, [56, 56, 56]], [20, [108, 108, 108]], [10, [160, 160, 160]], [0, [205, 205, 205]], [-10, [238, 238, 238]], [-19.9, [254, 254, 254]], [-20.1, [3, 251, 255]], [-22.5, [2, 210, 231]], [-25, [0, 150, 195]], [-27.5, [0, 87, 163]], [-30, [2, 0, 116]], [-32.5, [5, 41, 100]], [-35, [5, 100, 80]], [-37.5, [1, 171, 35]], [-40, [6, 250, 8]], [-42.5, [42, 255, 0]], [-45, [104, 255, 3]], [-47.5, [169, 255, 2]], [-50, [245, 255, 2]], [-52.5, [253, 212, 0]], [-55, [252, 150, 0]], [-57.5, [255, 84, 2]], [-60, [249, 4, 0]], [-62.5, [210, 1, 1]], [-65, [156, 0, 1]], [-67.5, [84, 1, 1]], [-70, [26, 3, 4]], [-70.6, [0, 0, 0]], [-79.9, [236, 236, 236]], [-80.1, [238, 111, 193]], [-82.5, [219, 91, 181]], [-85, [195, 70, 169]], [-87.5, [158, 31, 147]], [-90, [115, 6, 113]]];
+function irColor(t) {                                                          // the colour of a brightness temperature (C), read off the chosen colour bar: black to white from +40 to -20, a step to cyan, blue, green, yellow, orange and red down to -70, black, grey to white to -80, a step to pink and purple at -90
   const S = IR_STOPS; if (t >= S[0][0]) return S[0][1]; if (t <= S[S.length - 1][0]) return S[S.length - 1][1];
   let i = 1; while (i < S.length - 1 && t < S[i][0]) i++;
   const a = S[i - 1], b = S[i], u = (a[0] - t) / (a[0] - b[0]); return [a[1][0] + (b[1][0] - a[1][0]) * u, a[1][1] + (b[1][1] - a[1][1]) * u, a[1][2] + (b[1][2] - a[1][2]) * u];
@@ -575,7 +575,7 @@ Nest.prototype.irTb = function (out, ts0) {
     let tb = ts;
     if (aL > 0) tb += 0.9 * aL * (irTz(ts, zk * (1 + 4.5 * sm01(qr, 0.94, 1.02)), ztp, ttp) - ts);                    // scattered low cloud
     const r1 = rc[k], r2 = rs[k];
-    if (r1 > 0.05 || r2 > 0.05) { const zt = Math.max(r1 > 0.05 ? 8.5 + 2.2 * Math.log(1 + r1 / 3) : 0, 7 + 2.4 * Math.log(1 + r2 / 0.5)); tb += (1 - Math.exp(-(r1 / 3 + r2 / 0.7))) * (irTz(ts, zk * zt, ztp, ttp) - tb); }     // the rain clouds
+    if (r1 > 0.05 || r2 > 0.05) { const zt = Math.max(r1 > 0.05 ? 8.5 + 2.0 * Math.log(1 + r1 / 3) : 0, 7 + 2.4 * Math.log(1 + r2 / 0.5)); tb += (1 - Math.exp(-(r1 / 3 + r2 / 0.7))) * (irTz(ts, zk * zt, ztp, ttp) - tb); }     // the rain clouds
     const e = ci[k]; if (e > 0.01) { const m = tb + e * (irTz(ts, zk * cz[k], ztp, ttp) - tb); if (m < tb) tb = m; }                                           // the cirrus over them
     out[k] = tb;
   }

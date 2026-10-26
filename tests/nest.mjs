@@ -362,13 +362,15 @@ const wet = (nest) => { const d = dbzField(nest); return (k) => (d[k] >= 20 ? 1 
 {
   reset();
   const S = N.IR_STOPS;
-  check('IR palette: the stops fall strictly in temperature from +30 to -110 C, every channel within 0-255', S.every((s, i) => i === 0 || s[0] < S[i - 1][0]) && S[0][0] === 30 && S[S.length - 1][0] === -110 && S.every((s) => s[1].every((c) => c >= 0 && c <= 255)));
-  const col = (t) => N.irColor(t), isBrown = (c) => c[0] > c[2] + 20 && c[0] >= c[1] && c[0] < 110;
-  check('IR palette: warm sea is brown (+28 C), the lower clouds go through black to grey, the cirrus white (-38 C) as the example images', isBrown(col(28)) && col(1)[0] < 25 && col(-20)[0] > 120 && col(-20)[0] < 180 && col(-38).every((c) => c > 250));
-  const gy = col(-40.7), g = col(-45), y = col(-53), o = col(-60), r = col(-72);
-  check('IR palette: a thin black line at -40.7 C, then green (-45), yellow (-53), orange (-60), red (-72) for the cold tops, white (-82) for the coldest and a black overshooting top below -88',
-    gy.every((c) => c < 40) && g[1] > g[0] && g[1] > 150 && y[0] > 200 && y[1] > 200 && y[2] < 80 && o[0] > 240 && o[1] > 120 && o[1] < 200 && r[0] > 150 && r[1] < 40 && col(-82).every((c) => c > 250) && col(-95).every((c) => c < 5));
-  check('IR palette: temperatures beyond the table keep its end colours (finite for any input), and the colour is continuous between stops', col(80)[0] === S[0][1][0] && col(-200)[2] === 0 && [-30, -5, 12, -55, -70].every((t) => { const a = col(t - 0.01), b = col(t + 0.01); return [0, 1, 2].every((i) => Math.abs(a[i] - b[i]) < 6); }));
+  check('IR palette: the stops fall strictly in temperature from +40 to -90 C, every channel within 0-255', S.every((s, i) => i === 0 || s[0] < S[i - 1][0]) && S[0][0] === 40 && S[S.length - 1][0] === -90 && S.every((s) => s[1].every((c) => c >= 0 && c <= 255)));
+  const col = (t) => N.irColor(t), grey = (c) => Math.abs(c[0] - c[1]) < 6 && Math.abs(c[1] - c[2]) < 6;
+  check('IR palette (the colour bar): the warm end is a grey ramp, black at +40 C (' + col(40).join(',') + '), a dark grey sea at +28 C (' + col(28).map(Math.round).join(',') + '), light grey cloud at 0 C, white at -19.9 C', col(40).every((c) => c < 12) && grey(col(28)) && col(28)[0] > 55 && col(28)[0] < 95 && grey(col(0)) && col(0)[0] > 190 && col(0)[0] < 220 && col(-19.9).every((c) => c > 245));
+  const cy = col(-20.1), bl = col(-30), gn = col(-40), yl = col(-50), og = col(-55), rd = col(-60), dr = col(-67.5), bk = col(-70.6);
+  check('IR palette: a hard step at -20 C from white to cyan, then blue (-30), green (-40), yellow (-50), orange (-55), red (-60), dark red (-67.5) and black (-70.6)',
+    cy[0] < 20 && cy[1] > 240 && cy[2] > 240 && bl[2] > 100 && bl[0] < 20 && bl[1] < 20 && gn[1] > 240 && gn[0] < 30 && gn[2] < 30 && yl[0] > 230 && yl[1] > 240 && yl[2] < 20 && og[0] > 240 && og[1] > 130 && og[1] < 170 && og[2] < 20 && rd[0] > 230 && rd[1] < 30 && rd[2] < 30 && dr[0] > 60 && dr[0] < 110 && dr[1] < 10 && bk.every((c) => c < 6));
+  const lg = col(-79.9), pk = col(-80.1), pu = col(-90);
+  check('IR palette: a grey ramp from black at -70.6 C up to light grey at -79.9 C, a hard step at -80 C to pink (' + pk.join(',') + '), and purple at -90 C (' + pu.join(',') + ')', grey(col(-75)) && col(-75)[0] > 90 && col(-75)[0] < 150 && lg.every((c) => c > 225) && pk[0] > 225 && pk[1] > 95 && pk[1] < 130 && pk[2] > 180 && pu[0] > 100 && pu[0] < 130 && pu[1] < 15 && pu[2] > 100 && pu[2] < 130);
+  check('IR palette: temperatures beyond the table keep its end colours (black above +40 C, purple below -90 C, finite for any input), and the colour is continuous between the steps', col(80)[0] === S[0][1][0] && col(-200)[0] === S[S.length - 1][1][0] && col(-200)[2] > 100 && [30, 12, -5, -30, -45, -55, -65, -75, -85].every((t) => { const a = col(t - 0.01), b = col(t + 0.01); return [0, 1, 2].every((i) => Math.abs(a[i] - b[i]) < 6); }));
 
   /* synthetic columns: the brightness temperature of one cell of known water, rain and cirrus */
   const tbOf = (o, lat = 15, land = 0) => {
@@ -381,15 +383,15 @@ const wet = (nest) => { const d = dbzField(nest); return (k) => (d[k] >= 20 ? 1 
   check('clear sky shows the sea (28.0 C) and land three degrees warmer in the cell (' + clear.toFixed(1) + ', ' + land.toFixed(1) + ')', near(clear, 28, 0.01) && near(land, 31, 0.01));
   const low = tbOf({ q: 1.05 * N.PAR.Qc }), lowish = tbOf({ q: 0.9 * N.PAR.Qc });
   check('scattered low cloud only where the column is at its water threshold: warmer than -20 C, colder than the sea (' + low.toFixed(1) + ' vs ' + lowish.toFixed(1) + ')', near(lowish, 28, 0.01) && low < 20 && low > -20);
-  const r5 = tbOf({ rc: 5 }), r30 = tbOf({ rc: 30 }), r150 = tbOf({ rc: 150 }), s2 = tbOf({ rs: 2 }), s10 = tbOf({ rs: 10 });
-  check('rain makes cloud tops: the heavier the convective rain the colder (5 mm/h ' + r5.toFixed(0) + ', 30 mm/h ' + r30.toFixed(0) + ', 150 mm/h ' + r150.toFixed(0) + ' C): about -35, -55 and -75 C, a very heavy cell overshoots the tropopause (colder than -78 C)', r5 > r30 && r30 > r150 && r5 < -25 && r5 > -48 && r30 < -48 && r30 > -64 && r150 < -78);
+  const r5 = tbOf({ rc: 5 }), r30 = tbOf({ rc: 30 }), r150 = tbOf({ rc: 150 }), r300 = tbOf({ rc: 300 }), s2 = tbOf({ rs: 2 }), s10 = tbOf({ rs: 10 });
+  check('rain makes cloud tops: the heavier the convective rain the colder (5 mm/h ' + r5.toFixed(0) + ', 30 mm/h ' + r30.toFixed(0) + ', 150 mm/h ' + r150.toFixed(0) + ' C): about -25, -55 and -74 C, only a very heavy cell overshoots the tropopause (300 mm/h ' + r300.toFixed(0) + ' C, colder than -78 C: the pink of the colour bar)', r5 > r30 && r30 > r150 && r5 < -20 && r5 > -48 && r30 < -48 && r30 > -64 && r150 < -70 && r300 < -78);
   check('stratiform rain is a broad opaque deck: 2 mm/h is already a cold top (' + s2.toFixed(0) + ' C below -25), 10 mm/h colder (' + s10.toFixed(0) + ' C), while 1 mm/h of convective shower only partly hides the sea (' + tbOf({ rc: 1 }).toFixed(0) + ' C above -15)', s2 < -25 && s10 < s2 - 10 && tbOf({ rc: 1 }) > -15);
   const c0 = tbOf({ e: 0 }), c5 = tbOf({ e: 0.5, z: 13 }), c1 = tbOf({ e: 1, z: 13 }), c1h = tbOf({ e: 1, z: 15 }), c1l = tbOf({ e: 1, z: 8 });
   check('cirrus is thin or thick and high or low: emissivity 0.5 at 13 km is half way (' + c5.toFixed(0) + ' C), 1.0 at 13 km colder (' + c1.toFixed(0) + ' C), the higher the colder (8 km ' + c1l.toFixed(0) + ', 15 km ' + c1h.toFixed(0) + ' C); none leaves the sea', c0 === clear && c5 < 10 && c5 > c1 && c1 > c1h && c1h > c1l - 100 && c1l > c1 && near(c5, (28 + c1) / 2, 0.01));
   const d = tbOf({ rc: 30, e: 1, z: 6 }), d2 = tbOf({ rc: 30, e: 1, z: 16 });
   check('cirrus lower than the rain cloud under it does not warm it (' + d.toFixed(0) + ' C = the rain cloud ' + r30.toFixed(0) + '); cirrus above it colder (' + d2.toFixed(0) + ' C)', near(d, r30, 0.01) && d2 < r30 - 5);
   const t15 = tbOf({ rc: 30 }, 15), t50 = tbOf({ rc: 30 }, 50, 0), t50x = tbOf({ rc: 300 }, 50), t15x = tbOf({ rc: 300 }, 15);
-  check('the tropopause is lower and warmer poleward: the same convective rain is a warmer top at 50 N than at 15 N (' + t50.toFixed(0) + ' vs ' + t15.toFixed(0) + ' C), a deep cloud there tops out near -40 C, and its overshoot is bounded, above -70 C (' + t50x.toFixed(0) + ' vs ' + t15x.toFixed(0) + ' C)', t50 > t15 + 5 && t50x > t15x + 10 && t15x >= -105 && t50 < -37 && t50 > -42 && t50x > -70);
+  check('the tropopause is lower and warmer poleward: the same convective rain is a warmer top at 50 N than at 15 N (' + t50.toFixed(0) + ' vs ' + t15.toFixed(0) + ' C), a deep cloud there tops out near -40 C, and its overshoot is bounded, above -62 C (' + t50x.toFixed(0) + ' vs ' + t15x.toFixed(0) + ' C)', t50 > t15 + 5 && t50x > t15x + 10 && t15x >= -105 && t50 < -34 && t50 > -41 && t50x > -62);
   check('Tb is finite and within the physical range -105..+45 C for any combination of rain, water, cirrus and temperature', (() => { for (const rc of [0, 0.1, 10, 400]) for (const rs of [0, 3, 80]) for (const e of [0, 0.4, 1]) for (const z of [6, 14, 20]) for (const sst of [-5, 15, 32]) { const v = tbOf({ rc, rs, e, z, sst, q: 1.2 * N.PAR.Qc }, 30); if (!isFinite(v) || v < -105.01 || v > 45) return false; } return true; })());
 }
 

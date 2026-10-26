@@ -291,7 +291,7 @@ function flBind() {
   }, true);
   $('fl-close').onclick = flClose;
   $('fl-view').onchange = () => { flView = $('fl-view').value === 'ir' ? 'ir' : 'radar'; flViewUI(); };
-  { const g = $('fl-legend-ir').querySelector('i'), st = HFNest.IR_STOPS, stops = []; for (let t = 20; t >= -90; t -= 2) { const c = HFNest.irColor(t); stops.push('rgb(' + (c[0] | 0) + ',' + (c[1] | 0) + ',' + (c[2] | 0) + ') ' + ((20 - t) / 1.1).toFixed(1) + '%'); } g.style.background = 'linear-gradient(to right,' + stops.join(',') + ')'; }
+  { const g = $('fl-legend-ir').querySelector('i'), pos = (t) => (t >= -20 ? 29 * (40 - t) / 60 : 29 + 71 * (-20 - t) / 70); g.style.background = 'linear-gradient(to right,' + HFNest.IR_STOPS.map(([t, c]) => 'rgb(' + c[0] + ',' + c[1] + ',' + c[2] + ') ' + pos(t).toFixed(2) + '%').join(',') + ')'; }       // (the key is laid out like the colour bar: +40 to -20 C in the first 29 %, the cold part, where the colours are, in the rest)
   $('fl-site').onchange = () => { const v = $('fl-site').value; flSite = v === '' ? null : flSites[+v]; $('fl-tilt-l').style.display = flSite && flView === 'radar' ? '' : 'none'; $('fl-prod-l').style.display = flSite && flView === 'radar' ? '' : 'none'; if (!flSite) { flProd = 'z'; $('fl-prod').value = 'z'; } flLegend(); flDirty = true; flText(true); };
   $('fl-tilt').onchange = () => { flTilt = parseFloat($('fl-tilt').value); flDirty = true; flText(true); };
   $('fl-prod').onchange = () => { flProd = $('fl-prod').value; flLegend(); flDirty = true; flText(true); };

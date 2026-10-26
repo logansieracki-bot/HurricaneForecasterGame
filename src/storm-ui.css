@@ -170,5 +170,8 @@ body.fl-on #b-restart{opacity:.4;pointer-events:none}
 #fl-legend-v span, #fl-legend-ir span{display:flex;justify-content:space-between;font-size:10px;color:var(--dim)}
 #fl-legend-v u, #fl-legend-ir u{text-decoration:none}
 #fl-legend-ir i{display:block;height:9px;margin:5px 0 2px;border-radius:2px}
+#fl-legend-ir span{display:block;position:relative;height:13px}
+#fl-legend-ir u{position:absolute;top:0;transform:translateX(-50%)}
+#fl-legend-ir u:first-child{transform:none}
 #fl-legend-ir small{font-weight:400;color:var(--dim);font-size:10px}
 #fl-legend-v small{font-weight:400;color:var(--dim);font-size:10px}
