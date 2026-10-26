@@ -47,6 +47,7 @@ const PAR = {
   aW: 45, Pmax: 0.03, kr: [1.1, 2.4],                      // the mass flux per mm/s of rain (m per mm), the most rain convection can make from the supply (mm/s), the rain a mm/s of condensation is, for a weak and for a strong vortex (the column above the layer converges moisture too, the more the deeper the convection)
   sq: 1.3, noiseTau: 300, sc: 1.1, clTau: 7200, cl2Tau: 14400, bgSig: [1.1, 0.9, 0.8], bgA: 2, bgR: [150, 270], bgOrg: 0.75, etW: 0.08, etF: 0.35, eyeRag: 0.3, eyeClr: 0.4, edgeS: [215, 252], vTurb: [1.0, 0.06, 0.45], vOut: 700, vTau: 420, texS: 0.25, texC: 0.45, texR: 0.25, texCc: 0.15, inA: 0.07, inR: 3.5, rhQ: 0.2, dryK: 0.88, dryR: 1.0, shAmp: 1.3, landR: [8, 10], landK: 0.7, landSq: 0.06, gsC: 0.35, sBlur: 4, wBlur: 5, pcv: 0.0015, pcx: 2.5,                             // the multiplicative variability of the supply: cell scale (and its memory, s) and mesoscale clusters 30 km across (their share and memory), which the swirl shears into spiral arms
   tauUp: 300, tauC2: 1200, sigS: 0.05, tauS: 1800, gs: 0.4,    // radar rain: rise time of convective rain (s), its fall time; the share of it stratiform rain receives (per tauC2), its life (s), the rain of broad ascent (mm/h)
+  tauCi: 9000, dzCi: 0.4, ciOut: 8, ciTex: [0.2, 0.25],      // infrared: the life of the cirrus the convection spreads (s), its top's fall (km an hour), the upper outflow that spreads it (m/s), the texture on its thickness (cell and cluster scale)
   outflow: 4, gsW: 1.6,                                 // the upper-level outflow (m/s) that carries stratiform rain outward from the core; the stratiform rain of an extratropical transition's warm sector (mm/h)
   tauN: [1200, 900], tauG: 3 * 3600, zmax: 0.05, nu: 0, meanStretch: 0, zCap: 3e-3, eye: 0.8, tauA: [1500, 7200],     // relaxation of the mean vorticity to the engine's (inner and outer, s); the time the efficiency adapts over; the cap on |zeta| (1/s); the smoothing of zeta per step; the damping time of the departures from the circle mean in the core and outside it (s: what the third dimension and the convective heating do to the two-dimensional instabilities of a ring); the share of the circle-mean stretching that is kept (the rest is the engine's to say), the vorticity above which stretching stops growing with it (1/s), the eye's share of the radius of maximum wind
 };
@@ -81,7 +82,7 @@ function Nest(o) {
   this.seed = (o.seed >>> 0) || 1; this.rng = new Rng(this.seed ^ 0x9e3779b9);
   this.t = 0; this.steps = 0; this.g = 1; this.gI = 0; this.m = o.m > 0 ? o.m : 1;                                                   // seconds since the nest started, steps taken, the heating efficiency (adapts) and its integral
   const mk = () => new Float32Array(NN);
-  this.zeta = mk(); this.Q = mk(); this.qn = mk(); this.cl = mk(); this.cl2 = mk(); this.rcB = mk(); this.wS = mk(); this.tn1 = null; this.tn2 = null; this.vu = null; this.vv = null; this.turbOn = false; this.rc = mk(); this.rs = mk(); this.P = mk();         // vorticity, column water, supply noise, convective and stratiform rain (mm/h), condensation (mm/s)
+  this.zeta = mk(); this.Q = mk(); this.qn = mk(); this.cl = mk(); this.cl2 = mk(); this.rcB = mk(); this.wS = mk(); this.cir = mk(); this.cih = mk(); this.uc = mk(); this.vc = mk(); this.tn1 = null; this.tn2 = null; this.vu = null; this.vv = null; this.turbOn = false; this.rc = mk(); this.rs = mk(); this.P = mk();         // vorticity, column water, supply noise, convective and stratiform rain (mm/h), condensation (mm/s)
   this.wb = mk(); this.Wc = mk(); this.dv = mk(); this.U = mk(); this.V = mk(); this.us = mk(); this.vs = mk();     // boundary-layer ascent, convective mass flux, divergence, the swirl, the stratiform flow
   this.lf = mk(); this.lfD = mk(); this.lfM = mk(); this.t1 = mk(); this.t2 = mk(); this.t3 = mk(); this.sc = [mk(), mk(), mk(), mk(), mk(), mk()];
   this.dep = { ix: new Int32Array(NN), iy: new Int32Array(NN), fx: mk(), fy: mk() };
@@ -335,6 +336,8 @@ Nest.prototype.step = function (dt) {
   this.winds(f);
   // the stratiform flow: half the swirl, the upper environment, and the outflow
   { const uo = P.outflow / this.m, ued = 0.45 * f.ued, ved = 0.45 * f.ved, go = this.gout; for (let k = 0; k < NN; k++) { const g = uo * go[k]; us[k] = 0.55 * U[k] + ued + g * ct[k]; vs[k] = 0.55 * V[k] + ved + g * st[k]; } }
+  // the upper flow that carries the cirrus: the environment's flow aloft and the shear (the plumes go downshear), a weak anticyclonic residue of the swirl and the outflow (an anvil spreads out, curving the way an upper high turns)
+  { const oc = P.ciOut / this.m, shx = 0.8 * f.shear * Math.cos(f.shdir), shy = 0.8 * f.shear * Math.sin(f.shdir), go = this.gout, uc = this.uc, vc = this.vc; for (let k = 0; k < NN; k++) { const g = oc * go[k]; uc[k] = -0.2 * U[k] + f.ued + shx + g * ct[k]; vc[k] = -0.2 * V[k] + f.ved + shy + g * st[k]; } }
   // advection: the swirl carries vorticity, water, the supply noise and the convective rain; the stratiform flow its own rain
   const sc = this.sc;
   this.departure(U, V, dt);
@@ -344,6 +347,7 @@ Nest.prototype.step = function (dt) {
   if (this.steps % 30 === 0 && this.steps > 0) { this.clMix(Math.exp(-30 * dt / P.clTau)); this.clMix2(Math.exp(-30 * dt / P.cl2Tau)); }
   this.departure(us, vs, dt);
   this.gatherOpen([rs], sc, [true]); rs.set(sc[0]);
+  this.departure(this.uc, this.vc, dt); this.gatherOpen([this.cir, this.cih], [sc[0], sc[1]], [true, true]); this.cir.set(sc[0]); this.cih.set(sc[1]);
   // noise: the variability of the supply, refreshed a little each other step
   if (this.steps % 2 === 0) {
     const a = Math.exp(-2 * dt / P.noiseTau), b = Math.sqrt(1 - a * a), t3 = this.t3, rng = this.rng;
@@ -400,7 +404,7 @@ Nest.prototype.convect = function (f, dt, fcor) {
   const mm = this.m, vN = this.vNest * mm, fV = f.vmax * mm, sdc = Math.cos(f.shdir), sds = Math.sin(f.shdir), rfd = f.head - Math.PI / 4, crf = Math.cos(rfd), srf = Math.sin(rfd);
   const trA = clamp(f.spd * mm / 8, 0, 1) * 0.45, ventK = 1 - 0.4 * sm01(fV, 45, 70), eQs = this.eQs, eQb = this.eQb, eQc = this.eQc, eBg = this.eBg, eVent = this.eVent, qeV = P.QenvV * sm01(fV, 10, 30);
   const shA = P.shAmp * sm01(f.shear * mm, 3, 13) * (1 - 0.45 * sm01(vN, 22, 38)), cdl = Math.cos(f.shdir + Math.PI / 4), sdl = Math.sin(f.shdir + Math.PI / 4), eDry = this.eDry;
-  const Qc = P.Qc, sz = this.sz || 100, exT = Math.max(eta, sm01(sz, 170, 300)), cl2 = this.cl2, rcB = this.rcB, wS = this.wS;
+  const Qc = P.Qc, sz = this.sz || 100, exT = Math.max(eta, sm01(sz, 170, 300)), cl2 = this.cl2, rcB = this.rcB, wS = this.wS, cir = this.cir, cih = this.cih, aCi = Math.exp(-dt / P.tauCi), dzCi = dt * P.dzCi / 3600;
   const favC = sm01(f.rh, 0.25, 0.55) * sm01(f.sst, 25.5, 28), Rsup = Math.min(330, Math.max(P.bgR[0] + (P.bgR[1] - P.bgR[0]) * favC, 0.85 * sz + 40)) * (1 - 0.3 * sm01(vN, 30, 50)), bgS = 1 - P.bgOrg * sm01(vN, 28, 45) * 1.13, Lsc = clamp(sz * (1 + 0.6 * eta), 150, 420), etdW = 14 + 0.03 * Lsc, sg1 = P.bgSig[0], sg2 = P.bgSig[1], sg3 = P.bgSig[2], sg0 = -0.5 * (sg1 * sg1 + sg2 * sg2 + sg3 * sg3);
   const aEnv = dt / P.tauEnv, pm = P.Pmax * this.g * f.conv, aW = P.aW * clamp(this.g, 0.5, 1.8), aUp = 1 - Math.exp(-dt / P.tauUp), aDn = Math.exp(-dt / P.tauC2), aS = Math.exp(-dt / P.tauS), bS = 1 - aS;
   const kr = P.kr[0] + (P.kr[1] - P.kr[0]) * sm01(vN, 22, 50), orgS = sm01(vN, 30, 50), orgV = sm01(vN, 21, 33), vEff = sm01(fV, P.vOn[0], P.vOn[1]), iH = 1 / P.H, ventR = 150 + 3 * rmax, edgeS = this.edgeS, bdm = this.bd, rb = this.rbin, msk = 1 - P.meanStretch, zc = P.zCap;
@@ -441,6 +445,9 @@ Nest.prototype.convect = function (f, dt, fcor) {
     // the radar's rain: convective rain follows the condensation; stratiform rain comes from the decay of convective rain and from broad ascent
     const R = p * 3600 * kr * (1 + Math.min(P.pcx, p / pcS)), rcn = rc[k] + (R - rc[k]) * (R > rc[k] ? aUp : 1 - aDn);
     rc[k] = ey > 0 ? rcn * (1 - P.eyeClr * ey) : rcn;
+    { const zc = 8.5 + 2.2 * Math.log(1 + rcn / 3), es = 1 - Math.exp(-rcn / 2.5), e0 = cir[k] * aCi, z0 = cih[k] - dzCi;       // the cirrus: a cell's top (km) and how opaque it is; the old cirrus thins and sinks, the highest top stays
+      if (es > e0) { cir[k] = es; cih[k] = e0 > 0.15 && z0 > zc ? z0 : zc; } else { cir[k] = e0; cih[k] = z0 < 6 ? 6 : z0; }
+      if (ey > 0) cir[k] *= 1 - 0.8 * P.eyeClr * ey; }
     const sSrc = P.sigS * (P.tauS / P.tauC2) * rcn + P.gsC * rcB[k] + P.gs * Math.min(1, Math.max(0, w * vEff) / 0.4) * (1 - 0.7 * eta * dry) + strat;
     rs[k] = ey > 0 ? (rs[k] * aS + bS * sSrc * (1 - 0.95 * ey)) * (1 - 0.25 * ey) : rs[k] * aS + bS * sSrc;
   }
@@ -513,10 +520,11 @@ function landGrid(lat0, lon0, isLand, out, m) {
 }
 
 /* the rain `frac` of a step after the last one, for a picture that glides between steps: each tracer is carried back along its own flow for that fraction of the step (nothing of the model changes) */
-Nest.prototype.display = function (frac, tex) {
+Nest.prototype.display = function (frac, tex, ir) {
   if (!this.drc) { this.drc = new Float32Array(NN); this.drs = new Float32Array(NN); }
+  if (ir && !this.dcr) { this.dcr = new Float32Array(NN); this.dch = new Float32Array(NN); this.dQ = new Float32Array(NN); }
   const rc = this.rc, rs = this.rs, drc = this.drc, drs = this.drs;
-  if (!(frac > 0.02) || !this.cur) { drc.set(rc); drs.set(rs); if (tex) this.texture(); return; }
+  if (!(frac > 0.02) || !this.cur) { drc.set(rc); drs.set(rs); if (ir) { this.dcr.set(this.cir); this.dch.set(this.cih); this.dQ.set(this.Q); } if (tex) this.texture(ir); return; }
   const h = frac * this.lastDt / DX, U = this.U, V = this.V, us = this.us, vs = this.vs;
   for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
     const k = j * N + i;
@@ -525,13 +533,50 @@ Nest.prototype.display = function (frac, tex) {
       dst[k] = (src[d0 + c0] * (1 - tx) + src[d0 + c1] * tx) * (1 - ty) + (src[d1 + c0] * (1 - tx) + src[d1 + c1] * tx) * ty;
     }
   }
-  if (tex) this.texture();
+  if (ir) {                                                                      // the cirrus is carried by the upper flow, the water by the swirl
+    const cir = this.cir, cih = this.cih, Q = this.Q, dcr = this.dcr, dch = this.dch, dQ = this.dQ, uc = this.uc, vc = this.vc;
+    for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+      const k = j * N + i;
+      for (let w = 0; w < 3; w++) {
+        const src = w === 0 ? cir : w === 1 ? cih : Q, dst = w === 0 ? dcr : w === 1 ? dch : dQ, ux = w < 2 ? uc[k] : U[k], vy = w < 2 ? vc[k] : V[k], x = i - ux * h, y = j - vy * h, xi = Math.floor(x), yi = Math.floor(y), tx = x - xi, ty = y - yi, c0 = xi & 255, c1 = (xi + 1) & 255, d0 = (yi & 255) * N, d1 = ((yi + 1) & 255) * N;
+        dst[k] = (src[d0 + c0] * (1 - tx) + src[d0 + c1] * tx) * (1 - ty) + (src[d1 + c0] * (1 - tx) + src[d1 + c1] * tx) * ty;
+      }
+    }
+  }
+  if (tex) this.texture(ir);
 };
 
 /* the radar's texture: what a 2-km cell cannot hold, the cells and the patchiness of the rain below it (a few km), as a multiplicative variation that is carried by the flow like the supply noise it is made of */
-Nest.prototype.texture = function () {
-  const P = PAR, drc = this.drc, drs = this.drs, qn = this.qn, cl = this.cl, a = P.texS, b = P.texC, c0 = -0.5 * (a * a + 0.7 * b * b), a2 = P.texR, b2 = P.texCc, c2 = -0.5 * (a2 * a2 + 0.7 * b2 * b2);
-  for (let k = 0; k < NN; k++) { const q = qn[k], c = cl[k]; if (drs[k] > 0.005) drs[k] *= Math.exp(c0 + a * q + b * c); if (drc[k] > 0.005) drc[k] *= Math.exp(c2 + a2 * q + b2 * c); }
+Nest.prototype.texture = function (ir) {
+  const P = PAR, drc = this.drc, drs = this.drs, qn = this.qn, cl = this.cl, a = ir ? 0 : P.texS, b = P.texC, c0 = -0.5 * (a * a + 0.7 * b * b), a2 = P.texR, b2 = P.texCc, c2 = -0.5 * (a2 * a2 + 0.7 * b2 * b2);
+  if (!ir) for (let k = 0; k < NN; k++) { const q = qn[k], c = cl[k]; if (drs[k] > 0.005) drs[k] *= Math.exp(c0 + a * q + b * c); if (drc[k] > 0.005) drc[k] *= Math.exp(c2 + a2 * q + b2 * c); }
+  if (ir && this.dcr) { const dcr = this.dcr, t0 = P.ciTex[0], t1 = P.ciTex[1]; for (let k = 0; k < NN; k++) { const e = dcr[k]; if (e > 0.01) { const v = e * Math.exp(t0 * qn[k] + t1 * cl[k] - 0.08); dcr[k] = v > 1 ? 1 : v; } } }
+};
+
+/* ---- the infrared picture: the brightness temperature (C) of every cell: the sea (or the land) seen through what is above it, layer by layer: scattered low clouds from the water of the column, the tops of the
+   rain clouds (convective tops from the rain rate, stratiform tops lower), the cirrus the convection spread (its thickness and top), the colder the higher; a tropical atmosphere reaches about -72 C at 15 km
+   (a cell that overshoots goes colder), the tropopause is lower and warmer poleward; what a 2-km model cannot hold is the texture on the cirrus ---- */
+const IR_STOPS = [[30, [75, 48, 26]], [20, [82, 52, 28]], [14, [58, 37, 21]], [8, [30, 22, 16]], [1, [12, 12, 12]], [-8, [70, 70, 70]], [-20, [150, 150, 150]], [-30, [215, 215, 215]], [-38, [255, 255, 255]], [-39.6, [255, 255, 255]], [-40.2, [18, 18, 18]], [-41.2, [18, 18, 18]], [-41.8, [30, 160, 60]], [-48, [120, 210, 50]], [-53, [250, 240, 40]], [-60, [255, 170, 20]], [-66, [250, 80, 10]], [-72, [200, 10, 10]], [-77, [130, 0, 0]], [-79.5, [255, 255, 255]], [-86, [255, 255, 255]], [-88, [0, 0, 0]], [-110, [0, 0, 0]]];
+function irColor(t) {                                                          // the colour of a brightness temperature (C): brown sea, dark low cloud, grey to white middle cloud, a black line, then green to yellow to orange to red for the cold tops, white and black for the coldest
+  const S = IR_STOPS; if (t >= S[0][0]) return S[0][1]; if (t <= S[S.length - 1][0]) return S[S.length - 1][1];
+  let i = 1; while (i < S.length - 1 && t < S[i][0]) i++;
+  const a = S[i - 1], b = S[i], u = (a[0] - t) / (a[0] - b[0]); return [a[1][0] + (b[1][0] - a[1][0]) * u, a[1][1] + (b[1][1] - a[1][1]) * u, a[1][2] + (b[1][2] - a[1][2]) * u];
+}
+const irTz = (ts, z, ztp, ttp) => (z <= ztp ? ts + (ttp - ts) * z / ztp : Math.max(-105, ttp - 9 * (z - ztp)));       // the temperature at height z (km): a straight fall to the tropopause, colder above it for a cell that overshoots
+Nest.prototype.irTb = function (out, ts0) {
+  if (!this.dcr) this.display(0, true, true);
+  const P = PAR, Qc = P.Qc, rc = this.drc, rs = this.drs, ci = this.dcr, cz = this.dch, Q = this.dQ, lfM = this.lfM, lfOn = this.lfOn, f = this.cur || this.f0, lat = f.lat;
+  const ztp = clamp(16.5 - 0.12 * Math.max(0, lat - 20), 9, 16.5), ttp = -75 + 0.7 * Math.max(0, lat - 18), zk = ztp / 16.5;       // (the clouds' heights are tropical ones: poleward they are scaled by the lower tropopause, so a deep cloud at 50 N tops out near -45 C, not -80 C)
+  for (let k = 0; k < NN; k++) {
+    const ts = ts0 + (lfOn ? 3 * lfM[k] : 0), qr = Q[k] / Qc, aL = sm01(qr, 0.93, 1.0);
+    let tb = ts;
+    if (aL > 0) tb += 0.9 * aL * (irTz(ts, zk * (1 + 4.5 * sm01(qr, 0.94, 1.02)), ztp, ttp) - ts);                    // scattered low cloud
+    const r1 = rc[k], r2 = rs[k];
+    if (r1 > 0.05 || r2 > 0.05) { const zt = Math.max(r1 > 0.05 ? 8.5 + 2.2 * Math.log(1 + r1 / 3) : 0, 7 + 2.4 * Math.log(1 + r2 / 0.5)); tb += (1 - Math.exp(-(r1 / 3 + r2 / 0.7))) * (irTz(ts, zk * zt, ztp, ttp) - tb); }     // the rain clouds
+    const e = ci[k]; if (e > 0.01) { const m = tb + e * (irTz(ts, zk * cz[k], ztp, ttp) - tb); if (m < tb) tb = m; }                                           // the cirrus over them
+    out[k] = tb;
+  }
+  return out;
 };
 
 /* ---- the radar's picture --------------------------------------------------------------------------------------------------------------------------------------------------- */
@@ -541,6 +586,6 @@ function dbzOf(rc, rs) {                                                       /
 }
 Nest.prototype.dbz = function (out) { const rc = this.rc, rs = this.rs; for (let k = 0; k < NN; k++) out[k] = dbzOf(rc[k], rs[k]); return out; };
 
-root.HFNest = { N, NC, DX, NR, NE, PAR, create: (o) => new Nest(o), dbzOf, lerpForcing, vorticityOf, forcingOf, scaleForcing, scaleOf, landGrid, envGridOf, sm01 };
+root.HFNest = { N, NC, DX, NR, NE, PAR, create: (o) => new Nest(o), IR_STOPS, irColor, dbzOf, lerpForcing, vorticityOf, forcingOf, scaleForcing, scaleOf, landGrid, envGridOf, sm01 };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
 /* ==== STORM NEST END ==== */

@@ -37,8 +37,8 @@ body.steer-on #panel{max-height:calc(100% - 606px)}
 #storm-tip div{font-size:11.5px;color:var(--dim);margin-top:3px;line-height:1.5}
 #lg-stack{position:absolute;left:64px;bottom:82px;z-index:900;display:flex;flex-direction:column-reverse;align-items:flex-start;gap:8px;pointer-events:none}
 #lg-stack .card{position:static}
-#ol-legend, #ww-legend, #wf-legend, #fl-legend, #fl-legend-v{width:206px;padding:6px 10px 7px;display:none;font-size:11px;line-height:1.4;pointer-events:none}
-#ol-legend b, #ww-legend b, #wf-legend b, #fl-legend b, #fl-legend-v b{font-size:11.5px}
+#ol-legend, #ww-legend, #wf-legend, #fl-legend, #fl-legend-v, #fl-legend-ir{width:206px;padding:6px 10px 7px;display:none;font-size:11px;line-height:1.4;pointer-events:none}
+#ol-legend b, #ww-legend b, #wf-legend b, #fl-legend b, #fl-legend-v b, #fl-legend-ir b{font-size:11.5px}
 #ol-legend i, #ww-legend i, #wf-legend i{width:20px;height:9px}
 #ol-legend b{font-size:12px;font-weight:600;display:block;margin-bottom:3px}
 #ol-legend div{display:flex;align-items:center;gap:8px;color:var(--dim)}
@@ -167,6 +167,8 @@ body.fl-on #b-restart{opacity:.4;pointer-events:none}
   #fl-ctl select{max-width:150px}
 }
 #fl-legend-v i{display:block;height:9px;margin:5px 0 2px;border-radius:2px;background:linear-gradient(to right,#00cc66 0 7%,#00e676 0 14%,#4cff8a 0 21%,#8cf0a8 0 29%,#b8e8c4 0 36%,#d4e4d8 0 43%,#ccc 0 50%,#e8d4d4 0 57%,#f2b8b8 0 64%,#f28c8c 0 71%,#f55a5a 0 79%,#f02020 0 86%,#c00000 0 93%,#800000 0 100%)}
-#fl-legend-v span{display:flex;justify-content:space-between;font-size:10px;color:var(--dim)}
-#fl-legend-v u{text-decoration:none}
+#fl-legend-v span, #fl-legend-ir span{display:flex;justify-content:space-between;font-size:10px;color:var(--dim)}
+#fl-legend-v u, #fl-legend-ir u{text-decoration:none}
+#fl-legend-ir i{display:block;height:9px;margin:5px 0 2px;border-radius:2px}
+#fl-legend-ir small{font-weight:400;color:var(--dim);font-size:10px}
 #fl-legend-v small{font-weight:400;color:var(--dim);font-size:10px}

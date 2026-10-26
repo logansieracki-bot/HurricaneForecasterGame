@@ -257,6 +257,11 @@ const wet = (nest) => { const d = dbzField(nest); return (k) => (d[k] >= 20 ? 1 
   for (let i = 0; i < 4; i++) e.step(240);
   let w = 0, wc = 0, cc = 0; for (let j = 0; j < NG; j++) for (let i = 0; i < 12; i++) { w += e.rs[j * NG + i]; wc += e.rc[j * NG + i]; cc++; }
   check('the box\'s edge is open: strips of stratiform (30 mm/h) and convective (40 mm/h) rain at the east edge carried east by a 30 m/s wind leave, they do not come back at the west edge (' + (w / cc).toFixed(1) + ' and ' + (wc / cc).toFixed(1) + ' mm/h there after 16 minutes, both under 3)', w / cc < 3 && wc / cc < 3);
+  const ec = N.create({ seed: 7 }), fc = forcing({ v: 15, rmax: 60 }); fc.ued = 30; fc.eta = 0; ec.init(fc);
+  for (let j = 0; j < NG; j++) for (let i = 244; i < NG; i++) { ec.cir[j * NG + i] = 1; ec.cih[j * NG + i] = 13; }
+  for (let i = 0; i < 4; i++) ec.step(240);
+  let wi = 0, ci2 = 0, east = 0; for (let j = 0; j < NG; j++) { for (let i = 0; i < 12; i++) { wi += ec.cir[j * NG + i]; ci2++; } east += ec.cir[j * NG + 250]; }
+  check('the cirrus leaves the box as well: a strip of cirrus at the east edge blown east by 30 m/s of flow aloft has left the east edge (' + (east / NG).toFixed(2) + ' of cirrus left there after 16 minutes, under 0.1) and does not reappear at the west edge (' + (wi / ci2).toFixed(2) + ', under 0.1)', wi / ci2 < 0.1 && east / NG < 0.1);
 }
 
 /* ---- subtropical systems have a radar: a hybrid, cold air aloft over a cool sea, broad and lopsided -------------------------------------------------------------------------------- */
@@ -351,6 +356,70 @@ const wet = (nest) => { const d = dbzField(nest); return (k) => (d[k] >= 20 ? 1 
   check('the look-ahead is the engine\'s own next state: for ' + pairs.length + ' systems the copy stepped an hour on equals the system after the real hour (position, wind, class, eyewall), except where a merge removed one', pairs.length > 20 && pairs.every((q) => q.P1.lat === q.real.lat && q.P1.lon === q.real.lon && q.P1.vr === q.real.vr && q.P1.th === q.real.th && q.P1.rm === q.real.rm));
   const T0 = a.systems.find((T) => T.alive && T.th !== 'wv'); if (T0) { const before = JSON.stringify([T0.lat, T0.lon, T0.vr, T0.rm, T0.fixes.length]); a.peek(T0.id, penv); a.peek(T0.id, penv); check('asking for the look-ahead changes nothing of the real system, however often it is asked', before === JSON.stringify([T0.lat, T0.lon, T0.vr, T0.rm, T0.fixes.length])); }
   check('a system that is gone has no look-ahead', a.peek('nope', penv) === null);
+}
+
+/* ---- the infrared picture ---------------------------------------------------------------------------------------------------------------------- */
+{
+  reset();
+  const S = N.IR_STOPS;
+  check('IR palette: the stops fall strictly in temperature from +30 to -110 C, every channel within 0-255', S.every((s, i) => i === 0 || s[0] < S[i - 1][0]) && S[0][0] === 30 && S[S.length - 1][0] === -110 && S.every((s) => s[1].every((c) => c >= 0 && c <= 255)));
+  const col = (t) => N.irColor(t), isBrown = (c) => c[0] > c[2] + 20 && c[0] >= c[1] && c[0] < 110;
+  check('IR palette: warm sea is brown (+28 C), the lower clouds go through black to grey, the cirrus white (-38 C) as the example images', isBrown(col(28)) && col(1)[0] < 25 && col(-20)[0] > 120 && col(-20)[0] < 180 && col(-38).every((c) => c > 250));
+  const gy = col(-40.7), g = col(-45), y = col(-53), o = col(-60), r = col(-72);
+  check('IR palette: a thin black line at -40.7 C, then green (-45), yellow (-53), orange (-60), red (-72) for the cold tops, white (-82) for the coldest and a black overshooting top below -88',
+    gy.every((c) => c < 40) && g[1] > g[0] && g[1] > 150 && y[0] > 200 && y[1] > 200 && y[2] < 80 && o[0] > 240 && o[1] > 120 && o[1] < 200 && r[0] > 150 && r[1] < 40 && col(-82).every((c) => c > 250) && col(-95).every((c) => c < 5));
+  check('IR palette: temperatures beyond the table keep its end colours (finite for any input), and the colour is continuous between stops', col(80)[0] === S[0][1][0] && col(-200)[2] === 0 && [-30, -5, 12, -55, -70].every((t) => { const a = col(t - 0.01), b = col(t + 0.01); return [0, 1, 2].every((i) => Math.abs(a[i] - b[i]) < 6); }));
+
+  /* synthetic columns: the brightness temperature of one cell of known water, rain and cirrus */
+  const tbOf = (o, lat = 15, land = 0) => {
+    const n = N.create({ seed: 1 }), f = forcing({ v: 60, rmax: 40, extra: { lat, clat: lat } }); n.init(f); n.display(0, true, true);
+    n.drc.fill(o.rc || 0); n.drs.fill(o.rs || 0); n.dcr.fill(o.e || 0); n.dch.fill(o.z || 8); n.dQ.fill(o.q != null ? o.q : 0.5 * N.PAR.Qc);
+    if (land) { n.lfOn = true; n.lfM.fill(1); }
+    const out = new Float32Array(NN); n.irTb(out, o.sst != null ? o.sst : 28); return out[12345];
+  };
+  const clear = tbOf({}), land = tbOf({}, 15, 1);
+  check('clear sky shows the sea (28.0 C) and land three degrees warmer in the cell (' + clear.toFixed(1) + ', ' + land.toFixed(1) + ')', near(clear, 28, 0.01) && near(land, 31, 0.01));
+  const low = tbOf({ q: 1.05 * N.PAR.Qc }), lowish = tbOf({ q: 0.9 * N.PAR.Qc });
+  check('scattered low cloud only where the column is at its water threshold: warmer than -20 C, colder than the sea (' + low.toFixed(1) + ' vs ' + lowish.toFixed(1) + ')', near(lowish, 28, 0.01) && low < 20 && low > -20);
+  const r5 = tbOf({ rc: 5 }), r30 = tbOf({ rc: 30 }), r150 = tbOf({ rc: 150 }), s2 = tbOf({ rs: 2 }), s10 = tbOf({ rs: 10 });
+  check('rain makes cloud tops: the heavier the convective rain the colder (5 mm/h ' + r5.toFixed(0) + ', 30 mm/h ' + r30.toFixed(0) + ', 150 mm/h ' + r150.toFixed(0) + ' C): about -35, -55 and -75 C, a very heavy cell overshoots the tropopause (colder than -78 C)', r5 > r30 && r30 > r150 && r5 < -25 && r5 > -48 && r30 < -48 && r30 > -64 && r150 < -78);
+  check('stratiform rain is a broad opaque deck: 2 mm/h is already a cold top (' + s2.toFixed(0) + ' C below -25), 10 mm/h colder (' + s10.toFixed(0) + ' C), while 1 mm/h of convective shower only partly hides the sea (' + tbOf({ rc: 1 }).toFixed(0) + ' C above -15)', s2 < -25 && s10 < s2 - 10 && tbOf({ rc: 1 }) > -15);
+  const c0 = tbOf({ e: 0 }), c5 = tbOf({ e: 0.5, z: 13 }), c1 = tbOf({ e: 1, z: 13 }), c1h = tbOf({ e: 1, z: 15 }), c1l = tbOf({ e: 1, z: 8 });
+  check('cirrus is thin or thick and high or low: emissivity 0.5 at 13 km is half way (' + c5.toFixed(0) + ' C), 1.0 at 13 km colder (' + c1.toFixed(0) + ' C), the higher the colder (8 km ' + c1l.toFixed(0) + ', 15 km ' + c1h.toFixed(0) + ' C); none leaves the sea', c0 === clear && c5 < 10 && c5 > c1 && c1 > c1h && c1h > c1l - 100 && c1l > c1 && near(c5, (28 + c1) / 2, 0.01));
+  const d = tbOf({ rc: 30, e: 1, z: 6 }), d2 = tbOf({ rc: 30, e: 1, z: 16 });
+  check('cirrus lower than the rain cloud under it does not warm it (' + d.toFixed(0) + ' C = the rain cloud ' + r30.toFixed(0) + '); cirrus above it colder (' + d2.toFixed(0) + ' C)', near(d, r30, 0.01) && d2 < r30 - 5);
+  const t15 = tbOf({ rc: 30 }, 15), t50 = tbOf({ rc: 30 }, 50, 0), t50x = tbOf({ rc: 300 }, 50), t15x = tbOf({ rc: 300 }, 15);
+  check('the tropopause is lower and warmer poleward: the same convective rain is a warmer top at 50 N than at 15 N (' + t50.toFixed(0) + ' vs ' + t15.toFixed(0) + ' C), a deep cloud there tops out near -40 C, and its overshoot is bounded (' + t50x.toFixed(0) + ' vs ' + t15x.toFixed(0) + ' C)', t50 > t15 + 5 && t50x > t15x + 10 && t15x >= -105 && t50 < -37 && t50 > -42);
+  check('Tb is finite and within the physical range -105..+45 C for any combination of rain, water, cirrus and temperature', (() => { for (const rc of [0, 0.1, 10, 400]) for (const rs of [0, 3, 80]) for (const e of [0, 0.4, 1]) for (const z of [6, 14, 20]) for (const sst of [-5, 15, 32]) { const v = tbOf({ rc, rs, e, z, sst, q: 1.2 * N.PAR.Qc }, 30); if (!isFinite(v) || v < -105.01 || v > 45) return false; } return true; })());
+}
+
+/* ---- the infrared picture of a storm: eye, eyewall, cirrus shield and anvil ------------------------------------------------------------------- */
+{
+  reset();
+  const tbOf = (n) => { n.display(0, true, true); return n.irTb(new Float32Array(NN), 28.8); };
+  const n = run({ v: 110, rmax: 26, r34: 140 }, 4), tb = tbOf(n);
+  let eye = 0, ne = 0, wall = 1e9, far = 0, nf = 0, cold = 0, wetN = 0, shield = 0; const d = dbzField(n);
+  for (let k = 0; k < NN; k++) { const r = n.rr[k]; if (r < 8) { eye += tb[k]; ne++; } if (r > 12 && r < 60) wall = Math.min(wall, tb[k]); if (r > 235) { far += tb[k]; nf++; } if (tb[k] < -50) cold++; if (d[k] >= 25) wetN++; if (tb[k] < -20) shield++; }
+  eye /= ne; far /= nf;
+  check('a major hurricane in infrared: the eyewall tops are cold (' + wall.toFixed(0) + ' C below -65), the eye warm (' + eye.toFixed(0) + ' C above -10), the far field the sea\'s brown (' + far.toFixed(0) + ' C above +10)', wall < -65 && eye > -10 && far > 10);
+  const eyeD = sector(n, 0, 7, null, 0, (k) => tb[k]), ringD = sector(n, 20, 35, null, 0, (k) => tb[k]);
+  check('the CDO is cold all round the eye: the ring at 20-35 km averages ' + ringD.toFixed(0) + ' C (colder than -45), the eye ' + eyeD.toFixed(0) + ' C', ringD < -45 && eyeD > ringD + 40);
+  const aloft = (sh) => { const m = run({ v: 80, rmax: 30, r34: 130, extra: { shear: sh, shdir: 0 } }, 4), t = tbOf(m), z = dbzField(m); let only = 0, cx = 0, cn = 0, rx = 0, rn = 0; for (let k = 0; k < NN; k++) { const x = (k % NG - 127.5) * 2; if (t[k] < -20 && z[k] < 10) only++; if (t[k] < -40) { cx += x; cn++; } if (z[k] >= 25) { rx += x; rn++; } } return { only, dx: cx / cn - rx / rn }; };
+  const w3 = aloft(3), w15 = aloft(15);
+  check('shear blows the anvil downshear: with 15 m/s from the west the cold cloud lies ' + w15.dx.toFixed(0) + ' km east of the rain (' + w3.dx.toFixed(0) + ' km with 3 m/s) and there is much more cirrus beyond the echoes (' + w15.only + ' cells against ' + w3.only + ')', w15.dx > 15 && w15.dx > w3.dx + 10 && w15.only > 3 * w3.only);
+  const texOf = (tex) => { n.display(0, tex, true); let dd = 0, mc = 0; for (let k = 0; k < NN; k++) if (n.cir[k] > 0.1 && n.cir[k] < 0.8) { dd += Math.abs(n.dcr[k] - n.cir[k]); mc += n.cir[k]; } return dd / mc; };
+  const tx1 = texOf(true), tx0 = texOf(false);
+  check('the thin cirrus has the texture a 2-km cell cannot hold: the displayed thickness differs from the model\'s by ' + (100 * tx1).toFixed(0) + ' % on average (over 8 %), and by nothing when the texture is off (' + tx0.toFixed(3) + ')', tx1 > 0.08 && tx0 === 0);
+  const cm = (a, r0, r1) => sector(n, r0, r1, null, 0, (k) => a[k]);
+  check('the convection makes the cirrus: thick (' + cm(n.cir, 15, 50).toFixed(2) + ') and high (' + cm(n.cih, 15, 50).toFixed(1) + ' km) over the eyewall, none in the eye (' + cm(n.cir, 0, 8).toFixed(2) + '), spread outward beyond 100 km (' + cm(n.cir, 100, 200).toFixed(2) + ' thick)', cm(n.cir, 15, 50) > 0.7 && cm(n.cih, 15, 50) > 13 && cm(n.cir, 0, 8) < 0.1 && cm(n.cir, 100, 200) > 0.3);
+  {
+    const q = N.create({ seed: 3 }); q.init(forcing({ v: 20, rmax: 80, r34: 120, extra: { conv: 0, sst: 18, rh: 0.3 } })); q.cir.fill(1); q.cih.fill(12);
+    for (let i = 0; i < 45; i++) q.step(240);
+    const mean = (a) => { let t = 0; for (let k = 0; k < NN; k++) t += a[k]; return t / NN; };
+    check('without convection the cirrus decays with a time scale of 2.5 hours (3 h: ' + mean(q.cir).toFixed(2) + ' of it left, 0.30 expected) and its top sinks 0.4 km an hour (12 to ' + mean(q.cih).toFixed(2) + ' km)', near(mean(q.cir), Math.exp(-3 / 2.5), 0.03) && near(mean(q.cih), 10.8, 0.05));
+  }
+  const fin = tb.every((v) => isFinite(v) && v > -105.01 && v < 45);
+  check('every cell of the storm\'s picture is a finite temperature within the physical range', fin);
 }
 
 /* ---- how long a step takes (a bound, not a benchmark) ----------------------------------------------------------------------------------------- */

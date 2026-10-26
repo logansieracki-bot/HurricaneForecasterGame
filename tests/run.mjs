@@ -832,6 +832,9 @@ async function checkStorms(page, label) {
     !!lk.calm && lk.mich.land === false && lk.mich.lake > 0 && Math.abs(lk.mich.sst - lk.lakeV) < 0.06 && lk.kansas.land === true && lk.erie.land === false && lk.hudson.land === false && lk.med.land === false && lk.alive === true && lk.th === 'tc');
 
   // the live loop at 16x: the clock runs in slices that leave the page time to draw (no frame is blocked for long and the page keeps moving), and whatever the machine manages, the storms are the ones a single call to the same hour gives
+  const roll = await ev(() => { const S = window.SSTSIM; S.floaterSet({ play: false, speed: 11 }); if (S.floaterState().minutes % 4 === 0) S.floaterRun(120); const m0 = S.floaterState().minutes, h0 = S.floaterState().hour; S.floaterSet({ speed: 13 }); let k = 0;
+    while (S.floaterState().hour === h0 && k < 40) { S.floaterRun(240); k++; } const f = S.floaterState(); return { m0, k, dh: f.hour - h0, m: f.minutes }; });
+  check(`[${label}] a step never goes past the hour, even a four-minute one: from minute ${roll.m0} (two minutes off the steps' four) at 45 minutes a second the engine moves on after ${roll.k} runs of four minutes and the clock then reads minute ${roll.m} of the new hour (0)`, roll.dh === 1 && roll.m === 0 && roll.m0 % 4 === 2);
   const live = await ev(async () => {
     const S = window.SSTSIM, speedX = document.getElementById('speed-x'), sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     S.applySeed(901); S.setPlaying(false); S.storms(true); S.stormAuto(true); S.tick(24 * 40); S.advance(0);
@@ -1253,6 +1256,55 @@ async function checkFloaterSite(page, label, prefix = 'atlantic') {
   check(`[${label}] back to the composite the product is reflectivity again (${back.p}) with its key, and the product chooser goes away`, back.p === 'z' && back.keyZ && !back.prod);
   await ev(() => { window.SSTSIM.floaterClose(); });
 }
+// the satellite view of the floater (infrared, in the brown / grey / white / green-to-red scheme of the example images), the white outline of the land over either picture, and the two fastest clocks
+// (30 and 45 minutes a second, the model stepping four minutes at a time there so that they cost no more than 20 minutes a second)
+const COAST_SPECS = { atlantic: { at: [18.2, -70.5], day: 200 }, eastpacific: { at: [16, -99], day: 213 }, westpacific: { at: [16, 122.5], day: 212 }, nio: { at: [19, 72], day: 200 }, aus: { at: [-12, 130], day: 215 },
+  swio: { at: [-18, 49], day: 215 }, spac: { at: [-17.8, 177.8], day: 215 }, satl: { at: [-26.5, -47.5], day: 215 }, med: { at: [37, 15], day: 92 } };
+async function checkSatellite(page, label, prefix) {
+  const ev = (fn, arg) => page.evaluate(fn, arg), sp = COAST_SPECS[prefix], sgn = sp.at[0] < 0 ? -1 : 1;
+  const sid = await ev((q) => { const S = window.SSTSIM; S.setPlaying(false); S.applySeed(4242); S.setPlaying(false); S.storms(true); S.stormAuto(false); S.summary(false); S.tick(24 * q.day);
+    const id = S.stormPlace({ kind: 'td', lat: q.at[0], lon: q.at[1], v: 60 }); S.tick(2); for (let k = 0; k < 10; k++) { S.stormForce(id, { th: 'tc', lat: q.at[0] + 0.02 * k * sgnOf(q.at[0]), lon: q.at[1] + 0.02 * k, v: 90, vr: 90, p: 965, cx: 4, cy: 2 * sgnOf(q.at[0]) }); S.tick(1); }
+    function sgnOf(x) { return x < 0 ? -1 : 1; }
+    S.floaterOpen(id); S.floaterRun(1200); return id; }, sp);
+  const open = await ev(() => ({ f: window.SSTSIM.floaterState(), opts: [...document.getElementById('fl-view').options].map((o) => o.value + ':' + o.textContent) }));
+  check(`[${label}] the floater has a View chooser (${open.opts.join(', ')}) and opens on radar (${open.f.view}), the infrared key hidden`, open.f.view === 'radar' && open.opts.length === 2 && open.opts[0].startsWith('radar') && /ir:Satellite/.test(open.opts[1]) && await ev(() => getComputedStyle(document.getElementById('fl-legend-ir')).display === 'none'));
+  // the coast: sample points on it (a step from sea to land along rows of the frame), read the pixels there
+  const cs = await ev(() => { const S = window.SSTSIM, p = S.floaterPos(), pts = [], c0 = Math.cos(p.lat * Math.PI / 180); if (!p) return pts;
+    for (let dy = -1.7; dy <= 1.7; dy += 0.17) { let prev = null; for (let dx = -2.1; dx <= 2.1; dx += 0.03) { const lat = p.lat + dy, lon = p.lon + dx / Math.max(0.5, c0), l = S.stormEnvSample(lat, lon).land; if (prev !== null && l !== prev && Math.hypot(dx * 111 * c0 / Math.max(0.5, c0), dy * 111) < 210) { const q = S.placePx(lat, lon - 0.015 / Math.max(0.5, c0)); pts.push({ x: q.x, y: q.y }); } prev = l; } }
+    return pts; });
+  const read = (mode) => ev(([pts, mode]) => { const cv = document.getElementById('radar-canvas'), g = cv.getContext('2d'), dp = cv.width / cv.clientWidth; let hit = 0, used = 0, whiteAll = 0;
+    for (const q of pts) { if (q.x < 8 || q.y < 8 || q.x > cv.clientWidth - 8 || q.y > cv.clientHeight - 8) continue; used++; const R = 7, d = g.getImageData(Math.round((q.x - R) * dp), Math.round((q.y - R) * dp), Math.round(2 * R * dp), Math.round(2 * R * dp)).data; let w = 0, k = 0;
+      for (let i = 0; i < d.length; i += 4) { if (d[i + 3] > 200 && d[i] > 235 && d[i + 1] > 235 && d[i + 2] > 235) w++; if (d[i + 3] > 200 && d[i] + d[i + 1] + d[i + 2] < 120) k++; }
+      whiteAll += w; if (mode === 'z' ? w >= 4 : w >= 4 && k >= 4) hit++; }
+    return { hit, used, whiteAll }; }, [cs, mode]);
+  const rz = await read('z');
+  check(`[${label}] the land has a white bold outline over the radar: ${cs.length} points on the coast, ${rz.used} in view, ${rz.hit} of them have white outline pixels within seven pixels (a coast the picture does not hide)`, rz.used >= 8 && rz.hit >= 0.7 * rz.used);
+  // the satellite picture
+  await ev(() => { window.SSTSIM.floaterSet({ view: 'ir' }); window.SSTSIM.floaterRun(1); });
+  const ui = await ev(() => { const S = window.SSTSIM, vis = (id) => { const e = document.getElementById(id); return !!e && getComputedStyle(e).display !== 'none'; }; return { f: S.floaterState(), ir: vis('fl-legend-ir'), z: vis('fl-legend'), v: vis('fl-legend-v'), prod: vis('fl-prod-l'), site: vis('fl-site-l'), tilt: vis('fl-tilt-l'), sub: document.getElementById('fl-sub').textContent, cap: document.getElementById('fl-legend-ir').textContent.replace(/\s+/g, ' ').trim() }; });
+  check(`[${label}] choosing Satellite (infrared) shows its key (${ui.cap}) and takes the radar's own choosers (product, site, tilt) and keys away; the bar says "${ui.sub}"`, ui.f.view === 'ir' && ui.ir && !ui.z && !ui.v && !ui.prod && !ui.site && !ui.tilt && /infrared/.test(ui.sub) && /Infrared/.test(ui.cap) && /-80/.test(ui.cap));
+  const px = await ev(() => { const cv = document.getElementById('radar-canvas'), g = cv.getContext('2d'), d = g.getImageData(0, 0, cv.width, cv.height).data; let x0 = 1e9, y0 = 1e9, x1 = -1, y1 = -1, op = 0, brown = 0, white = 0, grey = 0, hot = 0, green = 0;
+    for (let i = 0, k = 0; i < d.length; i += 4, k++) { if (d[i + 3] < 200) continue; op++; const x = k % cv.width, y = (k / cv.width) | 0; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; const r = d[i], gg = d[i + 1], b = d[i + 2];
+      if (r > 235 && gg > 235 && b > 235) white++; else if (r > gg - 3 && gg > b - 3 && r - b > 18 && r < 125) brown++; else if (Math.abs(r - gg) < 12 && Math.abs(gg - b) < 12 && r > 60) grey++; else if (r > 190 && gg < 140 && b < 70) hot++; else if (gg > r + 30 && gg > b + 50) green++; }
+    return { op, box: (x1 - x0 + 1) * (y1 - y0 + 1), brown, white, grey, hot, green }; });
+  check(`[${label}] the infrared picture is opaque over the whole frame (${px.op} of ${px.box} pixels of its box) with the sea brown (${(100 * px.brown / px.op).toFixed(0)} %), cloud grey and white (${(100 * (px.grey + px.white) / px.op).toFixed(0)} %) and the cold tops green to orange and red (${(100 * (px.hot + px.green) / px.op).toFixed(1)} %)`, px.op > 0.9 * px.box && px.op > 20000 && px.brown > 0.02 * px.op && px.grey + px.white > 0.03 * px.op && px.hot > 0.002 * px.op && px.green > 0.001 * px.op);
+  check(`[${label}] a 90-kt storm's coldest cloud top is ${ui.f.tbMin.toFixed(0)} C (colder than -65 C)`, ui.f.tbMin < -65);
+  const ci = await read('ir');
+  check(`[${label}] the land's outline is drawn over the satellite picture too, white with a dark edge so it stays visible on cloud: ${ci.hit} of ${ci.used} points on the coast have both within seven pixels`, ci.used >= 8 && ci.hit >= 0.6 * ci.used);
+  await ev(() => { window.SSTSIM.floaterSet({ view: 'radar' }); window.SSTSIM.floaterRun(1); });
+  const bk = await ev(() => { const vis = (id) => { const e = document.getElementById(id); return !!e && getComputedStyle(e).display !== 'none'; }; return { v: window.SSTSIM.floaterState().view, z: vis('fl-legend'), ir: vis('fl-legend-ir'), site: vis('fl-site-l'), sub: document.getElementById('fl-sub').textContent }; });
+  check(`[${label}] back to radar: its key and site chooser return, the infrared key goes (${bk.sub})`, bk.v === 'radar' && bk.z && !bk.ir && bk.site && /reflectivity/.test(bk.sub));
+  // the two fastest clocks
+  const sp2 = await ev(() => { const S = window.SSTSIM, out = []; for (const k of [10, 11, 12, 13, 99]) { S.floaterSet({ speed: k }); out.push([S.floaterState().speed, document.getElementById('speed-x').textContent, document.getElementById('speed-sub').textContent, document.getElementById('b-faster').disabled]); } return out; });
+  check(`[${label}] the clock has two more speeds, 30 and 45 minutes a second, and nothing above (${sp2.map((a) => a[1]).join(', ')}; asking for 99 gives speed ${sp2[4][0]}, the faster button is then off)`, sp2[2][0] === 12 && sp2[2][1] === '30 min/s' && sp2[2][2] === '30 min every second' && sp2[3][0] === 13 && sp2[3][1] === '45 min/s' && sp2[3][2] === '45 min every second' && sp2[4][0] === 13 && sp2[4][3] === true && sp2[1][1] === '20 min/s' && sp2[1][3] === false);
+  const hr = await ev(() => { const S = window.SSTSIM, out = {}; S.floaterSet({ play: false }); for (const k of [11, 12, 13]) { S.floaterSet({ speed: k }); const a = S.floaterState(); S.floaterRun(3600); const b = S.floaterState(); out[k] = { dSteps: b.steps - a.steps, dh: b.hour - a.hour, m0: a.minutes, m1: b.minutes }; } return out; });
+  check(`[${label}] an hour of the system's life takes ${hr[11].dSteps} steps at 20 minutes a second and ${hr[12].dSteps} and ${hr[13].dSteps} at 30 and 45 (four-minute steps there: half as many), the engine moves on exactly one hour each time (${hr[11].dh}, ${hr[12].dh}, ${hr[13].dh}) and the clock keeps its minute (${hr[13].m0} to ${hr[13].m1})`,
+    hr[11].dSteps >= 29 && hr[11].dSteps <= 32 && hr[12].dSteps >= 14 && hr[12].dSteps <= 17 && hr[13].dSteps >= 14 && hr[13].dSteps <= 17 && hr[11].dh === 1 && hr[12].dh === 1 && hr[13].dh === 1 && Math.abs(hr[13].m1 - hr[13].m0) <= 4);
+  const live = await ev(async () => { const S = window.SSTSIM; S.floaterSet({ speed: 13, play: true, view: 'ir' }); const a = S.floaterState(); let fr = 0, raf = 0; const tick = () => { fr++; raf = requestAnimationFrame(tick); }; raf = requestAnimationFrame(tick); await new Promise((r) => setTimeout(r, 3000)); cancelAnimationFrame(raf); const b = S.floaterState(); S.floaterSet({ speed: 5 }); return { fr, dSteps: b.steps - a.steps, on: b.on }; });
+  check(`[${label}] at 45 minutes a second in the satellite view the clock runs by itself (${live.dSteps} steps in three seconds) and the page keeps drawing (${live.fr} frames)`, live.on && live.dSteps >= 8 && live.fr >= 6);
+  const re = await ev((id) => { const S = window.SSTSIM; S.floaterSet({ view: 'ir' }); S.floaterClose(); const ok = S.floaterOpen(id); const out = { ok, view: S.floaterState().view, sel: document.getElementById('fl-view').value, ir: getComputedStyle(document.getElementById('fl-legend-ir')).display, z: getComputedStyle(document.getElementById('fl-legend')).display, speed: S.floaterState().speed }; S.floaterClose(); S.stormForce(id, { alive: false }); return out; }, sid);
+  check(`[${label}] a floater opened after one closed in the satellite view opens on radar again (${re.view}, the chooser ${re.sel}, the radar key ${re.z}, the infrared key ${re.ir}) at its usual speed (${re.speed})`, re.ok && re.view === 'radar' && re.sel === 'radar' && re.ir === 'none' && re.z !== 'none' && re.speed === 5);
+}
 // what the storms do to a city: the tooltip's "Storm impact" block (dashes with nothing going on, then the winds, rain, tolls and damage after a hit), the ring on the marker, the storm's own tally on its card, the season's totals
 // in the summary, the structure row of a hurricane, a save that keeps it, and the healing over the weeks
 async function checkImpacts(page, label, prefix) {
@@ -1404,6 +1456,7 @@ async function checkStormsBasin(page, label, prefix) {
   await checkLook(page, label, prefix);
   await checkImpacts(page, label, prefix);
   await checkFloater(page, label, prefix);
+  await checkSatellite(page, label, prefix);
   if (SITE_SPECS[prefix]) await checkFloaterSite(page, label, prefix);
   // the main menu's Continue card for a season saved here names the basin, the season and the local word (this is the last check of a basin's callback: it leaves the page)
   const sc = await ev((q) => { const S = window.SSTSIM; S.stormLabCalendar(q.sm, 1); S.applySeed(31); S.setPlaying(false); S.stormAuto(true); S.tick(24 * 40); S.advance(0); S.saveTick(); return { stats: S.stormState().stats, year: document.getElementById('se-year').textContent, meta: JSON.parse(S.saveInfo().meta) }; }, { sm: BI.seasonMonth });
@@ -2815,6 +2868,7 @@ await checkBasin('Atlantic', ATLANTIC_DIST, async (page, label) => {
   await checkLook(page, label, 'atlantic');
   await checkImpacts(page, label, 'atlantic');
   await checkFloater(page, label, 'atlantic');
+  await checkSatellite(page, label, 'atlantic');
   await checkFloaterSite(page, label);
   await checkAlerts(page, label);
   await checkPlace(page, label);

@@ -4,7 +4,7 @@
 // program does, which docs/roadmap.md names). Needs a clean tree and Chromium for the browser drivers:
 //   PLAYWRIGHT_CHROMIUM_PATH=/path/to/chromium node tools/storm_mutants.mjs [--dry] [--base] [--only X1,S4] [--drivers node,save] [--jobs 3]
 // --dry   only checks that every edit anchor occurs exactly once and that the mutated file still parses; --base runs every driver on the unmodified tree (all must pass first);
-// --only  a comma list of mutant ids; --drivers  restricts the drivers to run (node, nest, storms, summary, place, save, gate, env, look, alerts, impacts, floater, floaterS); --jobs  how many mutants run at once (default 3; each builds into its own directory under $MUT_DIR or the
+// --only  a comma list of mutant ids; --drivers  restricts the drivers to run (node, nest, storms, summary, place, save, gate, env, look, alerts, impacts, floater, floaterS, sat); --jobs  how many mutants run at once (default 3; each builds into its own directory under $MUT_DIR or the
 //         temp directory). It changes src/storms.js, src/template.html or index.html for the few seconds a build takes and puts them back itself;
 //         if it is killed in between, `git checkout -- src index.html` restores them. The drivers are the check functions cut out of tests/run.mjs
 //         by their opening comments (`// The storm layer on the Atlantic page`, `// Save / resume`, `async function checkEnsoHold`): keep them.
@@ -360,6 +360,40 @@ const mutants = [
   M('N43', NS, [E("sm01(vN, 22, 36) * (1 - 0.9 * eta);", "sm01(vN, 22, 36);")], ['nest'], 'a transitioning low keeps its eye hole'),
   M('N44', NS, [E("const kw = P.kw * this.m / (2 * DX)", "const kw = P.kw / (2 * DX)")], ['nest'], 'the boundary layer\'s pumping ignores the scale'),
   M('N45', NS, [E("exT = Math.max(eta, sm01(sz, 170, 300)),", "exT = 0,")], ['nest'], 'a large system\'s supply fades toward the box\'s edge like a small one\'s'),
+  // ---- M18: the infrared picture, the white coasts, the two fastest clocks
+  M('G1', NS, [E("[-40.2, [18, 18, 18]], [-41.2, [18, 18, 18]]", "[-40.2, [255, 255, 255]], [-41.2, [255, 255, 255]]")], ['nest'], 'the palette has no thin black line between the white cloud and the green tops'),
+  M('G2', NS, [E("[-48, [120, 210, 50]]", "[-48, [210, 50, 120]]")], ['nest'], 'the cold tops are not green at -48 C'),
+  M('G3', NS, [E("[-72, [200, 10, 10]]", "[-72, [10, 10, 200]]")], ['nest'], 'the coldest tops are blue, not red'),
+  M('G4', NS, [E("[30, [75, 48, 26]], [20, [82, 52, 28]]", "[30, [26, 48, 75]], [20, [28, 52, 82]]")], ['nest'], 'the warm sea is blue, not brown'),
+  M('G5', NS, [E("const ts = ts0 + (lfOn ? 3 * lfM[k] : 0)", "const ts = ts0")], ['nest'], 'land is as warm as the sea in the infrared'),
+  M('G6', NS, [E("aL = sm01(qr, 0.93, 1.0)", "aL = sm01(qr, 0.3, 1.0)")], ['nest'], 'low cloud everywhere, not only where the column is at its threshold'),
+  M('G7', NS, [E("8.5 + 2.2 * Math.log(1 + r1 / 3)", "6.5 + 2.2 * Math.log(1 + r1 / 3)")], ['nest'], 'convective cloud tops two kilometres too low'),
+  M('G8', NS, [E("7 + 2.4 * Math.log(1 + r2 / 0.5)", "4 + 2.4 * Math.log(1 + r2 / 0.5)")], ['nest'], 'stratiform rain has no cold deck above it'),
+  M('G9', NS, [E("const e = ci[k]; if (e > 0.01) {", "const e = ci[k]; if (false) {")], ['nest'], 'the cirrus is never seen'),
+  M('G10', NS, [E("Math.max(-105, ttp - 9 * (z - ztp))", "ttp")], ['nest'], 'a cell never overshoots the tropopause'),
+  M('G11', NS, [E("clamp(16.5 - 0.12 * Math.max(0, lat - 20), 9, 16.5)", "16.5")], ['nest'], 'the tropopause is as high at 50 N as at 15 N'),
+  M('G12', NS, [E("ttp = -75 + 0.7 * Math.max(0, lat - 18)", "ttp = -75")], ['nest'], 'the tropopause is as cold at 50 N as at 15 N'),
+  M('G13', NS, [E("zk = ztp / 16.5;", "zk = 1;")], ['nest'], 'poleward the clouds keep their tropical heights (cloud tops far colder than a mid-latitude cloud can have)'),
+  M('G14', NS, [E("const zc = 8.5 + 2.2 * Math.log(1 + rcn / 3)", "const zc = 3.5 + 2.2 * Math.log(1 + rcn / 3)")], ['nest'], 'the cirrus the convection spreads is made low'),
+  M('G15', NS, [E("tauCi: 9000,", "tauCi: 90000,")], ['nest'], 'the cirrus lives twenty-five hours'),
+  M('G16', NS, [E("dzCi: 0.4,", "dzCi: 0,")], ['nest'], 'the cirrus keeps its height as it ages'),
+  M('G17', NS, [E("es = 1 - Math.exp(-rcn / 2.5)", "es = 0")], ['nest'], 'the convection makes no cirrus'),
+  M('G18', NS, [E("      if (ey > 0) cir[k] *= 1 - 0.8 * P.eyeClr * ey; }", " }")], ['nest'], 'the cirrus covers the eye'),
+  M('G19', NS, [E("ciOut: 8,", "ciOut: 0,")], ['nest'], 'no upper outflow spreads the cirrus beyond the rain'),
+  M('G20', NS, [E("shx = 0.8 * f.shear * Math.cos(f.shdir), shy = 0.8 * f.shear * Math.sin(f.shdir)", "shx = 0, shy = 0")], ['nest'], 'shear does not blow the anvil downshear'),
+  M('G21', NS, [E("this.gatherOpen([this.cir, this.cih], [sc[0], sc[1]], [true, true]);", "this.gather([this.cir, this.cih], [sc[0], sc[1]], [true, true]);")], ['nest'], 'the cirrus leaving the box comes back at the other side'),
+  M('G22', NS, [E("ciTex: [0.2, 0.25],", "ciTex: [0, 0],")], ['nest'], 'the cirrus has no texture'),
+  M('H1', FL, [E("1200, 1800, 2700]", "1200, 1800]")], ['sat'], 'no 45 minutes a second'),
+  M('H2', FL, [E("function flStepDt() { return FL_SPEEDS[flSpeed] >= 1800 ? 2 * FL_DT : FL_DT; }", "function flStepDt() { return FL_DT; }")], ['sat'], 'the two fastest clocks step the model by two minutes like the others (twice the work, lag)'),
+  M('H3', FL, [E("d = rem > 1 && rem < dts ? rem : dts;", "d = dts;")], ['sat'], 'a four-minute step goes past the hour'),
+  M('H4', FL, [E("flView = $('fl-view').value === 'ir' ? 'ir' : 'radar'; flViewUI();", "flView = 'radar'; flViewUI();")], ['sat'], 'the View chooser does nothing'),
+  M('H5', FL, [E("stroke(2.6, 'rgba(255,255,255,.96)');", "stroke(2.6, 'rgba(255,255,0,.96)');")], ['sat'], 'the land outline is yellow'),
+  M('H6', FL, [E("  flCoast(g);                                                                       // the coasts", "  void g;                                                                       // the coasts")], ['sat'], 'no outline of the land'),
+  M('H7', FL, [E("stroke(5, 'rgba(0,0,0,.4)'); ", "")], ['sat'], 'the outline has no dark edge (lost on white cloud)'),
+  M('H8', FL, [E("HFNest.irColor(40 - i / 4)", "HFNest.irColor(i / 4 - 110)")], ['sat'], 'the infrared colours run the wrong way (warm is cold)'),
+  M('H9', FL, [E("$('fl-legend-ir').style.display = flOn && ir ? 'block' : 'none';", "$('fl-legend-ir').style.display = 'none';")], ['sat'], 'the infrared key never shows'),
+  M('H10', FL, [E("$('fl-site-l').style.display = ir ? 'none' : '';", "$('fl-site-l').style.display = '';")], ['sat'], 'the radar-site chooser stays in the satellite view'),
+  M('H11', FL, [E("flSite = null; flView = 'radar'; flLandStep = -99;", "flSite = null; flLandStep = -99;")], ['sat'], 'a floater opens in the view the last one was closed in'),
   M('F1', FL, [E("if (k === 'Escape') { flClose(); e.stopPropagation(); e.preventDefault(); }", "if (k === 'Escape') { e.stopPropagation(); e.preventDefault(); }")], ['floater'], 'Escape does not close the floater'),
   M('F2', FL, [E("  advanceHours(1); updateClock();\n  const S = flSystem();", "  updateClock();\n  const S = flSystem();")], ['floater'], 'the engine never moves on at the hour'),
   M('F3', FL, [E("  }, true);\n  window.addEventListener('keydown'", "  }, false);\n  window.addEventListener('keydown'")], ['floater'], 'the playback buttons keep steering the main clock'),
@@ -374,7 +408,7 @@ const mutants = [
   M('F13', FL, [E("vr[k] = (ue * sx + ve * sy) / r * MS; }", "vr[k] = -(ue * sx + ve * sy) / r * MS; }")], ['floater'], 'the Doppler velocity has the wrong sign: winds toward the radar are red'),
   M('F14', FL, [E("ve = sg * (V[k] + cy);", "ve = V[k] + cy;")], ['floaterS'], 'the velocity of a southern storm is not mirrored back'),
   M('F15', FL, [E(" || !!S.invest || !!S.sub)", " || !!S.invest)")], ['floater'], 'a subtropical disturbance cannot have a floater'),
-  M('F16', FL, [E("site = flSite, DXK = 2 * nest.m;", "site = flSite, DXK = 2;")], ['floater'], 'the picture takes every cell for 2 km at any scale'),
+  M('F16', FL, [E("site = ir ? null : flSite, DXK = 2 * nest.m;", "site = ir ? null : flSite, DXK = 2;")], ['floater'], 'the picture takes every cell for 2 km at any scale'),
   M('F17', FL, [E("dl = 1.12 * 256 * (f.m || 1) / flKmDeg,", "dl = 1.12 * 256 / flKmDeg,")], ['floater'], 'the frame of the map stays 512 km at any scale'),
   M('F12', FL, [E("lut[i * 4 + 3] = 226;", "lut[i * 4 + 3] = 226; if (i % 2) lut[i * 4] = 255 - lut[i * 4];")], ['floater'], 'every other half dBZ is a colour of its own: a gradient of noise, not steps'),
 ];
@@ -473,7 +507,7 @@ await page.goto(pathToFileURL(ATLANTIC_DIST).href, { waitUntil: 'load', timeout:
 await page.waitForFunction(() => window.__ready === true, { timeout: 30000 });
 await page.waitForTimeout(800);
 await page.evaluate(() => { window.SSTSIM.storms(false); });
-${which === 'summary' ? "await checkSummary(page, 'Atlantic');" : which === 'place' ? "await checkPlace(page, 'Atlantic');" : which === 'alerts' ? "await checkAlerts(page, 'Atlantic');" : which === 'impacts' ? "await checkImpacts(page, 'Atlantic', 'atlantic');" : which === 'floater' ? "await checkFloater(page, 'Atlantic', 'atlantic'); await checkFloaterSite(page, 'Atlantic');" : "await checkStorms(page, 'Atlantic');"}
+${which === 'summary' ? "await checkSummary(page, 'Atlantic');" : which === 'place' ? "await checkPlace(page, 'Atlantic');" : which === 'alerts' ? "await checkAlerts(page, 'Atlantic');" : which === 'impacts' ? "await checkImpacts(page, 'Atlantic', 'atlantic');" : which === 'floater' ? "await checkFloater(page, 'Atlantic', 'atlantic'); await checkFloaterSite(page, 'Atlantic');" : which === 'sat' ? "await checkSatellite(page, 'Atlantic', 'atlantic');" : "await checkStorms(page, 'Atlantic');"}
 check('no page errors (' + errors.length + ')', errors.length === 0);
 await browser.close();
 `;
@@ -520,7 +554,7 @@ async function runMutant(m, results) {
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------------
-let list = base ? [M('base', S, [], ['node', 'nest', 'storms', 'summary', 'place', 'save', 'gate', 'env', 'look', 'alerts', 'impacts', 'floater', 'floaterS'], 'unmutated')] : (only ? mutants.filter((m) => only.includes(m.id)) : mutants);
+let list = base ? [M('base', S, [], ['node', 'nest', 'storms', 'summary', 'place', 'save', 'gate', 'env', 'look', 'alerts', 'impacts', 'floater', 'floaterS', 'sat'], 'unmutated')] : (only ? mutants.filter((m) => only.includes(m.id)) : mutants);
 if (drivers) list = list.map((m) => ({ ...m, drivers: m.drivers.filter((d) => drivers.includes(d)) })).filter((m) => m.drivers.length);
 if (dry) { let bad = 0; for (const m of mutants) { try { parses(m.file, applyEdits(readFileSync(join(REPO, m.file), 'utf8'), m.edits, m.id)); } catch (e) { bad++; console.log(m.id + ': ' + e.message); } } console.log(bad ? bad + ' of ' + mutants.length + ' mutants broken (an anchor that is not found exactly once, or a mutated file that does not parse)' : 'all ' + mutants.length + ' anchors found exactly once and every mutated file parses'); process.exit(bad ? 1 : 0); }
 mkdirSync(OUT, { recursive: true });
