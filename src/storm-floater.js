@@ -143,7 +143,7 @@ function flWork(sec, budget) {                                                  
 }
 function flLoop(now) {
   if (!flOn) return;
-  const dt = Math.min(250, now - flLast) / 1000; flLast = now;
+  const dt = Math.max(0, Math.min(250, now - flLast)) / 1000; flLast = now;                  // (a frame's time can be older than the moment the floater opened or the last blocking call ended: the clock never goes back)
   if (flNest) {
     if (flSpinN < FL_SPIN) flSpin(40); else if (flPlay) flWork(dt * FL_SPEEDS[flSpeed], 36);
     if (flDirty && now - flRenderAt >= (flSpinN < FL_SPIN ? 120 : FL_SPEEDS[flSpeed] >= 1800 ? 70 : 45)) { flDirty = false; flRenderAt = now; flRender(); stormsDirty = true; }       // (about twenty pictures a second: a step of the model costs more than a picture, and the storm canvas is redrawn with it)

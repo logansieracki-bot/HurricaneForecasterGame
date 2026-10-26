@@ -395,6 +395,7 @@ const mutants = [
   M('H10', FL, [E("$('fl-site-l').style.display = ir ? 'none' : '';", "$('fl-site-l').style.display = '';")], ['sat'], 'the radar-site chooser stays in the satellite view'),
   M('H11', FL, [E("flSite = null; flView = 'radar'; flLandStep = -99;", "flSite = null; flLandStep = -99;")], ['sat'], 'a floater opens in the view the last one was closed in'),
   M('H12', FL, [E("const hi = typeof hiSplit === 'function' && typeof LAND_HI !== 'undefined', out", "const hi = true, out")], ['floaterS'], 'the outline asks for the Atlantic page\'s finer coast on every page (the other eight have none: the floater stops drawing)'),
+  M('H13', FL, [E("const dt = Math.max(0, Math.min(250, now - flLast)) / 1000;", "const dt = Math.min(250, now - flLast) / 1000;")], ['sat'], 'a frame that looks older than the last one winds the floater\'s clock back (it then owes the steps it already ran)'),
   M('F1', FL, [E("if (k === 'Escape') { flClose(); e.stopPropagation(); e.preventDefault(); }", "if (k === 'Escape') { e.stopPropagation(); e.preventDefault(); }")], ['floater'], 'Escape does not close the floater'),
   M('F2', FL, [E("  advanceHours(1); updateClock();\n  const S = flSystem();", "  updateClock();\n  const S = flSystem();")], ['floater'], 'the engine never moves on at the hour'),
   M('F3', FL, [E("  }, true);\n  window.addEventListener('keydown'", "  }, false);\n  window.addEventListener('keydown'")], ['floater'], 'the playback buttons keep steering the main clock'),
