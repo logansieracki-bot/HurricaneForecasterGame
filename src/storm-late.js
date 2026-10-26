@@ -146,7 +146,7 @@ const STORM_API = {
   floaterGrid() { return flNest ? { dbz: Array.from(flDbz || []), n: HFNest.N } : null; },
   floaterPos() { const S = flSystem(); const p = S ? flPos(S) : null; return p; },
   stormPlace(spec) { const S = stormMgr.place(spec); stormsDirty = true; drawStorms(); markDirty(); return S.id; },
-  stormForce(id, patch) { const S = stormMgr.get(id); Object.assign(S, patch); stormsDirty = true; drawStorms(); return !!S; },
+  stormForce(id, patch) { const S = stormMgr.get(id); if (!S) return false; Object.assign(S, patch); stormsDirty = true; drawStorms(); return true; },
   stormAuto(on) { stormAuto = !!on; if (stormMgr) stormMgr.auto = stormAuto; },
   stormPx(id) { const S = stormMgr.get(id); if (!S) return null; const p = map.latLngToContainerPoint([S.lat, S.lon]); return { x: p.x, y: p.y }; },
   stormFixPx(id, i) { const S = stormMgr.get(id); const f = S && S.fixes[i < 0 ? S.fixes.length + i : i]; if (!f) return null; const p = map.latLngToContainerPoint([f.lat, f.lon]); return { x: p.x, y: p.y, h: f.h, th: f.th }; },

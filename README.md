@@ -86,7 +86,7 @@ nothing to run by hand.
   percentiles the season summary draws against go in beside them as `storms.ace` / `storms.normals` with `merge_data.mjs --storms`),
   `tools/storm_mc.mjs` runs whole seasons through the built page (any number of parameter sets at once, same weather),
   `tools/storm_opt.mjs` calibrates the intensity law and the environmental coupling with CMA-ES, `tools/storm_validate.mjs`
-  checks tracks, landfalls and genesis against the real best track, and `tools/storm_mutants.mjs` breaks the storm code in 305 ways, one at a time, and runs the
+  checks tracks, landfalls and genesis against the real best track, and `tools/storm_mutants.mjs` breaks the storm code in 333 ways, one at a time, and runs the
   checks that should notice (all 186 are caught; `docs/roadmap.md` has what the passes found and how the checks were changed).
   The other eight basins' storm climatology is made by the same chain with a basin name: `tools/tc_basins.json` (the table: page, season, grid, hemisphere ...), `tools/storm_region.mjs`
   (which cells of a page are inside its basin and land for a storm), `tools/make_tc_basin.py` (the real targets and maps of the storms that form inside a page, by wind), `tools/storm_fit.mjs --basin`,
