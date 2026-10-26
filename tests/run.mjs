@@ -1290,7 +1290,7 @@ async function checkSatellite(page, label, prefix) {
       if (r > 235 && gg > 235 && b > 235) white++; else if (r > gg - 3 && gg > b - 3 && r - b > 18 && r < 125) brown++; else if (Math.abs(r - gg) < 12 && Math.abs(gg - b) < 12 && r > 60) grey++; else if (r > 190 && gg < 140 && b < 70) hot++; else if (gg > r + 30 && gg > b + 50) green++; }
     return { op, box: (x1 - x0) * (y1 - y0), brown, white, grey, hot, green }; }, cs.box);
   check(`[${label}] the infrared picture is opaque over the whole frame (${px.op} of ${px.box} pixels of a box inside it) with the sea brown (${(100 * px.brown / px.op).toFixed(0)} %), cloud grey and white (${(100 * (px.grey + px.white) / px.op).toFixed(0)} %) and the cold tops green to orange and red (${(100 * (px.hot + px.green) / px.op).toFixed(1)} %)`, px.op > 0.97 * px.box && px.op > 20000 && px.brown > 0.02 * px.op && px.grey + px.white > 0.03 * px.op && px.hot + px.green > 0.005 * px.op);
-  check(`[${label}] a 90-kt storm's coldest cloud top is ${ui.f.tbMin.toFixed(0)} C (colder than -65 C)`, ui.f.tbMin < -65);
+  check(`[${label}] a 90-kt storm's coldest cloud top is ${ui.f.tbMin.toFixed(0)} C (colder than -55 C: the tropopause is lower and warmer toward the 25th parallel)`, ui.f.tbMin < -55);
   const ci = await read('ir');
   check(`[${label}] the land's outline is drawn over the satellite picture too: ${ci.hit} of ${ci.used} points on the coast have white outline pixels within ${R} pixels`, ci.used >= 40 && ci.hit >= 0.85 * ci.used);
   const halo = await ev(() => window.SSTSIM.floaterCoast());
