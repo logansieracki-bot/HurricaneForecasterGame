@@ -1273,9 +1273,9 @@ async function checkSatellite(page, label, prefix) {
     return { pts, box: [Math.min(q0.x, q1.x), Math.min(q0.y, q1.y), Math.max(q0.x, q1.x), Math.max(q0.y, q1.y)], pxKm: Math.abs(k1.x - k0.x) / (0.1 * 111.195) }; });
   const R = Math.max(7, Math.round(12 * cs.pxKm));
   const read = (mode) => ev(([cs, R, mode]) => { const cv = document.getElementById('radar-canvas'), g = cv.getContext('2d'), dp = cv.width / cv.clientWidth, [bx0, by0, bx1, by1] = cs.box, d = g.getImageData(0, 0, cv.width, cv.height).data;
-    const px = (x, y) => { const i = (Math.round(y * dp) * cv.width + Math.round(x * dp)) * 4; return d.subarray(i, i + 4); }, white = (a) => a[3] > 200 && a[0] > 235 && a[1] > 235 && a[2] > 235, dark = (a) => a[3] > 200 && a[0] + a[1] + a[2] < 120;
+    const px = (x, y) => { const i = (Math.round(y * dp) * cv.width + Math.round(x * dp)) * 4; return d.subarray(i, i + 4); }, white = (a) => a[3] > 200 && a[0] > 235 && a[1] > 235 && a[2] > 235;
     const pts = cs.pts.filter(([x, y]) => x > Math.max(bx0, R) && x < Math.min(bx1, cv.clientWidth - R) && y > Math.max(by0, R) && y < Math.min(by1, cv.clientHeight - R));
-    let hit = 0; for (const [x, y] of pts) { let w = 0, k = 0; for (let yy = -R; yy <= R; yy += 1) for (let xx = -R; xx <= R; xx += 1) { const a = px(x + xx, y + yy); if (white(a)) w++; if (dark(a)) k++; } if (mode === 'z' ? w >= 4 : w >= 4 && k >= 4) hit++; }
+    let hit = 0; for (const [x, y] of pts) { let w = 0; for (let yy = -R; yy <= R; yy += 1) for (let xx = -R; xx <= R; xx += 1) if (white(px(x + xx, y + yy))) w++; if (w >= 4) hit++; }
     let wn = 0, near = 0; if (mode === 'z') for (let y = Math.max(0, Math.ceil(by0)); y < Math.min(cv.clientHeight, by1); y += 2) for (let x = Math.max(0, Math.ceil(bx0)); x < Math.min(cv.clientWidth, bx1); x += 2) { if (!white(px(x, y))) continue; wn++; if (pts.some(([a, b]) => Math.abs(a - x) <= R && Math.abs(b - y) <= R)) near++; }
     return { used: pts.length, hit, wn, near }; }, [cs, R, mode]);
   const rz = await read('z');
@@ -1292,7 +1292,9 @@ async function checkSatellite(page, label, prefix) {
   check(`[${label}] the infrared picture is opaque over the whole frame (${px.op} of ${px.box} pixels of a box inside it) with the sea brown (${(100 * px.brown / px.op).toFixed(0)} %), cloud grey and white (${(100 * (px.grey + px.white) / px.op).toFixed(0)} %) and the cold tops green to orange and red (${(100 * (px.hot + px.green) / px.op).toFixed(1)} %)`, px.op > 0.97 * px.box && px.op > 20000 && px.brown > 0.02 * px.op && px.grey + px.white > 0.03 * px.op && px.hot + px.green > 0.005 * px.op);
   check(`[${label}] a 90-kt storm's coldest cloud top is ${ui.f.tbMin.toFixed(0)} C (colder than -65 C)`, ui.f.tbMin < -65);
   const ci = await read('ir');
-  check(`[${label}] the land's outline is drawn over the satellite picture too, white with a dark edge so it stays visible on cloud: ${ci.hit} of ${ci.used} points on the coast have both within ${R} pixels`, ci.used >= 40 && ci.hit >= 0.65 * ci.used);
+  check(`[${label}] the land's outline is drawn over the satellite picture too: ${ci.hit} of ${ci.used} points on the coast have white outline pixels within ${R} pixels`, ci.used >= 40 && ci.hit >= 0.85 * ci.used);
+  const halo = await ev(() => window.SSTSIM.floaterCoast());
+  check(`[${label}] the outline is white with a dark edge so that it stays visible on white cloud: drawn alone it is ${halo.core} white pixels and ${halo.edge} dark edge pixels (at least half as many)`, halo.core > 500 && halo.edge >= 0.5 * halo.core);
   await ev(() => { window.SSTSIM.floaterSet({ view: 'radar' }); window.SSTSIM.floaterRun(1); });
   const bk = await ev(() => { const vis = (id) => { const e = document.getElementById(id); return !!e && getComputedStyle(e).display !== 'none'; }; return { v: window.SSTSIM.floaterState().view, z: vis('fl-legend'), ir: vis('fl-legend-ir'), site: vis('fl-site-l'), sub: document.getElementById('fl-sub').textContent }; });
   check(`[${label}] back to radar: its key and site chooser return, the infrared key goes (${bk.sub})`, bk.v === 'radar' && bk.z && !bk.ir && bk.site && /reflectivity/.test(bk.sub));
