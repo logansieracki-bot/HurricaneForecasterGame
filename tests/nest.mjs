@@ -389,7 +389,7 @@ const wet = (nest) => { const d = dbzField(nest); return (k) => (d[k] >= 20 ? 1 
   const d = tbOf({ rc: 30, e: 1, z: 6 }), d2 = tbOf({ rc: 30, e: 1, z: 16 });
   check('cirrus lower than the rain cloud under it does not warm it (' + d.toFixed(0) + ' C = the rain cloud ' + r30.toFixed(0) + '); cirrus above it colder (' + d2.toFixed(0) + ' C)', near(d, r30, 0.01) && d2 < r30 - 5);
   const t15 = tbOf({ rc: 30 }, 15), t50 = tbOf({ rc: 30 }, 50, 0), t50x = tbOf({ rc: 300 }, 50), t15x = tbOf({ rc: 300 }, 15);
-  check('the tropopause is lower and warmer poleward: the same convective rain is a warmer top at 50 N than at 15 N (' + t50.toFixed(0) + ' vs ' + t15.toFixed(0) + ' C), a deep cloud there tops out near -40 C, and its overshoot is bounded (' + t50x.toFixed(0) + ' vs ' + t15x.toFixed(0) + ' C)', t50 > t15 + 5 && t50x > t15x + 10 && t15x >= -105 && t50 < -37 && t50 > -42);
+  check('the tropopause is lower and warmer poleward: the same convective rain is a warmer top at 50 N than at 15 N (' + t50.toFixed(0) + ' vs ' + t15.toFixed(0) + ' C), a deep cloud there tops out near -40 C, and its overshoot is bounded, above -70 C (' + t50x.toFixed(0) + ' vs ' + t15x.toFixed(0) + ' C)', t50 > t15 + 5 && t50x > t15x + 10 && t15x >= -105 && t50 < -37 && t50 > -42 && t50x > -70);
   check('Tb is finite and within the physical range -105..+45 C for any combination of rain, water, cirrus and temperature', (() => { for (const rc of [0, 0.1, 10, 400]) for (const rs of [0, 3, 80]) for (const e of [0, 0.4, 1]) for (const z of [6, 14, 20]) for (const sst of [-5, 15, 32]) { const v = tbOf({ rc, rs, e, z, sst, q: 1.2 * N.PAR.Qc }, 30); if (!isFinite(v) || v < -105.01 || v > 45) return false; } return true; })());
 }
 
@@ -407,9 +407,11 @@ const wet = (nest) => { const d = dbzField(nest); return (k) => (d[k] >= 20 ? 1 
   const aloft = (sh) => { const m = run({ v: 80, rmax: 30, r34: 130, extra: { shear: sh, shdir: 0 } }, 4), t = tbOf(m), z = dbzField(m); let only = 0, cx = 0, cn = 0, rx = 0, rn = 0; for (let k = 0; k < NN; k++) { const x = (k % NG - 127.5) * 2; if (t[k] < -20 && z[k] < 10) only++; if (t[k] < -40) { cx += x; cn++; } if (z[k] >= 25) { rx += x; rn++; } } return { only, dx: cx / cn - rx / rn }; };
   const w3 = aloft(3), w15 = aloft(15);
   check('shear blows the anvil downshear: with 15 m/s from the west the cold cloud lies ' + w15.dx.toFixed(0) + ' km east of the rain (' + w3.dx.toFixed(0) + ' km with 3 m/s) and there is much more cirrus beyond the echoes (' + w15.only + ' cells against ' + w3.only + ')', w15.dx > 15 && w15.dx > w3.dx + 10 && w15.only > 3 * w3.only);
+  const up = sector(n, 15, 100, null, 0, (k) => n.uc[k] * n.cth[k] + n.vc[k] * n.sth[k]);
+  check('the upper-level flow that carries the cirrus is an outflow: from 15 to 100 km out it blows outward at ' + up.toFixed(1) + ' m/s on average (over 3), the swirl and the environment adding none to the radial mean', up > 3);
   const texOf = (tex) => { n.display(0, tex, true); let dd = 0, mc = 0; for (let k = 0; k < NN; k++) if (n.cir[k] > 0.1 && n.cir[k] < 0.8) { dd += Math.abs(n.dcr[k] - n.cir[k]); mc += n.cir[k]; } return dd / mc; };
   const tx1 = texOf(true), tx0 = texOf(false);
-  check('the thin cirrus has the texture a 2-km cell cannot hold: the displayed thickness differs from the model\'s by ' + (100 * tx1).toFixed(0) + ' % on average (over 8 %), and by nothing when the texture is off (' + tx0.toFixed(3) + ')', tx1 > 0.08 && tx0 === 0);
+  check('the thin cirrus has the texture a 2-km cell cannot hold: the displayed thickness differs from the model\'s by ' + (100 * tx1).toFixed(0) + ' % on average (over 12 %), and by nothing when the texture is off (' + tx0.toFixed(3) + ')', tx1 > 0.12 && tx0 === 0);
   const cm = (a, r0, r1) => sector(n, r0, r1, null, 0, (k) => a[k]);
   check('the convection makes the cirrus: thick (' + cm(n.cir, 15, 50).toFixed(2) + ') and high (' + cm(n.cih, 15, 50).toFixed(1) + ' km) over the eyewall, none in the eye (' + cm(n.cir, 0, 8).toFixed(2) + '), spread outward beyond 100 km (' + cm(n.cir, 100, 200).toFixed(2) + ' thick)', cm(n.cir, 15, 50) > 0.7 && cm(n.cih, 15, 50) > 13 && cm(n.cir, 0, 8) < 0.1 && cm(n.cir, 100, 200) > 0.3);
   {
