@@ -64,8 +64,8 @@ nothing to run by hand.
   names, ACE): pure JS with no DOM, inlined into the pages through `/*__STORMS__*/` and loaded as-is by
   its node tests.
 - `src/storm-nest.js` the 2-km storm-scale nest behind the **radar floater** (a moist-convective vorticity model on a 256 x 256 grid of 2 km cells, the
-  radar operator, the forcing of a system from the engine, the land and environment grids): pure JS with no DOM, inlined after the engine through
-  `/*__STORMS__*/` and loaded as-is by `tests/nest.mjs`. `src/storm-floater.js` is the floater's page half (its clock, the picture, the radar sites and products), inlined in front of the hooks.
+  radar operator, the cirrus and the infrared brightness temperature, the forcing of a system from the engine, the land and environment grids): pure JS with no DOM, inlined after the engine through
+  `/*__STORMS__*/` and loaded as-is by `tests/nest.mjs`. `src/storm-floater.js` is the floater's page half (its clock, the radar and the infrared picture, the coastline, the radar sites and products), inlined in front of the hooks.
 - `tools/build.mjs` the build script.
 - `tests/nest.mjs` the nest's node tests (physics, the radar operator, the weather on a storm's sides, the engine's forcing and look-ahead; run by `npm test` after the engine's);
   `tests/run.mjs` the browser test suite; `tests/storms.mjs` the node-only storm-engine tests (run first by
@@ -461,15 +461,19 @@ check that Satellite still resolves to something usable.
   0.03) high; category 5 storms 0.37 a season (0.47) and ACE 12 % above the real normal (the perfect-environment relief adds a few majors); a sixth of numbered depressions never reach storm strength (real 12 %); post-tropical systems are about 20 % too slow after
   their transition and there are fewer of them than in the data; subtropical storms are 1.1 a year (1.7); the page's own pressure lows are
   fewer and longer-lived than ERA5's; the moisture slider's effect is far stronger than the warming slider's. The lows thresholds, the
-  2027+ name lists and the clock at 32× and 64× (about a third of its nominal speed in headless Chromium) are also open. The city impacts, the surge proxy and the wind radii are a calibrated model, not a forecast of real losses. The radar floater's storm is the engine's (its mean wind and size, its eyewall replacements and its transition are the engine's statistics, shown by a convective model); the nest has no terrain, no vertical structure and no satellite view yet (the infrared floater is the next push), and a very large storm's outer field is cut by the 512 km square.
+  2027+ name lists and the clock at 32× and 64× (about a third of its nominal speed in headless Chromium) are also open. The city impacts, the surge proxy and the wind radii are a calibrated model, not a forecast of real losses. The radar floater's storm is the engine's (its mean wind and size, its eyewall replacements and its transition are the engine's statistics, shown by a convective model); the nest has no terrain and no vertical structure, and its satellite view is infrared only (visible and water-vapour channels are still to come), and a very large storm's outer field is cut by the 512 km square.
 - **Radar floater** (storms on): select a cyclone, or a disturbance that is on the map, and press **Radar floater** on its card. The map frames a 512 km square round the system and a 2-km model of
   its inside runs there, drawn as radar over the map (over land too): the National Weather Service's reflectivity steps, crisp (the picture is made at the screen's sharpness by a bicubic reconstruction of the
   2-km field that keeps no ripple, in 5 dBZ steps with sharp edges between them). The main clock stops and the floater has its own, running inside the hour between the engine's state now and its look-ahead one
-  hour on (`Manager.peek`: the engine's own `stepSystem` on a copy), at **a quarter of real time up to 20 minutes a second** (the playback buttons, `[`, `]` and Space are the floater's while it is open); when it
+  hour on (`Manager.peek`: the engine's own `stepSystem` on a copy), at **a quarter of real time up to 45 minutes a second** (the playback buttons, `[`, `]` and Space are the floater's while it is open); when it
   passes the hour the engine really advances one hour and the floater goes on from there. Two hours of the system's life are spun up first (a bar says so). The storm layers stay on top of the radar: the
   system alone with its past path and its place (moving between two hours), the **cone**, the **ensembles**, the **wind fields**. **Radar** chooses a composite (every echo of the model) or the radar of a
   nearby city: range rings (50 to 460 km), the beam's height at the **tilt** you pick (0.5, 1.5, 3, 6 degrees: the beam passes over low echoes far away and weakens them near their tops, 4/3 earth radius),
   and with a site the **velocity** product too (Doppler: green toward the radar, red away, the couplet of the storm's circulation plus its own motion).
+  **View** switches the picture to **Satellite (infrared)**: the brightness temperature of the model's clouds in the colours of the usual enhanced infrared picture (brown sea, dark low cloud, grey to white middle cloud and
+  cirrus, a thin black line at -40 C, then green, yellow, orange and red for the cold tops, white and black for the coldest; the key shows +20 to -80 C). The cirrus is made by the model's convection and carried by its own
+  upper-level flow (an outflow, the shear blowing it downshear), the tops of the clouds and the tropopause follow the latitude. The land is outlined in **white** over either picture so a landfall is easy to see, and
+  there are two more clock speeds, **30 and 45 minutes a second** (nothing faster: the model steps four minutes at a time there, so they cost no more than 20 minutes a second).
   *What the model is, honestly:* the balanced limit of the moist-convective rotating shallow-water model (Bouchut et al. 2009, Rostami and Zeitlin 2017-2022: the gravity waves left out), with no vertical
   dimension and no microphysics, not a numerical weather prediction model. The low-level vorticity is advected by its own winds (semi-Lagrangian), so differential rotation shears everything into spiral bands, vortex Rossby waves
   travel and rings break up; the boundary layer lifts moist air where the surface stress has curl (Ekman pumping, the slab layer's strength, more drag over land) and converges moisture; a column of water rains out above a
