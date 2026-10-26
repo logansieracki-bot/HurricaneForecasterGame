@@ -187,7 +187,8 @@ function flCoast(g) {                                                           
   if (typeof pathPolys !== 'function' || typeof POLYS === 'undefined') return;
   const ws = 256 * Math.pow(2, map.getZoom()), pb = map.getPixelBounds(), minX = pb.min.x, minY = pb.min.y;
   g.save(); g.lineJoin = 'round'; g.lineCap = 'round'; g.setLineDash([]);
-  const stroke = (lw, col) => { g.lineWidth = lw; g.strokeStyle = col; hiSplit(g, minX, minY, ws, () => { pathPolys(g, POLYS, minX, minY, ws, true); g.stroke(); }, () => { pathPolys(g, LAND_HI, minX, minY, ws, true); g.stroke(); }); pathPolys(g, LAND_OUT, minX, minY, ws, true); g.stroke(); };
+  const hi = typeof hiSplit === 'function' && typeof LAND_HI !== 'undefined', out = typeof LAND_OUT !== 'undefined';          // (the Atlantic page has a finer coast inside its region; the other eight have the one)
+  const stroke = (lw, col) => { g.lineWidth = lw; g.strokeStyle = col; if (hi) hiSplit(g, minX, minY, ws, () => { pathPolys(g, POLYS, minX, minY, ws, true); g.stroke(); }, () => { pathPolys(g, LAND_HI, minX, minY, ws, true); g.stroke(); }); else { pathPolys(g, POLYS, minX, minY, ws, true); g.stroke(); } if (out) { pathPolys(g, LAND_OUT, minX, minY, ws, true); g.stroke(); } };
   stroke(5, 'rgba(0,0,0,.4)'); stroke(2.6, 'rgba(255,255,255,.96)');
   g.restore();
 }
