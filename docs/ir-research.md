@@ -9,7 +9,7 @@ Everything below was measured on the real data, not read off a picture; the sour
   It is the same quantity the game draws (`Nest.irTb`), so a picture of a real storm and a picture of the model are on the same scale, drawn with the same palette (`IR_STOPS`, read from `src/storm-nest.js` by the tools).
 - **Tools** (`tools/ir_research/`, Python with numpy, h5py, pillow; they run from a venv, `pip install numpy h5py pillow`):
   `goes_ir.py` (fetch a frame, geostationary projection to a square km grid, north up, the palette, statistics), `series.py` (a series round a path of anchor positions), `track.py` (follows an eye forward and backward from a known position),
-  `sheets.py` (contact sheets from the kept crops), `radial.py` (azimuthal mean profiles).
+  `sheets.py` (contact sheets from the kept crops), `radial.py` (azimuthal mean profiles), `texture.py` (cold-top roughness), `stage_table.py` (real cold areas and radial profiles per stage), `model_ir_stats.mjs` (the same numbers from the game's nest), `library.sh` (the other storms of part 2).
   Statistics are taken in a window round the storm (stated each time); an "eye temperature" is the warmest 3x3-mean pixel of a warm spot within 120 km of the track that is at least 8 C warmer than the mean of the ring 12-45 km round it.
 - **Limits:** (1) this session's network policy allows only a few hosts (GitHub, package registries and the Google Cloud public buckets): no NHC pages, no Wikipedia, no Himawari, no images from the web. The text sources below were read through a web search (summaries of the pages, with their dates and some numbers inconsistent between them: where they disagree it is said).
   (2) GOES-18 sees Nolo until about 8 October, when it nears the western limb of the disk (from about 25 N 165 E the parallax and the pixel size grow, and beyond about 150 E there is nothing); the western Pacific, the Indian Ocean and the southern hemisphere cannot be seen from the GOES satellites, so the storms of those basins are covered by text only (CIMSS blog posts) until Himawari can be reached.
@@ -39,11 +39,145 @@ re-strengthening from 1 October (60 kt on 2 October with an eye becoming apparen
 Images (contact sheets, 2 km per pixel, the 100/200 km rings and the palette key drawn on them): `img/nolo_overview_*.jpg` (every 12 hours, 4400 km frames at 11 km per pixel: the whole life), `img/nolo_td_*.jpg` (TD, every 3 hours), `img/nolo_rem_*.jpg` and `img/nolo_ts_0923-0924.jpg` (the remnant and the tropical storm, every 6 hours),
 `img/nolo_eye_*.jpg` (the eye from 25 to 29 September, 6 hours, 500 km frames), `img/nolo_shear_0929-1001.jpg`, `img/nolo_typhoon_*.jpg`.
 
-## What this says about the model (first reading, to be checked against the model's own numbers)
+## Part 2: the library of other storms, by category
 
-1. **Bursts.** A real tropical-depression/low-storm burst is one coherent mass of 100-300 km (up to 600 km while it grows) with a smooth top, sharp edges and a green/cyan skirt, a few grey-white cores and pink dots, 150-300 km from a visible low-level swirl, repeating about every 12 hours; between them the centre is nearly clear. The model's weak systems are widespread cell fields (texture at the cell scale).
-2. **Eye.** In the real storm the eye is **cloud-filled or cool until the storm is intense** (cool -20 to +10 C at category 1-2, +5 to +15 C at category 3), and **never warmer than about +21 C even at 135 kt**; the sea was about 28 C. The model's eye goes to the sea temperature (28 C and more under the new palette, black/dark grey).
-3. **CDO size.** At 135 kt the real -70 C area is 17-42k km2 and the ring colder than -70 C is 50 km wide; the model's major hurricane has about 2000-3400 cells (8-14k km2) colder than -70 C.
-4. **Weakening by shear** strips the convection to one side in 6-12 hours and leaves a clear swirl of thin cirrus; the end of a transition is an elongated frontal-looking band with a sharp dry edge.
+All images below are GOES band 13 on the game's palette (same colour bar as the floater): 5600 km frames (+-2800 km) at 11 km per pixel for the "overview" sheets (rings at 500 and 1000 km), 500-2400 km frames at 2-5 km per pixel for the close-ups, a 100 km scale bar.
+Storm classes are the intensity classes of the best tracks as I remember them (not re-checked against the HURDAT/NHC reports in this session, the network policy did not allow it): the infrared numbers are measured, the categories are approximate.
 
-(More storms and the model comparison follow.)
+| storm (satellite) | dates (UTC) | what it adds | sheets (`img/`) |
+|---|---|---|---|
+| **Ian 2022** (GOES-16) | 24-30 Sep | a tropical storm that becomes a category 4 in the NW Caribbean (rapid intensification 26-28 Sep, an eyewall replacement 27-28 Sep), then crosses Florida: eye warm spots, cloud-filled eyes, a 108k km2 cold canopy | `ian_overview_0924-0927`, `ian_overview_0927-0930` |
+| **Dorian 2019** (GOES-16) | 1-9 Sep | a category 5 that stalls over the Bahamas (eye +9 to +18 C for three days), then recurves and goes extratropical off Nova Scotia | `dorian_overview_0901-0905`, `dorian_overview_0905-0909`, `dorian_et_0905-0906` ... `dorian_et_0908-0909` (the transition, every 3 hours, centred on the cold core) |
+| **Fiona 2022** (GOES-16) | 21-24 Sep | an intense hurricane (category 3-4, cloud-filled or white eye) that goes extratropical near Nova Scotia: the cleanest transition | `fiona_et_0921-0922` ... `fiona_et_0924` |
+| **Lee 2023** (GOES-16) | 5-17 Sep | a very large, long-lived major hurricane: the huge pinwheel of cirrus outflow, bands, then a slow transition into a comma near the Gulf of Maine | `lee_overview_0905-0910`, `lee_overview_0910-0914`, `lee_overview_0914-0917` |
+| **Beryl 2024** (GOES-16) | 29 Jun-3 Jul | a **tiny** fast-moving storm in the deep tropics: a small symmetric CDO and almost no bands | `beryl_overview_0629-0703` |
+| **Otis 2023** (GOES-18) | 22-25 Oct | a tiny storm and an explosive intensification of about 24 hours: from a ragged tropical storm to a symmetric major hurricane | `otis_overview_1022-1023`, `otis_overview_1024-1025` |
+| **Milton 2024** (GOES-16) | 5-10 Oct | a compact category 5 in the Gulf, an eyewall replacement, then shear and a trough pushing the cloud shield to one side before landfall | `milton_overview_1005-1007`, `milton_overview_1008-1010` |
+| **Alberto 2018** (GOES-16) | 25-29 May | an early-season subtropical/hybrid storm: all convection **east** of the centre, centre on the western edge, tops only -40 to -60 C | `alberto_overview_0525-0529` |
+| **Hilary 2023** (GOES-18) | 17-21 Aug | a major hurricane that decays along the Baja/California coast into a streaming post-tropical band | `hilary_overview_0817-0821` |
+| **Isaias, 2026** (GOES-19), formed as Tropical Depression Nine on 7 Oct (Gulf of Mexico, 21 N 92 W) | 6-8 Oct | the **birth of a tropical depression**: many scattered 30-100 km clusters merging into one smooth CDO with a pink core; a day-to-day pulsing of the cold area | `isaias_td_1006-1007`, `isaias_td_1007`, `isaias_td_1008` |
+
+Not in the library (cannot be seen from the GOES satellites, or no network path in this session): western Pacific typhoons, the Indian Ocean and the southern hemisphere. For those the model has to rely on the text sources (CIMSS blog, JMA/JTWC) and the physical reasoning that the structures above do not depend on the basin.
+
+## What each category looks like (the measured picture)
+
+**Same box as the model.** The model's nest is 512 km; the real numbers below are medians of the frames of a stage in the central 500 x 500 km box round the track centre (`tools/ir_research/stage_table.py`). Areas in thousands of km2; the mean brightness temperature (C) by distance from the centre in 10 km rings.
+
+| real stage | frames | area colder than -40 / -60 / -70 C | mean Tb at 5 / 15 / 25 / 35 / 45 / 65 / 85 / 115 / 155 / 195 / 245 km |
+|---|---|---|---|
+| Nolo remnant low 16-20 Sep | 16 | 20 / 4 / 0 | 11 7 5 7 6 2 2 4 4 6 4 |
+| Nolo TD 13-15 Sep (centred on the swirl; the burst is 150-300 km east) | 17 | 53 / 25 / 6 | 10 10 10 9 7 5 1 -4 -8 -9 -11 |
+| Nolo TS 23-24 Sep | 7 | 139 / 65 / 32 | -55 -64 -64 -56 -50 -42 -44 -45 -42 -42 -36 |
+| Nolo category 1-4, rapid intensification 25-27 Sep | 24 | 151 / 57 / 15 | -7 -30 -43 -54 -58 -62 -63 -59 -54 -44 -33 |
+| Nolo peak 28 Sep (135 kt) | 8 | 136 / 70 / 25 | 12 -12 -34 -59 -69 -72 -71 -66 -56 -43 -28 |
+| Nolo typhoon 4-6 Oct (100-115 kt) | 24 | 128 / 45 / 1 | 8 -12 -29 -40 -52 -62 -62 -56 -47 -37 -22 |
+| Dorian category 4-5, 1-3 Sep | 24 | 164 / 70 / 6 | 5 -26 -54 -65 -67 -67 -65 -60 -52 -41 -28 |
+| Ian category 3-5, 27-28 Sep | 16 | 193 / 108 / 37 | -26 -42 -60 -66 -69 -72 -70 -67 -60 -53 -45 |
+
+How to read it: a **real hurricane's cirrus shield is a broad, slowly cooling bowl** (still -22 to -45 C 245 km from the centre); the -70 C area depends strongly on the storm (Dorian 6k, Nolo typhoon 1k, Nolo peak 25k, Ian 37k km2), so "cold tops" are not a function of intensity alone.
+
+### 1. Invests and remnant lows
+Almost empty: a swirl of thin cirrus fibres and low cloud, isolated 15-50 km cells (some with a grey core and a pink overshoot), median -60 C area 4k km2 in the central 500 km, many frames with none; a 100-300 km mass appears now and then, 150-300 km from the swirl, and fades in a few hours. The low-level centre is visible as a spiral of low cloud for days.
+
+### 2. Tropical depressions and weak tropical storms: the "bursts"
+- **A burst is one coherent mesoscale mass**: 100-300 km across (500-600 km when it reaches full size), a smooth red body (-55 to -65 C), a few grey/white cores of 20-60 km (-70 to -80 C) and rare pink overshoots (-80 to -86 C), a green-cyan skirt, **radial cirrus streaks like spokes** flaring out from it, and a **sharp, straight edge on the side facing the swirl**.
+- **It is displaced from the centre**: 150-300 km east/downshear of an exposed low-level swirl (Nolo TD, Alberto); the swirl itself has thin cirrus or nothing deep over it (mean Tb at the centre +10 C for the Nolo TD, with the cold area beyond 100 km).
+- **It pulses**: the TD of 13-15 Sep had three bursts in 36 hours (starts 13 Sep 12Z, 14 Sep 03Z, 14 Sep 21Z; each 9-15 hours). Between bursts only 20-40 km cells close to the centre and the -60 C area falls from 91k to 18k km2 (800 km box).
+- **Diurnal modulation (suggestive, few days of data)**: median -60 C area in the 500 km box by local solar time, Nolo 13-24 Sep: 04-08 h 46k km2, 16-20 h 28k, 00-04 h 20k, 12-16 h 10k, 08-12 h 6k, 20-24 h 4k; Isaias 6-8 Oct: 00-08 h 100-108k, 08-12 h 83k, 12-20 h 33-41k, 20-24 h 65k. Both peak in the **late night to early morning** and have their minimum in the **afternoon to evening**, by a factor of 2-3 (the known diurnal pulse of the tropical cyclone's cold cloud). The model has no diurnal cycle at all.
+- **A tropical storm** (35-60 kt, Nolo 23-24 Sep): a **very large, sprawling canopy (400-600 km) of coalesced cells**: a red body with many 20-60 km grey-white cores and pink flecks, **curved bands with a sharp clear inner edge and a cloud-free moat inside**, the centre at the edge of the overcast or under it; -60 C area 65k and -70 C area 32k km2 in the central 500 km, mean Tb at 245 km still -36 C. **Not** a field of small cells: the cells are inside one mass.
+- **A depression being born** (Isaias, 6-8 Oct): scattered 30-100 km clusters first (many with pink/grey cores), then a merger into one smooth blob over the centre with a pink core (the centre colder than its ring), spiral bands within 12 hours; the -60 C area pulses 18k-181k km2 (1000 km box) with the day.
+- **A subtropical/hybrid storm** (Alberto 2018): all the deep convection 150-300 km east, the centre exposed at its western edge, tops only -40 to -60 C.
+
+### 3. Hurricanes: eyes and rapid intensification
+- **Eye temperature is not the sea temperature.** The warmest 3x3-mean pixel of the eye (km-scale mean) is **+11 to +21 C** in the strongest hurricanes while the sea was 26-28 C: Nolo 28 Sep (135 kt) +15 to +21, typhoon 4-6 Oct (100-115 kt) +11 to +16, Dorian category 4-5 +9 to +18 (median +16), Ian **-19 to +2 (cloud-filled) in most frames** during its intensification and eyewall replacement (26 Sep 18Z -19, 27 Sep 00Z -17, 27 Sep 06Z +2, 27 Sep 12Z -14, 28 Sep 00Z +2, 28 Sep 12Z -14), against +18 on 27 Sep 18Z and +15 on 28 Sep 18Z. (Ian's +17 to +21 on 25-26 Sep 12Z are a hole in thin cloud, the ring only -4 to -11 C: not an eye yet.)
+- **Before the hurricane stage the eye is cloud-filled or cool**: Nolo 25 Sep -9 to +14, 26 Sep -17 to +12, 27 Sep 00-09Z -2 to +7; the warm round eye appears only at 27 Sep 12Z-21Z (+6, +14, +15), a day into the rapid intensification.
+- **The eye's edge is a ramp, not a step.** Mean Tb by radius at the Nolo peak: 5 km +18, 15 km +10, 25 km -18, 35 km -55, 45 km -70 (the eyewall tilts outwards, so the cold top lies 20 km outside the eye edge).
+- **Cold tops smooth with intensity**: peak and typhoon eyewalls are smooth, a hot tower is a rare grey/white bump on a red ring.
+- **Compact storms** (Otis, Beryl): a CDO only 100-200 km across, with an eye of a few pixels; their intensification is 12-24 hours (the model must allow a storm to grow from a ragged cloud-filled eye to a clear one within a day).
+- **Big storms** (Lee): the wind field and the cirrus grow with time, spiral arcs of anticyclonic outflow cirrus reach 1000 km and more (a long tail curving to the south-east on 12-14 Sep), and rings of bands with moats; the inner core is a small fraction of the picture.
+- **Shear (Nolo 29 Sep - 1 Oct, Milton before landfall)**: the -60 C area falls from 85k to 8-15k km2 in 6 hours, the eye clouds over, the shield is displaced downshear with a sharp dry edge on the other side, then an exposed swirl of thin cirrus with no deep convection for 12-24 hours; Milton kept a compact core with its shield displaced to one side.
+
+### 4. Texture of the cold tops
+Measured as the standard deviation of Tb minus its 5x5-pixel (10 km) mean, over the pixels where that mean is colder than -50 C, and as the median gradient per 2 km pixel (`tools/ir_research/texture.py`):
+
+| | high-pass std (C) | gradient (C per 2 km) |
+|---|---|---|
+| Nolo TD 13-15 Sep | 0.9-1.1 | 0.6-0.9 |
+| Nolo TS 23-24 Sep | 1.2 (1.0-1.4) | 1.05 |
+| Nolo hurricane 25-28 Sep | 0.6 (0.4-1.1) | 0.6 |
+| Nolo typhoon 4-6 Oct | 0.45 (0.3-0.6) | 0.5 |
+| Ian 27-28 Sep | 0.65 (0.5-0.9) | 0.6 |
+| **the model's four test storms** (nest, 28-110 kt) | **2.5-3.0** | **2.1-2.7** |
+
+The model's cold tops are **3-5 times too rough**: real cold tops are smooth, with the roughness rising only in weak systems (cells) and falling with intensity.
+
+### 5. The extratropical transition, in the real data
+Window 2400 x 2400 km (5 km pixels) round the cold core; areas in thousands of km2 (the shield is the part colder than -20 C, the convection the part colder than -60 C):
+
+| time (UTC) | position | Tb min | < -20 C | < -40 C | < -60 C | < -70 C |
+|---|---|---|---|---|---|---|
+| **Fiona** 21 Sep 00Z | 23.7 N 70.0 W | -85 | 1082 | 507 | 203 | 87 |
+| 22 Sep 00Z | 25.7 N 71.9 W | -80 | 1103 | 625 | 170 | 41 |
+| 22 Sep 12Z | 28.4 N 71.1 W | -80 | 789 | 481 | 90 | 14 |
+| 23 Sep 00Z | 29.7 N 68.5 W | -76 | 1203 | 594 | 88 | 12 |
+| 23 Sep 12Z | 34.6 N 64.2 W | -71 | 1355 | 781 | 48 | 0 |
+| 23 Sep 21Z | 39.8 N 59.5 W | -67 | 1646 | 651 | 20 | 0 |
+| 24 Sep 03Z | 45.4 N 59.3 W | -60 | 1638 | 426 | 0 | 0 |
+| 24 Sep 12Z | 55.2 N 64.2 W | -53 | 1614 | 145 | 0 | 0 |
+| **Dorian** 5 Sep 12Z | 30.9 N 79.0 W | -74 | 870 | 283 | 54 | 11 |
+| 6 Sep 00Z | 33.6 N 78.5 W | -68 | 891 | 182 | 3 | 0 |
+| 6 Sep 06Z | 33.8 N 76.5 W | -64 | 759 | 114 | 1 | 0 |
+| 6 Sep 18Z | 36.4 N 74.2 W | -71 | 1066 | 497 | 27 | 0 |
+| 7 Sep 00Z | 37.4 N 71.7 W | -77 | 1211 | 421 | 22 | 2 |
+| 7 Sep 12Z | 41.3 N 66.7 W | -69 | 1527 | 475 | 8 | 0 |
+| 7 Sep 21Z | 45.5 N 63.2 W | -65 | 1923 | 710 | 1 | 0 |
+| 8 Sep 06Z | 53.6 N 58.5 W | -51 | 1577 | 434 | 0 | 0 |
+| 8 Sep 12Z | 56.2 N 49.5 W | -48 | 1429 | 12 | 0 | 0 |
+
+- **The cold convection decays and the cloud shield grows**: the -60 C area goes 200k -> 90k -> 50k -> 0 km2 over about 3 days (Fiona) or 54k -> 3k in 12 hours then a partial return (Dorian, 27k on 6 Sep 18Z, while it passed over the warm Gulf Stream and the trough's lift arrived); the -20 C area goes 0.8-1.1M -> 1.6-1.9M km2 (about doubles, **cloud shield 2-2.5 times larger**), the -40 C area stays at 0.4-0.8M and only falls once the storm is north of 50 N; the coldest tops go -85 -> -75 -> -67 -> -53 C.
+- **Look of it (Fiona, Dorian, Lee sheets)**: (1) at 25-30 N the eye is still there but the shield is already pulled into a **comma with its head to the north-north-east** and a clear dry arc to the south-west; the cold core and ring stay -70 to -80 C; ripples (gravity waves) and parallel streaks on the shield. (2) At 33-40 N **the eye sits on the south-west tip of the shield**, the ring is open on that side and the dry air wraps in; tops -50 to -65 C only in a **blob on the north-east**; the eye is lost within 12-24 hours (a swirl of low cloud, then nothing). (3) At 40-55 N a **frontal comma**: head to the north/north-west, long tail spiralling south and east, **a clear dry slot** just south-west of the centre, the centre at the head-tail junction, tops -30 to -50 C (green and blue, not red) in fine **parallel streaks**, with the narrow cyan-to-green bands of the fronts and one or two cold spots (Dorian 6 Sep 18Z - 7 Sep 00Z: -77 C, a final burst). (4) At the end Lee (16-17 Sep) shows a comma with an **almost empty centre** and the cold cloud only on the north and east sides (-30 to -45 C).
+- **Nolo's own end** (6-8 Oct, 25-30 N at 160-175 E, seen by GOES-18 to the western edge): the same: the eye clouds over, the shield goes to one side with a sharp straight dry edge on the north-west, then a long tilted band with a dry slot.
+- **A landfall decay (Hilary, 19-21 Aug)**: a major hurricane weakens to a post-tropical band of cloud along the coast.
+
+## What this says about the model: measured differences
+
+Model numbers from `tools/ir_research/model_ir_stats.mjs`: a fresh nest spun up 4 hours on a forced storm (the engine-like wind profile of the given maximum wind and radius of maximum wind, sea 28.8 C, no shear) and read through `Nest.irTb`; **two seeds (7 and 11)** per case, the range of the two is given, the 512 km box.
+The cases (maximum wind kt / radius of maximum wind km): invest 18/60, TD 28/50, TS 45/40, category 1 75/28, major 110/18. (The run-to-run spread is large: the same TD has its deep convection at the centre in one seed and a clear centre in the other.)
+
+| | area colder than -40 / -60 / -70 C (k km2) | Tb at 5 / 15 / 25 / 35 / 45 / 65 / 85 / 115 / 155 / 195 / 245 km (range over the two seeds) | warmest pixel within 24 km |
+|---|---|---|---|
+| model invest 18 kt | 60-79 / 8-24 / 1-3 | -65..15, -63..12, -62..4, -59..-8, -55..-21, -50..-33, -47..-41, -36..-35, -31..-20, -17..-13, -1..9 | -53..22 |
+| model TD 28 kt | 80-100 / 15-34 / 2-7 | -68..3, -68..-1, -69..-11, -67..-24, -65..-34, -59..-40, -53..-47, -42..-39, -38..-27, -26..-20, -14..1 | -60..12 |
+| model TS 45 kt | 107-122 / 28-48 / 7-24 | -77..-29, -78..-35, -78..-40, -77..-48, -75..-52, -71..-54, -67..-58, -55, -46..-42, -34..-29, -13..-3 | -72..-14 |
+| model category 1 75 kt | 77-79 / 18 / 1-2 | 29, -10..7, -65..-60, -68, -65..-64, -59..-58, -54..-53, -47..-43, -35..-32, -25..-20, -4..3 | **29** (sea) |
+| model major 110 kt | 51-58 / 22-24 / 6-10 | -2..13, -74..-67, -78..-74, -74..-69, -70..-68, -65..-63, -57..-55, -45..-42, -23..-19, -6..0, 11..17 | 19..22 |
+| **real**, see the table above | 53-193 / 4-108 / 0-37 | | +9..+21 (hurricane) |
+
+Texture of the model's cold tops (the earlier four-storm dump `modeldump/`, std of Tb minus its 10 km mean): **2.5-3.0 C**, gradient 2.1-2.7 C per 2 km pixel.
+
+1. **Weak systems are the wrong shape.** In both seeds the model's invest and TD have a **cold ring or core round the centre** (the mean at 85 km is -47 to -53 C, and in one seed the centre itself is -65 to -69 C); the real TD's centre is clear (+10 C out to 65 km, mean at 85 km +1 C) and the deep cloud is one burst 150-300 km to one side. The model's -40 C area for the TD (80-100k km2) is 1.5-2 times the real TD's (53k) and the invest's (60-79k) is 3-4 times the real remnant's (20k). The model has no episodes (no burst every 12 hours with clear intervals), no diurnal cycle, and the swirl is never "naked".
+2. **Tropical storms and hurricanes are too small in the cold shield.** The model's -60 C area is 28-48k km2 (TS), 18k (category 1), 22-24k (major) against real 65k, 57k and 70-108k: **1.4-4 times too small**, and -70 C is 7-24k, 1-2k and 6-10k against real 32k, 15k and 25-37k (up to 10 times); the -40 C area of the major hurricane is 51-58k against 128-193k. The cirrus shield **ends at about 150 km**: Tb at 155 km is -19 to -23 C (major) against -47 to -60 C real, at 195 km -6 to 0 against -37 to -53 C, at 245 km +11 to +17 against -22 to -45 C: the model's shield is 100 km too small in radius, and the nest edge (256 km) is warm where the real picture is still deep cloud.
+3. **The eye and the inner ramp.** The model's warmest pixel in the eye is the sea temperature (29 C) for the category 1 storm in both seeds, 19-22 C for the major one (when it is not cloud-filled); the real eye is at most +21 C (Nolo peak), +11 to +16 C typically at category 3-4, and often cloud-filled (-20 to +10) while intensifying. The model's coldest ring (-74 to -78 C) sits right at the eyewall (15-35 km for an 18 km radius of maximum wind); in the real storm the coldest tops (below -70 C) lie **45-95 km from the centre for an eye of 10-15 km radius**, reached by a ramp from the eye (+18 at 5 km, -18 at 25 km, -55 at 35 km, -70 at 45 km at the Nolo peak): the eyewall tilts outwards with height and the 10.3 um pixel sees its sloping side.
+4. **Texture**: 3-5 times too rough (std 2.5-3 C against 0.45-1.25 C).
+5. **No transition shield**: at an extratropical stage the model has no growing -20 C shield, no comma with a dry slot and a lost eye, no change of the cold-cloud type (cells -> streaks), and the tops stay as cold as in the tropics.
+6. **No shear stripping to an exposed swirl** with a 12-24 hour gap in deep convection and a re-formation burst.
+
+## Proposed model changes (to be built after the user confirms), with numbers to build the tests on
+
+1. **Burst model for invests, depressions and weak storms** (below about 50 kt, plus any storm under strong shear or dry air): the cold cloud is made by an explicit lifecycle of a few **coherent masses** (growth 3-6 h, mature 6-12 h, decay 3-6 h) of 100-300 km (up to 500-600 km at maturity), **centred 150-300 km downshear** of the swirl, a smooth red body with a few 20-60 km grey cores and pink dots, a green-cyan skirt and spokes of cirrus, a sharp edge facing the centre; the swirl itself gets thin cirrus and low cloud; a new mass every 12-24 hours with a **diurnal modulation** (peak 04-08 local solar time, minimum 12-20 h, factor 2-3).
+   Targets in the central 512 km box: TD median -60 C area ~25k km2 (range 3-90k), -40 C ~50k, mean Tb at the centre ring above +5 C; remnant low: -60 C area ~4k.
+2. **Eye**: a warm spot of at most **+21 C** (sea 28 C: the eye Tb about the sea minus 7 to minus 15 C), +11 to +16 C typically at category 3-4, **cloud-filled (-20 to +10 C)** during rapid intensification and eyewall replacement (about half the frames of a category 2-3), and a **smooth ramp** eye -> eyewall: 5 km +18, 15 km +10, 25 km -18, 35 km -55, 45 km -70 for a 15-20 km eye.
+3. **Cold-top size**: bring the -60 C area to 45-70k (hurricane) and -70 C to 15-35k km2 (major hurricane) in the 512 km box (now 18-24k and 1-10k), with a mean Tb at 155 km of -45 to -60 C, at 195 km of -35 to -50 C and at 245 km of -22 to -45 C (now -19 to -23, -6 to 0 and +11 to +17 for the major hurricane): the cirrus shield must reach the edge of the nest and past it (extend the cirrus canopy, or paint the outer 100 km analytically).
+4. **Texture**: smooth the cold tops (the 10 km high-pass std 0.5-0.7 C in hurricanes, 1.0-1.3 C in weak storms), and put the hot-tower variability in a few 20-40 km bumps rather than cell-scale mottling.
+5. **Extratropical transition** (driven by the engine's existing `eta`): shield growth (-20 C area x2), cold-core convection decay (-60 C area to zero over 2-3 days, coldest tops -85 -> -50 C), the comma (head north-north-east, tail south-east), a dry slot south-west of the centre, the eye lost in 12-24 hours, fine parallel streaks instead of cells, a final burst possible over the Gulf Stream.
+6. **Shear stripping**: a sudden (6 h) loss of the -60 C area (85k -> 10k km2), the eye clouded over, an exposed swirl for 12-24 hours, then a re-formation burst on one side.
+7. **Compact and large storms**: the CDO and shield radius should follow the engine's size (Otis/Beryl 100-200 km, Lee 500+ km with outflow arcs).
+
+## What I could not do
+
+- **No images from the web.** The network policy of this session reaches only GitHub, the package registries and the Google Cloud public buckets: no NHC, CIMSS, NOAA/NESDIS, Wikipedia, Himawari, EUMETSAT or Meteosat. I could not look at "videos" from the web; what is here is the real GOES brightness-temperature data itself, drawn on the game's palette, and measured.
+- **Only GOES storms.** GOES-16/18/19 cover the Atlantic and the eastern/central Pacific. Western Pacific typhoons, the Indian Ocean and the southern hemisphere would need Himawari (NOAA's open-data Himawari-9 bucket on AWS, as far as I remember `noaa-himawari9`), Meteosat or GK-2A: hosts the policy does not allow here. If you allow such a host, a small-eye category 5 typhoon, a recurving extratropical storm and a few north/south Indian Ocean storms could be added with the same tools (the Himawari projection and file layout need a small new reader).
+- **Approximate classes.** The category of every non-Nolo storm above is from memory, and the Nolo advisories and discussions were read through a web search summary only (not the advisory pages), so the Nolo wind speeds are approximate; the infrared numbers are measured.
+- **Eye finder limits.** The eye numbers are the warmest 3x3 mean of a warm spot in a cold canopy; the tracker lost the centre for Nolo after 29 Sep (to 3 Oct), for Fiona and for the first Dorian run: those parts of the series are not used.
+
+Reproducing: `tools/ir_research/` (`goes_ir.py`, `series.py`, `track.py`, `sheets.py`, `radial.py`, `texture.py`, `stage_table.py`, `model_ir_stats.mjs`, `library.sh`): Python 3 with `numpy h5py pillow` and `gsutil`; each full-disk frame is about 20 MB and takes about 4 s to fetch.

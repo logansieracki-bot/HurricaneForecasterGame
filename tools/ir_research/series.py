@@ -40,6 +40,14 @@ def find_eye(tb, res_km, prior_px=None, search_km=120.0, min_depth=8.0):
             if best is None or score > best[0]: best = (score, i, j, float(v), float(rm), float(cont))
     return None if best is None else best[1:]
 
+def cold_center(fr, lat, lon, half_km=700.0, res_km=8.0, box_km=60.0, near_km=450.0):
+    """the coldest broad patch (box mean) within near_km of (lat, lon): returns (lat, lon)"""
+    tb, LAT, LON = fr.crop(lat, lon, half_km=half_km, res_km=res_km); n = tb.shape[0]
+    t = np.where(np.isfinite(tb), tb, 30.0); k = int(box_km / res_km) | 1; p = k // 2; ap = np.pad(t, p, mode='edge'); sm = sum(ap[i:i + n, j:j + n] for i in range(k) for j in range(k)) / (k * k)
+    yy, xx = np.mgrid[0:n, 0:n]; c = (n - 1) / 2; r = np.hypot(yy - c, xx - c) * res_km; sm = np.where(r <= near_km, sm, 99.0)
+    i, j = np.unravel_index(np.argmin(sm), sm.shape)
+    return float(LAT[i, j]), float(LON[i, j])
+
 def run(args):
     anchors = [a.split(',') for a in args.anchors.split(';')]; at = make_path(anchors)
     t0, t1 = parse_iso(args.start), parse_iso(args.end); step = dt.timedelta(hours=args.step)
@@ -49,7 +57,7 @@ def run(args):
     def dl(t):
         try: return t, G.fetch(args.sat, t)
         except Exception as e: return t, e
-    rows = []; panels = []; sheet_n = 0; cols, nrows = (int(x) for x in args.sheet.split('x'))
+    last_c = None; rows = []; panels = []; sheet_n = 0; cols, nrows = (int(x) for x in args.sheet.split('x'))
     with cf.ThreadPoolExecutor(max_workers=4) as ex:
         futs = [ex.submit(dl, t) for t in times]
         for fu in futs:
@@ -57,7 +65,10 @@ def run(args):
             if isinstance(res, Exception): print('skip', t, res); continue
             path, when = res
             try:
-                fr = G.Frame(path); lat, lon = at(t); tb, LAT, LON = fr.crop(lat, lon180(lon), half_km=args.half_km, res_km=args.res_km)
+                fr = G.Frame(path); lat, lon = at(t)
+                if args.coldcore:
+                    plat, plon = (last_c if last_c else (lat, lon)); lat, lon = cold_center(fr, plat, lon180(plon), near_km=args.near); last_c = (lat, lon)
+                tb, LAT, LON = fr.crop(lat, lon180(lon), half_km=args.half_km, res_km=args.res_km)
                 np.savez_compressed(f'crops/{args.name}/{when:%Y%m%dT%H%M}.npz', tb=tb.astype(np.float16), lat=lat, lon=lon180(lon), res=args.res_km)
                 st = G.stats(tb, args.res_km); st['time'] = f'{when:%Y-%m-%dT%H:%M}'; st['lat'] = lat; st['lon'] = lon180(lon)
                 lab = f'{when:%m-%d %H:%MZ} c=({lat:.1f},{lon180(lon):.1f}) min {st["tmin"]:.0f}C'
@@ -78,5 +89,5 @@ def run(args):
 if __name__ == '__main__':
     ap = argparse.ArgumentParser()
     ap.add_argument('name'); ap.add_argument('sat'); ap.add_argument('start'); ap.add_argument('end'); ap.add_argument('step', type=float); ap.add_argument('half_km', type=float); ap.add_argument('res_km', type=float)
-    ap.add_argument('--anchors', required=True); ap.add_argument('--sheet', default='3x3'); ap.add_argument('--scale', type=int, default=1); ap.add_argument('--eye', action='store_true'); ap.add_argument('--rings', type=float, nargs='*', default=[100, 200])
+    ap.add_argument('--anchors', required=True); ap.add_argument('--sheet', default='3x3'); ap.add_argument('--scale', type=int, default=1); ap.add_argument('--eye', action='store_true'); ap.add_argument('--rings', type=float, nargs='*', default=[100, 200]); ap.add_argument('--coldcore', action='store_true'); ap.add_argument('--near', type=float, default=450.0)
     run(ap.parse_args())
