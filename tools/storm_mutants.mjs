@@ -357,7 +357,7 @@ const mutants = [
   M('N40', NS, [E("inS = r > 0.9 * rmax ? orgS * P.inA * Math.exp(-rin * rin) * sm01(r, 0.9 * rmax, 1.25 * rmax) : 0,", "inS = 0,")], ['nest'], 'nothing rains round the eyewall (no inner-core shield)'),
   M('N41', NS, [E("this.gatherOpen([Q, rc], [sc[1], sc[2]], [true, true]);", "this.gather([Q, rc], [sc[1], sc[2]], [true, true]);")], ['nest'], 'the water and the convective rain leave the box and come back at the other side (periodic)'),
   M('N42', NS, [E("Lsc = clamp(sz * (1 + 0.6 * eta), 150, 420)", "Lsc = 150")], ['nest'], 'the shield of a transition is a fixed size, not the system\'s'),
-  M('N43', NS, [E("sm01(vN, 22, 36) * (1 - sm01(eta, 0.05, 0.4)) * (1 - 0.8 * this.strip);", "sm01(vN, 22, 36) * (1 - 0.8 * this.strip);")], ['nest'], 'a transitioning low keeps its eye hole'),
+  M('N43', NS, [E("sm01(vN, 22, 36) * (1 - sm01(eta, 0.05, 0.4)) * (1 - 0.8 * this.strip);", "sm01(vN, 22, 36) * (1 - 0.8 * this.strip);")], ['nest', 'nestir'], 'a transitioning low keeps its eye hole'),
   M('N44', NS, [E("const kw = P.kw * this.m / (2 * DX)", "const kw = P.kw / (2 * DX)")], ['nest'], 'the boundary layer\'s pumping ignores the scale'),
   M('N45', NS, [E("exT = Math.max(eta, sm01(sz, 170, 300)),", "exT = 0,")], ['nest'], 'a large system\'s supply fades toward the box\'s edge like a small one\'s'),
   // ---- M18: the infrared picture, the white coasts, the two fastest clocks

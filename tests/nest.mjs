@@ -262,10 +262,11 @@ const wet = (nest) => { const d = dbzField(nest); return (k) => (d[k] >= 20 ? 1 
   check('the box\'s edge is open: strips of stratiform (30 mm/h) and convective (40 mm/h) rain at the east edge carried east by a 30 m/s wind leave, they do not come back at the west edge (' + (w / cc).toFixed(1) + ' and ' + (wc / cc).toFixed(1) + ' mm/h there after 16 minutes, both under 3)', w / cc < 3 && wc / cc < 3);
   const cirrusStrip = (strip) => { const ec = N.create({ seed: 7 }), fc = forcing({ v: 15, rmax: 60 }); fc.ued = 30; fc.eta = 0; ec.init(fc);
     if (strip) for (let j = 0; j < NG; j++) for (let i = 244; i < NG; i++) { ec.cir[j * NG + i] = 1; ec.cih[j * NG + i] = 13; }
-    for (let i = 0; i < 6; i++) ec.step(240);
-    let wi = 0, ci2 = 0, east = 0; for (let j = 0; j < NG; j++) { for (let i = 0; i < 12; i++) { wi += ec.cir[j * NG + i]; ci2++; } east += ec.cir[j * NG + 250]; } return { west: wi / ci2, east: east / NG }; };
-  const cs = cirrusStrip(true), c0s = cirrusStrip(false);
-  check('the cirrus leaves the box as well: a strip of cirrus at the east edge blown east by 30 m/s of flow aloft has left the east edge (' + cs.east.toFixed(2) + ' of cirrus left there after 24 minutes, the same storm without the strip ' + c0s.east.toFixed(2) + ': under 0.1 more) and does not reappear at the west edge (' + cs.west.toFixed(2) + ' against ' + c0s.west.toFixed(2) + ' without it: under 0.03 more)', cs.east < c0s.east + 0.1 && cs.west < c0s.west + 0.03);
+    const west = []; let east = 0;
+    for (let k = 0; k < 6; k++) { ec.step(240); let wi = 0, ci2 = 0; for (let j = 0; j < NG; j++) for (let i = 0; i < 12; i++) { wi += ec.cir[j * NG + i]; ci2++; } west.push(wi / ci2); }
+    for (let j = 0; j < NG; j++) east += ec.cir[j * NG + 250]; return { west, east: east / NG }; };
+  const cs = cirrusStrip(true), c0s = cirrusStrip(false), wDiff = Math.max(...cs.west.map((w, i) => w - c0s.west[i]));
+  check('the cirrus leaves the box as well: a strip of cirrus at the east edge blown east by 30 m/s of flow aloft has left the east edge (' + cs.east.toFixed(2) + ' of cirrus left there after 24 minutes, the same storm without the strip ' + c0s.east.toFixed(2) + ': under 0.1 more) and does not reappear at the west edge at any step (at most ' + wDiff.toFixed(2) + ' more than without it, under 0.03)', cs.east < c0s.east + 0.1 && wDiff < 0.03);
 }
 
 /* ---- subtropical systems have a radar: a hybrid, cold air aloft over a cool sea, broad and lopsided -------------------------------------------------------------------------------- */
@@ -395,7 +396,7 @@ const wet = (nest) => { const d = dbzField(nest); return (k) => (d[k] >= 20 ? 1 
   const d = tbOf({ rc: 30, e: 1, z: 6 }), d2 = tbOf({ rc: 30, e: 1, z: 16 });
   check('cirrus lower than the rain cloud under it does not warm it (' + d.toFixed(0) + ' C = the rain cloud ' + r30.toFixed(0) + '); cirrus above it colder (' + d2.toFixed(0) + ' C)', near(d, r30, 0.01) && d2 < r30 - 5);
   const t15 = tbOf({ rc: 30 }, 15), t50 = tbOf({ rc: 30 }, 50, 0), t50x = tbOf({ rc: 300 }, 50), t15x = tbOf({ rc: 300 }, 15);
-  check('the tropopause is lower and warmer poleward: the same convective rain is a warmer top at 50 N than at 15 N (' + t50.toFixed(0) + ' vs ' + t15.toFixed(0) + ' C), a deep cloud there tops out near -40 C, and its overshoot is bounded, above -62 C (' + t50x.toFixed(0) + ' vs ' + t15x.toFixed(0) + ' C)', t50 > t15 + 5 && t50x > t15x + 10 && t15x >= -105 && t50 < -34 && t50 > -41 && t50x > -62);
+  check('the tropopause is lower and warmer poleward: the same convective rain is a warmer top at 50 N than at 15 N (' + t50.toFixed(0) + ' vs ' + t15.toFixed(0) + ' C), a deep cloud there tops out near -40 C, and its overshoot is bounded, above -59 C (' + t50x.toFixed(0) + ' vs ' + t15x.toFixed(0) + ' C)', t50 > t15 + 5 && t50x > t15x + 10 && t15x >= -105 && t50 < -34 && t50 > -41 && t50x > -59);
   check('Tb is finite and within the physical range -105..+45 C for any combination of rain, water, cirrus and temperature', (() => { for (const rc of [0, 0.1, 10, 400]) for (const rs of [0, 3, 80]) for (const e of [0, 0.4, 1]) for (const z of [6, 14, 20]) for (const sst of [-5, 15, 32]) { const v = tbOf({ rc, rs, e, z, sst, q: 1.2 * N.PAR.Qc }, 30); if (!isFinite(v) || v < -105.01 || v > 45) return false; } return true; })());
 }
 
