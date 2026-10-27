@@ -24,6 +24,16 @@
  *      and a forward operator Z = 250 R^1.2 for convective rain (the NHC's tropical relation) and 200 R^1.6 for stratiform, with the beam geometry of a site.
  *  The picture adds what a 2-km cell cannot hold (a texture of cells and patches below it, carried by the flow) and the radar's wind adds turbulence and the downdraughts' outflow. The eye of a strong storm has a
  *  ragged soft edge and is cleared of rain, including the stratiform rain the eyewall's skirt would put into it.
+ *  The infrared picture (irTb) is made from the same fields and was set against the real GOES band-13 record of eleven storms (docs/ir-research.md), in seven pieces:
+ *    - bursts: a weak storm (a disturbance, a depression, a weak tropical storm) rains in episodes: a few coherent masses 100 to 300 km across, one about every half day, growing for a few hours, mature for a few and decaying, born
+ *      mostly in the local night, sitting downshear of a bare swirl (burstStep, burstBirth); the vortex's own convergence gives way to them, and a hurricane makes none;
+ *    - shear stripping: a storm in strong shear and dry air has its convection stripped to one side within hours (the strip state): the eye clouds over, the eyewall's supply and the stratiform deck go, the cirrus decays, and the swirl is bare
+ *      for half a day before the next burst;
+ *    - the cirrus canopy: the convection's outflow spreads thick high cirrus out to the edge of the box (the speed, life and reach follow the storm's strength and size, a hurricane is found with it already spread), the blurred rain is a source too;
+ *    - the cold tops are smoothed (the real ones are smooth to a few tenths of a degree) with a little texture left, rougher in weak storms, and capped near -86 C;
+ *    - the eye: a warm floor below the sea (at most +21 C), a cloud that fills it while a storm intensifies, replaces its eyewall, is sheared or stripped, and a smooth ramp to the eyewall top;
+ *    - a transition: no eye, the cold convection gone, a shield with fine streaks along the flow aloft and a clear dry slot;
+ *    - the size: a compact storm's canopy is small, a large one's wide.
  *  The engine owns the storm: it gives the vortex (its wind profile, the two rings of an eyewall replacement), the environment (sea temperature, humidity, shear,
  *  land) and the motion. The nest's mean vorticity is held to the engine's by a slow relaxation (the storm is the engine's, the structure inside it is the nest's),
  *  and the heating efficiency adapts slowly so the nest's convection supports the intensity the engine says.
@@ -47,6 +57,9 @@ const PAR = {
   aW: 45, Pmax: 0.03, kr: [1.1, 2.4],                      // the mass flux per mm/s of rain (m per mm), the most rain convection can make from the supply (mm/s), the rain a mm/s of condensation is, for a weak and for a strong vortex (the column above the layer converges moisture too, the more the deeper the convection)
   sq: 1.3, noiseTau: 300, sc: 1.1, clTau: 7200, cl2Tau: 14400, bgSig: [1.1, 0.9, 0.8], bgA: 2, bgR: [150, 270], bgOrg: 0.75, etW: 0.08, etF: 0.35, eyeRag: 0.3, eyeClr: 0.4, edgeS: [215, 252], vTurb: [1.0, 0.06, 0.45], vOut: 700, vTau: 420, texS: 0.25, texC: 0.45, texR: 0.25, texCc: 0.15, inA: 0.07, inR: 3.5, rhQ: 0.2, dryK: 0.88, dryR: 1.0, shAmp: 1.3, landR: [8, 10], landK: 0.7, landSq: 0.06, gsC: 0.35, sBlur: 4, wBlur: 5, pcv: 0.0015, pcx: 2.5,                             // the multiplicative variability of the supply: cell scale (and its memory, s) and mesoscale clusters 30 km across (their share and memory), which the swirl shears into spiral arms
   tauUp: 300, tauC2: 1200, sigS: 0.05, tauS: 1800, gs: 0.4,    // radar rain: rise time of convective rain (s), its fall time; the share of it stratiform rain receives (per tauC2), its life (s), the rain of broad ascent (mm/h)
+  ciSrc: 2.0, ciLife: 1.8, ciOutK: [0.2, 1.3], ciSink: 0.6, ciLo: 450, ciSz: 150,      // infrared (the canopy): the share of the blurred rain that is also a source of cirrus (an anvil is wider than its cell), how much longer a strong storm's cirrus lives, the outflow it spreads at (a weak storm's and a strong one's, times the cirrus' own outflow), how much less its top sinks, the outflow's length scale (km) and the size (km) at which both are the reference ones
+  eyeD: [14, 10], eyeW: [0.5, 2.1], eyeF: [3.5, 4], eyeT: [10800, 14400, 0.22], irBlur: 4, irSm: 0.95, irTx: 0.5, irStreak: 1.5,      // the eye's picture: its warm floor below the sea (a moderate and a strong storm's, C), the ramp's start and end in radii of maximum wind, the top height of the cloud that fills it (km, plus the fill's share of it), the fill's relaxation and its random walk's memory (s) and size; the smoothing of the cold tops (cells, share), their remaining texture (C) and the streaks of a transitioning system's shield (C)
+  bAmp: 3.5, bVk: 0.5, bQ: 0.22, bCatch: 3, bT: 7, bGap: 7, bHold: 12, bWk: [20, 32], bDiu: [0.6, 0.8, 1.5, 3.5], bD: [30, 220], bR: [70, 50, 50], strip: [22, 36], stripTau: [2.5, 6],      // bursts (weak storms, and stripped ones): the supply of a burst relative to the background ascent, how much of the vortex's own convergence a weak storm gives up to them, the share of the background left outside them, how much sooner the next one comes when none is under way, the mean time between them (h), the least gap (h) and the extra wait after a storm's convection is stripped, the vortex winds (m/s) over which they give way to the organised core, the diurnal factor of their birth (its floor, its peak, the local hour of the peak, its width in h), how far downshear they sit (km, from a weak shear to a strong one), their radius (km: base, with intensity, random); the shear (kt, raised by up to 15 % where the air is dry) over which a storm's convection is stripped to one side, and the time it takes to strip and to recover (h)
   tauCi: 9000, dzCi: 0.4, ciOut: 8, ciTex: [0.2, 0.25], ciDt: 300,      // infrared: the life of the cirrus the convection spreads (s), its top's fall (km an hour), the upper outflow that spreads it (m/s), the texture on its thickness (cell and cluster scale), how often it is advected (s)
   outflow: 4, gsW: 1.6,                                 // the upper-level outflow (m/s) that carries stratiform rain outward from the core; the stratiform rain of an extratropical transition's warm sector (mm/h)
   tauN: [1200, 900], tauG: 3 * 3600, zmax: 0.05, nu: 0, meanStretch: 0, zCap: 3e-3, eye: 0.8, tauA: [1500, 7200],     // relaxation of the mean vorticity to the engine's (inner and outer, s); the time the efficiency adapts over; the cap on |zeta| (1/s); the smoothing of zeta per step; the damping time of the departures from the circle mean in the core and outside it (s: what the third dimension and the convective heating do to the two-dimensional instabilities of a ring); the share of the circle-mean stretching that is kept (the rest is the engine's to say), the vorticity above which stretching stops growing with it (1/s), the eye's share of the radius of maximum wind
@@ -84,7 +97,7 @@ function Nest(o) {
   const mk = () => new Float32Array(NN);
   this.zeta = mk(); this.Q = mk(); this.qn = mk(); this.cl = mk(); this.cl2 = mk(); this.rcB = mk(); this.wS = mk(); this.cir = mk(); this.cih = mk(); this.uc = mk(); this.vc = mk(); this.tn1 = null; this.tn2 = null; this.vu = null; this.vv = null; this.turbOn = false; this.rc = mk(); this.rs = mk(); this.P = mk();         // vorticity, column water, supply noise, convective and stratiform rain (mm/h), condensation (mm/s)
   this.wb = mk(); this.Wc = mk(); this.dv = mk(); this.U = mk(); this.V = mk(); this.us = mk(); this.vs = mk();     // boundary-layer ascent, convective mass flux, divergence, the swirl, the stratiform flow
-  this.lf = mk(); this.lfD = mk(); this.lfM = mk(); this.t1 = mk(); this.t2 = mk(); this.t3 = mk(); this.sc = [mk(), mk(), mk(), mk(), mk(), mk()];
+  this.lf = mk(); this.lfD = mk(); this.lfM = mk(); this.t1 = mk(); this.t2 = mk(); this.t3 = mk(); this.sc = [mk(), mk(), mk(), mk(), mk(), mk(), mk(), mk()];
   this.dep = { ix: new Int32Array(NN), iy: new Int32Array(NN), fx: mk(), fy: mk() };
   this.rr = mk(); this.cth = mk(); this.sth = mk(); this.gout = mk(); this.edge = mk(); this.edgeS = mk(); this.rbin = new Int16Array(NN);
   for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
@@ -99,10 +112,11 @@ function Nest(o) {
   this.zT = new Float32Array(NR + 1); this.gz = new Float32Array(NR + 1);                                  // the engine's mean vorticity by radius (km); the correction that pulls the mean to it
   this.eDry = mk(); this.eQs = mk(); this.eQb = mk(); this.eQc = mk(); this.eBg = mk(); this.eVent = mk();                                 // the air round the storm, cell by cell: the sea's saturation, the environment's moisture, the threshold, the background ascent, the shear's ventilation
   this.f0 = null; this.f1 = null; this.cur = null; this.lastDt = 120; this.lfOn = false; this.vNest = 0; this.qNorm = 1; this.rmaxN = 30;
+  this.rng2 = new Rng(this.seed ^ 0x5bd1e995); this.bm = [mk(), mk(), mk()]; this.bf = mk(); this.bs = [{ t: -1, a: 0 }, { t: -1, a: 0 }, { t: -1, a: 0 }]; this.bSince = 1e9; this.strip = 0; this.wkB = 0; this.ef = 0.3; this.efN = 0; this.gcir = mk(); this.szFg = 0; this.ciK = 1; this.tauCiE = PAR.tauCi; this.dzCiE = PAR.dzCi;     // the eye's cloud fill and its random walk (a stream of its own: the radar's rain does not depend on the picture), the cirrus' outflow shape, speed, life and sinking
 }
 
 /* ---- the forcing: what the engine says the storm and its surroundings are (see forcingOf) --------------------------------------------------------------------------- */
-const FKEYS = ['clat', 'clon', 'lat', 'vmax', 'rmax', 'shear', 'shdir', 'uem', 'vem', 'ued', 'ved', 'head', 'spd', 'rh', 'sst', 'eta', 'etdir', 'conv', 'org', 'cold'];
+const FKEYS = ['clat', 'clon', 'lat', 'vmax', 'rmax', 'shear', 'shdir', 'uem', 'vem', 'ued', 'ved', 'head', 'spd', 'rh', 'sst', 'eta', 'etdir', 'conv', 'org', 'cold', 'erc'];
 function lerpForcing(a, b, t) {
   if (!b || t <= 0) return a; if (t >= 1) return b;
   const f = Object.assign({}, a);
@@ -151,6 +165,17 @@ Nest.prototype.init = function (f) {                                           /
   const qn = this.qn; for (let k = 0; k < NN; k++) qn[k] = (this.rng.next() + this.rng.next() - 1) * 2.449;
   this.blur(qn, this.t1); this.blur(qn, this.t1);
   let s2 = 0; for (let k = 0; k < NN; k++) s2 += qn[k] * qn[k]; this.qNorm = 1 / Math.sqrt(s2 / NN); for (let k = 0; k < NN; k++) qn[k] *= this.qNorm;
+  this.sz = sizeOf(f);
+  { const vN0 = f.vmax * this.m, rb = this.rng2.next(); this.strip = sm01(f.shear * this.m / KT * (1 + 0.5 * Math.max(0, 0.6 - f.rh)), PAR.strip[0], PAR.strip[1]); this.wkB = Math.max(1 - sm01(vN0, PAR.bWk[0], PAR.bWk[1]), this.strip) * (1 - sm01(f.eta || 0, 0.2, 0.6));
+    this.initCanopy(f);
+    if (this.wkB > 0.3 && rb < 0.7) this.burstBirth(f, vN0, f.shear * this.m / KT, 1); }            // (a weak storm is found with a burst under way, most of the time)
+};
+/* a strong storm is found with its cirrus canopy already spread (a hurricane that the floater opens on has had days of it, the nest has had two hours): the canopy of the real majors, a plateau of high thick cirrus out to
+   about 95 km that thins and sinks to about 9 km (-28 C) at 250 km and more, scaled by the storm's size; a weak storm has none, its convection makes it */
+Nest.prototype.initCanopy = function (f) {
+  const P = PAR, mm = this.m, org = sm01(f.vmax * mm, 20, 50) * (1 - this.strip); if (org <= 0.02) return;
+  const szF = clamp((this.sz || 100) * mm / P.ciSz, 0.4, 1.8), S = Math.pow(szF, 0.8), rr = this.rr, cir = this.cir, cih = this.cih, rm = Math.max(f.rmax * mm, 5);
+  for (let k = 0; k < NN; k++) { const rg = rr[k] * mm; cir[k] = org * (1 - 0.45 * sm01(rg, 140 * S, 330 * S)) * sm01(rg, 0.5 * rm, 1.2 * rm); cih[k] = 15.6 - 6.5 * sm01(rg, 90 * S, 260 * S); }
 };
 Nest.prototype.blur = function (a, tmp) {                                       // [1 2 1]/4 in x then y (periodic), in place
   for (let j = 0; j < N; j++) { const o = j * N; for (let i = 0; i < N; i++) tmp[o + i] = 0.25 * a[o + ((i + N - 1) & 255)] + 0.5 * a[o + i] + 0.25 * a[o + ((i + 1) & 255)]; }
@@ -329,11 +354,51 @@ function sizeOf(f) {                                                           /
   while (i < NR - 1 && f.vt[i] >= thr) i++;
   return i;
 }
+/* bursts: a weak storm (a disturbance, a depression, a weak tropical storm), and a stronger one whose convection the shear has stripped to one side, rains in episodes, not all over: a few coherent masses of rain 100 to 300 km across,
+   one about every half day, each growing for a few hours, mature for a few and decaying, born mostly in the local night (the cold area peaks in the early morning), sitting downshear of the swirl by up to 150 to 300 km in a sheared
+   storm (the swirl is bare, thin cirrus and low cloud, between them) and closer in a calm one; what is outside them is a fifth of the usual scattered showers. A mass is a field the swirl carries and shears like the clusters, and the
+   convection feeds on it as on the broad ascent (see convect). The stream of random numbers is the picture's own, so a hurricane's radar is not changed by them. */
+const diurnal = (lst) => { const D = PAR.bDiu, dh = ((lst - D[2] + 36) % 24) - 12; return D[0] + D[1] * Math.exp(-(dh / D[3]) * (dh / D[3])); };           // how much likelier a burst is to be born at this local solar hour (h): most in the night, never none
+Nest.prototype.burstBirth = function (f, vN, shK, age0) {
+  const P = PAR, r = this.rng2, mm = this.m, bs = this.bs; let i = 0; while (i < 3 && bs[i].t >= 0) i++; if (i >= 3) return;
+  const u = () => r.next(), th = shK < 4 ? u() * 2 * Math.PI : f.shdir + (u() + u() + u() - 1.5) * 1.1;
+  const D = (P.bD[0] + (P.bD[1] - P.bD[0]) * sm01(shK, 3, 14) * (0.55 + 0.45 * u())) * (1 - 0.45 * sm01(vN, 20, 32)) / mm, R = (P.bR[0] + P.bR[1] * sm01(vN, 10, 26) + P.bR[2] * u()) / mm;
+  const Rb = R, Dx = Math.max(D, sm01(shK, 6, 14) * 1.1 * Rb), x0 = Dx * Math.cos(th), y0 = Dx * Math.sin(th), rr = this.rr, ct = this.cth, st = this.sth, map = this.bm[i];
+  for (let k = 0; k < NN; k++) { const d = Math.hypot(rr[k] * ct[k] - x0, rr[k] * st[k] - y0) / R; map[k] = d > 2.2 ? 0 : Math.exp(-d * d * d); }
+  const b = bs[i]; b.tg = (2 + 2 * u()) * 3600; b.tm = (2 + 3 * u()) * 3600; b.td = (2 + 3 * u()) * 3600; b.amp = 0.75 + 0.5 * u(); b.t = age0 > 0 ? age0 * u() * (b.tg + b.tm + b.td) : 0; b.a = 0; this.bSince = 0;
+};
+Nest.prototype.burstStep = function (f, dt) {
+  const P = PAR, mm = this.m, vN = this.vNest * mm, shK = f.shear * mm / KT, bs = this.bs, bm = this.bm, bf = this.bf;
+  { const sh = shK * (1 + 0.5 * Math.max(0, 0.6 - f.rh)), tg = sm01(sh, P.strip[0], P.strip[1]), tau = (tg > this.strip ? P.stripTau[0] : P.stripTau[1]) * 3600, was = this.strip; this.strip += (tg - this.strip) * (1 - Math.exp(-dt / tau));
+    if (was < 0.25 && this.strip >= 0.25) this.bSince = -P.bHold * 3600; }                                  // (convection stripped to one side: the swirl is bare for half a day before the first new burst)
+  this.wkB = Math.max(1 - sm01(vN, P.bWk[0], P.bWk[1]), this.strip) * (1 - sm01(f.eta || 0, 0.2, 0.6));                 // (a post-tropical system has its own warm sector, front and dry slot: no bursts)
+  let any = false;
+  for (let i = 0; i < 3; i++) { const b = bs[i]; if (b.t < 0) continue; b.t += dt; const t = b.t, T = b.tg + b.tm + b.td;
+    if (t > T) { b.t = -1; b.a = 0; continue; } b.a = b.amp * (t < b.tg ? sm01(t, 0, b.tg) : t < b.tg + b.tm ? 1 : 1 - sm01(t - b.tg - b.tm, 0, b.td)); any = true; }
+  this.bSince += dt;
+  if (this.wkB > 0.05 && this.bSince > P.bGap * 3600) {
+    const utc = this.f0 && this.f0.utc != null ? this.f0.utc + (this.t - this.tF0) / 3600 : 6 + this.t / 3600, lst = (((utc + f.clon / 15) % 24) + 24) % 24;
+    const c = (N * N + N) / 2, env = this.eBg[c] * this.eDry[c], rate = this.wkB * env * (any ? 1 : P.bCatch) * diurnal(lst) / P.bT;      // per hour (a moister, more favourable air makes more of them; with none under way the next comes sooner)
+    if (this.rng2.next() < 1 - Math.exp(-rate * dt / 3600)) { this.burstBirth(f, vN, shK, 0); any = true; }
+  }
+  if (any) { bf.fill(0); for (let i = 0; i < 3; i++) if (bs[i].t >= 0 && bs[i].a > 0) { const a = bs[i].a, m = bm[i]; for (let k = 0; k < NN; k++) bf[k] += a * m[k]; } }
+  else if (this.bAny) bf.fill(0);
+  this.bAny = any;
+};
+/* the cirrus canopy's numbers from the storm: a strong storm's outflow is faster and its thick cirrus lives longer and sinks less, and all of it scales with the storm's size (a compact storm's canopy is a few
+   hundred km across, a large one's much more); the outflow's shape follows the size too */
+Nest.prototype.canopyNumbers = function () {
+  const P = PAR, org = sm01(this.vNest * this.m, 20, 50), szF = clamp((this.sz || 100) * this.m / P.ciSz, 0.4, 1.8);
+  this.ciK = (P.ciOutK[0] + (P.ciOutK[1] - P.ciOutK[0]) * org) * Math.pow(szF, 0.8); this.tauCiE = P.tauCi * (1 + P.ciLife * org) * Math.pow(szF, 0.7) / (1 + 1.2 * this.strip); this.dzCiE = P.dzCi * (1 - P.ciSink * org);
+  if (!(Math.abs(Math.log(szF / (this.szFg || 1e-3))) < 0.08)) { this.szFg = szF; const go = this.gcir, rr = this.rr, m = this.m, Lo = P.ciLo * szF; for (let k = 0; k < NN; k++) { const rg = Math.max(rr[k], 1) * m; go[k] = sm01(rg, 5, 40) * Math.exp(-rg / Lo); } }
+};
 Nest.prototype.step = function (dt) {
   const f = this.forcingAt(this.t), P = PAR; this.cur = f; this.lastDt = dt;
   if (this.tabAt < 0 || this.t - this.tabAt > 600) { this.zT.set(vorticityOf(f.vt)); this.tabAt = this.t; this.sz = sizeOf(f); }
   const z = this.zeta, Q = this.Q, qn = this.qn, rc = this.rc, rs = this.rs, U = this.U, V = this.V, us = this.us, vs = this.vs, rr = this.rr, lf = this.lf, lfOn = this.lfOn, ct = this.cth, st = this.sth;
   this.winds(f);
+  this.burstStep(f, dt);
+  this.canopyNumbers();
   // the stratiform flow: half the swirl, the upper environment, and the outflow
   { const uo = P.outflow / this.m, ued = 0.45 * f.ued, ved = 0.45 * f.ved, go = this.gout; for (let k = 0; k < NN; k++) { const g = uo * go[k]; us[k] = 0.55 * U[k] + ued + g * ct[k]; vs[k] = 0.55 * V[k] + ved + g * st[k]; } }
   // advection: the swirl carries vorticity, water, the supply noise and the convective rain; the stratiform flow its own rain
@@ -341,6 +406,7 @@ Nest.prototype.step = function (dt) {
   this.departure(U, V, dt);
   this.gather([z], sc, [false]); this.gatherOpen([Q, rc], [sc[1], sc[2]], [true, true]);
   this.linear(qn, this.cl, sc[3], sc[4]); this.linear(this.cl2, this.cl2, sc[5], sc[5]);
+  { const bs = this.bs, bm = this.bm; for (let i = 0; i < 3; i++) if (bs[i].t >= 0) { this.linear(bm[i], bm[i], sc[6], sc[6]); bm[i].set(sc[6]); } }
   z.set(sc[0]); Q.set(sc[1]); rc.set(sc[2]); qn.set(sc[3]); this.cl.set(sc[4]); this.cl2.set(sc[5]);
   if (this.steps % 30 === 0 && this.steps > 0) { this.clMix(Math.exp(-30 * dt / P.clTau)); this.clMix2(Math.exp(-30 * dt / P.cl2Tau)); }
   this.departure(us, vs, dt);
@@ -348,7 +414,7 @@ Nest.prototype.step = function (dt) {
   this.ciAcc += dt;
   if (this.ciAcc >= P.ciDt) {                                                      // the cirrus is slow and passive: its flow and its advection are done every few minutes, with the time waited (a third of the cost of doing it at every step)
   // the upper flow that carries the cirrus: the environment's flow aloft and the shear (the plumes go downshear), a weak anticyclonic residue of the swirl and the outflow (an anvil spreads out, curving the way an upper high turns)
-    { const oc = P.ciOut / this.m, shx = 0.8 * f.shear * Math.cos(f.shdir), shy = 0.8 * f.shear * Math.sin(f.shdir), go = this.gout, uc = this.uc, vc = this.vc; for (let k = 0; k < NN; k++) { const g = oc * go[k]; uc[k] = -0.2 * U[k] + f.ued + shx + g * ct[k]; vc[k] = -0.2 * V[k] + f.ved + shy + g * st[k]; } }
+    { const oc = P.ciOut * this.ciK / this.m, shx = 0.8 * f.shear * Math.cos(f.shdir), shy = 0.8 * f.shear * Math.sin(f.shdir), go = this.gcir, uc = this.uc, vc = this.vc; for (let k = 0; k < NN; k++) { const g = oc * go[k]; uc[k] = -0.2 * U[k] + f.ued + shx + g * ct[k]; vc[k] = -0.2 * V[k] + f.ved + shy + g * st[k]; } }
     this.departure(this.uc, this.vc, this.ciAcc); this.gatherOpen([this.cir, this.cih], [sc[0], sc[1]], [true, true]); this.cir.set(sc[0]); this.cih.set(sc[1]); this.ciAcc = 0;
   }
   // noise: the variability of the supply, refreshed a little each other step
@@ -374,9 +440,19 @@ Nest.prototype.step = function (dt) {
     for (let k = 0; k < NN; k++) { const r = rr[k], b = Math.min(NR - 1, Math.floor(r)), t = r - b, zb = bz[b] * (1 - t) + bz[b + 1] * t, a = aOut + (aIn - aOut) * (1 - sm01(r, rA, 1.6 * rA)); z[k] += g[b] * (1 - t) + g[b + 1] * t - a * (z[k] - zb); } }
   if (P.nu > 0) this.smooth(z, this.t1, P.nu);
   // the efficiency adapts so the convection supports the engine's intensity
-  { const e = Math.log(Math.max(f.vmax, 3) / Math.max(this.vNest, 3)); this.gI = clamp(this.gI + e * dt / P.tauG, -0.8, 0.8); this.g = Math.exp(clamp(0.5 * e + this.gI, -0.9, 0.9)); }
+  { const e = Math.log(Math.max(f.vmax, 3) / Math.max(this.vNest, 3)); this.gI = clamp(this.gI + e * dt / P.tauG, -0.8, 0.8); this.g = Math.exp(clamp(0.5 * e + this.gI, -0.9, 0.9 - 0.75 * this.strip)); }                  // (the efficiency does not make up for convection that the shear has stripped)
+  this.eyeFill(f, dt);
   if (this.turbOn) this.turbStep(dt);
   this.t += dt; this.steps++;
+};
+/* how filled with cloud the eye is (0 clear, 1 full): a storm that is still getting its eye, one that is intensifying fast or replacing its eyewall, a sheared one and one whose convection is stripped have cloud-filled eyes (a clear
+   eye comes a day into a rapid intensification), and the fill wanders over hours (a random walk with a memory of a few hours), so about half the frames of a category 2 or 3 storm show a filled eye */
+Nest.prototype.eyeFill = function (f, dt) {
+  const P = PAR, mm = this.m, vN = this.vNest * mm, fb = this.f1 || f, dvdt = (fb.vmax - this.f0.vmax) * mm / KT, shK = f.shear * mm / KT, T = P.eyeT, r = this.rng2;
+  const tf = 0.1 + 0.6 * sm01(dvdt, 0.25, 1.1) + 0.55 * (f.erc || 0) + 0.35 * (1 - sm01(vN, 33, 58)) + 0.5 * sm01(shK, 12, 24) + 0.9 * (this.strip || 0);
+  const g = (r.next() + r.next() + r.next() - 1.5) * 2, a = Math.exp(-dt / T[1]);
+  this.efN = a * this.efN + Math.sqrt(1 - a * a) * T[2] * g;
+  this.ef += (clamp(tf + this.efN, 0, 1) - this.ef) * (1 - Math.exp(-dt / T[0]));
 };
 /* the wind a Doppler radar sees (true m/s): the nest's own wind (times the scale) plus what a 2-km grid cannot hold: turbulence (a metre a second, more in strong wind and in rain, correlated over a few km and gone in minutes) and the outflow of the downdrafts
    of the heavier cells (away from the rain, with the rain's gradient); the first call switches the noise on (it costs a few ms a step) */
@@ -407,11 +483,11 @@ Nest.prototype.convect = function (f, dt, fcor) {
   const mm = this.m, vN = this.vNest * mm, fV = f.vmax * mm, sdc = Math.cos(f.shdir), sds = Math.sin(f.shdir), rfd = f.head - Math.PI / 4, crf = Math.cos(rfd), srf = Math.sin(rfd);
   const trA = clamp(f.spd * mm / 8, 0, 1) * 0.45, ventK = 1 - 0.4 * sm01(fV, 45, 70), eQs = this.eQs, eQb = this.eQb, eQc = this.eQc, eBg = this.eBg, eVent = this.eVent, qeV = P.QenvV * sm01(fV, 10, 30);
   const shA = P.shAmp * sm01(f.shear * mm, 3, 13) * (1 - 0.45 * sm01(vN, 22, 38)), cdl = Math.cos(f.shdir + Math.PI / 4), sdl = Math.sin(f.shdir + Math.PI / 4), eDry = this.eDry;
-  const Qc = P.Qc, sz = this.sz || 100, exT = Math.max(eta, sm01(sz, 170, 300)), cl2 = this.cl2, rcB = this.rcB, wS = this.wS, cir = this.cir, cih = this.cih, aCi = Math.exp(-dt / P.tauCi), dzCi = dt * P.dzCi / 3600;
+  const Qc = P.Qc, sz = this.sz || 100, exT = Math.max(eta, sm01(sz, 170, 300)), cl2 = this.cl2, rcB = this.rcB, wS = this.wS, cir = this.cir, cih = this.cih, aCi = Math.exp(-dt / this.tauCiE), dzCi = dt * this.dzCiE / 3600, ciSrc = P.ciSrc;
   const favC = sm01(f.rh, 0.25, 0.55) * sm01(f.sst, 25.5, 28), Rsup = Math.min(330, Math.max(P.bgR[0] + (P.bgR[1] - P.bgR[0]) * favC, 0.85 * sz + 40)) * (1 - 0.3 * sm01(vN, 30, 50)), bgS = 1 - P.bgOrg * sm01(vN, 28, 45) * 1.13, Lsc = clamp(sz * (1 + 0.6 * eta), 150, 420), etdW = 14 + 0.03 * Lsc, sg1 = P.bgSig[0], sg2 = P.bgSig[1], sg3 = P.bgSig[2], sg0 = -0.5 * (sg1 * sg1 + sg2 * sg2 + sg3 * sg3);
   const aEnv = dt / P.tauEnv, pm = P.Pmax * this.g * f.conv, aW = P.aW * clamp(this.g, 0.5, 1.8), aUp = 1 - Math.exp(-dt / P.tauUp), aDn = Math.exp(-dt / P.tauC2), aS = Math.exp(-dt / P.tauS), bS = 1 - aS;
   const kr = P.kr[0] + (P.kr[1] - P.kr[0]) * sm01(vN, 22, 50), orgS = sm01(vN, 30, 50), orgV = sm01(vN, 21, 33), vEff = sm01(fV, P.vOn[0], P.vOn[1]), iH = 1 / P.H, ventR = 150 + 3 * rmax, edgeS = this.edgeS, bdm = this.bd, rb = this.rbin, msk = 1 - P.meanStretch, zc = P.zCap;
-  const pcS = P.pcv * (1 + 20 * sm01(vN, 20, 40)), eyeR = P.eye * this.rmaxN, eyeA = sm01(vN, 22, 36) * (1 - 0.9 * eta);                                            // the eye: inside the nest's own radius of maximum wind, once the vortex is strong enough to have one
+  const bAmp = P.bAmp * (1 - 0.3 * sm01(vN, 14, 26)), bf = this.bf, wkB = this.wkB, stK = 1 - 0.97 * this.strip, vK = 1 - P.bVk * wkB, pcS = P.pcv * (1 + 20 * sm01(vN, 20, 40)), eyeR = P.eye * this.rmaxN, eyeA = sm01(vN, 22, 36) * (1 - sm01(eta, 0.05, 0.4)) * (1 - 0.8 * this.strip);                                            // the eye: inside the nest's own radius of maximum wind, once the vortex is strong enough to have one
   for (let k = 0; k < NN; k++) {
     const eS = 1 - (1 - edgeS[k]) * (1 - exT), r = rr[k], l = lfOn ? lfM[k] : 0, c = ct[k], s = st[k];
     const sp = Math.sqrt(mm * mm * (U[k] * U[k] + V[k] * V[k]) + P.u0 * P.u0), nz = Math.max(0, 1 + P.sq * qn[k] + P.sc * cl[k] * (1 - (1 - sm01(r, 1.2 * rmax, 3 * rmax)) * orgS)) * eS;
@@ -422,7 +498,10 @@ Nest.prototype.convect = function (f, dt, fcor) {
     let w = orgV * wb[k] + (1 - orgV) * wS[k]; w *= 1 + trA * gs * (c * crf + s * srf);
     const rin = (r - rmax) / (P.inR * rmax + 25), inS = r > 0.9 * rmax ? orgS * P.inA * Math.exp(-rin * rin) * sm01(r, 0.9 * rmax, 1.25 * rmax) : 0, rq = r / Rsup, nzB = Math.exp(sg0 + sg1 * qn[k] + sg2 * cl[k] + sg3 * cl2[k]) * eS;
     const nzV = orgV * nz + (1 - orgV) * nzB;
-    let Sq = (Qc / P.Hq) * (w * vEff * nzV + (wBg * P.bgA * bgS * Math.exp(-rq * rq * Math.sqrt(rq)) + inS * eBg[k]) * nzB) * (1 - P.landSq * l) * (shA > 0 ? Math.max(0.05, 1 + 1.3 * shA * (c * cdl + s * sdl) * sm01(r, 0.2 * rmax, 1.6 * rmax)) : 1) * eDry[k];
+    const bgP = wBg * P.bgA * bgS * Math.exp(-rq * rq * Math.sqrt(rq)), inP = inS * eBg[k] * stK;
+    let bgT = (bgP + inP) * nzB;
+    if (wkB > 0.02) bgT = bgP * nzB * (1 - wkB * (1 - P.bQ)) + inP * nzB + wkB * wBg * eBg[k] * P.bgA * bAmp * bf[k] * Math.exp(0.55 * qn[k] + 0.5 * cl[k] - 0.276) * eS;                // (bursts: coherent masses in place of the background ascent's scattered cells)
+    let Sq = (Qc / P.Hq) * (w * vEff * nzV * stK * vK + bgT) * (1 - P.landSq * l) * (shA > 0 ? Math.max(0.05, 1 + 1.3 * shA * (c * cdl + s * sdl) * sm01(r, 0.2 * rmax, 1.6 * rmax)) : 1) * eDry[k];
     // extratropical transition: lift ahead and to the left of the motion (the warm conveyor belt), a front behind it, a dry slot to the rear
     let dry = 0, strat = 0;
     if (eta > 0.02) {
@@ -430,7 +509,7 @@ Nest.prototype.convect = function (f, dt, fcor) {
       const aw = (along - 0.35 * L) / (0.8 * L), cw = (across - 0.2 * L) / (0.6 * L), warm = Math.exp(-aw * aw - cw * cw);
       const dist = Math.abs(across - 0.55 * along - 0.13 * L), front = along < 0.1 * L ? Math.exp(-dist * dist / (2 * etdW * etdW)) * sm01(-along, 0.07 * L, 0.27 * L) * Math.exp(along / (0.85 * L)) : 0;
       const ad = (along + 0.3 * L) / (0.37 * L), cd = (across + 0.37 * L) / (0.3 * L); dry = Math.exp(-ad * ad - cd * cd);
-      Sq += eta * (Qc / P.Hq) * (P.etW * warm + P.etF * front) * nzB * (1 - 0.85 * dry);
+      Sq = Sq * (1 - 0.6 * eta * dry) + eta * (Qc / P.Hq) * (P.etW * warm + P.etF * front) * nzB * (1 - 0.85 * dry);                   // (the dry slot is clear of convection of every kind)
       strat = eta * warm * P.gsW * eS * (0.5 + 0.5 * Math.max(0, 1 + 0.6 * cl[k] + 0.4 * cl2[k])) * (1 - 0.8 * dry);
     }
     // shear ventilates the upshear side (dry air in: the moisture there relaxes toward the environment's), land dries the column
@@ -449,9 +528,10 @@ Nest.prototype.convect = function (f, dt, fcor) {
     const R = p * 3600 * kr * (1 + Math.min(P.pcx, p / pcS)), rcn = rc[k] + (R - rc[k]) * (R > rc[k] ? aUp : 1 - aDn);
     rc[k] = ey > 0 ? rcn * (1 - P.eyeClr * ey) : rcn;
     { const e0 = cir[k] * aCi, z0 = cih[k] - dzCi;                                                                    // the cirrus: a cell's top (km) and how opaque it is; the old cirrus thins and sinks, the highest top stays
-      if (rcn > 0.05) { const zc = 8.5 + 2.0 * Math.log(1 + rcn / 3), es = 1 - Math.exp(-rcn / 2.5); if (es > e0) { cir[k] = es; cih[k] = e0 > 0.15 && z0 > zc ? z0 : zc; } else { cir[k] = e0; cih[k] = z0 < 6 ? 6 : z0; } } else { cir[k] = e0; cih[k] = z0 < 6 ? 6 : z0; }
-      if (ey > 0) cir[k] *= 1 - 0.8 * P.eyeClr * ey; }
-    const sSrc = P.sigS * (P.tauS / P.tauC2) * rcn + P.gsC * rcB[k] + P.gs * Math.min(1, Math.max(0, w * vEff) / 0.4) * (1 - 0.7 * eta * dry) + strat;
+      const rcb = ciSrc * rcB[k] * (1 - ey), rcs = rcb > rcn ? rcb : rcn;                                                           // (an anvil is wider than its cell: the blurred rain is a source too)
+      if (rcs > 0.05) { const zc = topZ(rcs), es = 1 - Math.exp(-rcs / 2.5); if (es > e0) { cir[k] = es; cih[k] = e0 > 0.15 && z0 > zc ? z0 : zc; } else { cir[k] = e0; cih[k] = z0 < 6 ? 6 : z0; } } else { cir[k] = e0; cih[k] = z0 < 6 ? 6 : z0; }
+      if (ey > 0) cir[k] *= 1 - 0.9 * ey; }
+    const sSrc = P.sigS * (P.tauS / P.tauC2) * rcn + P.gsC * rcB[k] + P.gs * Math.min(1, Math.max(0, w * vEff) / 0.4) * (1 - 0.7 * eta * dry) * stK + strat;
     rs[k] = ey > 0 ? (rs[k] * aS + bS * sSrc * (1 - 0.95 * ey)) * (1 - 0.25 * ey) : rs[k] * aS + bS * sSrc;
   }
 };
@@ -483,7 +563,7 @@ function forcingOf(S, par, env, h, m) {
   const HS = root.HFStorms, sg = S.lat < 0 ? -1 : 1, st = [0, 0, 0, 0, 0, 0];
   if (env && typeof env.steer === 'function') env.steer(S.lat, S.lon, st);
   const cx = S.cx || 0, cy = S.cy || 0, vt = new Float32Array(NR), W = par.wind;
-  let Vs, rmax;
+  let Vs, rmax, ercS = 0;
   if (S.th === 'wv') {                                                         // a disturbance: a broad weak vortex (its wind is the engine's, its size is not known to it)
     Vs = clamp(S.vr, 8, 34) * KT; rmax = 100 + 2 * (34 - clamp(S.vr, 8, 34));
     const tail = (r) => Vs * Math.pow(rmax / r, 0.4);
@@ -501,13 +581,14 @@ function forcingOf(S, par, env, h, m) {
       ringInto(vt, rIn, wIn * Vb, nIn, (r) => wIn * Vb * Math.pow(rIn / r, 1.3));
       ringInto(vt, rOut, Vo, 2.5, tailOf(Pq));
       rmax = wIn > 0.5 ? rIn : rOut; Vs = Math.max(wIn * Vb, Vo);
+      ercS = sm(t / a) * (1 - sm((t - b) / X.d2));                          // how far the replacement is (0 before and after it): the eye fills with cloud during it
     } else ringInto(vt, rmax, Vs, nIn, tailOf(P));
   }
   const sh = S.lastShear * KT, sdx = st[4] - st[0], sdy = sg * (st[5] - st[1]);
   const subT = S.th === 'sc' || (S.th === 'wv' && S.sub), eta = S.th === 'ex' ? sm01(h - Math.max(S.etAt, 0), 0, W.ex ? W.ex.T : 60) : S.th === 'nl' ? 0.35 : subT ? 0.4 : 0;
   const F = {
     clat: S.lat, clon: S.lon, lat: Math.abs(S.lat), vmax: Vs, rmax, vt, shear: sh, shdir: Math.atan2(sdy, sdx), uem: (st[2] - cx) * KT, vem: sg * (st[3] - cy) * KT, ued: (st[4] - cx) * KT, ved: sg * (st[5] - cy) * KT,
-    head: Math.atan2(sg * cy, cx), spd: Math.hypot(cx, cy) * KT, rh: clamp(S.lastRh / 100, 0.1, 1), sst: S.lastSst, eta, etdir: Math.atan2(sg * cy, cx), conv: S.th === 'nl' ? 0.8 : 1, org: 0, sg, cold: subT ? 1 : 0,
+    head: Math.atan2(sg * cy, cx), spd: Math.hypot(cx, cy) * KT, rh: clamp(S.lastRh / 100, 0.1, 1), sst: S.lastSst, eta, etdir: Math.atan2(sg * cy, cx), conv: S.th === 'nl' ? 0.8 : 1, org: 0, sg, cold: subT ? 1 : 0, erc: ercS,
   };
   F.m = 1; F.szT = sizeOf(F); F.rmaxT = F.rmax;
   return m && m !== 1 ? scaleForcing(F, m) : F;
@@ -565,6 +646,7 @@ function irColor(t) {                                                          /
   let i = 1; while (i < S.length - 1 && t < S[i][0]) i++;
   const a = S[i - 1], b = S[i], u = (a[0] - t) / (a[0] - b[0]); return [a[1][0] + (b[1][0] - a[1][0]) * u, a[1][1] + (b[1][1] - a[1][1]) * u, a[1][2] + (b[1][2] - a[1][2]) * u];
 }
+const capZ = (z) => (z > 15.8 ? 15.8 + 2.0 * Math.tanh((z - 15.8) / 2.0) : z), topZ = (r) => capZ(8.5 + 2.0 * Math.log(1 + r / 3));      // the top (km) of a convective cell of rain rate r (mm/h), soft-capped near 17.8 km: the coldest real tops are -86 C, not -100
 const irTz = (ts, z, ztp, ttp) => (z <= ztp ? ts + (ttp - ts) * z / ztp : Math.max(-105, ttp - 9 * (z - ztp)));       // the temperature at height z (km): a straight fall to the tropopause, colder above it for a cell that overshoots
 Nest.prototype.irTb = function (out, ts0) {
   if (!this.dcr) this.display(0, true, true);
@@ -575,11 +657,45 @@ Nest.prototype.irTb = function (out, ts0) {
     let tb = ts;
     if (aL > 0) tb += 0.9 * aL * (irTz(ts, zk * (1 + 4.5 * sm01(qr, 0.94, 1.02)), ztp, ttp) - ts);                    // scattered low cloud
     const r1 = rc[k], r2 = rs[k];
-    if (r1 > 0.05 || r2 > 0.05) { const zt = Math.max(r1 > 0.05 ? 8.5 + 2.0 * Math.log(1 + r1 / 3) : 0, 7 + 2.4 * Math.log(1 + r2 / 0.5)); tb += (1 - Math.exp(-(r1 / 3 + r2 / 0.7))) * (irTz(ts, zk * zt, ztp, ttp) - tb); }     // the rain clouds
+    if (r1 > 0.05 || r2 > 0.05) { const zt = capZ(Math.max(r1 > 0.05 ? 8.5 + 2.0 * Math.log(1 + r1 / 3) : 0, 7 + 2.4 * Math.log(1 + r2 / 0.5))); tb += (1 - Math.exp(-(r1 / 3 + r2 / 0.7))) * (irTz(ts, zk * zt, ztp, ttp) - tb); }     // the rain clouds
     const e = ci[k]; if (e > 0.01) { const m = tb + e * (irTz(ts, zk * cz[k], ztp, ttp) - tb); if (m < tb) tb = m; }                                           // the cirrus over them
     out[k] = tb;
   }
+  this.irSmooth(out);
+  this.irEye(out, ts0, ztp, ttp, zk);
+  this.irTexture(out);
   return out;
+};
+/* the cold tops of a real storm are smooth (a few tenths of a degree between neighbours, not the 2 to 3 of a field of cells): the deep cloud is averaged over a few cells with only the cold pixels counting, so the rain-free gaps
+   and the edges stay as they are */
+Nest.prototype.irSmooth = function (tb) {
+  const P = PAR, m = P.irBlur | 0; if (m < 1 || P.irSm <= 0) return;
+  const a = this.t1, b = this.t2, w = this.sc[0], wo = this.sc[1], tmp = this.t3;
+  for (let k = 0; k < NN; k++) { const c = sm01(-tb[k], 25, 40); w[k] = c; a[k] = c * tb[k]; }
+  boxBlur(a, b, tmp, m); boxBlur(w, wo, tmp, m);
+  for (let k = 0; k < NN; k++) { const t = tb[k], c = sm01(-t, 25, 45); if (c > 0 && wo[k] > 1e-4) tb[k] = t + P.irSm * c * (b[k] / wo[k] - t); }
+};
+/* the eye as the satellite sees it: not the sea (a real eye is at most +21 C even at 135 kt, the sea 28 C: its air is humid and it holds thin cloud), a warm floor that is warmer the stronger the storm, a cloud that fills it more or less
+   (the eye fill: cool and white while a storm intensifies, a clear eye later), and a smooth ramp from the floor to the eyewall's cold top over two radii of maximum wind (+18 C at 5 km, -18 at 25 km, -55 at 35 km, -70 at 45 km at the Nolo peak) */
+Nest.prototype.irEye = function (tb, ts0, ztp, ttp, zk) {
+  const P = PAR, f = this.cur || this.f0, mm = this.m, vN = this.vNest * mm, eta = f.eta || 0;
+  const ea = sm01(vN, 22, 36) * (1 - sm01(eta, 0.05, 0.35)) * (1 - 0.85 * (this.strip || 0)); if (ea <= 0.01) return;
+  const Rm = Math.max(this.rmaxN, 5), r0 = P.eyeW[0] * Rm, r1 = P.eyeW[1] * Rm, rr = this.rr, cl = this.cl, qn = this.qn, ef = this.ef, strong = sm01(vN, 40, 60), dE = P.eyeD[0] + (P.eyeD[1] - P.eyeD[0]) * strong;
+  for (let k = 0; k < NN; k++) {
+    const r = rr[k]; if (r > 1.25 * r1) continue;
+    const q = 1 + 0.8 * P.eyeRag * cl[k], w = ea * (1 - sm01(r, r0 * q, r1 * q)); if (w <= 0) continue;                         // (a ragged edge from the cluster-scale noise only: the cell-scale one would speckle the rim)
+    const ts = ts0 + (this.lfOn ? 3 * this.lfM[k] : 0), fk = clamp(ef * (1.15 + 0.5 * cl[k] + 0.3 * qn[k]), 0, 1), tc = ts - dE, tcl = irTz(ts, zk * (P.eyeF[0] + P.eyeF[1] * fk), ztp, ttp);
+    tb[k] += w * (tc + fk * (tcl - tc) - tb[k]);
+  }
+};
+/* what is left of the texture: a little, on the cold tops only (more in weak storms, whose cells show) */
+Nest.prototype.irTexture = function (tb) {
+  const P = PAR, qn = this.qn, cl = this.cl, f = this.cur || this.f0, a = P.irTx * (1 + 1.6 * (1 - sm01(this.vNest * this.m, 20, 40))), eta = f.eta || 0;
+  for (let k = 0; k < NN; k++) { const t = tb[k]; if (t < -35) tb[k] = t + a * sm01(-t, 35, 60) * (0.55 * cl[k] + 0.45 * qn[k]); }
+  if (eta > 0.05) {                                                              // the shield of a transitioning system is made of fine streaks along the flow aloft (the frontal cloud's bands), not of cells
+    const c = Math.cos(f.shdir), s = Math.sin(f.shdir), off = [], A = P.irStreak * sm01(eta, 0.05, 0.5); for (let j = -6; j <= 6; j++) off.push([Math.round(j * c), Math.round(j * s)]);
+    for (let y = 6; y < N - 6; y++) for (let x = 6; x < N - 6; x++) { const k = y * N + x, t = tb[k]; if (t >= -15) continue; let sn = 0; for (let q = 0; q < 13; q++) sn += qn[(y + off[q][1]) * N + x + off[q][0]]; tb[k] = t + A * sm01(-t, 15, 35) * clamp(sn * 0.22, -2, 2); }
+  }
 };
 
 /* ---- the radar's picture --------------------------------------------------------------------------------------------------------------------------------------------------- */
@@ -589,6 +705,6 @@ function dbzOf(rc, rs) {                                                       /
 }
 Nest.prototype.dbz = function (out) { const rc = this.rc, rs = this.rs; for (let k = 0; k < NN; k++) out[k] = dbzOf(rc[k], rs[k]); return out; };
 
-root.HFNest = { N, NC, DX, NR, NE, PAR, create: (o) => new Nest(o), IR_STOPS, irColor, dbzOf, lerpForcing, vorticityOf, forcingOf, scaleForcing, scaleOf, landGrid, envGridOf, sm01 };
+root.HFNest = { N, NC, DX, NR, NE, PAR, create: (o) => new Nest(o), diurnal, IR_STOPS, irColor, dbzOf, lerpForcing, vorticityOf, forcingOf, scaleForcing, scaleOf, landGrid, envGridOf, sm01 };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
 /* ==== STORM NEST END ==== */

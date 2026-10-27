@@ -1,0 +1,256 @@
+[
+ {
+  "label": "td",
+  "seed": 7,
+  "hours": 48,
+  "every": 6,
+  "spin": 3,
+  "utc0": 0,
+  "base": {
+   "v": 28,
+   "rmax": 50,
+   "r34": 110,
+   "shear": 6.2,
+   "shdir": 0,
+   "sst": 28.5,
+   "rh": 0.68,
+   "lat": 14,
+   "lon": -117,
+   "spd": 3,
+   "head": 0.2
+  }
+ },
+ {
+  "label": "ts",
+  "seed": 7,
+  "hours": 36,
+  "every": 6,
+  "spin": 3,
+  "utc0": 0,
+  "base": {
+   "v": 45,
+   "rmax": 40,
+   "r34": 130,
+   "shear": 4.1,
+   "shdir": 0,
+   "sst": 28.8,
+   "rh": 0.7,
+   "lat": 15,
+   "lon": -150,
+   "spd": 4,
+   "head": 0.5
+  }
+ },
+ {
+  "label": "ri",
+  "seed": 7,
+  "hours": 36,
+  "every": 6,
+  "spin": 3,
+  "utc0": 0,
+  "base": {
+   "v": 65,
+   "rmax": 30,
+   "r34": 130,
+   "shear": 2.5,
+   "shdir": 0.5,
+   "sst": 29,
+   "rh": 0.72,
+   "lat": 16,
+   "lon": -157,
+   "spd": 4,
+   "head": 0.4
+  },
+  "prog": [
+   {
+    "h": 0,
+    "v": 65,
+    "rmax": 32
+   },
+   {
+    "h": 24,
+    "v": 125,
+    "rmax": 16
+   },
+   {
+    "h": 36,
+    "v": 130,
+    "rmax": 15
+   }
+  ]
+ },
+ {
+  "label": "major",
+  "seed": 7,
+  "hours": 24,
+  "every": 6,
+  "spin": 3,
+  "utc0": 0,
+  "base": {
+   "v": 125,
+   "rmax": 16,
+   "r34": 140,
+   "shear": 2.0,
+   "shdir": 0.5,
+   "sst": 29,
+   "rh": 0.74,
+   "lat": 17,
+   "lon": -157,
+   "spd": 5,
+   "head": 0.5
+  }
+ },
+ {
+  "label": "strip",
+  "seed": 7,
+  "hours": 30,
+  "every": 3,
+  "spin": 3,
+  "utc0": 0,
+  "base": {
+   "v": 120,
+   "rmax": 18,
+   "r34": 140,
+   "shear": 2.5,
+   "shdir": 0.8,
+   "sst": 28.5,
+   "rh": 0.55,
+   "lat": 21,
+   "lon": -165,
+   "spd": 5,
+   "head": 0.5
+  },
+  "prog": [
+   {
+    "h": 0,
+    "v": 120,
+    "shear": 2.5,
+    "rh": 0.55
+   },
+   {
+    "h": 6,
+    "v": 110,
+    "shear": 12,
+    "rh": 0.45
+   },
+   {
+    "h": 14,
+    "v": 65,
+    "shear": 16,
+    "rh": 0.35
+   },
+   {
+    "h": 30,
+    "v": 45,
+    "shear": 16,
+    "rh": 0.35
+   }
+  ]
+ },
+ {
+  "label": "et",
+  "seed": 7,
+  "hours": 72,
+  "every": 6,
+  "spin": 3,
+  "utc0": 0,
+  "base": {
+   "v": 95,
+   "rmax": 35,
+   "r34": 220,
+   "shear": 8,
+   "shdir": 0.7,
+   "sst": 26,
+   "rh": 0.65,
+   "lat": 28,
+   "lon": -70,
+   "spd": 9,
+   "head": 0.9,
+   "etdir": 0.9
+  },
+  "prog": [
+   {
+    "h": 0,
+    "v": 95,
+    "rmax": 35,
+    "lat": 28,
+    "sst": 27,
+    "eta": 0,
+    "shear": 6
+   },
+   {
+    "h": 24,
+    "v": 85,
+    "rmax": 50,
+    "lat": 33,
+    "sst": 25,
+    "eta": 0.15,
+    "shear": 14,
+    "spd": 12
+   },
+   {
+    "h": 48,
+    "v": 70,
+    "rmax": 80,
+    "lat": 41,
+    "sst": 20,
+    "eta": 0.7,
+    "shear": 20,
+    "spd": 16
+   },
+   {
+    "h": 72,
+    "v": 55,
+    "rmax": 110,
+    "lat": 50,
+    "sst": 14,
+    "eta": 1,
+    "shear": 25,
+    "spd": 18
+   }
+  ]
+ },
+ {
+  "label": "compact",
+  "seed": 7,
+  "hours": 12,
+  "every": 6,
+  "spin": 3,
+  "utc0": 0,
+  "base": {
+   "v": 105,
+   "rmax": 10,
+   "r34": 65,
+   "shear": 2,
+   "shdir": 0.5,
+   "sst": 29.5,
+   "rh": 0.72,
+   "lat": 16,
+   "lon": -99,
+   "spd": 4,
+   "head": 0.5
+  }
+ },
+ {
+  "label": "large",
+  "seed": 7,
+  "m": 2,
+  "hours": 12,
+  "every": 6,
+  "spin": 3,
+  "utc0": 0,
+  "base": {
+   "v": 105,
+   "rmax": 45,
+   "r34": 300,
+   "shear": 3,
+   "shdir": 0.5,
+   "sst": 28.5,
+   "rh": 0.72,
+   "lat": 24,
+   "lon": -64,
+   "spd": 6,
+   "head": 0.9
+  }
+ }
+]

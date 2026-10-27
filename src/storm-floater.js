@@ -30,7 +30,9 @@ function flEligible(S) { return !!S && S.alive && (S.th !== 'wv' || S.dist || S.
 function flStepDt() { return FL_SPEEDS[flSpeed] >= 1800 ? 2 * FL_DT : FL_DT; }                // (the two fastest speeds step the nest by 4 minutes, which it holds, so that 45 minutes a second is about 11 steps a second and not 22: no lag)
 function flSystem() { return flId && stormMgr ? stormMgr.get(flId) : null; }
 function flSeed(S) { return (HFStorms.hash5(stormMgr.seed, S.num, 17, 3, 1) >>> 0) || 1; }
-function flForcing(S, h, m) { return HFNest.forcingOf(S, stormMgr.par, stormEnv, h, m || (flNest ? flNest.m : 1)); }
+function flForcing(S, h, m) { const f = HFNest.forcingOf(S, stormMgr.par, stormEnv, h, m || (flNest ? flNest.m : 1)), d = simDate(h); f.utc = d.getUTCHours() + d.getUTCMinutes() / 60;
+  if (flEnvTest) { if (flEnvTest.shear != null) f.shear = flEnvTest.shear * 0.514444 / (f.m || 1); if (flEnvTest.rh != null) f.rh = flEnvTest.rh / 100; if (flEnvTest.sst != null) f.sst = flEnvTest.sst; }          // (tests: a chosen shear (kt), humidity (%) and sea temperature in place of the page's own)
+  return f; }          // (with the hour of the day in UTC: the nest's bursts are born mostly at night, local solar time)
 function flScale(S, h, prev) { const f = HFNest.forcingOf(S, stormMgr.par, stormEnv, h, 1); return HFNest.scaleOf(f.szT, f.rmaxT, prev); }          // the scale a system of this size wants: a larger storm gets a larger box (coarser cells)
 function flLook() {                                                              // the look-ahead state one hour on (the same state when there is none: the system ends or cannot be asked)
   const C = stormMgr.peek(flId, stormEnv), S = flSystem();
@@ -57,9 +59,11 @@ function flViewUI() {                                                           
   flLegend(); flDirty = true; flText(true);
 }
 function flEnvUpdate() {                                                         // the weather round the storm (sea temperature, humidity, shear on a 16-km grid of the nest's square) from the page's own fields: a dry, cold or sheared side makes the storm lopsided
-  const f = flNest.cur || flNest.f0; flEnvBuf = HFNest.envGridOf(stormEnv, f.clat, f.clon, f.sg, f, flEnvBuf, flNest.m); flNest.setEnv(flEnvBuf, f);
+  const f = flNest.cur || flNest.f0; flEnvBuf = HFNest.envGridOf(stormEnv, f.clat, f.clon, f.sg, f, flEnvBuf, flNest.m);
+  if (flEnvTest) { const g = flEnvBuf; for (let k = 0; k < g.sst.length; k++) { if (flEnvTest.sst != null) g.sst[k] = flEnvTest.sst; if (flEnvTest.rh != null) g.rh[k] = flEnvTest.rh / 100; if (flEnvTest.shear != null) g.sh[k] = flEnvTest.shear * 0.514444; } }
+  flNest.setEnv(flEnvBuf, f);
 }
-let flEnvBuf = null;
+let flEnvBuf = null, flEnvTest = null;
 function flLandUpdate() {                                                        // the land under the nest (it moves with the storm), from the page's own land test
   const f = flNest.cur || flNest.f0, lf = flLf || (flLf = new Float32Array(HFNest.N * HFNest.N));
   HFNest.landGrid(f.clat, f.clon, typeof stormLand === 'function' ? stormLand : isLand, lf, flNest.m);
@@ -88,7 +92,7 @@ function flOpen(id) {
 }
 function flClose() {
   if (!flOn) return;
-  flOn = false; cancelAnimationFrame(flRaf); flId = null; flNest = null;
+  flOn = false; cancelAnimationFrame(flRaf); flId = null; flNest = null; flEnvTest = null;
   if (flCanvas) { flCanvas.style.display = 'none'; const g = flCanvas.getContext('2d'); g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, flCanvas.width, flCanvas.height); }
   document.body.classList.remove('fl-on'); sstCanvas.style.opacity = flSstOpacity; $('fl-bar').hidden = true; $('fl-legend').style.display = 'none'; $('fl-legend-v').style.display = 'none';
   setPlaying(flPrevPlay); updateSpeedUI(); if (stormSel) { lastStormCardAt = 0; fillStormCard(); } if (olSel) { lastAoiCardAt = 0; fillAoiCard(); } stormsDirty = true; drawStorms();

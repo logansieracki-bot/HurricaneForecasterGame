@@ -4,7 +4,7 @@
 // program does, which docs/roadmap.md names). Needs a clean tree and Chromium for the browser drivers:
 //   PLAYWRIGHT_CHROMIUM_PATH=/path/to/chromium node tools/storm_mutants.mjs [--dry] [--base] [--only X1,S4] [--drivers node,save] [--jobs 3]
 // --dry   only checks that every edit anchor occurs exactly once and that the mutated file still parses; --base runs every driver on the unmodified tree (all must pass first);
-// --only  a comma list of mutant ids; --drivers  restricts the drivers to run (node, nest, storms, summary, place, save, gate, env, look, alerts, impacts, floater, floaterS, sat); --jobs  how many mutants run at once (default 3; each builds into its own directory under $MUT_DIR or the
+// --only  a comma list of mutant ids; --drivers  restricts the drivers to run (node, nest, nestir, storms, summary, place, save, gate, env, look, alerts, impacts, floater, floaterS, sat); --jobs  how many mutants run at once (default 3; each builds into its own directory under $MUT_DIR or the
 //         temp directory). It changes src/storms.js, src/template.html or index.html for the few seconds a build takes and puts them back itself;
 //         if it is killed in between, `git checkout -- src index.html` restores them. The drivers are the check functions cut out of tests/run.mjs
 //         by their opening comments (`// The storm layer on the Atlantic page`, `// Save / resume`, `async function checkEnsoHold`): keep them.
@@ -357,7 +357,7 @@ const mutants = [
   M('N40', NS, [E("inS = r > 0.9 * rmax ? orgS * P.inA * Math.exp(-rin * rin) * sm01(r, 0.9 * rmax, 1.25 * rmax) : 0,", "inS = 0,")], ['nest'], 'nothing rains round the eyewall (no inner-core shield)'),
   M('N41', NS, [E("this.gatherOpen([Q, rc], [sc[1], sc[2]], [true, true]);", "this.gather([Q, rc], [sc[1], sc[2]], [true, true]);")], ['nest'], 'the water and the convective rain leave the box and come back at the other side (periodic)'),
   M('N42', NS, [E("Lsc = clamp(sz * (1 + 0.6 * eta), 150, 420)", "Lsc = 150")], ['nest'], 'the shield of a transition is a fixed size, not the system\'s'),
-  M('N43', NS, [E("sm01(vN, 22, 36) * (1 - 0.9 * eta);", "sm01(vN, 22, 36);")], ['nest'], 'a transitioning low keeps its eye hole'),
+  M('N43', NS, [E("sm01(vN, 22, 36) * (1 - sm01(eta, 0.05, 0.4)) * (1 - 0.8 * this.strip);", "sm01(vN, 22, 36) * (1 - 0.8 * this.strip);")], ['nest'], 'a transitioning low keeps its eye hole'),
   M('N44', NS, [E("const kw = P.kw * this.m / (2 * DX)", "const kw = P.kw / (2 * DX)")], ['nest'], 'the boundary layer\'s pumping ignores the scale'),
   M('N45', NS, [E("exT = Math.max(eta, sm01(sz, 170, 300)),", "exT = 0,")], ['nest'], 'a large system\'s supply fades toward the box\'s edge like a small one\'s'),
   // ---- M18: the infrared picture, the white coasts, the two fastest clocks
@@ -374,11 +374,11 @@ const mutants = [
   M('G11', NS, [E("clamp(16.5 - 0.12 * Math.max(0, lat - 20), 9, 16.5)", "16.5")], ['nest'], 'the tropopause is as high at 50 N as at 15 N'),
   M('G12', NS, [E("ttp = -75 + 0.7 * Math.max(0, lat - 18)", "ttp = -75")], ['nest'], 'the tropopause is as cold at 50 N as at 15 N'),
   M('G13', NS, [E("zk = ztp / 16.5;", "zk = 1;")], ['nest'], 'poleward the clouds keep their tropical heights (cloud tops far colder than a mid-latitude cloud can have)'),
-  M('G14', NS, [E("const zc = 8.5 + 2.0 * Math.log(1 + rcn / 3)", "const zc = 3.5 + 2.0 * Math.log(1 + rcn / 3)")], ['nest'], 'the cirrus the convection spreads is made low'),
+  M('G14', NS, [E("const zc = topZ(rcs)", "const zc = topZ(rcs) - 5")], ['nest'], 'the cirrus the convection spreads is made low'),
   M('G15', NS, [E("tauCi: 9000,", "tauCi: 90000,")], ['nest'], 'the cirrus lives twenty-five hours'),
   M('G16', NS, [E("dzCi: 0.4,", "dzCi: 0,")], ['nest'], 'the cirrus keeps its height as it ages'),
-  M('G17', NS, [E("es = 1 - Math.exp(-rcn / 2.5)", "es = 0")], ['nest'], 'the convection makes no cirrus'),
-  M('G18', NS, [E("      if (ey > 0) cir[k] *= 1 - 0.8 * P.eyeClr * ey; }", " }")], ['nest'], 'the cirrus covers the eye'),
+  M('G17', NS, [E("es = 1 - Math.exp(-rcs / 2.5)", "es = 0")], ['nest'], 'the convection makes no cirrus'),
+  M('G18', NS, [E("      if (ey > 0) cir[k] *= 1 - 0.9 * ey; }", " }")], ['nest'], 'the cirrus covers the eye'),
   M('G19', NS, [E("ciOut: 8,", "ciOut: 0,")], ['nest'], 'no upper outflow spreads the cirrus beyond the rain'),
   M('G20', NS, [E("shx = 0.8 * f.shear * Math.cos(f.shdir), shy = 0.8 * f.shear * Math.sin(f.shdir)", "shx = 0, shy = 0")], ['nest'], 'shear does not blow the anvil downshear'),
   M('G21', NS, [E("this.gatherOpen([this.cir, this.cih], [sc[0], sc[1]], [true, true]);", "this.gather([this.cir, this.cih], [sc[0], sc[1]], [true, true]);")], ['nest'], 'the cirrus leaving the box comes back at the other side'),
@@ -387,6 +387,44 @@ const mutants = [
   M('G24', NS, [E("this.departure(this.uc, this.vc, this.ciAcc);", "this.departure(this.uc, this.vc, dt);")], ['nest'], 'the cirrus advected every few minutes only goes as far as one step of the model (a third of its speed)'),
   M('G25', NS, [E("[-80.1, [238, 111, 193]]", "[-80.1, [236, 236, 236]]")], ['nest'], 'no pink below -80 C: the step from light grey to the pink and purple is lost'),
   M('G26', NS, [E("[-70.6, [0, 0, 0]]", "[-70.6, [255, 255, 255]]")], ['nest'], 'no black band between the dark red and the grey ramp at -70 C'),
+  // ---- M20: the infrared picture against the real storms (eye, canopy, smooth tops, bursts, stripping, transition)
+  M('G27', NS, [E("const ea = sm01(vN, 22, 36) * (1 - sm01(eta, 0.05, 0.35)) * (1 - 0.85 * (this.strip || 0)); if (ea <= 0.01) return;", "const ea = 0; if (ea <= 0.01) return;")], ['nestir'], 'the picture has no eye window: the eye is the clear sea'),
+  M('G28', NS, [E("eyeD: [14, 10],", "eyeD: [0, 0],")], ['nestir'], 'a clear eye is the sea temperature'),
+  M('G29', NS, [E("fk = clamp(ef * (1.15 + 0.5 * cl[k] + 0.3 * qn[k]), 0, 1)", "fk = 0")], ['nestir'], 'an eye is never filled with cloud'),
+  M('G30', NS, [E("eyeW: [0.5, 2.1],", "eyeW: [1.5, 1.52],")], ['nestir'], 'the eye ends in a step, not a ramp'),
+  M('G31', NS, [E("0.6 * sm01(dvdt, 0.25, 1.1)", "0")], ['nestir'], 'the eye does not fill during a rapid intensification'),
+  M('G32', NS, [E("+ 0.9 * (this.strip || 0);", "+ 0;")], ['nestir'], 'the eye of a stripped storm stays clear'),
+  M('G33', NS, [E("const ea = sm01(vN, 22, 36) * (1 - sm01(eta, 0.05, 0.35)) * (1 - 0.85", "const ea = sm01(vN, 22, 36) * (1 - 0.85")], ['nestir'], 'a transitioning system keeps an eye in the picture'),
+  M('G34', NS, [E("ciOutK: [0.2, 1.3],", "ciOutK: [0.2, 0.2],")], ['nestir'], 'a strong storm spreads its cirrus no faster than a weak one'),
+  M('G35', NS, [E("ciLife: 1.8,", "ciLife: 0,")], ['nestir'], 'the cirrus of a strong storm lives no longer than a weak one\'s'),
+  M('G36', NS, [E("org = sm01(f.vmax * mm, 20, 50) * (1 - this.strip); if (org <= 0.02) return;", "org = sm01(f.vmax * mm, 20, 50) * (1 - this.strip); return;")], ['nestir'], 'a hurricane is found without its canopy'),
+  M('G37', NS, [E("ciSrc: 2.0,", "ciSrc: 0,")], ['nestir'], 'an anvil is no wider than its cell'),
+  M('G38', NS, [E("szF = clamp((this.sz || 100) * this.m / P.ciSz, 0.4, 1.8);", "szF = 1;")], ['nestir'], 'the canopy does not follow the size of the storm'),
+  M('G39', NS, [E("const capZ = (z) => (z > 15.8 ? 15.8 + 2.0 * Math.tanh((z - 15.8) / 2.0) : z)", "const capZ = (z) => z")], ['nestir'], 'cloud tops have no cap: a heavy cell is -100 C'),
+  M('G40', NS, [E("irSm: 0.95,", "irSm: 0,")], ['nestir'], 'the cold tops are not smoothed'),
+  M('G41', NS, [E("irTx: 0.5,", "irTx: 4,")], ['nestir'], 'the cold tops keep a rough texture'),
+  M('G42', NS, [E("P.irTx * (1 + 1.6 * (1 - sm01(this.vNest * this.m, 20, 40)))", "P.irTx")], ['nestir'], 'a weak storm\'s tops are no rougher than a hurricane\'s'),
+  M('G43', NS, [E("f.shdir + (u() + u() + u() - 1.5) * 1.1", "f.shdir + Math.PI + (u() + u() + u() - 1.5) * 1.1")], ['nestir'], 'bursts sit upshear of the swirl'),
+  M('G44', NS, [E("const Rb = R, Dx = Math.max(D, sm01(shK, 6, 14) * 1.1 * Rb)", "const Rb = R, Dx = 0")], ['nestir'], 'a burst is born on the centre'),
+  M('G45', NS, [E("return D[0] + D[1] * Math.exp(-(dh / D[3]) * (dh / D[3])); };", "return 1; };")], ['nestir'], 'bursts are as likely at noon as at night'),
+  M('G46', NS, [E("b.a = b.amp * (t < b.tg ? sm01(t, 0, b.tg) : t < b.tg + b.tm ? 1 : 1 - sm01(t - b.tg - b.tm, 0, b.td)); any = true; }", "b.a = b.amp; any = true; }")], ['nestir'], 'a burst has no life cycle: full strength at once, to its last minute'),
+  M('G47', NS, [E("bWk: [20, 32],", "bWk: [200, 320],")], ['nestir'], 'a hurricane makes bursts too'),
+  M('G48', NS, [E("this.wkB = Math.max(1 - sm01(vN, P.bWk[0], P.bWk[1]), this.strip) * (1 - sm01(f.eta || 0, 0.2, 0.6));", "this.wkB = Math.max(1 - sm01(vN, P.bWk[0], P.bWk[1]), this.strip);")], ['nestir'], 'a post-tropical system makes bursts'),
+  M('G49', NS, [E("wkB * wBg * eBg[k] * P.bgA * bAmp * bf[k]", "wkB * wBg * P.bgA * bAmp * bf[k]")], ['nest'], 'a burst feeds on dry air as on moist'),
+  M('G50', NS, [E("strip: [22, 36],", "strip: [1000, 1001],")], ['nestir'], 'shear never strips the convection to one side'),
+  M('G51', NS, [E("bHold: 12,", "bHold: 0,")], ['nestir'], 'a new burst comes at once after the stripping'),
+  M('G52', NS, [E("stK = 1 - 0.97 * this.strip,", "stK = 1,")], ['nestir'], 'a stripped hurricane keeps its eyewall convection'),
+  M('G53', NS, [E("clamp(0.5 * e + this.gI, -0.9, 0.9 - 0.75 * this.strip)", "clamp(0.5 * e + this.gI, -0.9, 0.9)")], ['nestir', 'nest'], 'the efficiency makes up for the stripped convection'),
+  M('G54', NS, [E("bVk: 0.5,", "bVk: 0,")], ['nest'], 'a weak storm keeps all of the vortex\'s own convection beside its bursts'),
+  M('G55', NS, [E("Math.exp(0.55 * qn[k] + 0.5 * cl[k] - 0.276)", "Math.exp(2.5 * qn[k] + 2.0 * cl[k] - 5)")], ['nestir'], 'a burst is a field of cells, not a mass'),
+  M('G56', NS, [E("irStreak: 1.5,", "irStreak: 0,")], ['nestir'], 'a transition\'s shield has no streaks'),
+  M('G57', NS, [E("const c = Math.cos(f.shdir), s = Math.sin(f.shdir), off = [],", "const c = Math.cos(f.shdir + Math.PI / 2), s = Math.sin(f.shdir + Math.PI / 2), off = [],")], ['nestir'], 'the streaks lie across the flow aloft'),
+  M('G58', NS, [E("Sq = Sq * (1 - 0.6 * eta * dry) + eta", "Sq = Sq + eta")], ['nest', 'nestir'], 'the dry slot keeps its convection'),
+  M('G59', NS, [E("eyeA = sm01(vN, 22, 36) * (1 - sm01(eta, 0.05, 0.4)) * (1 - 0.8 * this.strip);", "eyeA = sm01(vN, 22, 36) * (1 - 0.9 * eta) * (1 - 0.8 * this.strip);")], ['nest', 'nestir'], 'the eye clearing of a transition fades slowly: a clear disc in the shield'),
+  M('G60', NS, [E("if (ey > 0) cir[k] *= 1 - 0.9 * ey; }", "if (ey > 0) cir[k] *= 1 - 0.32 * ey; }")], ['nest'], 'cirrus fills the eye'),
+  M('G61', NS, [E("const rcb = ciSrc * rcB[k] * (1 - ey)", "const rcb = ciSrc * rcB[k]")], ['nest'], 'the anvil source reaches into the eye'),
+  M('G62', NS, [E("0.35 * (1 - sm01(vN, 33, 58))", "0")], ['nestir'], 'a new hurricane\'s eye is as clear as an old one\'s'),
+  M('G63', NS, [E("stK = 1 - 0.97 * this.strip, vK = 1 - P.bVk * wkB,", "stK = 1 - 0.97 * this.strip, vK = 1,")], ['nest'], 'bursts are added to the whole of a weak vortex\'s convection'),
   M('H1', FL, [E("1200, 1800, 2700]", "1200, 1800]")], ['sat'], 'no 45 minutes a second'),
   M('H2', FL, [E("function flStepDt() { return FL_SPEEDS[flSpeed] >= 1800 ? 2 * FL_DT : FL_DT; }", "function flStepDt() { return FL_DT; }")], ['sat'], 'the two fastest clocks step the model by two minutes like the others (twice the work, lag)'),
   M('H3', FL, [E("d = rem > 1 && rem < dts ? rem : dts;", "d = dts;")], ['sat'], 'a four-minute step goes past the hour'),
@@ -400,6 +438,7 @@ const mutants = [
   M('H11', FL, [E("flSite = null; flView = 'radar'; flLandStep = -99;", "flSite = null; flLandStep = -99;")], ['sat'], 'a floater opens in the view the last one was closed in'),
   M('H12', FL, [E("const hi = typeof hiSplit === 'function' && typeof LAND_HI !== 'undefined', out", "const hi = true, out")], ['floaterS'], 'the outline asks for the Atlantic page\'s finer coast on every page (the other eight have none: the floater stops drawing)'),
   M('H13', FL, [E("const dt = Math.max(0, Math.min(250, now - flLast)) / 1000;", "const dt = Math.min(250, now - flLast) / 1000;")], ['sat'], 'a frame that looks older than the last one winds the floater\'s clock back (it then owes the steps it already ran)'),
+  M('H14', FL, [E("f.utc = d.getUTCHours() + d.getUTCMinutes() / 60;", "f.utc = undefined;")], ['sat'], 'the nest is not told the hour of the day'),
   M('F1', FL, [E("if (k === 'Escape') { flClose(); e.stopPropagation(); e.preventDefault(); }", "if (k === 'Escape') { e.stopPropagation(); e.preventDefault(); }")], ['floater'], 'Escape does not close the floater'),
   M('F2', FL, [E("  advanceHours(1); updateClock();\n  const S = flSystem();", "  updateClock();\n  const S = flSystem();")], ['floater'], 'the engine never moves on at the hour'),
   M('F3', FL, [E("  }, true);\n  window.addEventListener('keydown'", "  }, false);\n  window.addEventListener('keydown'")], ['floater'], 'the playback buttons keep steering the main clock'),
@@ -527,7 +566,7 @@ function snapshot(id, mutatedIndexHtml) {
   if (!existsSync(join(dir, 'data'))) symlinkSync(join(REPO, 'data'), join(dir, 'data'));
   writeFileSync(join(dir, 'index.html'), mutatedIndexHtml);
   copyFileSync(join(REPO, 'package.json'), join(dir, 'package.json'));
-  for (const f of ['tests/storms.mjs', 'tests/nest.mjs', 'tests/storms_env.mjs', 'src/storm-cities.js']) copyFileSync(join(REPO, f), join(dir, f));
+  for (const f of ['tests/storms.mjs', 'tests/nest.mjs', 'tests/nest_ir.mjs', 'tests/storms_env.mjs', 'src/storm-cities.js']) copyFileSync(join(REPO, f), join(dir, f));
   for (const f of ['template.html', 'template-eastpacific.html', 'template-wpac.html', 'template-nio.html', 'template-aus.html', 'template-swio.html', 'template-spac.html', 'template-satl.html', 'template-med.html']) if (!existsSync(join(dir, 'src', f))) copyFileSync(join(REPO, 'src', f), join(dir, 'src', f));      // (the node tests read the city lists of the nine pages)
   if (!existsSync(join(dir, 'node_modules'))) symlinkSync(join(REPO, 'node_modules'), join(dir, 'node_modules'));
   return dir;
@@ -536,7 +575,7 @@ function snapshot(id, mutatedIndexHtml) {
 function runDriver(dir, name) {            // resolves {name, code, fails[], tail}
   return new Promise((resolve) => {
     let file, argv;
-    if (name === 'nest') { file = join(dir, 'tests/nest.mjs'); argv = [file]; copyFileSync(join(dir, 'storms.js.mut'), join(dir, 'src/storms.js')); copyFileSync(join(dir, 'storm-nest.js.mut'), join(dir, 'src/storm-nest.js')); }
+    if (name === 'nest' || name === 'nestir') { file = join(dir, name === 'nest' ? 'tests/nest.mjs' : 'tests/nest_ir.mjs'); argv = [file]; copyFileSync(join(dir, 'storms.js.mut'), join(dir, 'src/storms.js')); copyFileSync(join(dir, 'storm-nest.js.mut'), join(dir, 'src/storm-nest.js')); }
     else if (name === 'node') { file = join(dir, 'tests/storms.mjs'); argv = [file]; copyFileSync(join(dir, 'storms.js.mut'), join(dir, 'src/storms.js')); }
     else { file = join(dir, `tests/_drv_${name}.mjs`); writeFileSync(file, makeDriver(name)); argv = [file]; if (name === 'gate' || name === 'env' || name === 'look' || name === 'alerts') copyFileSync(join(dir, 'storms.js.mut'), join(dir, 'src/storms.js')); }
     const p = spawn('node', argv, { cwd: dir, env: process.env });
@@ -560,7 +599,7 @@ async function runMutant(m, results) {
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------------
-let list = base ? [M('base', S, [], ['node', 'nest', 'storms', 'summary', 'place', 'save', 'gate', 'env', 'look', 'alerts', 'impacts', 'floater', 'floaterS', 'sat'], 'unmutated')] : (only ? mutants.filter((m) => only.includes(m.id)) : mutants);
+let list = base ? [M('base', S, [], ['node', 'nest', 'nestir', 'storms', 'summary', 'place', 'save', 'gate', 'env', 'look', 'alerts', 'impacts', 'floater', 'floaterS', 'sat'], 'unmutated')] : (only ? mutants.filter((m) => only.includes(m.id)) : mutants);
 if (drivers) list = list.map((m) => ({ ...m, drivers: m.drivers.filter((d) => drivers.includes(d)) })).filter((m) => m.drivers.length);
 if (dry) { let bad = 0; for (const m of mutants) { try { parses(m.file, applyEdits(readFileSync(join(REPO, m.file), 'utf8'), m.edits, m.id)); } catch (e) { bad++; console.log(m.id + ': ' + e.message); } } console.log(bad ? bad + ' of ' + mutants.length + ' mutants broken (an anchor that is not found exactly once, or a mutated file that does not parse)' : 'all ' + mutants.length + ' anchors found exactly once and every mutated file parses'); process.exit(bad ? 1 : 0); }
 mkdirSync(OUT, { recursive: true });

@@ -181,3 +181,48 @@ Texture of the model's cold tops (the earlier four-storm dump `modeldump/`, std 
 - **Eye finder limits.** The eye numbers are the warmest 3x3 mean of a warm spot in a cold canopy; the tracker lost the centre for Nolo after 29 Sep (to 3 Oct), for Fiona and for the first Dorian run: those parts of the series are not used.
 
 Reproducing: `tools/ir_research/` (`goes_ir.py`, `series.py`, `track.py`, `sheets.py`, `radial.py`, `texture.py`, `stage_table.py`, `model_ir_stats.mjs`, `library.sh`): Python 3 with `numpy h5py pillow` and `gsutil`; each full-disk frame is about 20 MB and takes about 4 s to fetch.
+
+## Part 3: the model's picture after the revamp (milestone 20)
+
+What the notes above asked for was done in `src/storm-nest.js` (the picture and the convection that feeds it), all seven proposals, and measured the same way as the real storms (`tools/ir_research/model_lab.mjs` runs a forced storm through the nest and prints the cold areas, the radial mean Tb, the eye, the texture; `scenarios.json` holds the eight storms; `modelsheet.py` draws them on the same palette and rings as the real sheets).
+
+| piece | what it does now (names are the `PAR` keys) |
+|---|---|
+| **1. bursts** | a weak storm (a disturbance, a depression, a weak tropical storm: vortex winds under 20 to 32 m/s, `bWk`) rains in a few coherent masses (`burstBirth`, `burstStep`): a field 70 to 200 km in radius (`bR`) that the swirl carries and shears, feeding the convection in place of the background ascent (`bAmp`; the scattered showers are `bQ` = 22 % of the usual outside them), one about every half day (`bT`, a gap of at least `bGap`), growing 2 to 4 hours, mature 2 to 5 and decaying 2 to 5, **born mostly in the local night** (`bDiu`: the factor `HFNest.diurnal(local hour)` is 1.4 at 01:30, 0.6 at 13:30; the page passes the UTC hour, `forcing.utc`), **downshear of a bare swirl**: 30 km out in calm air, 150 to 300 km in 14 kt of shear and never closer than 1.1 radii in a sheared storm (`bD`); the vortex's own convergence gives up half of itself to them (`bVk`); the air decides (the birth rate and the supply follow the moisture and the sea); a hurricane and a post-tropical system make none |
+| **2. the eye** | `irEye`: a warm floor below the sea (`eyeD`: sea minus 14 C, minus 10 C in a strong storm: +15 to +19 C under a sea of 28.8), a cloud that fills it (`eyeFill`: a state with a memory of hours and a random walk, raised by a rapid intensification, an eyewall replacement (`forcing.erc`), shear, a new eye, and by stripping), cool and white (+4 to -18 C) when filled, and a **smooth ramp** to the eyewall top over 0.5 to 2.1 radii of maximum wind (`eyeW`); no eye window in a transition or a stripped storm |
+| **3. the canopy** | the cirrus' outflow, life and sinking follow the storm's strength and size (`canopyNumbers`: `ciOutK`, `ciLife`, `ciSink`, `ciLo`, `ciSz`), the blurred rain is a source of cirrus too (`ciSrc`: an anvil is wider than its cell), the eye is kept clear of it, and a strong storm is found with its canopy already spread (`initCanopy`: the plateau of the real majors); the tops are capped near -86 C (`capZ`) |
+| **4. smooth tops** | the deep cloud is averaged over 4 cells with only the cold pixels counting (`irSmooth`: `irBlur`, `irSm`), what texture is left is 0.5 C (1.3 C in a weak storm: `irTx`) |
+| **5. a transition** | no eye (the window shuts between a transition of 0.05 and 0.35), no bursts, the vortex's eye clearing gives way to it, the dry slot is clear of convection of every kind, and the shield is made of **fine streaks along the flow aloft** (`irStreak`, 1.5 C) |
+| **6. shear stripping** | the strip state (`strip`: shear in kt, raised 80 % of the way a dry air is below 62 % humidity, over 17 to 30 kt, 2.5 h to strip, 6 h to recover) takes the eyewall's supply and the vortex's stratiform deck to 3 %, clouds the eye over (the fill), shortens the cirrus' life, stops the efficiency from making up for it and holds the next burst for 12 hours after the stripping begins (`bHold`): the swirl is bare |
+| **7. size** | the canopy's speed (size^0.8), life (size^0.7), reach (`ciLo` x size) and the initial plateau (size) follow the engine's storm size (`sz`, from 0.4 to 1.8 of 150 km) |
+
+### Before and after, in the model's 512 km box (the real storms from part 2)
+
+Median over the frames of each lab storm (`tools/ir_research/scenarios.json`, one seed; a weak storm's median includes its quiet hours); area colder than -40 / -60 / -70 C in thousands of km2, then the mean Tb at 5 / 15 / 25 / 35 / 45 / 65 / 85 / 115 / 155 / 195 / 245 km.
+
+| | A40 / A60 / A70 | mean Tb by radius | robust texture |
+|---|---|---|---|
+| **real major, Nolo peak** | 136 / 70 / 25 | 12 -12 -34 -59 -69 -72 -71 -66 -56 -43 -28 | 0.31 |
+| model major 125 kt, before | 79 / 29 / 8 | 2 -73 -74 -71 -67 -66 -59 -53 -38 -21 11 | (2 to 3 in std) |
+| **model major 125 kt, after** | **134 / 72 / 15** | **14 2 -44 -69 -71 -70 -67 -66 -57 -43 -20** | 0.25 |
+| **real rapid intensification, Nolo 25-27 Sep** | 151 / 57 / 15 | -7 -30 -43 -54 -58 -62 -63 -59 -54 -44 -33 | 0.56 |
+| model RI 65 to 130 kt, before | 83 / 26 / 6 | 25 -40 -73 -69 -65 -63 -59 -52 -39 -25 8 | |
+| **model RI, after** | **135 / 66 / 7** | **4 -7 -27 -53 -66 -66 -66 -63 -55 -43 -17** | 0.25 |
+| **real TD, Nolo 13-15 Sep** (swirl-centred) | 53 / 25 / 6 | 10 10 10 9 7 5 1 -4 -8 -9 -11 | 0.42-0.66 |
+| model TD 28 kt, before | 102 / 17 / 2 | -46 -47 -47 -48 -47 -43 -36 -35 -39 -28 -15 | |
+| **model TD, after** (over the 48 h the area colder than -40 C is 26 to 69, -60 C 1 to 26 and -70 C 0 to 9: a burst is partly outside the 512 km box) | **51 / 14 / 2** | **-25 -30 -30 -32 -34 -28 -18 -20 -9 -5 3** | 0.34 |
+| **real TS, Nolo 23-24 Sep** | 139 / 65 / 32 | -55 -64 -64 -56 -50 -42 -44 -45 -42 -42 -36 | 0.75 |
+| model TS 45 kt, before | 135 / 35 / 6 | -66 -68 -68 -68 -65 -61 -58 -54 -51 -40 -18 | |
+| **model TS, after** | **102 / 19 / 1** (up to 135 / 58 / 12 in a burst) | **-64 -64 -63 -62 -62 -58 -55 -47 -43 -29 -1** | 0.31 |
+
+The eye of the model's major hurricane is +14 to +17 C (the real strong storms: +11 to +21), +4 to -18 C while it fills (real: -17 to +14 while intensifying), the ramp is 17, 11, -18, -51, -68, -70 C by 10 km ring (real peak: 18, 10, -18, -55, -70, -72); the coldest top is -75 to -78 C (real: -72 to -86 C). The robust texture of the hurricanes is 0.25 (real 0.27 to 0.56), of the weak storms 0.31 to 0.34 (real 0.42 to 0.75). A stripped hurricane (`model_strip.jpg`) loses its eye (clouded over), then its eyewall, then its canopy: the area colder than -60 C goes 45k -> 23k -> 5k -> 0 km2 in three-hour steps (the shear rising to 14 m/s) and stays at nothing for the next 18 hours, the area colder than -40 C from 106k to 0-14k, as Nolo's did on 29 Sep - 1 Oct; the transition (`model_et.jpg`: 28 N to 50 N over 72 hours) goes from a symmetric hurricane to a comma with a clear dry slot, no eye after 36 hours, tops -44 to -58 C in fine streaks and no area colder than -60 C from the 24th hour.
+
+Pictures of the model (the same palette, 2 km pixels, the 100 and 200 km rings; `model_large.jpg` at 4 km): `img/model_td.jpg` (48 hours of a sheared depression: a burst 100 to 250 km downshear of a bare swirl, a new one every 6 to 24 hours), `model_ts.jpg`, `model_ri.jpg` (the eye filled for a day, clear from the 30th hour), `model_major.jpg`, `model_strip.jpg`, `model_et.jpg`, `model_compact.jpg`, `model_large.jpg`.
+
+### What is still different (honestly)
+
+- **A tropical storm's coldest cloud**: the model's TS has -60 C areas of 19k km2 on median (65k real) and almost no -70 C (1k against 32k); its bursts at their peak (58k and 12k) are in the range, but a real TS had one almost continuous mass. The eyewall-rain ordering check (a hurricane's eyewall rains more than a tropical storm's) holds the burst's supply back.
+- **The tropopause at 25 to 30 N**: the poleward warming of the tops starts at 18 N, so a hurricane recurving at 28 N has -63 to -68 C tops (A60 4 to 17k km2 in the lab's transition) where Fiona and Dorian still had -70 to -85 C (50 to 200k km2); the transition's later stages (35 to 50 N) are right (-46 to -55 C).
+- **Compact storms** (Otis, Beryl): the canopy shrinks with the size, but there are no real numbers in the library for them (only the sheets): the compact lab storm has a -60 C area of 5k km2 and a cirrus fringe to 250 km that the real ones may not have.
+- **No real western Pacific, Indian Ocean or southern-hemisphere sheets** to check the structure against (see part 2: GOES only).
+- The bursts' timing is statistical (a diurnal factor on the birth, not a model of the pulse); the diurnal result in part 2 came from two storms over a few days.
