@@ -126,6 +126,58 @@ const wet = (nest) => { const d = dbzField(nest); return (k) => (d[k] >= 20 ? 1 
 }
 
 
+/* ---- what the mutants asked for: the parts of the picture and the bursts that no other check pinned down ---------------------------------------------------------------------------------- */
+{
+  reset();
+  const tbOfN = (n, sst = 28.5) => { n.display(0, true, true); return n.irTb(new Float32Array(NN), sst); };
+  const meanR = (n, a, r0, r1) => sector(n, r0, r1, null, 0, (k) => a[k]);
+  const burstNest = (v, rm, r34, shear, rh, seed) => { const n = N.create({ seed }), f = forcing({ v, rmax: rm, r34, extra: { shear, shdir: 0, sst: 28.5, rh } }); n.init(f); n.setEnv(null, f); for (const b of n.bs) { b.t = -1; b.a = 0; } n.bf.fill(0); n.burstBirth(f, f.vmax, shear / KT, 0);
+    const b = n.bs.find((x) => x.t >= 0); b.t = b.tg + 600; b.amp = 1; b.tm = 6 * 3600; for (let i = 0; i < 45; i++) n.step(240); return n; };
+  // the eye fill target, without its random walk: a stripped storm's eye is full, a calm one's is not; a new hurricane's is fuller than an old one's
+  N.PAR.eyeT = [10800, 14400, 0];
+  const fillOf = (strip) => { const n = N.create({ seed: 1 }); n.init(forcing({ v: 100, rmax: 20 })); n.strip = strip; n.ef = 0; const f = n.forcingAt(0); for (let i = 0; i < 80; i++) n.eyeFill(f, 240); return n.ef; };
+  const fS = fillOf(1), fC = fillOf(0);
+  check('the eye of a stripped storm is full of cloud and a calm storm\'s is not: the fill settles at ' + fS.toFixed(2) + ' when stripped (over 0.7) and ' + fC.toFixed(2) + ' when not (under 0.5)', fS > 0.7 && fC < 0.5 && fS > fC + 0.3);
+  const steady = (v, rm) => { const n = N.create({ seed: 1 }); n.init(forcing({ v, rmax: rm })); for (let i = 0; i < 40; i++) n.step(240); return n.ef; };
+  const fNew = steady(65, 30), fOld = steady(125, 16);
+  check('a new hurricane\'s eye is fuller of cloud than an old major\'s: the fill is ' + fNew.toFixed(2) + ' for a steady 65 kt storm and ' + fOld.toFixed(2) + ' for a steady 125 kt one (over 0.1 more)', fNew > fOld + 0.1);
+  reset();
+  // an anvil is wider than its cell
+  { const n = N.create({ seed: 3 }); n.init(forcing({ v: 20, rmax: 80, r34: 120, extra: { conv: 0, sst: 18, rh: 0.3 } })); n.cir.fill(0); n.cih.fill(6); n.Q.fill(0.3 * N.PAR.Qc);
+    for (let k = 0; k < NN; k++) { const x = (k % NG - 127.5) * 2, y = (Math.floor(k / NG) - 127.5) * 2; n.rc[k] = Math.hypot(x - 40, y) < 20 ? 30 : 0; } n.step(120);
+    let rainC = 0, cirC = 0; for (let k = 0; k < NN; k++) { if (n.rc[k] > 0.5) rainC++; if (n.cir[k] > 0.3) cirC++; }
+    check('an anvil is wider than its cell: a disc of rain of ' + rainC + ' cells is under a cirrus of ' + cirC + ' cells (' + (cirC / rainC).toFixed(1) + ' times the area, over 1.8)', cirC > 1.8 * rainC); }
+  // the canopy follows the size of the storm: the outflow, the life and the reach of the cirrus
+  { const mk = (v, rm, r34, m) => { const n = N.create({ seed: 4, m }); let f = forcing({ v, rmax: rm, r34 }); if (m !== 1) f = N.scaleForcing(f, m); n.init(f); n.step(240); return n; };
+    const a = mk(100, 10, 65, 1), b = mk(100, 45, 300, 2);
+    check('the canopy follows the size of the storm: the cirrus of a large storm (radius of 34 kt wind 300 km) spreads ' + (b.ciK / a.ciK).toFixed(1) + ' times as fast and lives ' + (b.tauCiE / a.tauCiE).toFixed(1) + ' times as long as a compact storm\'s (65 km), both over 2', b.ciK > 2 * a.ciK && b.tauCiE > 2 * a.tauCiE); }
+  // a burst needs moist air: the same burst in dry air (35 % humidity) covers less than two thirds of the cold cloud
+  const bm = burstNest(28, 50, 110, 6.2, 0.68, 7), bd = burstNest(28, 50, 110, 6.2, 0.35, 7), cold = (n) => { const tb = tbOfN(n); let c = 0; for (let k = 0; k < NN; k++) if (tb[k] < -40) c++; return c * 4; };
+  const cm = cold(bm), cdry = cold(bd);
+  check('a burst feeds on moist air: in dry air (35 % humidity, 68 % in the other) it makes ' + (cdry / 1000).toFixed(0) + ' thousand km2 of cloud colder than -40 C against ' + (cm / 1000).toFixed(0) + ' (under 0.65 of it)', cdry < 0.65 * cm);
+  // a burst is a mass, not a field of cells: all of its core is raining and cold
+  { let core = 0, cl = 0, rain = 0; const tb = tbOfN(bm); for (let k = 0; k < NN; k++) if (bm.bf[k] > 0.7) { core++; if (tb[k] < -40) cl++; if (bm.rc[k] + bm.rs[k] > 1) rain++; }
+    check('a burst is a mass: of the ' + core + ' cells of its core ' + (100 * cl / core).toFixed(0) + ' % are under cold cloud and ' + (100 * rain / core).toFixed(0) + ' % are raining (over 99 and 97)', cl / core > 0.99 && rain / core > 0.97); }
+  // a weak storm gives the burst its vortex's convergence: a tropical storm's rain at its centre is not on top of the burst's
+  { const ts = burstNest(45, 40, 130, 6, 0.7, 5), c = meanR(ts, ts.rc, 0, 60) + meanR(ts, ts.rs, 0, 60), o = meanR(ts, ts.rc, 100, 250) + meanR(ts, ts.rs, 100, 250);
+    check('a tropical storm with a burst keeps a swirl that is less wet than its surroundings are: ' + c.toFixed(0) + ' mm/h within 60 km against ' + o.toFixed(0) + ' at 100 to 250 km (' + (c / o).toFixed(1) + ' times, under 3.2; the centre under 25)', c < 25 && c / o < 3.2); }
+  // the heating efficiency does not make up for stripped convection
+  { const n = N.create({ seed: 6 }), fa = () => forcing({ v: 105, rmax: 18, r34: 140, extra: { shear: 16, rh: 0.4, shdir: 0.8, sst: 28.5, lat: 21 } }); n.init(fa()); for (let h = 0; h < 10; h++) { n.setForcing(fa(), fa()); for (let i = 0; i < 15; i++) n.step(240); }
+    check('a stripped storm held at its wind does not make up for it with heating: the efficiency is ' + n.g.toFixed(2) + ' (under 1.4) in a strip state of ' + n.strip.toFixed(2), n.strip > 0.8 && n.g < 1.4); }
+  // the dry slot has no convection of its own: the convective rain there against the rest of the shield
+  { const et = N.create({ seed: 7 }), eta = 0.8; et.init(forcing({ v: 65, rmax: 90, r34: 220, extra: { eta, lat: 36, clat: 36, sst: 22, shear: 12, shdir: 0.7, head: 0.9, etdir: 0.9, spd: 14, rh: 0.7 } })); for (let i = 0; i < 60; i++) et.step(240);
+    const L = Math.min(420, Math.max(150, et.sz * (1 + 0.6 * eta))), c = Math.cos(0.9), s = Math.sin(0.9); let dC = 0, dN = 0, oC = 0, oN = 0;
+    for (let k = 0; k < NN; k++) { const x = et.rr[k] * et.cth[k], y = et.rr[k] * et.sth[k], al = x * c + y * s, ac = -x * s + y * c, ad = (al + 0.3 * L) / (0.37 * L), cd = (ac + 0.37 * L) / (0.3 * L), dry = Math.exp(-ad * ad - cd * cd); if (dry > 0.6) { dC += et.rc[k]; dN++; } else if (dry < 0.1 && et.rr[k] < 230) { oC += et.rc[k]; oN++; } }
+    check('the dry slot of a transition has little convection of its own: ' + (dC / dN).toFixed(2) + ' mm/h of convective rain in it against ' + (oC / oN).toFixed(1) + ' elsewhere in the shield (under 0.06 of it)', dC / dN < 0.06 * (oC / oN)); }
+  // a transition at 0.5 has no rain-free eye hole: its centre is as wet as the ring round it
+  { const n = N.create({ seed: 7 }); n.init(forcing({ v: 90, rmax: 30, r34: 160, extra: { eta: 0.5, lat: 38, clat: 38, sst: 20, shear: 10, shdir: 0.7, head: 0.9, etdir: 0.9, spd: 12, rh: 0.65 } })); for (let i = 0; i < 45; i++) n.step(240);
+    const cen = meanR(n, n.rc, 0, 20) + meanR(n, n.rs, 0, 20), ring = meanR(n, n.rc, 30, 60) + meanR(n, n.rs, 30, 60);
+    check('a transition half way has lost its eye hole: the rain within 20 km is ' + cen.toFixed(1) + ' mm/h, the ring at 30 to 60 km ' + ring.toFixed(1) + ' (the centre over half of it)', cen > 0.5 * ring); }
+  // no cirrus in the eye
+  { const n = N.create({ seed: 2 }); n.init(forcing({ v: 115, rmax: 20, r34: 140 })); for (let i = 0; i < 30; i++) n.step(240);
+    check('the eye is free of cirrus: the thickness within 8 km of the centre is ' + meanR(n, n.cir, 0, 8).toFixed(3) + ' (under 0.01), while the eyewall\'s is ' + meanR(n, n.cir, 15, 40).toFixed(2), meanR(n, n.cir, 0, 8) < 0.01 && meanR(n, n.cir, 15, 40) > 0.8); }
+}
+
 /* ---- what a storm is found with, and the coldest tops --------------------------------------------------------------------------------------------------------------------------------- */
 {
   reset(); N.PAR.irTx = 0; N.PAR.irStreak = 0;
