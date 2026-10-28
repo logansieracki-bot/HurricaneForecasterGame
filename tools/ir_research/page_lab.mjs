@@ -30,10 +30,10 @@ for (const c of cases) {
   const page = await pageFor(c.basin || 'atlantic'), ev = (fn, arg) => page.evaluate(fn, arg), at = c.at || [14, -45], hours = c.hours || 24, every = c.every || 6, force = c.force || {}, log = [];
   // placed: a system put at a place and held at a stage; follow: the page's own season (auto genesis) run until a tropical cyclone of the wanted wind appears, and then followed as the engine has it
   const id = await ev((q) => { const S = window.SSTSIM; S.setPlaying(false); S.applySeed(q.seed || 4242); S.setPlaying(false); S.storms(true); S.stormAuto(!!q.follow); S.summary(false); S.tick(24 * q.day);
-    if (q.follow) { const F = q.follow; let id = null; for (let h = 0; h < 24 * (F.days || 200) && !id; h += 3) { S.tick(3); const s = S.stormState().systems.find((x) => x.alive && x.th === (F.th || 'tc') && x.v >= (F.minV || 0) && x.v <= (F.maxV || 999) && (!F.skip || (F.skip = F.skip - 1) < 0)); if (s) id = s.id; } if (!id) return null; if (q.env) S.floaterEnv(q.env); S.floaterOpen(id); S.floaterSet({ view: 'ir', play: false }); return id; }
+    if (q.follow) { const F = q.follow; let id = null; for (let h = 0; h < 24 * (F.days || 200) && !id; h += 3) { S.tick(3); const s = S.stormState().systems.find((x) => x.alive && x.th === (F.th || 'tc') && x.v >= (F.minV || 0) && x.v <= (F.maxV || 999) && (!F.skip || (F.skip = F.skip - 1) < 0)); if (s) id = s.id; } if (!id) return null; if (q.env && S.floaterEnv) S.floaterEnv(q.env); S.floaterOpen(id); S.floaterSet({ view: 'ir', play: false }); return id; }
     const id = S.stormPlace({ kind: q.kind || 'td', lat: q.at[0], lon: q.at[1], v: q.v || 30 }); S.tick(2); const sg = q.at[0] < 0 ? -1 : 1;
     for (let k = 0; k < 4; k++) { const fo = Object.assign({ th: 'tc', lat: q.at[0] + 0.02 * k * sg, lon: q.at[1] + 0.02 * k, cx: 4, cy: 2 * sg }, q.force || {}); if (fo.etAt === 'now') fo.etAt = S.stormState().hour - 12; S.stormForce(id, fo); S.tick(1); }
-    if (q.env) S.floaterEnv(q.env); S.floaterOpen(id); S.floaterSet({ view: 'ir', play: false }); return id; }, { seed: c.seed, day: c.day || 220, at, kind: c.kind, v: (force.v || 30), force, env: c.env, follow: c.follow });
+    if (q.env && S.floaterEnv) S.floaterEnv(q.env); S.floaterOpen(id); S.floaterSet({ view: 'ir', play: false }); return id; }, { seed: c.seed, day: c.day || 220, at, kind: c.kind, v: (force.v || 30), force, env: c.env, follow: c.follow });
   if (!id) { console.error(c.label + ': no such storm'); continue; }
   const metas = []; let h = -(c.warm || 0);
   const hourly = async (n) => { for (let i = 0; i < n; i++) { if (c.hold) await ev(([id, f]) => { if (f.etAt === 'now') delete f.etAt; return window.SSTSIM.stormForce(id, f); }, [id, Object.assign({ th: 'tc' }, force)]); await ev(() => window.SSTSIM.floaterRun(3600)); h++; } };
@@ -47,7 +47,7 @@ for (const c of cases) {
     if (h >= hours) break; await hourly(Math.min(every, hours - h));
   }
   await ev(() => window.SSTSIM.floaterClose());
-  writeFileSync(`${outp}_${c.label}.json`, JSON.stringify(metas)); result[c.label] = metas.map((q) => ({ h: q.h, v: +q.f.v.toFixed(0), shear: +q.f.shearPage.toFixed(0), rh: +q.f.rh.toFixed(2), sst: +q.f.sst.toFixed(1), m: q.m, strip: +q.f.strip.toFixed(2), bursts: q.f.bursts, A60: +q.st.A60.toFixed(1), A70: +q.st.A70.toFixed(1), A80: +q.st.A80.toFixed(2), tmin: +q.st.tmin.toFixed(0), speckle: q.st.speckle != null ? +q.st.speckle.toFixed(3) : null, smallN: q.st.smallN, largest: q.st.largest != null ? +q.st.largest.toFixed(2) : null }));
+  writeFileSync(`${outp}_${c.label}.json`, JSON.stringify(metas)); result[c.label] = metas.map((q) => ({ h: q.h, v: +q.f.v.toFixed(0), shear: +q.f.shearPage.toFixed(0), rh: +q.f.rh.toFixed(2), sst: +q.f.sst.toFixed(1), m: q.m, strip: q.f.strip != null ? +q.f.strip.toFixed(2) : 0, bursts: q.f.bursts || 0, A60: +q.st.A60.toFixed(1), A70: +q.st.A70.toFixed(1), A80: +q.st.A80.toFixed(2), tmin: +q.st.tmin.toFixed(0), speckle: q.st.speckle != null ? +q.st.speckle.toFixed(3) : null, smallN: q.st.smallN, largest: q.st.largest != null ? +q.st.largest.toFixed(2) : null }));
 }
 await browser.close();
 console.log(JSON.stringify(result));

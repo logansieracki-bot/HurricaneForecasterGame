@@ -30,28 +30,19 @@ function flEligible(S) { return !!S && S.alive && (S.th !== 'wv' || S.dist || S.
 function flStepDt() { return FL_SPEEDS[flSpeed] >= 1800 ? 2 * FL_DT : FL_DT; }                // (the two fastest speeds step the nest by 4 minutes, which it holds, so that 45 minutes a second is about 11 steps a second and not 22: no lag)
 function flSystem() { return flId && stormMgr ? stormMgr.get(flId) : null; }
 function flSeed(S) { return (HFStorms.hash5(stormMgr.seed, S.num, 17, 3, 1) >>> 0) || 1; }
-function flForcing(S, h, m) { const f = HFNest.forcingOf(S, stormMgr.par, stormEnv, h, m || (flNest ? flNest.m : 1)), d = simDate(h); f.utc = d.getUTCHours() + d.getUTCMinutes() / 60;
-  if (flEnvTest) { if (flEnvTest.shear != null) f.shear = flEnvTest.shear * 0.514444 / (f.m || 1); if (flEnvTest.rh != null) f.rh = flEnvTest.rh / 100; if (flEnvTest.sst != null) f.sst = flEnvTest.sst; }          // (tests: a chosen shear (kt), humidity (%) and sea temperature in place of the page's own)
-  return f; }          // (with the hour of the day in UTC: the nest's bursts are born mostly at night, local solar time)
-function flScale(S, h, prev) { const f = HFNest.forcingOf(S, stormMgr.par, stormEnv, h, 1); return HFNest.scaleOf(f.szT, f.rmaxT, prev, flView === 'ir' ? HFNest.PAR.irMinScale : 1); }          // the scale a system of this size wants: a larger storm gets a larger box (coarser cells); the satellite shows at least 768 km (a satellite picture has no edge a storm's cloud ends at)
+function flForcing(S, h, m) { return HFNest.forcingOf(S, stormMgr.par, stormEnv, h, m || (flNest ? flNest.m : 1)); }
+function flScale(S, h, prev) { const f = HFNest.forcingOf(S, stormMgr.par, stormEnv, h, 1); return HFNest.scaleOf(f.szT, f.rmaxT, prev); }          // the scale a system of this size wants: a larger storm gets a larger box (coarser cells)
 function flLook() {                                                              // the look-ahead state one hour on (the same state when there is none: the system ends or cannot be asked)
   const C = stormMgr.peek(flId, stormEnv), S = flSystem();
   if (!C || !S) return null;
   const f = flForcing(C, simHour + 1); let d = f.clon - flNest.f0.clon; if (d > 180) f.clon -= 360; else if (d < -180) f.clon += 360;
   return f;
 }
-function flRescale(S, mid) {                                                     // the box a view and a system want (after the hour, and when the view changes): the fields are resampled, the land and the air set again, the map follows; in the middle of an hour (mid) the forcing is made again in the new scale and the hour keeps its clock
-  const m = flScale(S, simHour, flNest.m); if (m === flNest.m) return false;
-  const t0 = flNest.tF0, prev = flNest.cur || flNest.f0;
-  flNest.rescale(m); flLandUpdate(); flEnvUpdate(); flFrameMap({ clat: prev.clat, clon: prev.clon, m: flNest.m }); flRngAt = null; flDirty = true;
-  if (mid) { const f0 = flForcing(S, simHour); let d = f0.clon - prev.clon; if (d > 180) f0.clon -= 360; else if (d < -180) f0.clon += 360; if (flSpinN < FL_SPIN) flNest.setForcing(f0, f0); else { flNest.setForcing(f0, null); flF1 = flLook(); flNest.setForcing(f0, flF1 || f0); } flNest.tF0 = t0; if (flNest.cur) flNest.cur = flNest.forcingAt(flNest.t); }
-  return true;
-}
 function flStepHour() {                                                          // the nest has run its hour: the engine really advances, the floater takes the new state and looks one hour on
   advanceHours(1); updateClock();
   const S = flSystem();
   if (!S || !S.alive) { flGone = true; flPlay = false; flSetPlayUI(); flText(true); return; }
-  flRescale(S);
+  const m = flScale(S, simHour, flNest.m); if (m !== flNest.m) { flNest.rescale(m); flLandUpdate(); flEnvUpdate(); flFrameMap({ clat: flNest.cur.clat, clon: flNest.cur.clon, m: flNest.m }); flRngAt = null; }
   const f0 = flForcing(S, simHour), prev = flNest.cur; let d = f0.clon - prev.clon; if (d > 180) f0.clon -= 360; else if (d < -180) f0.clon += 360;
   flNest.setForcing(f0, null); flF1 = flLook(); flNest.setForcing(f0, flF1 || f0);
   stormsDirty = true;
@@ -66,11 +57,9 @@ function flViewUI() {                                                           
   flLegend(); flDirty = true; flText(true);
 }
 function flEnvUpdate() {                                                         // the weather round the storm (sea temperature, humidity, shear on a 16-km grid of the nest's square) from the page's own fields: a dry, cold or sheared side makes the storm lopsided
-  const f = flNest.cur || flNest.f0; flEnvBuf = HFNest.envGridOf(stormEnv, f.clat, f.clon, f.sg, f, flEnvBuf, flNest.m);
-  if (flEnvTest) { const g = flEnvBuf; for (let k = 0; k < g.sst.length; k++) { if (flEnvTest.sst != null) g.sst[k] = flEnvTest.sst; if (flEnvTest.rh != null) g.rh[k] = flEnvTest.rh / 100; if (flEnvTest.shear != null) g.sh[k] = flEnvTest.shear * 0.514444; } }
-  flNest.setEnv(flEnvBuf, f);
+  const f = flNest.cur || flNest.f0; flEnvBuf = HFNest.envGridOf(stormEnv, f.clat, f.clon, f.sg, f, flEnvBuf, flNest.m); flNest.setEnv(flEnvBuf, f);
 }
-let flEnvBuf = null, flEnvTest = null;
+let flEnvBuf = null;
 function flLandUpdate() {                                                        // the land under the nest (it moves with the storm), from the page's own land test
   const f = flNest.cur || flNest.f0, lf = flLf || (flLf = new Float32Array(HFNest.N * HFNest.N));
   HFNest.landGrid(f.clat, f.clon, typeof stormLand === 'function' ? stormLand : isLand, lf, flNest.m);
@@ -99,7 +88,7 @@ function flOpen(id) {
 }
 function flClose() {
   if (!flOn) return;
-  flOn = false; cancelAnimationFrame(flRaf); flId = null; flNest = null; flEnvTest = null;
+  flOn = false; cancelAnimationFrame(flRaf); flId = null; flNest = null;
   if (flCanvas) { flCanvas.style.display = 'none'; const g = flCanvas.getContext('2d'); g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, flCanvas.width, flCanvas.height); }
   document.body.classList.remove('fl-on'); sstCanvas.style.opacity = flSstOpacity; $('fl-bar').hidden = true; $('fl-legend').style.display = 'none'; $('fl-legend-v').style.display = 'none';
   setPlaying(flPrevPlay); updateSpeedUI(); if (stormSel) { lastStormCardAt = 0; fillStormCard(); } if (olSel) { lastAoiCardAt = 0; fillAoiCard(); } stormsDirty = true; drawStorms();
@@ -301,7 +290,7 @@ function flBind() {
     else if (k === ']') { if (flSpeed < FL_SPEEDS.length - 1) { flSpeed++; flSpeedUI(); } e.stopPropagation(); e.preventDefault(); }
   }, true);
   $('fl-close').onclick = flClose;
-  $('fl-view').onchange = () => { flView = $('fl-view').value === 'ir' ? 'ir' : 'radar'; const S = flSystem(); if (S && flNest) flRescale(S, true); flViewUI(); };
+  $('fl-view').onchange = () => { flView = $('fl-view').value === 'ir' ? 'ir' : 'radar'; flViewUI(); };
   { const g = $('fl-legend-ir').querySelector('i'), pos = (t) => (t >= -20 ? 29 * (40 - t) / 60 : 29 + 71 * (-20 - t) / 70); g.style.background = 'linear-gradient(to right,' + HFNest.IR_STOPS.map(([t, c]) => 'rgb(' + c[0] + ',' + c[1] + ',' + c[2] + ') ' + pos(t).toFixed(2) + '%').join(',') + ')'; }       // (the key is laid out like the colour bar: +40 to -20 C in the first 29 %, the cold part, where the colours are, in the rest)
   $('fl-site').onchange = () => { const v = $('fl-site').value; flSite = v === '' ? null : flSites[+v]; $('fl-tilt-l').style.display = flSite && flView === 'radar' ? '' : 'none'; $('fl-prod-l').style.display = flSite && flView === 'radar' ? '' : 'none'; if (!flSite) { flProd = 'z'; $('fl-prod').value = 'z'; } flLegend(); flDirty = true; flText(true); };
   $('fl-tilt').onchange = () => { flTilt = parseFloat($('fl-tilt').value); flDirty = true; flText(true); };

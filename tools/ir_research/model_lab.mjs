@@ -34,7 +34,7 @@ export function measure(n, ts0) {
   gr.sort((a, b) => a - b); hp.sort((a, b) => a - b); let texr = null; if (cnt > 400) { const md = hp[hp.length >> 1], dv = hp.map((x) => Math.abs(x - md)).sort((a, b) => a - b); texr = 1.4826 * dv[dv.length >> 1]; }
   const sd = cnt > 400 ? Math.sqrt(s2 / cnt - (s1 / cnt) ** 2) : null, gm = cnt > 400 ? gr[gr.length >> 1] : null;
   let tmin = 1e9; for (let k = 0; k < NN; k++) if (tb[k] < tmin) tmin = tb[k];
-  return { tb, st: { tmin, A40: area(-40), A60: area(-60), A70: area(-70), A80: area(-80), A20: area(-20), eye, prof, tex: sd, texr, grad: gm, bursts: n.bs.map((b) => (b.t >= 0 ? +b.a.toFixed(2) : null)), strip: +n.strip.toFixed(2), ef: +n.ef.toFixed(2), vN: +(n.vNest * n.m / KT).toFixed(1), g: +n.g.toFixed(2), mass: +n.ma.toFixed(2), towers: n.twn } };
+  return { tb, st: { tmin, A40: area(-40), A60: area(-60), A70: area(-70), A80: area(-80), A20: area(-20), eye, prof, tex: sd, texr, grad: gm, bursts: n.bs ? n.bs.map((b) => (b.t >= 0 ? +b.a.toFixed(2) : null)) : [], strip: n.strip != null ? +n.strip.toFixed(2) : 0, ef: n.ef != null ? +n.ef.toFixed(2) : 0, vN: +(n.vNest * n.m / KT).toFixed(1), g: +n.g.toFixed(2), mass: n.ma != null ? +n.ma.toFixed(2) : 0, towers: n.twn || 0 } };
 }
 const PAR0 = JSON.parse(JSON.stringify(N.PAR));
 export function runCase(c, outp, log) {

@@ -184,6 +184,8 @@ Reproducing: `tools/ir_research/` (`goes_ir.py`, `series.py`, `track.py`, `sheet
 
 ## Part 3: the model's picture after the revamp (milestone 20)
 
+*Reverted in milestone 22: the player preferred the picture before this revamp (more detail, more physical). Kept as the record of what was tried; the real-storm numbers and measurements in parts 1 and 2, and the tools, are what milestone 22 builds on.*
+
 What the notes above asked for was done in `src/storm-nest.js` (the picture and the convection that feeds it), all seven proposals, and measured the same way as the real storms (`tools/ir_research/model_lab.mjs` runs a forced storm through the nest and prints the cold areas, the radial mean Tb, the eye, the texture; `scenarios.json` holds the eight storms; `modelsheet.py` draws them on the same palette and rings as the real sheets).
 
 | piece | what it does now (names are the `PAR` keys) |
@@ -228,6 +230,8 @@ Pictures of the model (the same palette, 2 km pixels, the 100 and 200 km rings; 
 - The bursts' timing is statistical (a diurnal factor on the birth, not a model of the pulse); the diurnal result in part 2 came from two storms over a few days.
 
 ## Part 4: the picture the player gets (milestone 21)
+
+*Reverted in milestone 22 along with part 3. What stays from it: the page's air is not a lab's air, the numbers per stage in `tools/ir_research/targets.json`, the page lab (`tools/ir_research/page_lab.mjs`), and the first-frame bars bug of a resampled larger box.*
 
 Parts 1 to 3 were measured in a lab: a forced storm run through the nest, in an air I chose for it, and the picture compared with Nolo's. The player's screenshots of the live page (a Hanna, a depression, a Leah, a Cat 2 that went blank in hostile air, an Eristina and a Douglas, a Fausto "worse than the things before") showed that the page's picture was not the lab's: the cores were too warm and too smooth (purple rare, where a real depression's bursts have pink flecks), the picture was full of dots, lace, cotton balls, bars with squared ends and cut-offs ("how you implement them isn't realistic or accurate"), a weak storm in very warm, moist air did not make the one big continuous mass of convection that two real images show, the infrared eye was larger than the radar's, eyes formed at category 1, and a category 2 in hostile air lost all its cloud. This part looks at the picture **as the page makes it**, measures it the way the real storms were measured, and says what was wrong and why the lab had missed it.
 
