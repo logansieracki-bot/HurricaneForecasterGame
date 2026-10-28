@@ -6,7 +6,7 @@
    The radar is either a composite (every echo of the nest) or a site: a city's radar with the beam's height and width, range rings, the echoes that pass under or over the beam.                              */
 const FL_SPEEDS = [0.25, 0.5, 1, 2, 5, 10, 30, 60, 120, 300, 600, 1200, 1800, 2700], FL_NAMES = ['quarter speed', 'half speed', 'real time', '2× real time', '5× real time', '10× real time', '30× real time', '1 min every second', '2 min every second', '5 min every second', '10 min every second', '20 min every second', '30 min every second', '45 min every second'];
 const FL_DT = 120, FL_SPIN = 30, FL_MAXKM = 460;
-let flView = 'radar', flTb = null, flTbMin = 0, flProd = 'z', flVr = null, flVu = null, flVv = null, flVTex = null, flOn = false, flRenderAt = 0, flSstOpacity = '', flId = null, flNest = null, flSpeed = 5, flPlay = true, flPrevPlay = true, flSpinN = 0, flAcc = 0, flLast = 0, flSite = null, flTilt = 0.5, flLandStep = -99, flCanvas = null, flOff = null, flRaf = 0, flGone = false, flTextAt = 0, flDirty = true, flF1 = null, flSites = [], flDbz = null, flTop = null, flImg = null, flColAt = null;
+let flView = 'radar', flTb = null, flTbMin = 0, flProd = 'z', flVr = null, flVu = null, flVv = null, flVTex = null, flOn = false, flBare = false, flRenderAt = 0, flSstOpacity = '', flId = null, flNest = null, flSpeed = 5, flPlay = true, flPrevPlay = true, flSpinN = 0, flAcc = 0, flLast = 0, flSite = null, flTilt = 0.5, flLandStep = -99, flCanvas = null, flOff = null, flRaf = 0, flGone = false, flTextAt = 0, flDirty = true, flF1 = null, flSites = [], flDbz = null, flTop = null, flImg = null, flColAt = null;
 const flKmDeg = 111.195;
 
 const FL_BANDS = ['04e9e7', '019ff4', '0300f4', '02fd02', '01c501', '008e00', 'fdf802', 'e5bc00', 'fd9500', 'fd0000', 'd40000', 'bc0000', 'f800fd', '9854c6', 'ffffff'];       // the National Weather Service's base reflectivity colours, one band per 5 dBZ from 5 up (a radar's picture is in steps, with crisp edges between them, not a gradient)
@@ -72,7 +72,7 @@ function flOpen(id) {
   if (!stormsOn || !stormMgr) return false;
   const S = stormMgr.get(id); if (!flEligible(S)) return false;
   if (flOn) flClose();
-  flOn = true; flId = id; flGone = false; flSpinN = 0; flAcc = 0; flSite = null; flView = 'radar'; flLandStep = -99; flPrevPlay = playing; setPlaying(false);
+  flOn = true; flBare = false; $('fl-bare').setAttribute('aria-pressed', 'false'); flId = id; flGone = false; flSpinN = 0; flAcc = 0; flSite = null; flView = 'radar'; flLandStep = -99; flPrevPlay = playing; setPlaying(false);
   if (!olSel) { plainSel = null; stormSel = { id, h: -1 }; }                                        // (the system alone, with its path and its place)
   $('storm-card').hidden = true; $('aoi-card').hidden = true;
   const m0 = flScale(S, simHour, 0), f0 = flForcing(S, simHour, m0);
@@ -273,6 +273,7 @@ function flRender() {
 
 /* ---- wiring ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- */
 function flBind() {
+  $('fl-bare').onclick = () => { flBare = !flBare; $('fl-bare').setAttribute('aria-pressed', String(flBare)); stormsDirty = true; };
   const dock = $('dock');
   dock.addEventListener('click', (e) => {                                      // while the floater is open the playback buttons are its own
     if (!flOn) return; const b = e.target.closest && e.target.closest('button'); if (!b) return;

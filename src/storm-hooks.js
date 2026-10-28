@@ -925,11 +925,11 @@ function drawStorms() {
   stormsDirty = false;
   const g = stormCanvas.getContext('2d'); g.setTransform(DPR, 0, 0, DPR, 0, 0); g.clearRect(0, 0, W, H);
   stormHits = [];
-  if (!stormsOn || !stormMgr) { updateOutlookLegend(false, null); updateWWLegend(); return; }              // (storms off: no legend of the outlook either)
+  if (!stormsOn || !stormMgr || (flOn && flBare)) { updateOutlookLegend(false, null); updateWWLegend(); return; }              // (or the floater with its overlays cleared: nothing is drawn over it)              // (storms off: no legend of the outlook either)
   const toPx = (lat, lon) => map.latLngToContainerPoint([lat, lon]);
   olSelCheck();                                                     // (a disturbance picked to look at alone that has formed becomes a cyclone pick here)
   plainCheck();
-  const only = stormSel ? stormSel.id : null, aoiKey = olSel ? olSel.key : null, plainId = plainSel ? plainSel.id || plainSel.low : null, solo = only || aoiKey || plainId;       // a selected system is shown alone: every other path, wave, low and area disappears until it is deselected
+  const only = stormSel ? stormSel.id : (flOn && !olSel && !plainSel ? flId : null), aoiKey = olSel ? olSel.key : null, plainId = plainSel ? plainSel.id || plainSel.low : null, solo = only || aoiKey || plainId;       // a selected system is shown alone: every other path, wave, low and area disappears until it is deselected
   const showWaves = $('stwaves').checked && !solo, showLows = $('stlows').checked && !solo, showDist = $('stdist').checked && !only, showNames = $('stlabels').checked;
   // precursors are one lifecycle: a wave (dashed line) or a low (L) that has the potential to become a cyclone turns into a disturbance (X in a dashed ring), then a depression
   const drawLow = (p, hPa) => {
