@@ -1285,6 +1285,9 @@ async function checkSatellite(page, label, prefix) {
     return { used: pts.length, hit, wn, near }; }, [cs, R, mode]);
   const rz = await read('z');
   check(`[${label}] the land has a white bold outline over the radar, where the coast is: of ${rz.used} points on the page's coast in the frame ${rz.hit} have white outline pixels within ${R} pixels (12 km), and of the ${rz.wn} white pixels sampled ${rz.near} lie within that distance of the coast (over half: the outline also has the islands and lakes the land mask is too coarse for)`, rz.used >= 40 && rz.hit >= 0.85 * rz.used && rz.wn >= 300 && rz.near >= 0.55 * rz.wn);
+  // a change of view in the middle of an hour changes the box (the satellite shows a larger one): the hour's clock goes on from where it was
+  const mid = await ev(() => { const S = window.SSTSIM; S.floaterSet({ play: false, speed: 5 }); S.floaterRun(150); const a = S.floaterState(); S.floaterSet({ view: 'ir' }); const b = S.floaterState(); S.floaterSet({ view: 'radar' }); const c = S.floaterState(); return { m0: a.minutes, m1: b.minutes, m2: c.minutes, h0: a.hour, h1: b.hour, h2: c.hour, s0: a.scale, s1: b.scale, s2: c.scale }; });
+  check(`[${label}] a change of view in the middle of an hour keeps the hour's clock: the minute is ${mid.m0} before, ${mid.m1} in the satellite's larger box (scale ${mid.s0} to ${mid.s1}) and ${mid.m2} back on the radar (scale ${mid.s2}), the hour the same`, mid.m0 >= 5 && mid.s1 > mid.s0 && mid.m1 === mid.m0 && mid.m2 === mid.m0 && mid.h1 === mid.h0 && mid.h2 === mid.h0);
   // the satellite picture
   await ev(() => { window.SSTSIM.floaterSet({ view: 'ir' }); window.SSTSIM.floaterRun(1); });
   cs = await coastScan(); R = Math.max(7, Math.round(12 * cs.pxKm));          // (the satellite shows a larger box, so the map is framed again: the coast's pixels are those of the new frame)
