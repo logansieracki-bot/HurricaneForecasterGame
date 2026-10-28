@@ -504,6 +504,9 @@ const wet = (nest) => { const d = dbzField(nest); return (k) => (d[k] >= 20 ? 1 
     for (let i = 0; i < 60; i++) { if (broken) for (let k = 0; k < NN; k++) { const r = q.rr[k]; if (r > q.rmaxN && r < 2.2 * q.rmaxN && q.cth[k] < 0.2) { q.rc[k] = 0; q.rs[k] = 0; } } q.step(240); } return q.eyeS; };
   const r0 = ring(false), r1 = ring(true);
   check('a broken ring fills the eye: with the west half of the eyewall\'s annulus cleared of rain for four hours the eye falls to ' + f(r1) + ' (under 0.4), the untouched storm keeps ' + f(r0) + ' (over 0.85)', r1 < 0.4 && r0 > 0.85);
+  { const inner = (eta) => { const n = run({ v: 104, rmax: 24, r34: 140, extra: { eta } }, 6); return sector(n, 0, 10, null, 0, (k) => n.rc[k] + n.rs[k]); };
+    const t0 = inner(0), t1 = inner(1);
+    check('an extratropical transition fills the eye of a strong storm: the rain in the inner 10 km is ' + t0.toFixed(1) + ' mm/h for the tropical storm and ' + t1.toFixed(1) + ' in transition (over 5 mm/h and over 20 times)', t1 > 5 && t1 > 20 * t0); }
   { const q = N.create({ seed: 7 }); q.init(forcing({ v: 104, rmax: 24, r34: 140 })); q.eyeS = 0; q.eyeG = 0; for (let i = 0; i < 30; i++) q.step(240); const two = q.eyeS; for (let i = 0; i < 60; i++) q.step(240); const eight = q.eyeS;
     check('the eye forms over hours once the ring is there, not at once: from none, a category 3 has ' + f(two) + ' of its eye after 2 hours (0.05 to 0.85) and ' + f(eight) + ' after 8 (over 0.85)', two > 0.05 && two < 0.85 && eight > 0.85); }
   { const q = N.create({ seed: 7 }); q.init(forcing({ v: 104, rmax: 24, r34: 140 })); const a = q.eyeS; const w = N.create({ seed: 7 }); w.init(forcing({ v: 60, rmax: 40, r34: 140 }));
@@ -548,6 +551,11 @@ const wet = (nest) => { const d = dbzField(nest); return (k) => (d[k] >= 20 ? 1 
   { const q = N.create({ seed: 3 }); q.init(forcing({ v: 20, rmax: 80, extra: { conv: 0, sst: 18, rh: 0.3 } })); q.cir.fill(0); q.cih.fill(6); for (let k = 0; k < NN; k++) { const x = k % NG, y = Math.floor(k / NG); if ((x % 6) < 4 && (y % 6) < 4) { q.cir[k] = 1; q.cih[k] = 15; } }
     for (let i = 0; i < 15; i++) q.step(240); let gap = 0, ng = 0; for (let k = 0; k < NN; k++) { const x = k % NG, y = Math.floor(k / NG); if (x > 40 && x < 210 && y > 40 && y < 210 && ((x % 6) >= 4 || (y % 6) >= 4)) { gap += q.cir[k]; ng++; } }
     check('the nest spreads the anvil as it runs: after an hour with no new convection the gaps of a canopy of 4-cell squares hold ' + (gap / ng).toFixed(2) + ' of cloud (over 0.1)', gap / ng > 0.1); }
+  { const grow = (put) => { const q = N.create({ seed: 3 }); q.init(forcing({ v: 20, rmax: 80, extra: { conv: 0, sst: 18, rh: 0.3 } })); q.cir.fill(0); q.cih.fill(6);
+      for (let k = 0; k < NN; k++) { const x = (k % NG - 127.5) * 2, y = (Math.floor(k / NG) - 127.5) * 2; if (put(x, y)) q.rc[k] = 40; } q.step(120);
+      const at = (x0, rad) => { let e = 0, h = 0, n = 0; for (let k = 0; k < NN; k++) { const x = (k % NG - 127.5) * 2, y = (Math.floor(k / NG) - 127.5) * 2; if (Math.hypot(x - x0, y) < rad && q.cir[k] > 0.05) { e += q.cir[k]; h += q.cih[k] * q.cir[k]; n++; } } return { top: e ? h / e : 0, thick: n ? e / n : 0 }; }; return at; };
+    const cell = grow((x, y) => Math.hypot(x - 100, y) < 4)(100, 6), mass = grow((x, y) => Math.hypot(x + 80, y) < 60)(-80, 20);
+    check('an isolated cell makes a small anvil, a mass of rain a large one: the same 40 mm/h under a single 8 km cell gives a cirrus top of ' + cell.top.toFixed(1) + ' km and under a 120 km mass ' + mass.top.toFixed(1) + ' (the mass over 1.2 km higher), so strings of cells and thin streaks do not stand out as cold dots and spines', mass.top > cell.top + 1.2); }
   { const q = N.create({ seed: 3 }); q.init(forcing({ v: 20, rmax: 80 })); q.cir.fill(0); for (let k = 0; k < NN; k++) if (k % NG > 250) { q.cir[k] = 1; q.cih[k] = 13; } q.spreadCirrus(); let w = 0; for (let k = 0; k < NN; k++) if (k % NG < 5) w += q.cir[k];
     check('the anvil does not wrap round the box: cirrus at the east edge puts none on the west edge when it spreads (' + w.toFixed(3) + ')', w === 0); }
 }
