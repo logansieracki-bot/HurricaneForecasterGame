@@ -49,7 +49,7 @@ const PAR = {
   tauUp: 300, tauC2: 1200, sigS: 0.05, tauS: 1800, gs: 0.4,    // radar rain: rise time of convective rain (s), its fall time; the share of it stratiform rain receives (per tauC2), its life (s), the rain of broad ascent (mm/h)
   top: [8.2, 2.4, 15.2, 2.0],      // the top (km) of a convective cell raining r mm/h: top[0] + top[1] ln(1 + r/3), soft-capped (above top[2] it levels off toward top[2] + top[3]); fitted so that a category 1 and 2 hurricane's core has the cold tops of the real ones (Nolo 25-26 Sep 2026, GOES: within 100 km about 17 thousand km2 colder than -60 C and 8 thousand colder than -70 C, the coldest top within 60 km about -78 C)
   memS: 1.2, memN: 0.4, memUp: 10800, memDn: 43200, memA: [1, 5], memR: 10,      // the moisture memory: the gain of the supply on it (and the level of it that leaves the supply as it was), the time it builds over where it rains and the time it lasts in moist air (s), the rain (mm/h, over memR cells) that builds it
-  ciSp: 2, ciR: 1, ciW: 0.7,      // the anvil mixes sideways (passes of a 3 x 3 mean per cirrus step: about 7 km an hour) and is made of the rain of a cell's neighbourhood, not of one cell's (the radius in cells of the mean and its share: isolated cells and thin streaks make small anvils, a mass of rain a large one)
+  irSm: 0.75, irN: 2, ciSp: 2, ciR: 1, ciW: 0.7,      // the anvil mixes sideways (passes of a 3 x 3 mean per cirrus step: about 7 km an hour) and is made of the rain of a cell's neighbourhood, not of one cell's (the radius in cells of the mean and its share: isolated cells and thin streaks make small anvils, a mass of rain a large one); the top of a pixel's rain cloud follows the rain of its neighbourhood too (the share of a mean over irN passes of a 3 x 3 mean), so a string of moderate cells is a band, not a row of dots
   eyeV: [40, 47], eyeU: 6, eyeRing: [1.0, 2.2, 2, 10, 0.45, 0.85], eyeTau: [5400, 3600],      // the eye: the wind (m/s) over which it can form (it begins in category 2 and is there by category 3), how much higher that wind is in the most hostile air (shear, dry air, cool water: the eye erodes at category 3), the ring it needs (inner and outer radius in radii of maximum wind, the rain a sector needs to count: from and to in mm/h, the share of the sectors that makes the ring: from and to) and the time it forms and fills in (s)
   tauCi: 9000, dzCi: 0.4, ciOut: 8, ciTex: [0.2, 0.25], ciDt: 300,      // infrared: the life of the cirrus the convection spreads (s), its top's fall (km an hour), the upper outflow that spreads it (m/s), the texture on its thickness (cell and cluster scale), how often it is advected (s)
   outflow: 4, gsW: 1.6,                                 // the upper-level outflow (m/s) that carries stratiform rain outward from the core; the stratiform rain of an extratropical transition's warm sector (mm/h)
@@ -633,12 +633,13 @@ Nest.prototype.irTb = function (out, ts0) {
   if (!this.dcr) this.display(0, true, true);
   const P = PAR, Qc = P.Qc, rc = this.drc, rs = this.drs, ci = this.dcr, cz = this.dch, Q = this.dQ, lfM = this.lfM, lfOn = this.lfOn, f = this.cur || this.f0, lat = f.lat;
   const ztp = clamp(16.5 - 0.12 * Math.max(0, lat - 20), 9, 16.5), ttp = -75 + 0.7 * Math.max(0, lat - 18), zk = ztp / 16.5;       // (the clouds' heights are tropical ones: poleward they are scaled by the lower tropopause, so a deep cloud at 50 N tops out near -45 C, not -80 C)
+  const rb = this.t1, wS = P.irSm; rb.set(rc); for (let p = 0; p < P.irN; p++) this.blur(rb, this.t2);
   for (let k = 0; k < NN; k++) {
     const ts = ts0 + (lfOn ? 3 * lfM[k] : 0), qr = Q[k] / Qc, aL = sm01(qr, 0.93, 1.0);
     let tb = ts;
     if (aL > 0) tb += 0.9 * aL * (irTz(ts, zk * (1 + 4.5 * sm01(qr, 0.94, 1.02)), ztp, ttp) - ts);                    // scattered low cloud
     const r1 = rc[k], r2 = rs[k];
-    if (r1 > 0.05 || r2 > 0.05) { const zt = Math.max(r1 > 0.05 ? topZ(r1) : 0, capZ(7 + 2.4 * Math.log(1 + r2 / 0.5))); tb += (1 - Math.exp(-(r1 / 3 + r2 / 0.7))) * (irTz(ts, zk * zt, ztp, ttp) - tb); }     // the rain clouds
+    if (r1 > 0.05 || r2 > 0.05) { const zt = Math.max(r1 > 0.05 || rb[k] > 0.05 ? topZ((1 - wS) * r1 + wS * rb[k]) : 0, capZ(7 + 2.4 * Math.log(1 + r2 / 0.5))); tb += (1 - Math.exp(-(r1 / 3 + r2 / 0.7))) * (irTz(ts, zk * zt, ztp, ttp) - tb); }     // the rain clouds
     const e = ci[k]; if (e > 0.01) { const m = tb + e * (irTz(ts, zk * cz[k], ztp, ttp) - tb); if (m < tb) tb = m; }                                           // the cirrus over them
     out[k] = tb;
   }

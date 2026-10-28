@@ -451,6 +451,7 @@ const mutants = [
   M('K41', NS, [E("this.texture(ir, qb, cb);", "this.texture(ir);")], ['nest'], 'the texture\'s noise jumps at each step'),
   M('K42', NS, [E("if (this.keepPrev) this.savePrev();\n", "")], ['nest'], 'the state a step began from is not kept: the picture between steps leaps'),
   M('K43', NS, [E("ciR: 1, ciW: 0.7,", "ciR: 1, ciW: 0,")], ['nest'], 'every cell makes its own anvil: strings of cells and thin streaks stand out as cold dots and spines'),
+  M('K44', NS, [E("irSm: 0.75, irN: 2,", "irSm: 0, irN: 2,")], ['nest'], 'the top of a pixel follows its own cell\'s rain only: strings of moderate cells are rows of dots'),
   M('F6', FL, [E("bh = flBeam(r, tilt);", "bh = 0;")], ['floater'], 'the height of the beam never counts: every tilt sees the same'),
   M('F7', FL, [E("(S.th !== 'wv' || S.dist || S.kind === 'N' || !!S.invest || !!S.sub)", "true")], ['floater'], 'a plain tropical wave can have a floater'),
   M('F8', FL, [E("const FL_DT = 120, FL_SPIN = 30,", "const FL_DT = 120, FL_SPIN = 1,")], ['floater'], 'no spin-up: the radar opens on a model with no convection yet'),
