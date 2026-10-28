@@ -4,6 +4,7 @@
 import { chromium } from 'playwright';
 import { existsSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
+import { stats as irStats } from '../tools/ir_research/irstats.mjs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -1270,12 +1271,12 @@ async function checkSatellite(page, label, prefix) {
   check(`[${label}] the nest is told the hour of the day in UTC (${ut.utc} against the simulated clock's ${ut.want}), which its bursts' local night follows, and starts with no stripping (${ut.strip}) and an eye fill between 0 and 1 (${ut.ef.toFixed(2)})`, ut.utc != null && Math.abs(ut.utc - ut.want) < 1e-6 && ut.strip >= 0 && ut.strip <= 1 && ut.ef >= 0 && ut.ef <= 1);
   check(`[${label}] the floater has a View chooser (${open.opts.join(', ')}) and opens on radar (${open.f.view}), the infrared key hidden`, open.f.view === 'radar' && open.opts.length === 2 && open.opts[0].startsWith('radar') && /ir:Satellite/.test(open.opts[1]) && await ev(() => getComputedStyle(document.getElementById('fl-legend-ir')).display === 'none'));
   // the coast: the page's land mask scanned along rows and columns of the frame for steps from sea to land; the outline is drawn from the page's own (finer) polygons, so the two agree to a few kilometres
-  const cs = await ev(() => { const S = window.SSTSIM, p = S.floaterPos(), c0 = Math.max(0.5, Math.cos(p.lat * Math.PI / 180)), DL = 1.7, DO = 2.1 / c0, pts = [], at = (lat, lon) => S.stormEnvSample(lat, lon).land;
+  const coastScan = () => ev(() => { const S = window.SSTSIM, p = S.floaterPos(), c0 = Math.max(0.5, Math.cos(p.lat * Math.PI / 180)), DL = 1.7, DO = 2.1 / c0, pts = [], at = (lat, lon) => S.stormEnvSample(lat, lon).land;
     for (let a = -DL; a <= DL; a += 0.05) { let prev = null; for (let b = -DO; b <= DO; b += 0.03 / c0) { const l = at(p.lat + a, p.lon + b); if (prev !== null && l !== prev) { const q = S.placePx(p.lat + a, p.lon + b - 0.015 / c0); pts.push([q.x, q.y]); } prev = l; } }
     for (let b = -DO; b <= DO; b += 0.05 / c0) { let prev = null; for (let a = -DL; a <= DL; a += 0.03) { const l = at(p.lat + a, p.lon + b); if (prev !== null && l !== prev) { const q = S.placePx(p.lat + a - 0.015, p.lon + b); pts.push([q.x, q.y]); } prev = l; } }
     const q0 = S.placePx(p.lat - DL, p.lon - DO), q1 = S.placePx(p.lat + DL, p.lon + DO), k0 = S.placePx(p.lat, p.lon), k1 = S.placePx(p.lat, p.lon + 0.1 / c0);
     return { pts, box: [Math.min(q0.x, q1.x), Math.min(q0.y, q1.y), Math.max(q0.x, q1.x), Math.max(q0.y, q1.y)], pxKm: Math.abs(k1.x - k0.x) / (0.1 * 111.195) }; });
-  const R = Math.max(7, Math.round(12 * cs.pxKm));
+  let cs = await coastScan(), R = Math.max(7, Math.round(12 * cs.pxKm));
   const read = (mode) => ev(([cs, R, mode]) => { const cv = document.getElementById('radar-canvas'), g = cv.getContext('2d'), dp = cv.width / cv.clientWidth, [bx0, by0, bx1, by1] = cs.box, d = g.getImageData(0, 0, cv.width, cv.height).data;
     const px = (x, y) => { const i = (Math.round(y * dp) * cv.width + Math.round(x * dp)) * 4; return d.subarray(i, i + 4); }, white = (a) => a[3] > 200 && a[0] > 235 && a[1] > 235 && a[2] > 235;
     const pts = cs.pts.filter(([x, y]) => x > Math.max(bx0, R) && x < Math.min(bx1, cv.clientWidth - R) && y > Math.max(by0, R) && y < Math.min(by1, cv.clientHeight - R));
@@ -1286,23 +1287,25 @@ async function checkSatellite(page, label, prefix) {
   check(`[${label}] the land has a white bold outline over the radar, where the coast is: of ${rz.used} points on the page's coast in the frame ${rz.hit} have white outline pixels within ${R} pixels (12 km), and of the ${rz.wn} white pixels sampled ${rz.near} lie within that distance of the coast (over half: the outline also has the islands and lakes the land mask is too coarse for)`, rz.used >= 40 && rz.hit >= 0.85 * rz.used && rz.wn >= 300 && rz.near >= 0.55 * rz.wn);
   // the satellite picture
   await ev(() => { window.SSTSIM.floaterSet({ view: 'ir' }); window.SSTSIM.floaterRun(1); });
+  cs = await coastScan(); R = Math.max(7, Math.round(12 * cs.pxKm));          // (the satellite shows a larger box, so the map is framed again: the coast's pixels are those of the new frame)
   const ui = await ev(() => { const S = window.SSTSIM, vis = (id) => { const e = document.getElementById(id); return !!e && getComputedStyle(e).display !== 'none'; }; return { f: S.floaterState(), ir: vis('fl-legend-ir'), z: vis('fl-legend'), v: vis('fl-legend-v'), prod: vis('fl-prod-l'), site: vis('fl-site-l'), tilt: vis('fl-tilt-l'), sub: document.getElementById('fl-sub').textContent, cap: document.getElementById('fl-legend-ir').textContent.replace(/\s+/g, ' ').trim() }; });
   check(`[${label}] choosing Satellite (infrared) shows its key (${ui.cap}) and takes the radar's own choosers (product, site, tilt) and keys away; the bar says "${ui.sub}"`, ui.f.view === 'ir' && ui.ir && !ui.z && !ui.v && !ui.prod && !ui.site && !ui.tilt && /infrared/.test(ui.sub) && /Infrared/.test(ui.cap) && /-80/.test(ui.cap));
+  check(`[${label}] the satellite shows a larger area than the radar: the box is ${(256 * ui.f.cellKm).toFixed(0)} km across in 3 km cells (scale ${ui.f.scale}, at least 768 km: a satellite picture has no edge a storm's cloud ends at)`, ui.f.scale >= 1.5 && ui.f.cellKm >= 3 && ui.f.cellKm <= 6);
   const px = await ev((bx) => { const cv = document.getElementById('radar-canvas'), g = cv.getContext('2d'), dp = cv.width / cv.clientWidth, d = g.getImageData(0, 0, cv.width, cv.height).data, x0 = Math.ceil(bx[0] * dp), x1 = Math.floor(bx[2] * dp), y0 = Math.ceil(bx[1] * dp), y1 = Math.floor(bx[3] * dp);
     const S = window.SSTSIM, pp = S.floaterPos(), cc = S.placePx(pp.lat, pp.lon); let op = 0, dark = 0, white = 0, grey = 0, colour = 0, dd = 0, dc = 0, dgw = 0;      // (the box is well inside the nest's frame, 378 by 466 km of its 512; dd, dc: the distances of the dark and the coloured pixels from the storm)
     for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) { const i = (y * cv.width + x) * 4; if (d[i + 3] < 200) continue; op++; const r = d[i], gg = d[i + 1], b = d[i + 2], neutral = Math.abs(r - gg) < 14 && Math.abs(gg - b) < 14;
       if (neutral && r > 235) { white++; dgw += Math.hypot(x / dp - cc.x, y / dp - cc.y); } else if (neutral && r < 110) { dark++; dd += Math.hypot(x / dp - cc.x, y / dp - cc.y); } else if (neutral) { grey++; dgw += Math.hypot(x / dp - cc.x, y / dp - cc.y); } else if (Math.max(r, gg, b) - Math.min(r, gg, b) > 80) { colour++; dc += Math.hypot(x / dp - cc.x, y / dp - cc.y); } }
     return { op, box: (x1 - x0) * (y1 - y0), dark, white, grey, colour, dDark: dd / Math.max(1, dark), dColour: dc / Math.max(1, colour), dLight: dgw / Math.max(1, grey + white) }; }, cs.box);
-  check(`[${label}] the infrared picture is opaque over the whole frame (${px.op} of ${px.box} pixels of a box inside it) in the colour bar's scheme: the sea and the low cloud dark grey (${(100 * px.dark / px.op).toFixed(0)} %), cloud light grey and white (${(100 * (px.grey + px.white) / px.op).toFixed(0)} %) and the cold tops in colour, cyan to red and pink (${(100 * px.colour / px.op).toFixed(1)} %), the colours on average ${px.dColour.toFixed(0)} pixels from the storm, the grey and white ${px.dLight.toFixed(0)} and the dark grey ${px.dDark.toFixed(0)} (the cold tops are near the storm, the clear sea, when the frame shows any, far from it: a major hurricane's canopy fills most of a 400 km frame)`, px.op > 0.97 * px.box && px.op > 20000 && px.grey + px.white > 0.03 * px.op && px.colour > 0.005 * px.op && (px.dark < 0.001 * px.op || px.dColour < px.dDark - 20) && px.dColour < px.dLight - 15);
+  check(`[${label}] the infrared picture is opaque over the whole frame (${px.op} of ${px.box} pixels of a box inside it) in the colour bar's scheme: the sea and the low cloud dark grey (${(100 * px.dark / px.op).toFixed(0)} %), cloud light grey and white (${(100 * (px.grey + px.white) / px.op).toFixed(0)} %) and the cold tops in colour, cyan to red and pink (${(100 * px.colour / px.op).toFixed(1)} %), the colours on average ${px.dColour.toFixed(0)} pixels from the storm, the grey and white ${px.dLight.toFixed(0)} and the dark grey ${px.dDark.toFixed(0)} (the cold tops are near the storm and the grey and white cirrus further out; the dark sea is a small share, the satellite's box being larger than the radar's)`, px.op > 0.97 * px.box && px.op > 20000 && px.grey + px.white > 0.03 * px.op && px.colour > 0.005 * px.op && px.dark < 0.25 * px.op && px.dColour < px.dLight - 15);
   { const tl = await ev(() => window.SSTSIM.floaterPos().lat), lim = -55 + Math.max(0, Math.abs(tl) - 25) * 0.5;      // (the tropopause is lower and warmer poleward: 0.5 C a degree beyond the 25th parallel)
     check(`[${label}] a 90-kt storm's coldest cloud top is ${ui.f.tbMin.toFixed(0)} C (colder than ${lim.toFixed(0)} C at ${Math.abs(tl).toFixed(0)} degrees: the tropopause is lower and warmer poleward)`, ui.f.tbMin < lim); }
   const ci = await read('ir');
   check(`[${label}] the land's outline is drawn over the satellite picture too: ${ci.hit} of ${ci.used} points on the coast have white outline pixels within ${R} pixels`, ci.used >= 40 && ci.hit >= 0.85 * ci.used);
   const halo = await ev(() => window.SSTSIM.floaterCoast());
-  check(`[${label}] the outline is white with a dark edge so that it stays visible on white cloud: drawn alone it is ${halo.core} white pixels and ${halo.edge} dark edge pixels (at least half as many)`, halo.core > 500 && halo.edge >= 0.5 * halo.core);
+  check(`[${label}] the outline is white with a dark edge so that it stays visible on white cloud: drawn alone it is ${halo.core} white pixels and ${halo.edge} dark edge pixels (at least a third as many: one line has about as many edge pixels as white ones, but where small islands lie close together at the satellite's larger box (Fiji) the next line's white covers part of the edge; no edge at all, or a thin one, is far below that)`, halo.core > 500 && halo.edge >= halo.core / 3);
   await ev(() => { window.SSTSIM.floaterSet({ view: 'radar' }); window.SSTSIM.floaterRun(1); });
-  const bk = await ev(() => { const vis = (id) => { const e = document.getElementById(id); return !!e && getComputedStyle(e).display !== 'none'; }; return { v: window.SSTSIM.floaterState().view, z: vis('fl-legend'), ir: vis('fl-legend-ir'), site: vis('fl-site-l'), sub: document.getElementById('fl-sub').textContent }; });
-  check(`[${label}] back to radar: its key and site chooser return, the infrared key goes (${bk.sub})`, bk.v === 'radar' && bk.z && !bk.ir && bk.site && /reflectivity/.test(bk.sub));
+  const bk = await ev(() => { const vis = (id) => { const e = document.getElementById(id); return !!e && getComputedStyle(e).display !== 'none'; }; return { v: window.SSTSIM.floaterState().view, z: vis('fl-legend'), ir: vis('fl-legend-ir'), site: vis('fl-site-l'), sub: document.getElementById('fl-sub').textContent, scale: window.SSTSIM.floaterState().scale }; });
+  check(`[${label}] back to radar: its key and site chooser return, the infrared key goes (${bk.sub}), and the box goes back to the radar's own scale (${bk.scale}, under the satellite's ${ui.f.scale})`, bk.v === 'radar' && bk.z && !bk.ir && bk.site && /reflectivity/.test(bk.sub) && bk.scale < ui.f.scale);
   // the two fastest clocks (on a storm in open water: the coast scenario's storm may be gone by the landfall within the hours these run)
   const ow = prefix === 'atlantic' ? { td: [15, -45], day: 200 } : STORM_SPECS[prefix];
   const sid2 = await ev((q) => { const S = window.SSTSIM; S.floaterClose(); S.setPlaying(false); S.applySeed(4242); S.setPlaying(false); S.storms(true); S.stormAuto(false); S.summary(false); S.tick(24 * q.day);
@@ -1322,7 +1325,17 @@ async function checkSatellite(page, label, prefix) {
   check(`[${label}] at 45 minutes a second in the satellite view the clock runs by itself (${live.dSteps} steps in three seconds) and the page keeps drawing (${live.fr} frames)`, live.on && live.dSteps >= 8 && live.fr >= 6);
   // the page's own air at some of these places is a shear of 20 to 60 kt with a mid-level humidity under 35 %: a real hurricane is torn apart there, and the nest shows it
   const hs = await ev((id) => { const S = window.SSTSIM; S.floaterClose(); S.floaterEnv({ shear: 45, rh: 25, sst: 28 }); S.floaterOpen(id); S.floaterRun(7200); S.floaterSet({ view: 'ir' }); S.floaterRun(1); const f = S.floaterState(), out = { strip: f.strip, ef: f.eyeFill, tb: f.tbMin, wind: f.vNest / 0.514444 }; S.floaterClose(); return out; }, sid2);
-  check(`[${label}] in 45 kt of shear and dry air the floater's hurricane is stripped: the strip state is ${hs.strip.toFixed(2)} (over 0.9), the eye is clouded over (the fill ${hs.ef.toFixed(2)}, over 0.7) and the coldest top is ${hs.tb.toFixed(0)} C (warmer than -60 C: the eyewall's cold cloud is gone) while the nest still holds the engine's wind (${hs.wind.toFixed(0)} kt)`, hs.strip > 0.9 && hs.ef > 0.7 && hs.tb > -60 && hs.wind > 50);
+  check(`[${label}] in 45 kt of shear and dry air the floater's hurricane is stripped, but a strong storm does not lose its picture at once: the strip state is ${hs.strip.toFixed(2)} (over 0.9), the eye is clouded over (the fill ${hs.ef.toFixed(2)}, over 0.7) and the coldest top is ${hs.tb.toFixed(0)} C (still colder than -50 C: a ragged core of deep cloud is left, as in a real hurricane torn apart over a day), the nest holding the engine's wind (${hs.wind.toFixed(0)} kt)`, hs.strip > 0.9 && hs.ef > 0.7 && hs.tb < -50 && hs.wind > 50);
+  // the picture as the page makes it: an eye only from category 2 (a ragged hint) and a clear one from category 3, the same eye in both views, and no dots
+  const eyeOf = async (v, p) => {
+    const t = await ev(([id, v, p]) => { const S = window.SSTSIM; S.floaterClose(); S.stormForce(id, { th: 'tc', v, vr: v, p }); S.floaterEnv({ shear: 8, rh: 62, sst: 28.5 }); S.floaterOpen(id); S.floaterSet({ view: 'ir' }); S.floaterRun(3600); return S.floaterTb(); }, [sid2, v, p]);
+    const tb = new Float32Array(Buffer.from(t.b64, 'base64').buffer.slice(0)), N = t.n, km = 2 * t.m, rm = Math.max(t.f.rmax, 5); let c = 0, cn = 0, o = 0, on = 0;
+    for (let k = 0; k < N * N; k++) { const r = Math.hypot(k % N - 127.5, Math.floor(k / N) - 127.5) * km; if (r < 0.3 * rm) { c += tb[k]; cn++; } else if (r > rm && r < 1.6 * rm) { o += tb[k]; on++; } }
+    return { contrast: c / cn - o / on, st: irStats(tb, N, km), f: t.f, tbMin: Math.min(...tb) };
+  };
+  const e70 = await eyeOf(70, 985), e105 = await eyeOf(112, 935);
+  check(`[${label}] no eye in a category 1 storm and a clear one in a major hurricane: the centre of the picture is ${e70.contrast.toFixed(0)} C warmer than the eyewall's ring at ${(e70.f.vTarget).toFixed(0)} kt (the engine's wind: under 15) and ${e105.contrast.toFixed(0)} at ${(e105.f.vTarget).toFixed(0)} kt (over 40)`, e70.contrast < 15 && e105.contrast > 40);
+  check(`[${label}] the page's picture has no dots: ${(100 * e105.st.speckle).toFixed(1)} % of a hurricane's cloud-edge pixels differ from their neighbours by over 5 C (under 3 %, the real storms 0.1 to 1.3 %), ${e105.st.smallN} cloud objects under 100 km2 (under 60), the thin cirrus ${e105.st.cirrusRough.toFixed(2)} C rough (0.4 to 1.9: fibres, not speckle), and no top colder than -90 C (${e105.tbMin.toFixed(0)} C)`, e105.st.speckle < 0.03 && e105.st.smallN < 60 && e105.st.cirrusRough > 0.4 && e105.st.cirrusRough < 1.9 && e105.tbMin > -90);
   const re = await ev((id) => { const S = window.SSTSIM; S.floaterSet({ view: 'ir' }); S.floaterClose(); const ok = S.floaterOpen(id); const out = { ok, view: S.floaterState().view, sel: document.getElementById('fl-view').value, ir: getComputedStyle(document.getElementById('fl-legend-ir')).display, z: getComputedStyle(document.getElementById('fl-legend')).display, speed: S.floaterState().speed }; S.floaterClose(); S.stormForce(id, { alive: false }); return out; }, sid2);
   check(`[${label}] a floater opened after one closed in the satellite view opens on radar again (${re.view}, the chooser ${re.sel}, the radar key ${re.z}, the infrared key ${re.ir}) at its usual speed (${re.speed})`, re.ok && re.view === 'radar' && re.sel === 'radar' && re.ir === 'none' && re.z !== 'none' && re.speed === 5);
 }
@@ -1382,6 +1395,7 @@ async function checkImpacts(page, label, prefix) {
 async function checkStormsBasin(page, label, prefix) {
   const ev = (fn, arg) => page.evaluate(fn, arg);
   const sp = STORM_SPECS[prefix];
+  if (process.env.ONLYSAT) { await checkFloater(page, label, prefix); await checkSatellite(page, label, prefix); return; }          // (a working aid: ONLYSAT=1 ONLY=Atlantic runs just the floater's checks)
   await import('../src/storms.js');
   const H = globalThis.HFStorms, BI = H.basinInfo(prefix), SC = H.scaleOf(prefix), tag = SC.bar[0], word = BI.hurricane[0].toUpperCase() + BI.hurricane.slice(1), esc = (t) => t.replace(/[.+*?^${}()|[\]\\]/g, '\\$&');      // SC: the basin's own intensity scale (src/storms.js SCALES)
   const ref = JSON.parse(readFileSync(join(ROOT, 'data/generated', `${prefix}-tc-ref.json`), 'utf8')).normals;
@@ -2498,6 +2512,16 @@ async function checkBasin(label, dist, extra) {
   await browser.close();
 }
 
+// a working aid: ONLYSAT_FAST=atlantic (or another basin's prefix) runs only that page's floater and satellite checks, in a minute or two instead of the whole suite's quarter of an hour
+if (process.env.ONLYSAT_FAST) {
+  const prefix = process.env.ONLYSAT_FAST, dist = { atlantic: ATLANTIC_DIST, eastpacific: EPAC_DIST, westpacific: WPAC_DIST, nio: NIO_DIST, aus: AUS_DIST, swio: SWIO_DIST, spac: SPAC_DIST, satl: SATL_DIST, med: MED_DIST }[prefix];
+  const browser = await chromium.launch(launchOpts), page = await browser.newPage({ viewport: { width: 1280, height: 800 } }), errors = [];
+  await page.route('**://**/*', (route) => route.request().url().startsWith('file://') ? route.continue() : route.abort()); page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto(pathToFileURL(dist).href, { waitUntil: 'load', timeout: 30000 }); await page.waitForFunction(() => window.__ready === true, { timeout: 15000 }); await page.waitForTimeout(1000);
+  await checkFloater(page, prefix, prefix); await checkSatellite(page, prefix, prefix);
+  check(`[${prefix}] no page errors (${errors.length})`, errors.length === 0); if (errors.length) console.log('  ' + errors.join('\n  '));
+  await browser.close(); console.log(failed ? `\n${failed} check(s) failed.` : '\nAll checks passed.'); process.exit(failed ? 1 : 0);
+}
 await checkBasin('Atlantic', ATLANTIC_DIST, async (page, label) => {
   // The border-line data only covers roughly the Atlantic domain + a margin (e.g. it's empty
   // over Alaska/Yukon); panning there used to show a map with no state/country outlines at all.

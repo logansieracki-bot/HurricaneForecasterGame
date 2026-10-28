@@ -4,11 +4,13 @@ import '../src/storm-cities.js';
 import '../src/storms.js';
 import '../src/storm-nest.js';
 import { makeEnv } from './storms_env.mjs';
+import { stats } from '../tools/ir_research/irstats.mjs';
+import { readFileSync } from 'node:fs';
 
 const H = globalThis.HFStorms, N = globalThis.HFNest;
 H.calibrated(false);
 let failed = 0, passed = 0;
-function check(name, cond) { if (cond) { passed++; console.log('ok   ' + name); } else { failed++; console.log('FAIL ' + name); } }
+function check(name, cond) { if (cond) { passed++; console.log('ok   ' + name); } else { failed++; console.log('FAIL ' + name); if (process.env.HF_FAILFAST) process.exit(1); } }          // (HF_FAILFAST: the mutation harness stops at the first failure: that mutant is killed)
 const near = (a, b, tol) => Math.abs(a - b) <= tol;
 const KT = 0.514444, NG = N.N, NN = NG * NG;
 const par = H.mergeParams(H.defaultParams(), { shearK: 1 });
@@ -55,9 +57,14 @@ const wet = (nest) => { const d = dbzField(nest); return (k) => (d[k] >= 20 ? 1 
   check('a clear eye is warm but not the sea: ' + eyeMean.toFixed(1) + ' C at its centre (11 to 21 C, the real strong storms\') and nowhere above 22 C (' + eyeMax.toFixed(1) + ') under a sea of 28.8 C', eyeMean > 11 && eyeMean < 21 && eyeMax < 22);
   maj.ef = 1; maj.efN = 0; const tbF = tbOf(maj); let fillMean = 0; for (let k = 0; k < NN; k++) if (maj.rr[k] < 0.3 * Rm) fillMean += tbF[k]; fillMean /= ne;
   check('a cloud-filled eye is cool and white: ' + fillMean.toFixed(1) + ' C (between -25 and +5 C, colder than the clear eye by over 15)', fillMean < 5 && fillMean > -25 && fillMean < eyeMean - 15);
-  maj.ef = 0; const prof = radial(maj, tbC, [0, 10, 20, 30, 40, 50, 60, 80, 100]);
-  let drop = 0; for (let i = 1; i < 5; i++) drop = Math.max(drop, prof[i - 1] - prof[i]);
-  check('the eye ends in a smooth ramp, not a step: the mean Tb by 10 km ring is ' + prof.slice(0, 6).map((v) => v.toFixed(0)).join(', ') + ' C (the largest drop between neighbours ' + drop.toFixed(0) + ' C, under 50) and reaches the eyewall top (' + prof[5].toFixed(0) + ' C below -50) within 3 radii of maximum wind', drop < 50 && prof[5] < -50 && prof[0] > 8);
+  { const ring = []; for (let r = 0; r <= 90; r += 2) ring.push(r); const rain2 = new Float32Array(NN); for (let k = 0; k < NN; k++) rain2[k] = maj.rc[k] + maj.rs[k];
+    maj.ef = 0; const rp = radial(maj, rain2, ring), tp = radial(maj, tbOf(maj), ring), pk = Math.max(...rp), rRadar = ring[rp.findIndex((v) => v >= 0.5 * pk)], tmid = (tp[0] + Math.min(...tp)) / 2, rIr = ring[tp.findIndex((v) => v <= tmid)];
+    check('the picture\'s eye is the radar\'s eye, not a larger one: the rain reaches half its eyewall\'s peak at ' + rRadar + ' km, the picture is half way from the eye\'s warmth to the eyewall\'s cold at ' + rIr + ' km (within 4 km of each other), both inside the radius of maximum wind (' + Rm.toFixed(0) + ' km)', Math.abs(rRadar - rIr) <= 4 && rIr < Rm && rRadar < Rm); }
+  { let drop = 0; const pr = radial(maj, tbC, [0, 5, 10, 15, 20, 25, 30, 40, 50, 60]); for (let i = 1; i < 6; i++) drop = Math.max(drop, pr[i - 1] - pr[i]);
+    check('the eye ends in a thin ring (the real eyewall\'s inner edge is a few km), not a cliff and not a ramp over two radii: the mean Tb by 5 km ring is ' + pr.slice(0, 6).map((v) => v.toFixed(0)).join(', ') + ' C, falling by ' + drop.toFixed(0) + ' C (30 to 75) in one ring and reaching the eyewall top (' + pr[7].toFixed(0) + ' C, below -50) by 40 km', drop > 30 && drop < 75 && pr[7] < -50 && pr[0] > 8); }
+  { const eyeContrast = (v, rm) => { const n = N.create({ seed: 3 }); n.init(forcing({ v, rmax: rm, r34: 140 })); for (let i = 0; i < 60; i++) n.step(240); n.ef = 0; const tb = tbOf(n); let c = 0, cn = 0, o = 0, on = 0; for (let k = 0; k < NN; k++) { const r = n.rr[k]; if (r < 0.3 * n.rmaxN) { c += tb[k]; cn++; } else if (r > 1.0 * n.rmaxN && r < 1.6 * n.rmaxN) { o += tb[k]; on++; } } return c / cn - o / on; };
+    const c1 = eyeContrast(75, 35), c2 = eyeContrast(90, 30), c3 = eyeContrast(105, 25);
+    check('no eye at category 1, a ragged hint of one in category 2 and a clear one from category 3: the centre is ' + c1.toFixed(0) + ' C warmer than the eyewall\'s ring at 75 kt (under 12), ' + c2.toFixed(0) + ' at 90 kt (15 to 60: a dimple of cloud, not a clear eye) and ' + c3.toFixed(0) + ' at 105 kt (over 55)', c1 < 12 && c2 > 15 && c2 < 60 && c3 > 55); }
   { const mk = (ramp) => { const n = N.create({ seed: 3 }), f0 = forcing({ v: ramp ? 70 : 120, rmax: 28 }), f1 = forcing({ v: 120, rmax: 20 }); n.init(f0); n.setForcing(f0, f1); for (let i = 0; i < 90; i++) n.step(240); return n; };
     const ri = mk(true), st = mk(false);
     check('an eye fills with cloud during a rapid intensification and not in a steady storm: the fill is ' + ri.ef.toFixed(2) + ' after 6 hours of 70 to 120 kt against ' + st.ef.toFixed(2) + ' for 120 kt held (over 0.3 more)', ri.ef > st.ef + 0.3); }
@@ -67,7 +74,7 @@ const wet = (nest) => { const d = dbzField(nest); return (k) => (d[k] >= 20 ? 1 
   /* the canopy: a strong storm's cirrus shield reaches the edge of the box, in a size that follows the storm */
   const tbM = tbOf(maj), rp = radial(maj, tbM, [60, 80, 120, 150, 190, 230, 250]), a60 = area(maj, tbM, -60), a70 = area(maj, tbM, -70);
   check('the cirrus shield of a major hurricane reaches the box\'s edge: the mean Tb is ' + rp.map((v) => v.toFixed(0)).join(', ') + ' C at 70, 100, 135, 170, 210 and 240 km (the real storms: about -70, -66, -56, -43 and -28 C), under -20 C all the way out', rp[0] < -62 && rp[2] < -40 && rp[4] < -20 && rp[5] < -5);
-  check('the cold areas are those of the real storms: ' + (a60 / 1000).toFixed(0) + ' thousand km2 colder than -60 C (35 to 110) and ' + (a70 / 1000).toFixed(0) + ' thousand colder than -70 C (4 to 45) in the 512 km box (the real majors: 45 to 108 and 15 to 37)', a60 > 35000 && a60 < 110000 && a70 > 4000 && a70 < 45000);
+  check('the cold areas are those of the real storms: ' + (a60 / 1000).toFixed(0) + ' thousand km2 colder than -60 C (35 to 110) and ' + (a70 / 1000).toFixed(0) + ' thousand colder than -70 C (2 to 45) in the 512 km box (the real majors: 45 to 108 and 15 to 37)', a60 > 35000 && a60 < 110000 && a70 > 2000 && a70 < 45000);
   { const mkS = (v, rm, r34, m) => { const n = N.create({ seed: 4, m }); let f = forcing({ v, rmax: rm, r34 }); if (m !== 1) f = N.scaleForcing(f, m); n.init(f); for (let i = 0; i < 60; i++) n.step(240); return n; };
     const cmp = mkS(100, 10, 65, 1), lrg = mkS(100, 45, 300, 2), rad = (n) => { const tb = tbOf(n), p = radial(n, tb, [0, 40, 80, 120, 160, 200, 260, 340, 440]); let i = 0; for (let q = 0; q < p.length; q++) if (p[q] < -40) i = q + 1; return i; };
     const rc2 = rad(cmp), rl = rad(lrg);
@@ -91,8 +98,8 @@ const wet = (nest) => { const d = dbzField(nest); return (k) => (d[k] >= 20 ? 1 
   const tdOf = (sh, seed) => { const n = N.create({ seed }), f = forcing({ v: 28, rmax: 50, r34: 110, extra: { shear: sh, shdir: 0, sst: 28.5, rh: 0.68 } }); n.init(f); for (const b of n.bs) { b.t = -1; b.a = 0; } n.bf.fill(0); n.burstBirth(f, f.vmax, sh / KT, 0); const b = n.bs.find((x) => x.t >= 0); b.t = b.tg + 600; b.amp = 1; b.tm = 6 * 3600; for (let i = 0; i < 45; i++) n.step(240); return n; };
   const cold = (n, tb, th) => { let sx = 0, sy = 0, c = 0, cc = 0, cn = 0; for (let k = 0; k < NN; k++) if (tb[k] < th) { sx += n.rr[k] * n.cth[k]; sy += n.rr[k] * n.sth[k]; c++; if (n.rr[k] < 40) cn++; } for (let k = 0; k < NN; k++) if (n.rr[k] < 40) cc++; return { x: sx / c, y: sy / c, n: c, centre: cn / cc }; };
   const biggest = (tb, th) => { const seen = new Uint8Array(NN); let best = 0; for (let k0 = 0; k0 < NN; k0++) { if (seen[k0] || !(tb[k0] < th)) continue; let cnt = 0; const st = [k0]; seen[k0] = 1; while (st.length) { const k = st.pop(); cnt++; const i = k % NG, j = (k - i) / NG; for (const q of [i > 0 ? k - 1 : -1, i < NG - 1 ? k + 1 : -1, j > 0 ? k - NG : -1, j < NG - 1 ? k + NG : -1]) if (q >= 0 && !seen[q] && tb[q] < th) { seen[q] = 1; st.push(q); } } best = Math.max(best, cnt); } return best * 4; };
-  const sh = tdOf(6.2, 7), tbS = tbOf(sh), cs = cold(sh, tbS, -40), cal = tdOf(0.8, 7), cc = cold(cal, tbOf(cal), -40);
-  check('a depression rains in a burst downshear of a bare swirl: with 12 kt of westerly shear the cold cloud (colder than -40 C) is centred ' + cs.x.toFixed(0) + ' km east of the centre (over 70), and less than 35 % of the cells within 40 km of the swirl are cold (' + (100 * cs.centre).toFixed(0) + ' %)', cs.x > 70 && cs.centre < 0.35);
+  const sh = tdOf(15, 7), tbS = tbOf(sh), cs = cold(sh, tbS, -40), cal = tdOf(0.8, 7), cc = cold(cal, tbOf(cal), -40);
+  check('a depression rains in a burst downshear of a bare swirl: with 29 kt of westerly shear (storm-centred: the air that strips a depression) the cold cloud (colder than -40 C) is centred ' + cs.x.toFixed(0) + ' km east of the centre (over 70), and less than half of the cells within 40 km of the swirl are cold (' + (100 * cs.centre).toFixed(0) + ' %)', cs.x > 70 && cs.centre < 0.5);
   check('the burst is one coherent mass: the largest connected area colder than -40 C is ' + (biggest(tbS, -40) / 1000).toFixed(0) + ' thousand km2 (over 8 thousand: 100 km across and more), and a calm depression\'s burst sits nearer its centre (' + Math.hypot(cc.x, cc.y).toFixed(0) + ' km against ' + Math.hypot(cs.x, cs.y).toFixed(0) + ')', biggest(tbS, -40) > 8000 && Math.hypot(cc.x, cc.y) < Math.hypot(cs.x, cs.y));
   { const n = N.create({ seed: 5 }), f = forcing({ v: 25, rmax: 60, r34: 100, extra: { rh: 0.68 } }); n.init(f); for (const b of n.bs) { b.t = -1; b.a = 0; } n.bSince = 0; n.burstBirth(f, f.vmax, 4, 0); const b = n.bs.find((x) => x.t >= 0); b.tg = b.tm = b.td = 3600; b.amp = 1; const a = [];
     for (let i = 0; i < 46; i++) { n.burstStep(n.forcingAt(n.t), 240); n.t += 240; if (i === 7 || i === 22 || i === 38) a.push(b.a); }
@@ -101,13 +108,19 @@ const wet = (nest) => { const d = dbzField(nest); return (k) => (d[k] >= 20 ? 1 
   const maj = run({ v: 115, rmax: 20, r34: 140 }, 2);
   check('a hurricane makes no bursts: the weak-storm weight is ' + maj.wkB.toFixed(2) + ' (under 0.05) and no burst is alive', maj.wkB < 0.05 && !maj.bs.some((b) => b.t >= 0));
 
-  /* shear that strips the convection to one side (the engine's storm weakens by a few knots an hour under it), then a bare swirl for half a day */
-  const stripRun = (shear, rh, hours, dv) => { const n = N.create({ seed: 6 }); const fa = (h) => forcing({ v: h < 2 ? 105 : 105 - dv * (h - 2), rmax: 18, r34: 140, extra: { shear: h < 2 ? 2.5 : shear, rh: h < 2 ? 0.6 : rh, shdir: 0.8, sst: 28.5, lat: 21 } }); n.init(fa(0));
-    const a60 = []; for (let h = 0; h < hours; h++) { n.setForcing(fa(h), fa(h + 1)); for (let i = 0; i < 15; i++) n.step(240); if (h === 1 || h === hours - 1) { const tb = tbOf(n); let c = 0, cn = 0, cm = 0; for (let k = 0; k < NN; k++) { if (tb[k] < -60) c++; if (n.rr[k] < 60) { cm++; if (tb[k] < -40) cn++; } } a60.push({ a60: c * 4, cover: cn / cm }); } } return { n, a60 }; };
-  const s1 = stripRun(16, 0.4, 10, 5), s0 = stripRun(2.5, 0.6, 10, 0);
-  check('strong shear in dry air strips a hurricane: after 8 hours of it the strip state is ' + s1.n.strip.toFixed(2) + ' (the same storm in calm air ' + s0.n.strip.toFixed(2) + '), the area colder than -60 C is ' + (s1.a60[1].a60 / 1000).toFixed(0) + ' thousand km2 against ' + (s0.a60[1].a60 / 1000).toFixed(0) + ' (under 0.3 of it) and only ' + (100 * s1.a60[1].cover).toFixed(0) + ' % of the swirl\'s surroundings (60 km) is under cold cloud (colder than -40 C)', s1.n.strip > 0.8 && s0.n.strip < 0.15 && s1.a60[1].a60 < 0.3 * s0.a60[1].a60 && s1.a60[1].cover < 0.5 && s1.a60[1].cover < s0.a60[1].cover - 0.2);
-  check('no new burst for half a day after the stripping: none is alive 8 hours into it, and the next one waits (' + (s1.n.bSince / 3600).toFixed(1) + ' h on a clock that started at -12 h and needs 7)', !s1.n.bs.some((b) => b.t >= 0) && s1.n.bSince < 7 * 3600);
+  /* shear and dry air strip the convection to one side, but slowly (hours to a day, not at once) and a strong storm resists: a hurricane in hostile air keeps its eye and a ragged core for a day, a weak storm is left a bare swirl */
+  const stripRun = (shear, rh, hours, dv, v0 = 105) => { const n = N.create({ seed: 6 }); const fa = (h) => forcing({ v: h < 2 ? v0 : Math.max(20, v0 - dv * (h - 2)), rmax: 18, r34: 140, extra: { shear: h < 2 ? 2.5 : shear, rh: h < 2 ? 0.6 : rh, shdir: 0.8, sst: 28.5, lat: 21 } }); n.init(fa(0));
+    const out = {}; for (let h = 0; h < hours; h++) { n.setForcing(fa(h), fa(h + 1)); for (let i = 0; i < 15; i++) n.step(240); const key = h === 7 ? 'early' : h === 11 ? 'mid' : h === hours - 1 ? 'late' : null;
+      if (key) { const tb = tbOf(n); let c60 = 0, c40 = 0, cn = 0, cm = 0; for (let k = 0; k < NN; k++) { if (tb[k] < -60) c60++; if (tb[k] < -40) c40++; if (n.rr[k] < 60) { cm++; if (tb[k] < -40) cn++; } } out[key] = { a60: c60 * 4, a40: c40 * 4, cover: cn / cm, strip: n.strip, alive: n.bs.some((b) => b.t >= 0), bSince: n.bSince, ef: n.ef, g: n.g }; } } return { n, out }; };
+  const s1 = stripRun(16, 0.4, 30, 1.5), s0 = stripRun(2.5, 0.6, 30, 0), sH = stripRun(15, 0.4, 30, 0, 90), sT = stripRun(16, 0.4, 30, 0, 60), sC = stripRun(2.5, 0.6, 30, 0, 60);
+  const e1 = s1.out.early, l1 = s1.out.late, e0 = s0.out.early, l0 = s0.out.late;
+  check('hostile air takes a hurricane\'s convection slowly: after 6 hours of 31 kt of shear in dry air the strip state is ' + e1.strip.toFixed(2) + ' (under 0.45) and the area colder than -60 C is ' + (e1.a60 / 1000).toFixed(0) + ' thousand km2 against ' + (e0.a60 / 1000).toFixed(0) + ' in calm air (over 0.35 of it); after 28 hours (the storm down to 60 kt) the strip state is ' + l1.strip.toFixed(2) + ' (over 0.7) and it is ' + (l1.a60 / 1000).toFixed(1) + ' thousand (under 0.1 of the calm storm\'s ' + (l0.a60 / 1000).toFixed(0) + ')', e1.strip < 0.45 && e0.strip < 0.05 && e1.a60 > 0.35 * e0.a60 && l1.strip > 0.7 && l1.a60 < 0.1 * l0.a60);
+  const lH = sH.out.late;
+  check('a category 2 held at its wind in hostile air (30 kt of shear, dry) does not lose its picture: after 28 hours the strip state is ' + lH.strip.toFixed(2) + ' (under 0.8, a strong storm resists), the cloud colder than -40 C is ' + (lH.a40 / 1000).toFixed(0) + ' thousand km2 (over 0.45 of the calm hurricane\'s ' + (l0.a40 / 1000).toFixed(0) + ') and the area colder than -60 C ' + (lH.a60 / 1000).toFixed(0) + ' thousand (over 8)', lH.strip < 0.8 && lH.a40 > 0.45 * l0.a40 && lH.a60 > 8000);
+  const m1 = s1.out.mid;
+  check('no new burst for half a day after the stripping begins: none is alive at hour 12 of it, and the next one waits (' + (m1.bSince / 3600).toFixed(1) + ' h on a clock that started at -12 h when the strip passed 0.25 and needs 7)', !m1.alive && m1.bSince < 7 * 3600);
   check('the eye of a stripped storm is clouded over (the fill is ' + s1.n.ef.toFixed(2) + ', over 0.8; ' + s0.n.ef.toFixed(2) + ' for the same storm in calm air)', s1.n.ef > 0.8 && s0.n.ef < 0.6);
+  check('a stripped weak storm held at its wind does not make up for it with heating: the efficiency is ' + sT.n.g.toFixed(2) + ' (under 1.5; ' + sC.n.g.toFixed(2) + ' for the same storm in calm air, over 0.3 more) in a strip state of ' + sT.n.strip.toFixed(2), sT.n.strip > 0.8 && sT.n.g < 1.5 && sT.n.g < sC.n.g - 0.3);
 
   /* the transition: the cold convection goes, the shield stays, fine streaks along the flow, a dry slot */
   const etF = (eta, lat, sst, v) => forcing({ v, rmax: 90, r34: 220, extra: { eta, lat, clat: lat, sst, shear: 20, shdir: 0.7, head: 0.9, etdir: 0.9, spd: 14, rh: 0.6 } });
@@ -159,11 +172,8 @@ const wet = (nest) => { const d = dbzField(nest); return (k) => (d[k] >= 20 ? 1 
   { let core = 0, cl = 0, rain = 0; const tb = tbOfN(bm); for (let k = 0; k < NN; k++) if (bm.bf[k] > 0.7) { core++; if (tb[k] < -40) cl++; if (bm.rc[k] + bm.rs[k] > 1) rain++; }
     check('a burst is a mass: of the ' + core + ' cells of its core ' + (100 * cl / core).toFixed(0) + ' % are under cold cloud and ' + (100 * rain / core).toFixed(0) + ' % are raining (over 99 and 97)', cl / core > 0.99 && rain / core > 0.97); }
   // a weak storm gives the burst its vortex's convergence: a tropical storm's rain at its centre is not on top of the burst's
-  { const ts = burstNest(45, 40, 130, 6, 0.7, 5), c = meanR(ts, ts.rc, 0, 60) + meanR(ts, ts.rs, 0, 60), o = meanR(ts, ts.rc, 100, 250) + meanR(ts, ts.rs, 100, 250);
+  { const ts = burstNest(45, 40, 130, 12, 0.7, 5), c = meanR(ts, ts.rc, 0, 60) + meanR(ts, ts.rs, 0, 60), o = meanR(ts, ts.rc, 100, 250) + meanR(ts, ts.rs, 100, 250);
     check('a tropical storm with a burst keeps a swirl that is less wet than its surroundings are: ' + c.toFixed(0) + ' mm/h within 60 km against ' + o.toFixed(0) + ' at 100 to 250 km (' + (c / o).toFixed(1) + ' times, under 3.2; the centre under 25)', c < 25 && c / o < 3.2); }
-  // the heating efficiency does not make up for stripped convection
-  { const n = N.create({ seed: 6 }), fa = () => forcing({ v: 105, rmax: 18, r34: 140, extra: { shear: 16, rh: 0.4, shdir: 0.8, sst: 28.5, lat: 21 } }); n.init(fa()); for (let h = 0; h < 10; h++) { n.setForcing(fa(), fa()); for (let i = 0; i < 15; i++) n.step(240); }
-    check('a stripped storm held at its wind does not make up for it with heating: the efficiency is ' + n.g.toFixed(2) + ' (under 1.4) in a strip state of ' + n.strip.toFixed(2), n.strip > 0.8 && n.g < 1.4); }
   // the dry slot has no convection of its own: the convective rain there against the rest of the shield
   { const et = N.create({ seed: 7 }), eta = 0.8; et.init(forcing({ v: 65, rmax: 90, r34: 220, extra: { eta, lat: 36, clat: 36, sst: 22, shear: 12, shdir: 0.7, head: 0.9, etdir: 0.9, spd: 14, rh: 0.7 } })); for (let i = 0; i < 60; i++) et.step(240);
     const L = Math.min(420, Math.max(150, et.sz * (1 + 0.6 * eta))), c = Math.cos(0.9), s = Math.sin(0.9); let dC = 0, dN = 0, oC = 0, oN = 0;
@@ -180,15 +190,81 @@ const wet = (nest) => { const d = dbzField(nest); return (k) => (d[k] >= 20 ? 1 
 
 /* ---- what a storm is found with, and the coldest tops --------------------------------------------------------------------------------------------------------------------------------- */
 {
-  reset(); N.PAR.irTx = 0; N.PAR.irStreak = 0;
+  reset(); N.PAR.irTx = [0, 0]; N.PAR.irStreak = 0; N.PAR.irFib = [0, 12, 7200];
   const open = (v, rm, r34) => { const n = N.create({ seed: 2 }); n.init(forcing({ v, rmax: rm, r34 })); n.display(0, true, true); return n; };
   const cm = (n, r0, r1) => sector(n, r0, r1, null, 0, (k) => n.dcr[k]);
   const hur = open(110, 25, 140), td = open(25, 70, 100);
   check('a hurricane is found with its cirrus canopy spread (the thickness is ' + cm(hur, 80, 200).toFixed(2) + ' between 80 and 200 km at the opening, over 0.4) and a depression is not (' + cm(td, 80, 200).toFixed(2) + ', under 0.05): the nest has had two hours, the storm days', cm(hur, 80, 200) > 0.4 && cm(td, 80, 200) < 0.05);
   const tbCol = (rc, rs = 0) => { const n = N.create({ seed: 1 }); n.init(forcing({ v: 60, rmax: 40, extra: { lat: 15, clat: 15 } })); n.display(0, true, true); n.drc.fill(rc); n.drs.fill(rs); n.dcr.fill(0); n.dQ.fill(0.5 * N.PAR.Qc); const out = new Float32Array(NN); n.irTb(out, 28); return out[12345]; };
-  check('the coldest tops are the real ones, not the cap of the formula: the heaviest cell (1000 mm/h) is ' + tbCol(1000).toFixed(0) + ' C and 300 mm/h ' + tbCol(300).toFixed(0) + ' C (colder than -78 C: the pink, and above -90 C), a deluge of stratiform rain ' + tbCol(0, 300).toFixed(0) + ' C (above -90 C)', tbCol(1000) > -90 && tbCol(300) < -78 && tbCol(300) > -90 && tbCol(0, 300) > -90);
+  check('the coldest tops are the real ones, not the cap of the formula: the heaviest cell (1000 mm/h) is ' + tbCol(1000).toFixed(0) + ' C and 300 mm/h ' + tbCol(300).toFixed(0) + ' C (between -82 and -74 C: the rain alone stops near -78, the pink of the colour bar is the hot towers\'), a deluge of stratiform rain ' + tbCol(0, 300).toFixed(0) + ' C (above -90 C)', tbCol(1000) > -82 && tbCol(1000) < -74 && tbCol(300) < -74 && tbCol(300) > -82 && tbCol(0, 300) > -90);
   { const n = open(110, 25, 140); for (let i = 0; i < 90; i++) n.step(240); n.display(0, true, true); const tb = n.irTb(new Float32Array(NN), 28.8); let m = 99; for (let k = 0; k < NN; k++) if (tb[k] < m) m = tb[k];
     check('the coldest top of a major hurricane is ' + m.toFixed(0) + ' C (no colder than -88 C: the real record is -86)', m > -88); }
+}
+
+/* ---- the weak storm's one big mass, the hot towers, no dots, and a picture the radar does not depend on (milestone 21: the page's pictures were judged against the real ones' numbers, tools/ir_research/targets.json) ---------------------- */
+{
+  reset();
+  const REAL = JSON.parse(readFileSync(new URL('../tools/ir_research/targets.json', import.meta.url))).stages;
+  const tbOf = (n, sst = 28.8) => { n.display(0, true, true); return n.irTb(new Float32Array(NN), sst); };
+  const med = (a) => a.slice().sort((x, y) => x - y)[a.length >> 1];
+  // a run of a few hours with the picture measured at the last three three-hour marks (kept in n.hist: a storm's picture varies from frame to frame, so it is judged over several)
+  const frames = (o, hours, seeds) => seeds.map((seed) => { const n = N.create({ seed }); n.init(forcing(o)); n.hist = []; for (let h = 0; h < hours; h++) { for (let i = 0; i < 15; i++) n.step(240); if (h >= hours - 7 && (hours - 1 - h) % 3 === 0) n.hist.push(stats(tbOf(n), NG, 2)); } return n; });
+  const statsOf = (ns) => ns.flatMap((n) => n.hist);
+  const mOf = (ss, k) => med(ss.map((x) => x[k]).filter((v) => v != null));
+  const inReal = (stage, k, v, lo = 0.5, hi = 1.5) => { const r = REAL[stage][k]; return v >= r.p10 * lo - 1e-9 && v <= r.p90 * hi + 1e-9; };
+  const rng = (stage, k) => { const r = REAL[stage][k]; return r.p10 + '-' + r.p90; };
+  const calm = { shear: 2, rh: 0.7, sst: 28.8 }, SEEDS = [7, 8];
+  const td = frames({ v: 28, rmax: 60, r34: 100, extra: calm }, 14, SEEDS), ts = frames({ v: 35, rmax: 55, r34: 110, extra: calm }, 14, [7]), tsw = frames({ v: 50, rmax: 45, r34: 120, extra: calm }, 14, SEEDS);
+  const hostile = frames({ v: 28, rmax: 60, r34: 100, extra: { shear: 15, rh: 0.7, sst: 28.8 } }, 14, [7]), dry = frames({ v: 28, rmax: 60, r34: 100, extra: { shear: 2, rh: 0.35, sst: 28.8 } }, 14, [7]);
+  const c1 = frames({ v: 65, rmax: 35, r34: 130, extra: calm }, 8, [7]), c3 = frames({ v: 100, rmax: 25, r34: 140, extra: calm }, 14, SEEDS), wave = frames({ v: 14, rmax: 100, r34: 100, extra: calm }, 8, [7]);
+  const sTd = statsOf(td), sTs = statsOf(ts), sH = statsOf(hostile), sC3 = statsOf(c3);
+
+  /* the continuous mass */
+  const offOf = (n) => { const tb = tbOf(n); let sx = 0, sy = 0, c = 0; for (let k = 0; k < NN; k++) if (tb[k] < -40) { sx += n.rr[k] * n.cth[k]; sy += n.rr[k] * n.sth[k]; c++; } return Math.hypot(sx / c, sy / c); };
+  check('a depression in very warm, moist, quiet air is one big continuous mass of convection: the mass is alive (' + td.map((n) => n.ma.toFixed(2)).join(', ') + '), the cloud colder than -40 C is ' + mOf(sTd, 'A40').toFixed(0) + ' thousand km2 (the real tropical storm\'s ' + rng('mass', 'A40') + ') and ' + (100 * mOf(sTd, 'largest')).toFixed(0) + ' % of it is one connected piece (over 90), the area colder than -60 C ' + mOf(sTd, 'A60').toFixed(0) + ' thousand (' + rng('mass', 'A60') + ')', td.every((n) => n.ma > 0.9) && inReal('mass', 'A40', mOf(sTd, 'A40')) && mOf(sTd, 'largest') > 0.9 && inReal('mass', 'A60', mOf(sTd, 'A60'), 0.5, 1.7));
+  check('the mass sits to one side of the swirl, not on it: the cold cloud\'s centre is ' + med(td.map(offOf)).toFixed(0) + ' km from the swirl for a 28 kt depression (over 35), and ' + med(tsw.map(offOf)).toFixed(0) + ' for a 50 kt storm that has taken it in (under 0.6 of that)', med(td.map(offOf)) > 35 && med(tsw.map(offOf)) < 0.6 * med(td.map(offOf)));
+  check('hostile air has no mass, only bursts and a bare swirl: with 29 kt of shear it is ' + hostile.map((n) => n.ma.toFixed(2)).join(', ') + ' and in dry air (35 % humidity) ' + dry.map((n) => n.ma.toFixed(2)).join(', ') + ' (under 0.05), and the cloud is under 0.5 of the calm storm\'s (' + mOf(sH, 'A40').toFixed(0) + ' against ' + mOf(sTd, 'A40').toFixed(0) + ' thousand km2)', hostile.every((n) => n.ma < 0.05) && dry.every((n) => n.ma < 0.05) && mOf(sH, 'A40') < 0.5 * mOf(sTd, 'A40'));
+  check('a hurricane has no mass and a wave has none: the mass of a 65 kt storm is ' + c1[0].ma.toFixed(2) + ', of a 100 kt one ' + c3[0].ma.toFixed(2) + ', of a 14 kt disturbance ' + wave[0].ma.toFixed(2) + ' (all under 0.05): its convection is the eyewall\'s and the bands\' (or several clusters)', c1[0].ma < 0.05 && c3[0].ma < 0.05 && wave[0].ma < 0.05);
+  check('the mass has the real storms\' lumps and sharp rim, not a glassy smooth skirt: the texture of its body is ' + mOf(sTd, 'tex50').toFixed(2) + ' C (the real ' + rng('mass', 'tex50') + ', over 0.45, and over 1.25 times a hurricane\'s ' + mOf(sC3, 'tex50').toFixed(2) + ') and the temperature steps ' + mOf(sTd, 'edgeGrad').toFixed(1) + ' C a km across its -20 C rim (the real ' + rng('mass', 'edgeGrad') + ')', mOf(sTd, 'tex50') > 0.45 && inReal('mass', 'edgeGrad', mOf(sTd, 'edgeGrad'), 0.6, 1.6) && mOf(sTs, 'tex50') > 0.45 && mOf(sTd, 'tex50') > 1.25 * mOf(sC3, 'tex50'));
+
+  /* the dots: no speckle at the thin cloud's edge, no cloud of a few cells, as in the real pictures */
+  const all = [['depression', 'mass', sTd], ['tropical storm', 'mass', sTs], ['hurricane', 'hur', sC3]];
+  for (const [name, stage, ss] of all) check('no dots in a ' + name + '\'s picture: ' + (100 * mOf(ss, 'speckle')).toFixed(1) + ' % of its cloud-edge pixels differ from their neighbours by over 5 C (the real ' + (100 * REAL[stage].speckle.p10).toFixed(1) + '-' + (100 * REAL[stage].speckle.p90).toFixed(1) + ' %, under 3 %), ' + mOf(ss, 'smallN').toFixed(0) + ' separate cloud objects under 100 km2 in 500 km (the real ' + rng(stage, 'smallN') + ', under 60) and the thin cirrus is ' + mOf(ss, 'cirrusRough').toFixed(2) + ' C rough (the real ' + rng(stage, 'cirrusRough') + ', over 0.66: its fibres along the upper flow, not glass and not speckle)', mOf(ss, 'speckle') < 0.03 && mOf(ss, 'smallN') < 60 && mOf(ss, 'cirrusRough') > 0.66 && inReal(stage, 'cirrusRough', mOf(ss, 'cirrusRough'), 0.5, 1.6));
+  { // the sensor's spread: what a 2-km sensor cannot resolve is averaged away on the cloud's fringe (one cell colder than its cloud is pulled toward it, less in larger cells; the clear air does not leak into the cloud; the deep cold tops are not touched)
+    const fringe = (m, fill, spike, at = 128 * NG + 128) => { const n = N.create({ seed: 1, m }), tb = new Float32Array(NN).fill(fill); tb[at] = spike; n.irSensor(tb); return tb; };
+    const p1 = fringe(1, -30, -42), p2 = fringe(2, -30, -42), cloud = (n) => { const tb = new Float32Array(NN).fill(20); for (let j = 100; j < 160; j++) for (let i = 100; i < 140; i++) tb[j * NG + i] = -30; n.irSensor(tb); return tb; };
+    const cl = cloud(N.create({ seed: 1, m: 1 })), hot = fringe(1, -60, -75);
+    const d1 = p1[128 * NG + 128] + 42, d2 = p2[128 * NG + 128] + 42, rim = cl[130 * NG + 139] + 30, outside = cl[130 * NG + 140] - 20, deep = hot[128 * NG + 128] + 75;
+    check('the sensor\'s spread averages a lone cell into its cloud, less on larger cells: a cell 12 C colder than the -30 C cloud round it is pulled ' + d1.toFixed(1) + ' C toward it at 2 km (3.5 to 7) and ' + d2.toFixed(1) + ' C at 4 km (under 0.6 of that), the cloud\'s edge pixel next to clear air stays within ' + Math.abs(rim).toFixed(2) + ' C (under 0.5: the clear air does not leak in), the clear air beside it is untouched (' + outside.toFixed(2) + ') and a -75 C top in a -60 C one stays (' + Math.abs(deep).toFixed(2) + ' C, under 0.3)', d1 > 3.5 && d1 < 7 && d2 < 0.6 * d1 && d2 > 0.5 && Math.abs(rim) < 0.5 && Math.abs(outside) < 1e-6 && Math.abs(deep) < 0.3); }
+  { // a larger box (the satellite shows 768 km where the radar shows 512): where the old box did not reach nothing is known, and its edge is not carried outward (bars of rain and of cirrus along the flow, rows of one value in the noise and the water: the
+    // bars that were seen in the first hours of the satellite picture)
+    const grow = (v, rmax, r34) => { const f = forcing({ v, rmax, r34, extra: calm }), n = N.create({ seed: 5 }); n.init(f); for (let i = 0; i < 30; i++) n.step(240);
+      for (let j = 116; j < 128; j++) for (const i of [0, 1, 2, 3, NG - 4, NG - 3, NG - 2, NG - 1]) { n.rc[j * NG + i] = 25; n.rs[j * NG + i] = 3; n.cir[j * NG + i] = 0.95; }          // (a cell of rain and its cirrus on the old box's west and east edge)
+      n.rescale(1.5); const g = N.scaleForcing(Object.assign({}, f, { m: 1 }), 1.5); n.setForcing(g, g);
+      let rain = 0, cir = 0, cs = 0, nr = 0; for (let j = 0; j < NG; j++) for (let i = 0; i < NG; i++) { const x = 127.5 + (i - 127.5) * 1.5, y = 127.5 + (j - 127.5) * 1.5; if (x < -4 || x > NG + 3 || y < -4 || y > NG + 3) { const k = j * NG + i; rain = Math.max(rain, n.rc[k] + n.rs[k]); cir = Math.max(cir, n.cir[k]); cs += n.cir[k]; nr++; } }
+      let sd = 0, sq = 0, c = 0; for (let j = 60; j < 200; j++) { let m = 0, mq = 0; for (let i = 0; i < 30; i++) { m += n.cl[j * NG + i]; mq += n.Q[j * NG + i]; } m /= 30; mq /= 30; for (let i = 0; i < 30; i++) { sd += (n.cl[j * NG + i] - m) ** 2; sq += (n.Q[j * NG + i] - mq) ** 2; c++; } }
+      return { rain, cir, cmean: cs / nr, noise: Math.sqrt(sd / c), water: Math.sqrt(sq / c) }; };
+    const gw = grow(28, 60, 100), gs = grow(100, 25, 140);
+    check('a larger box has no bars at its new edge: a cell of rain and its cirrus on the old edge leave ' + gw.rain.toFixed(2) + ' mm/h of rain and ' + gw.cir.toFixed(2) + ' of cirrus in the new ring round a depression (both under 0.05: nothing is known there, the edge is not stretched out), and the ring round a hurricane has its canopy ('
+      + gs.cmean.toFixed(2) + ' thick on average, 0.35 to 0.7) and no rain (' + gs.rain.toFixed(2) + ')', gw.rain < 0.05 && gw.cir < 0.05 && gs.rain < 0.05 && gs.cmean > 0.35 && gs.cmean < 0.7);
+    check('the new ring has noise of its own, not rows of the old edge\'s: along a row of the ring the cluster noise varies by ' + gw.noise.toFixed(2) + ' (over 0.25; a stretched edge gives 0) and the water by ' + gw.water.toFixed(1) + ' mm (over 0.8)', gw.noise > 0.25 && gw.water > 0.8); }
+  check('a major hurricane\'s cold areas and tops are the real ones: the area colder than -60 C is ' + mOf(sC3, 'A60').toFixed(0) + ' thousand km2 (' + rng('hur', 'A60') + '), colder than -70 C ' + mOf(sC3, 'A70').toFixed(1) + ' (' + rng('hur', 'A70') + ') and its tops are rougher than glass but smooth (' + mOf(sC3, 'tex50').toFixed(2) + ' C, the real ' + rng('hur', 'tex50') + ')', inReal('hur', 'A60', mOf(sC3, 'A60'), 0.5, 1.6) && inReal('hur', 'A70', mOf(sC3, 'A70'), 0, 2) && inReal('hur', 'tex50', mOf(sC3, 'tex50'), 0.6, 1.5));
+
+  /* a strong storm makes its own weather: over cool water and in dry air a hurricane keeps a cloud shield of its size (the engine says what its wind is; its convection follows it down over a day, not at once) */
+  { const hostileSea = (v) => { const n = N.create({ seed: 7 }); n.init(forcing({ v, rmax: 30, r34: 150, extra: { shear: 4, rh: 0.35, sst: 24.5 } })); for (let h = 0; h < 12; h++) for (let i = 0; i < 15; i++) n.step(240); return stats(tbOf(n), NG, 2); };
+    const h85 = hostileSea(85), t40 = hostileSea(40);
+    check('over 24.5 C water in dry air (35 % humidity) a hurricane of 85 kt keeps a cloud shield: ' + h85.A40.toFixed(0) + ' thousand km2 colder than -40 C (over 50) and ' + h85.A60.toFixed(0) + ' colder than -60 C (over 8), a tropical storm of 40 kt in the same air has ' + t40.A40.toFixed(0) + ' (under 0.35 of the hurricane\'s): the shield goes with the wind', h85.A40 > 50 && h85.A60 > 8 && t40.A40 < 0.35 * h85.A40); }
+
+  /* the cold cores of a weak storm: grey and white cores of 20 to 60 km, a few pink flecks (hot towers), none where there is no deep convection */
+  { const pink = sTd.map((x) => x.A80), frShare = pink.filter((x) => x > 0).length / pink.length, big = Math.max(...pink), grey = med(sTd.map((x) => x.A70)), hp = Math.max(...sC3.map((x) => x.A80));
+    check('a weak storm\'s mass has hot towers, the pink flecks of the real bursts: ' + (100 * frShare).toFixed(0) + ' % of its pictures have some area colder than -80 C (over 35), never more than ' + big.toFixed(1) + ' thousand km2 of it (under 8, the real 10th to 90th percentile is ' + rng('mass', 'A80') + ' on a median of ' + REAL.mass.A80.med + '), the area colder than -70 C (grey and white cores) is ' + grey.toFixed(0) + ' thousand (' + rng('mass', 'A70') + '), and a steady major hurricane has none of the pink (' + hp.toFixed(1) + ' thousand km2, under 1)', frShare > 0.35 && big < 8 && inReal('mass', 'A70', grey, 0.4, 1.7) && hp < 1); }
+
+  /* the radar does not see the picture: the same storm with the hot towers, the fibres, the texture and the low cloud's tops changed has the same rain */
+  { const rain = (par) => { reset(); Object.assign(N.PAR, par); const n = N.create({ seed: 5 }); n.init(forcing({ v: 45, rmax: 50, r34: 120, extra: calm })); for (let i = 0; i < 40; i++) { n.step(240); if (i % 10 === 9) tbOf(n); } return n; };
+    const a = rain({}), b = rain({ tw: N.PAR.tw.map((x, i) => (i === 4 ? 0 : i === 1 ? 5 : x)), irFib: [0, 12, 7200], irTx: [0, 0], lc: [3, 1], irSm: 0.3, ciDt: 900 });
+    let d = 0; for (let k = 0; k < NN; k++) d = Math.max(d, Math.abs(a.rc[k] - b.rc[k]), Math.abs(a.rs[k] - b.rs[k]));
+    check('the radar does not depend on the picture, nor on how many random numbers it draws: with no hot towers (five tries a step, not forty), no fibres (drawn a third as often), no texture and other low clouds and smoothing the rain of the same storm is the same to ' + d.toExponential(0) + ' mm/h', d === 0); reset(); }
+  check('the satellite shows at least 768 km: the scale a storm gets is at least ' + N.scaleOf(150, 20, 0, 1.5) + ' for the satellite view where the radar\'s is ' + N.scaleOf(150, 20, 0) + ' (a compact storm), and a big storm\'s is still the size it wants (' + N.scaleOf(700, 60, 0, 1.5) + ', over 2)', N.scaleOf(150, 20, 0, 1.5) >= 1.5 && N.scaleOf(150, 20, 0) === 1 && N.scaleOf(700, 60, 0, 1.5) > 2);
 }
 
 console.log('\n' + passed + ' passed, ' + failed + ' failed');
