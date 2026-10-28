@@ -198,7 +198,7 @@ function flRender() {
   const c = flCanvas; if (c.width !== Math.round(W * DPR) || c.height !== Math.round(H * DPR)) { c.width = Math.round(W * DPR); c.height = Math.round(H * DPR); }
   const g = c.getContext('2d'); g.setTransform(DPR, 0, 0, DPR, 0, 0); g.clearRect(0, 0, W, H);
   const nest = flNest, f = nest.cur, N = HFNest.N, NN = N * N, sg = f.sg || 1, ir = flView === 'ir', site = ir ? null : flSite, DXK = 2 * nest.m;                // (the km of a cell: 2, and more for a larger storm)
-  const tp0 = performance.now(); nest.display(flPlay ? flAcc / flStepDt() : 0, true, ir);
+  const tp0 = performance.now(); if (flPlay) nest.displayBlend(flAcc / flStepDt(), true, ir); else nest.display(0, true, ir);
   const rc = nest.drc, rs = nest.drs, dbz = flDbz || (flDbz = new Float32Array(NN));
   const pos = flPos(flSystem() || { id: '' }) || { lat: f.clat, lon: f.clon }, lat0 = pos.lat, lon0 = pos.lon, cos0 = Math.cos(lat0 * Math.PI / 180);
   let i0 = N, i1 = -1, j0 = N, j1 = -1;

@@ -13,7 +13,7 @@
  *      form), with a larger drag over land; it also converges moisture (w Q / Hq);
  *    - weak and disorganised systems (disturbances, depressions, a storm that is weakening or crossing a coast, an extratropical low): the lift the vortex gives is small, so the rain is made by the broad ascent of a moist
  *      tropical atmosphere over the area the system fills (its size is read from its wind table; the weather decides how much of that area is alive), through a heavy-tailed multiplicative variability at three scales (cells
- *      of a few km, clusters of 30 km, mesoscale areas of 60 km and more, carried and sheared by the flow), so there are scattered cells, cell clusters and rain-free gaps, not a disc; the stratiform rain of a cluster is made
+ *      of a few km, clusters of 30 km, mesoscale areas of 60 km and more, carried and sheared by the flow), so there are scattered cells, cell clusters and rain-free gaps, not a disc; a slow moisture memory (the mid-level moisture that builds where a mass has rained, lasts about half a day in moist air and far less in dry air, over cool water, over land and on the upshear side of shear, and is carried round by the swirl) raises the supply where it is high, so a weak system in warm, moist air has one constant burst that covers it and winds into bands, in shear the burst is one mass on the downshear side, and in dry or cool air there are only small isolated clusters; the stratiform rain of a cluster is made
  *      from its own blurred convective rain (a skirt that fades out), heavier cells rain more per unit of condensation (the precipitation efficiency grows with the updraught), land dries the air over tens of km, not at a line,
  *      water and rain flow in and out of the box openly (a large shield goes on beyond it), and an extratropical transition scales its warm-sector shield, front and dry slot with the size of the system;
  *    - convection: a column of water Q, fed by that convergence and by the sea (evaporation grows with the wind: WISHE, Emanuel 1986), rains out above a threshold in
@@ -45,9 +45,12 @@ const PAR = {
   cd: [2.4e-3, 3.8e-3], uFac: 0.8, kw: 5, wMin: 3e-4, kv: 150, zs: 2e-3, wFloor: 0.3, wBg: 0.035, vOn: [8, 28],   // drag coefficient at sea and over land; the share of the gradient wind the boundary layer's winds keep; the pumping's scale (the slab layer's inflow, about 5 times the Ekman value); the least f + zeta (1/s); the convergence of the inflow that goes with the vorticity (m: w = kv zeta, saturating at zs), and the share of it that is left where the Ekman formula would make descent (the boundary layer stays convergent); the large-scale ascent of the tropical atmosphere that starts convection in a disorganised system (m/s); the wind range (m/s) over which the vortex's own convergence takes over from it
   Qc: 50, tauC: 600, Qstar: 1.06, Qenv: 0.85, QenvV: 0.05, tauEnv: 43200, kE: 3e-7, u0: 1.5,    // convection: the column water above which it rains (mm), its time (s), the sea's saturation relative to Qc, the environment's relative to Qc (for a weak vortex, and the more for a strong one: a storm moistens its surroundings) and its relaxation (s), evaporation per metre of wind, the gust
   aW: 45, Pmax: 0.03, kr: [1.1, 2.4],                      // the mass flux per mm/s of rain (m per mm), the most rain convection can make from the supply (mm/s), the rain a mm/s of condensation is, for a weak and for a strong vortex (the column above the layer converges moisture too, the more the deeper the convection)
-  sq: 1.3, noiseTau: 300, sc: 1.1, clTau: 7200, cl2Tau: 14400, bgSig: [1.1, 0.9, 0.8], bgA: 2, bgR: [150, 270], bgOrg: 0.75, etW: 0.08, etF: 0.35, eyeRag: 0.3, eyeClr: 0.4, edgeS: [215, 252], vTurb: [1.0, 0.06, 0.45], vOut: 700, vTau: 420, texS: 0.25, texC: 0.45, texR: 0.25, texCc: 0.15, inA: 0.07, inR: 3.5, rhQ: 0.2, dryK: 0.88, dryR: 1.0, shAmp: 1.3, landR: [8, 10], landK: 0.7, landSq: 0.06, gsC: 0.35, sBlur: 4, wBlur: 5, pcv: 0.0015, pcx: 2.5,                             // the multiplicative variability of the supply: cell scale (and its memory, s) and mesoscale clusters 30 km across (their share and memory), which the swirl shears into spiral arms
+  sq: 1.3, noiseTau: 900, sc: 1.1, clTau: 7200, cl2Tau: 14400, bgSig: [1.1, 0.9, 0.8], bgA: 2, bgR: [150, 270], bgOrg: 0.75, etW: 0.08, etF: 0.35, eyeRag: 0.3, eyeClr: 0.4, edgeS: [215, 252], vTurb: [1.0, 0.06, 0.45], vOut: 700, vTau: 420, texS: 0.25, texC: 0.45, texR: 0.25, texCc: 0.15, inA: 0.07, inR: 3.5, rhQ: 0.2, dryK: 0.88, dryR: 1.0, shAmp: 1.3, landR: [8, 10], landK: 0.7, landSq: 0.06, gsC: 0.35, sBlur: 4, wBlur: 5, pcv: 0.0015, pcx: 2.5,                             // the multiplicative variability of the supply: cell scale (and its memory, s) and mesoscale clusters 30 km across (their share and memory), which the swirl shears into spiral arms
   tauUp: 300, tauC2: 1200, sigS: 0.05, tauS: 1800, gs: 0.4,    // radar rain: rise time of convective rain (s), its fall time; the share of it stratiform rain receives (per tauC2), its life (s), the rain of broad ascent (mm/h)
-  top: [8.5, 2.4, 15.2, 2.0],      // the top (km) of a convective cell raining r mm/h: top[0] + top[1] ln(1 + r/3), soft-capped (above top[2] it levels off toward top[2] + top[3]); fitted so that a category 1 and 2 hurricane's core has the cold tops of the real ones (Nolo 25-26 Sep 2026, GOES: within 100 km about 17 thousand km2 colder than -60 C and 8 thousand colder than -70 C, the coldest top within 60 km about -78 C)
+  top: [8.2, 2.4, 15.2, 2.0],      // the top (km) of a convective cell raining r mm/h: top[0] + top[1] ln(1 + r/3), soft-capped (above top[2] it levels off toward top[2] + top[3]); fitted so that a category 1 and 2 hurricane's core has the cold tops of the real ones (Nolo 25-26 Sep 2026, GOES: within 100 km about 17 thousand km2 colder than -60 C and 8 thousand colder than -70 C, the coldest top within 60 km about -78 C)
+  memS: 1.2, memN: 0.4, memUp: 10800, memDn: 43200, memA: [1, 5], memR: 10,      // the moisture memory: the gain of the supply on it (and the level of it that leaves the supply as it was), the time it builds over where it rains and the time it lasts in moist air (s), the rain (mm/h, over memR cells) that builds it
+  ciSp: 2,      // the anvil mixes sideways (passes of a 3 x 3 mean per cirrus step: about 7 km an hour)
+  eyeV: [40, 47], eyeU: 6, eyeRing: [1.0, 2.2, 2, 10, 0.45, 0.85], eyeTau: [5400, 3600],      // the eye: the wind (m/s) over which it can form (it begins in category 2 and is there by category 3), how much higher that wind is in the most hostile air (shear, dry air, cool water: the eye erodes at category 3), the ring it needs (inner and outer radius in radii of maximum wind, the rain a sector needs to count: from and to in mm/h, the share of the sectors that makes the ring: from and to) and the time it forms and fills in (s)
   tauCi: 9000, dzCi: 0.4, ciOut: 8, ciTex: [0.2, 0.25], ciDt: 300,      // infrared: the life of the cirrus the convection spreads (s), its top's fall (km an hour), the upper outflow that spreads it (m/s), the texture on its thickness (cell and cluster scale), how often it is advected (s)
   outflow: 4, gsW: 1.6,                                 // the upper-level outflow (m/s) that carries stratiform rain outward from the core; the stratiform rain of an extratropical transition's warm sector (mm/h)
   tauN: [1200, 900], tauG: 3 * 3600, zmax: 0.05, nu: 0, meanStretch: 0, zCap: 3e-3, eye: 0.8, tauA: [1500, 7200],     // relaxation of the mean vorticity to the engine's (inner and outer, s); the time the efficiency adapts over; the cap on |zeta| (1/s); the smoothing of zeta per step; the damping time of the departures from the circle mean in the core and outside it (s: what the third dimension and the convective heating do to the two-dimensional instabilities of a ring); the share of the circle-mean stretching that is kept (the rest is the engine's to say), the vorticity above which stretching stops growing with it (1/s), the eye's share of the radius of maximum wind
@@ -83,9 +86,9 @@ function Nest(o) {
   this.seed = (o.seed >>> 0) || 1; this.rng = new Rng(this.seed ^ 0x9e3779b9);
   this.t = 0; this.steps = 0; this.ciAcc = 0; this.g = 1; this.gI = 0; this.m = o.m > 0 ? o.m : 1;                                                   // seconds since the nest started, steps taken, the heating efficiency (adapts) and its integral
   const mk = () => new Float32Array(NN);
-  this.zeta = mk(); this.Q = mk(); this.qn = mk(); this.cl = mk(); this.cl2 = mk(); this.rcB = mk(); this.wS = mk(); this.cir = mk(); this.cih = mk(); this.uc = mk(); this.vc = mk(); this.tn1 = null; this.tn2 = null; this.vu = null; this.vv = null; this.turbOn = false; this.rc = mk(); this.rs = mk(); this.P = mk();         // vorticity, column water, supply noise, convective and stratiform rain (mm/h), condensation (mm/s)
+  this.zeta = mk(); this.Q = mk(); this.qn = mk(); this.eyeS = 0; this.eyeG = 0; this.eyeSum = new Float32Array(16); this.eyeCnt = new Float32Array(16); this.cl = mk(); this.cl2 = mk(); this.mem = mk(); this.memA = mk(); this.rcB = mk(); this.wS = mk(); this.cir = mk(); this.cih = mk(); this.uc = mk(); this.vc = mk(); this.tn1 = null; this.tn2 = null; this.vu = null; this.vv = null; this.turbOn = false; this.rc = mk(); this.rs = mk(); this.P = mk();         // vorticity, column water, supply noise, convective and stratiform rain (mm/h), condensation (mm/s)
   this.wb = mk(); this.Wc = mk(); this.dv = mk(); this.U = mk(); this.V = mk(); this.us = mk(); this.vs = mk();     // boundary-layer ascent, convective mass flux, divergence, the swirl, the stratiform flow
-  this.lf = mk(); this.lfD = mk(); this.lfM = mk(); this.t1 = mk(); this.t2 = mk(); this.t3 = mk(); this.sc = [mk(), mk(), mk(), mk(), mk(), mk()];
+  this.lf = mk(); this.lfD = mk(); this.lfM = mk(); this.pv = null; this.keepPrev = false; this.t1 = mk(); this.t2 = mk(); this.t3 = mk(); this.sc = [mk(), mk(), mk(), mk(), mk(), mk(), mk()];
   this.dep = { ix: new Int32Array(NN), iy: new Int32Array(NN), fx: mk(), fy: mk() };
   this.rr = mk(); this.cth = mk(); this.sth = mk(); this.gout = mk(); this.edge = mk(); this.edgeS = mk(); this.rbin = new Int16Array(NN);
   for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
@@ -119,14 +122,14 @@ Nest.prototype.setGeom = function () {                                         /
    where the old box did not reach; the host sets the forcing, the environment and the land again for the new scale */
 Nest.prototype.rescale = function (mNew) {
   if (!(mNew > 0) || Math.abs(Math.log(mNew / this.m)) < 1e-6) return;
-  const q = mNew / this.m, c = (N - 1) / 2, tmp = this.t1, flds = [this.zeta, this.Q, this.qn, this.cl, this.cl2, this.rc, this.rs, this.P, this.tn1, this.tn2].filter(Boolean);
+  const q = mNew / this.m, c = (N - 1) / 2, tmp = this.t1, flds = [this.zeta, this.Q, this.qn, this.cl, this.cl2, this.mem, this.memA, this.rc, this.rs, this.P, this.tn1, this.tn2].filter(Boolean);
   for (const a of flds) {
     for (let j = 0; j < N; j++) { const y = clamp(c + (j - c) * q, 0, N - 1.001), j0 = Math.floor(y), fy = y - j0;
       for (let i = 0; i < N; i++) { const x = clamp(c + (i - c) * q, 0, N - 1.001), i0 = Math.floor(x), fx = x - i0, k0 = j0 * N + i0;
         tmp[j * N + i] = (a[k0] * (1 - fx) + a[k0 + 1] * fx) * (1 - fy) + (a[k0 + N] * (1 - fx) + a[k0 + N + 1] * fx) * fy; } }
     a.set(tmp);
   }
-  this.m = mNew; this.setGeom(); this.tabAt = -1; this.sz = 0; this.drc = null; this.drs = null;
+  this.m = mNew; this.setGeom(); this.tabAt = -1; this.sz = 0; this.drc = null; this.drs = null; this.pv = null;
 };
 Nest.prototype.setForcing = function (f0, f1) { this.f0 = f0; this.f1 = f1 || f0; this.tF0 = this.t; this.tabAt = -1; };
 Nest.prototype.forcingAt = function (t) { return lerpForcing(this.f0, this.f1, clamp((t - this.tF0) / 3600, 0, 1)); };
@@ -148,6 +151,7 @@ Nest.prototype.init = function (f) {                                           /
   this.setForcing(f, f); this.zT.set(vorticityOf(f.vt)); this.tabAt = 0; this.setEnv(null, f);
   const z = this.zeta, Q = this.Q, rr = this.rr, P = PAR;
   for (let k = 0; k < NN; k++) { const r = rr[k], a = Math.min(NR - 1, Math.floor(r)), t = r - a; z[k] = this.zT[a] * (1 - t) + this.zT[a + 1] * t; Q[k] = P.Qc * (P.Qenv + P.QenvV * sm01(f.vmax, 10, 30) + 0.12 * Math.exp(-r / 120)); }
+  this.mem.fill(0); this.memA.fill(0); this.eyeS = sm01(f.vmax * (f.m || 1) - PAR.eyeU * unfavOf(f, f.m || 1), PAR.eyeV[0], PAR.eyeV[1]); this.eyeG = 2400;
   this.clMix(0); this.clMix2(0); for (let k = 0; k < NN; k++) Q[k] += 4 * this.cl[k] * (1 + 0.5 * Math.exp(-rr[k] / 150));
   const qn = this.qn; for (let k = 0; k < NN; k++) qn[k] = (this.rng.next() + this.rng.next() - 1) * 2.449;
   this.blur(qn, this.t1); this.blur(qn, this.t1);
@@ -171,16 +175,18 @@ Nest.prototype.clMix2 = function (a) {                                         /
   if (!this.clc2) this.clc2 = new Float32Array(64);
   const c = this.clc2, cl = this.cl2, b = Math.sqrt(Math.max(0, 1 - a * a));
   for (let k = 0; k < 64; k++) c[k] = (this.rng.next() + this.rng.next() + this.rng.next() - 1.5) * 2;
-  for (let j = 0; j < N; j++) { const y = j / 32, j0 = Math.floor(y) & 7, j1 = (j0 + 1) & 7, fy = y - Math.floor(y), sy = fy * fy * (3 - 2 * fy);
-    for (let i = 0; i < N; i++) { const x = i / 32, i0 = Math.floor(x) & 7, i1 = (i0 + 1) & 7, fx = x - Math.floor(x), sx = fx * fx * (3 - 2 * fx);
+  const oy = this.rng.next() * 64, ox = this.rng.next() * 64;                                                          // (the lattice is moved at random each time: the variability is the same everywhere, not larger at fixed nodes)
+  for (let j = 0; j < N; j++) { const y = (j + oy) / 32, j0 = Math.floor(y) & 7, j1 = (j0 + 1) & 7, fy = y - Math.floor(y), sy = fy * fy * (3 - 2 * fy);
+    for (let i = 0; i < N; i++) { const x = (i + ox) / 32, i0 = Math.floor(x) & 7, i1 = (i0 + 1) & 7, fx = x - Math.floor(x), sx = fx * fx * (3 - 2 * fx);
       const v = (c[j0 * 8 + i0] * (1 - sx) + c[j0 * 8 + i1] * sx) * (1 - sy) + (c[j1 * 8 + i0] * (1 - sx) + c[j1 * 8 + i1] * sx) * sy; cl[j * N + i] = a * cl[j * N + i] + b * v; } }
 };
 Nest.prototype.clMix = function (a) {                                          // the cluster noise relaxes toward a fresh field of unit normals on a 16 x 16 grid (cells 32 km), interpolated smoothly; a = the share it keeps
   if (!this.clc) this.clc = new Float32Array(256);
   const c = this.clc, cl = this.cl, b = Math.sqrt(Math.max(0, 1 - a * a));
   for (let k = 0; k < 256; k++) c[k] = (this.rng.next() + this.rng.next() + this.rng.next() - 1.5) * 2;
-  for (let j = 0; j < N; j++) { const y = j / 16, j0 = Math.floor(y) & 15, j1 = (j0 + 1) & 15, fy = y - Math.floor(y), sy = fy * fy * (3 - 2 * fy);
-    for (let i = 0; i < N; i++) { const x = i / 16, i0 = Math.floor(x) & 15, i1 = (i0 + 1) & 15, fx = x - Math.floor(x), sx = fx * fx * (3 - 2 * fx);
+  const oy = this.rng.next() * 32, ox = this.rng.next() * 32;
+  for (let j = 0; j < N; j++) { const y = (j + oy) / 16, j0 = Math.floor(y) & 15, j1 = (j0 + 1) & 15, fy = y - Math.floor(y), sy = fy * fy * (3 - 2 * fy);
+    for (let i = 0; i < N; i++) { const x = (i + ox) / 16, i0 = Math.floor(x) & 15, i1 = (i0 + 1) & 15, fx = x - Math.floor(x), sx = fx * fx * (3 - 2 * fx);
       const v = (c[j0 * 16 + i0] * (1 - sx) + c[j0 * 16 + i1] * sx) * (1 - sy) + (c[j1 * 16 + i0] * (1 - sx) + c[j1 * 16 + i1] * sx) * sy; cl[j * N + i] = a * cl[j * N + i] + b * v; } }
 };
 
@@ -331,6 +337,7 @@ function sizeOf(f) {                                                           /
   return i;
 }
 Nest.prototype.step = function (dt) {
+  if (this.keepPrev) this.savePrev();
   const f = this.forcingAt(this.t), P = PAR; this.cur = f; this.lastDt = dt;
   if (this.tabAt < 0 || this.t - this.tabAt > 600) { this.zT.set(vorticityOf(f.vt)); this.tabAt = this.t; this.sz = sizeOf(f); }
   const z = this.zeta, Q = this.Q, qn = this.qn, rc = this.rc, rs = this.rs, U = this.U, V = this.V, us = this.us, vs = this.vs, rr = this.rr, lf = this.lf, lfOn = this.lfOn, ct = this.cth, st = this.sth;
@@ -340,21 +347,21 @@ Nest.prototype.step = function (dt) {
   // advection: the swirl carries vorticity, water, the supply noise and the convective rain; the stratiform flow its own rain
   const sc = this.sc;
   this.departure(U, V, dt);
-  this.gather([z], sc, [false]); this.gatherOpen([Q, rc], [sc[1], sc[2]], [true, true]);
+  this.gather([z], sc, [false]); this.gatherOpen([Q, rc, this.mem], [sc[1], sc[2], sc[6]], [true, true, true]);
   this.linear(qn, this.cl, sc[3], sc[4]); this.linear(this.cl2, this.cl2, sc[5], sc[5]);
-  z.set(sc[0]); Q.set(sc[1]); rc.set(sc[2]); qn.set(sc[3]); this.cl.set(sc[4]); this.cl2.set(sc[5]);
-  if (this.steps % 30 === 0 && this.steps > 0) { this.clMix(Math.exp(-30 * dt / P.clTau)); this.clMix2(Math.exp(-30 * dt / P.cl2Tau)); }
+  z.set(sc[0]); Q.set(sc[1]); rc.set(sc[2]); this.mem.set(sc[6]); qn.set(sc[3]); this.cl.set(sc[4]); this.cl2.set(sc[5]);
+  this.clMix(Math.exp(-dt / P.clTau)); this.clMix2(Math.exp(-dt / P.cl2Tau));                                       // (the clusters change a little at every step, not by a jump every hour)
   this.departure(us, vs, dt);
   this.gatherOpen([rs], sc, [true]); rs.set(sc[0]);
   this.ciAcc += dt;
   if (this.ciAcc >= P.ciDt) {                                                      // the cirrus is slow and passive: its flow and its advection are done every few minutes, with the time waited (a third of the cost of doing it at every step)
   // the upper flow that carries the cirrus: the environment's flow aloft and the shear (the plumes go downshear), a weak anticyclonic residue of the swirl and the outflow (an anvil spreads out, curving the way an upper high turns)
     { const oc = P.ciOut / this.m, shx = 0.8 * f.shear * Math.cos(f.shdir), shy = 0.8 * f.shear * Math.sin(f.shdir), go = this.gout, uc = this.uc, vc = this.vc; for (let k = 0; k < NN; k++) { const g = oc * go[k]; uc[k] = -0.2 * U[k] + f.ued + shx + g * ct[k]; vc[k] = -0.2 * V[k] + f.ved + shy + g * st[k]; } }
-    this.departure(this.uc, this.vc, this.ciAcc); this.gatherOpen([this.cir, this.cih], [sc[0], sc[1]], [true, true]); this.cir.set(sc[0]); this.cih.set(sc[1]); this.ciAcc = 0;
+    this.departure(this.uc, this.vc, this.ciAcc); this.gatherOpen([this.cir, this.cih], [sc[0], sc[1]], [true, true]); this.cir.set(sc[0]); this.cih.set(sc[1]); this.ciAcc = 0; this.spreadCirrus();
   }
-  // noise: the variability of the supply, refreshed a little each other step
-  if (this.steps % 2 === 0) {
-    const a = Math.exp(-2 * dt / P.noiseTau), b = Math.sqrt(1 - a * a), t3 = this.t3, rng = this.rng;
+  // noise: the variability of the supply, refreshed a little at every step (a cell's supply lasts about a quarter of an hour: no jumps between pictures)
+  {
+    const a = Math.exp(-dt / P.noiseTau), b = Math.sqrt(1 - a * a), t3 = this.t3, rng = this.rng;
     for (let k = 0; k < NN; k++) t3[k] = (rng.next() + rng.next() - 1) * 2.449;
     this.blur(t3, this.t2); this.blur(t3, this.t2);
     const nrm = this.qNorm * b; for (let k = 0; k < NN; k++) qn[k] = a * qn[k] + nrm * t3[k];
@@ -366,6 +373,7 @@ Nest.prototype.step = function (dt) {
     for (let j = 0; j < N; j++) { const om = ((j + N - 1) & 255) * N, op = ((j + 1) & 255) * N, o = j * N; for (let i = 0; i < N; i++) { const im = (i + N - 1) & 255, ip = (i + 1) & 255, k = o + i;
       const zz = z[k], eta = fcor + (zz > 0 ? zz : 0); const wi = zz > 0 ? P.kv * zz / (1 + zz / P.zs) : 0, we = kw * ((t2[o + ip] - t2[o + im]) - (t1[op + i] - t1[om + i])) / (eta > wMin ? eta : wMin) + wi; wb[k] = we > P.wFloor * wi ? we : P.wFloor * wi; } } }
   boxBlur(rc, this.rcB, this.t3, P.sBlur); boxBlur(wb, this.wS, this.t3, P.wBlur);
+  if (this.steps % 3 === 0) { const a = this.t1, rcB = this.rcB, rs = this.rs; for (let k = 0; k < NN; k++) a[k] = rcB[k] + rs[k]; boxBlur(a, this.memA, this.t3, P.memR); }
   this.convect(f, dt, fcor);
   // the engine's mean vorticity: the mean of every circle relaxes toward it (slowly in the core, faster outside)
   { const bz = this.bz, bn = this.bn, zT = this.zT, rm = Math.max(f.rmax, 5), g = this.gz;                    // (the circle means of the start of the step: bz is already a mean)
@@ -408,11 +416,20 @@ Nest.prototype.convect = function (f, dt, fcor) {
   const mm = this.m, vN = this.vNest * mm, fV = f.vmax * mm, sdc = Math.cos(f.shdir), sds = Math.sin(f.shdir), rfd = f.head - Math.PI / 4, crf = Math.cos(rfd), srf = Math.sin(rfd);
   const trA = clamp(f.spd * mm / 8, 0, 1) * 0.45, ventK = 1 - 0.4 * sm01(fV, 45, 70), eQs = this.eQs, eQb = this.eQb, eQc = this.eQc, eBg = this.eBg, eVent = this.eVent, qeV = P.QenvV * sm01(fV, 10, 30);
   const shA = P.shAmp * sm01(f.shear * mm, 3, 13) * (1 - 0.45 * sm01(vN, 22, 38)), cdl = Math.cos(f.shdir + Math.PI / 4), sdl = Math.sin(f.shdir + Math.PI / 4), eDry = this.eDry;
-  const Qc = P.Qc, sz = this.sz || 100, exT = Math.max(eta, sm01(sz, 170, 300)), cl2 = this.cl2, rcB = this.rcB, wS = this.wS, cir = this.cir, cih = this.cih, aCi = Math.exp(-dt / P.tauCi), dzCi = dt * P.dzCi / 3600;
+  const Qc = P.Qc, sz = this.sz || 100, exT = Math.max(eta, sm01(sz, 170, 300)), cl2 = this.cl2, mem = this.mem, memA = this.memA, memK = 1 / (1 + P.memS * P.memN), rcB = this.rcB, wS = this.wS, cir = this.cir, cih = this.cih, aCi = Math.exp(-dt / P.tauCi), dzCi = dt * P.dzCi / 3600;
   const favC = sm01(f.rh, 0.25, 0.55) * sm01(f.sst, 25.5, 28), Rsup = Math.min(330, Math.max(P.bgR[0] + (P.bgR[1] - P.bgR[0]) * favC, 0.85 * sz + 40)) * (1 - 0.3 * sm01(vN, 30, 50)), bgS = 1 - P.bgOrg * sm01(vN, 28, 45) * 1.13, Lsc = clamp(sz * (1 + 0.6 * eta), 150, 420), etdW = 14 + 0.03 * Lsc, sg1 = P.bgSig[0], sg2 = P.bgSig[1], sg3 = P.bgSig[2], sg0 = -0.5 * (sg1 * sg1 + sg2 * sg2 + sg3 * sg3);
   const aEnv = dt / P.tauEnv, pm = P.Pmax * this.g * f.conv, aW = P.aW * clamp(this.g, 0.5, 1.8), aUp = 1 - Math.exp(-dt / P.tauUp), aDn = Math.exp(-dt / P.tauC2), aS = Math.exp(-dt / P.tauS), bS = 1 - aS;
   const kr = P.kr[0] + (P.kr[1] - P.kr[0]) * sm01(vN, 22, 50), orgS = sm01(vN, 30, 50), orgV = sm01(vN, 21, 33), vEff = sm01(fV, P.vOn[0], P.vOn[1]), iH = 1 / P.H, ventR = 150 + 3 * rmax, edgeS = this.edgeS, bdm = this.bd, rb = this.rbin, msk = 1 - P.meanStretch, zc = P.zCap;
-  const pcS = P.pcv * (1 + 20 * sm01(vN, 20, 40)), eyeR = P.eye * this.rmaxN, eyeA = sm01(vN, 22, 36) * (1 - 0.9 * eta);                                            // the eye: inside the nest's own radius of maximum wind, once the vortex is strong enough to have one
+  const pcS = P.pcv * (1 + 20 * sm01(vN, 20, 40)), eyeR = P.eye * this.rmaxN;
+  let ringC = 0;                                                                // the ring: the share of the eyewall's annulus (1 to 2.2 radii of maximum wind) that is raining, in 16 sectors
+  { const er = P.eyeRing, r0 = er[0] * this.rmaxN, r1 = er[1] * this.rmaxN, sm = this.eyeSum, cn = this.eyeCnt; sm.fill(0); cn.fill(0);
+    for (let k = 0; k < NN; k++) { const r = rr[k]; if (r < r0 || r >= r1) continue; const q = Math.min(15, Math.floor((Math.atan2(st[k], ct[k]) + Math.PI) * 2.5465)); sm[q] += rc[k] + rs[k]; cn[q]++; }
+    for (let q = 0; q < 16; q++) if (cn[q]) ringC += sm01(sm[q] / cn[q], er[2], er[3]);
+    ringC /= 16; }
+  if (this.eyeG > 0) { ringC = 1; this.eyeG -= dt; }                            // (a new strong vortex has the ring it is made of until its own rain has formed)
+  const eyeT = sm01(vN - P.eyeU * unfavOf(f, mm), P.eyeV[0], P.eyeV[1]) * sm01(ringC, P.eyeRing[4], P.eyeRing[5]);
+  this.eyeS += (eyeT - this.eyeS) * (1 - Math.exp(-dt / (eyeT > this.eyeS ? P.eyeTau[0] : P.eyeTau[1])));      // the eye forms in an hour or two once the ring is there and fills again when it breaks
+  const eyeA = this.eyeS * (1 - 0.9 * eta);                                            // the eye: inside the nest's own radius of maximum wind, once the vortex is strong enough to have one
   for (let k = 0; k < NN; k++) {
     const eS = 1 - (1 - edgeS[k]) * (1 - exT), r = rr[k], l = lfOn ? lfM[k] : 0, c = ct[k], s = st[k];
     const sp = Math.sqrt(mm * mm * (U[k] * U[k] + V[k] * V[k]) + P.u0 * P.u0), nz = Math.max(0, 1 + P.sq * qn[k] + P.sc * cl[k] * (1 - (1 - sm01(r, 1.2 * rmax, 3 * rmax)) * orgS)) * eS;
@@ -421,7 +438,7 @@ Nest.prototype.convect = function (f, dt, fcor) {
     // surface evaporation (the sea only; WISHE: it grows with the wind) and the boundary layer's moisture convergence, stronger on the right-front side
     const E = P.kE * sp * Math.max(0, Qs - q) * nz * (1 - 0.92 * l);
     let w = orgV * wb[k] + (1 - orgV) * wS[k]; w *= 1 + trA * gs * (c * crf + s * srf);
-    const rin = (r - rmax) / (P.inR * rmax + 25), inS = r > 0.9 * rmax ? orgS * P.inA * Math.exp(-rin * rin) * sm01(r, 0.9 * rmax, 1.25 * rmax) : 0, rq = r / Rsup, nzB = Math.exp(sg0 + sg1 * qn[k] + sg2 * cl[k] + sg3 * cl2[k]) * eS;
+    const rin = (r - rmax) / (P.inR * rmax + 25), inS = r > 0.9 * rmax ? orgS * P.inA * Math.exp(-rin * rin) * sm01(r, 0.9 * rmax, 1.25 * rmax) : 0, rq = r / Rsup, nzB = Math.exp(sg0 + sg1 * qn[k] + sg2 * cl[k] + sg3 * cl2[k]) * eS * (1 + P.memS * mem[k]) * memK;
     const nzV = orgV * nz + (1 - orgV) * nzB;
     let Sq = (Qc / P.Hq) * (w * vEff * nzV + (wBg * P.bgA * bgS * Math.exp(-rq * rq * Math.sqrt(rq)) + inS * eBg[k]) * nzB) * (1 - P.landSq * l) * (shA > 0 ? Math.max(0.05, 1 + 1.3 * shA * (c * cdl + s * sdl) * sm01(r, 0.2 * rmax, 1.6 * rmax)) : 1) * eDry[k];
     // extratropical transition: lift ahead and to the left of the motion (the warm conveyor belt), a front behind it, a dry slot to the rear
@@ -436,10 +453,12 @@ Nest.prototype.convect = function (f, dt, fcor) {
     }
     // shear ventilates the upshear side (dry air in: the moisture there relaxes toward the environment's), land dries the column
     let relax = aEnv * (1 + P.landK * l);
-    if (vent > 0 && r < ventR) { const cu = -(c * sdc + s * sds); if (cu > 0) relax += dt * vent * cu * cu / 5400 * sm01(r, 0.5 * rmax, 2 * rmax); }
+    let vt = 0; if (vent > 0 && r < ventR) { const cu = -(c * sdc + s * sds); if (cu > 0) vt = dt * vent * cu * cu / 5400 * sm01(r, 0.5 * rmax, 2 * rmax); }
+    relax += vt;
     if (eta > 0.02) relax += dt * eta * dry * 0.6 / 3600;
     relax += dt * P.dryR * (1 - eDry[k]) / 3600;
-    let ey = 0; if (eyeA > 0) { const eR = eyeR * (1 + P.eyeRag * (0.8 * cl[k] + 0.4 * qn[k])); if (r < 1.15 * eR) ey = eyeA * sm01(eR - r, -0.12 * eR, 0.4 * eR + 2); }
+    { const h0 = mem[k], h1 = h0 + (1 - h0) * sm01(memA[k], P.memA[0], P.memA[1]) * dt / P.memUp - h0 * (dt * (1 + P.landK * l) / (P.memDn * (0.3 + 0.7 * eBg[k])) + vt); mem[k] = h1 < 0 ? 0 : h1 > 1 ? 1 : h1; }     // the moisture memory builds where it rains, dies away in time (faster in dry air, over land and in the shear's dry air)
+    let ey = 0; if (eyeA > 0) { const eR = eyeR * (1 + P.eyeRag * (0.8 * cl[k] + 0.15 * qn[k])); if (r < 1.15 * eR) ey = eyeA * sm01(eR - r, -0.12 * eR, 0.4 * eR + 2); }
     const p0 = q > Qck ? (q - Qck) / P.tauC : 0, p = p0 > 0 ? pm * (1 - Math.exp(-p0 / pm)) * (1 - ey) : 0;
     q = q + dt * (E + Sq - p); q += relax * (Qe - q); if (ey > 0) q += ey * (1 - Math.exp(-dt / 600)) * (0.7 * Qe - q);
     Q[k] = q < 0 ? 0 : q > 2 * Qc ? 2 * Qc : q; Pr[k] = p;
@@ -459,6 +478,7 @@ Nest.prototype.convect = function (f, dt, fcor) {
 
 /* ---- the engine's storm as the nest's forcing ------------------------------------------------------------------------------------------------------------------------ */
 const KT = 0.514444, NMI = 1.852;
+function unfavOf(f, m) { return Math.max(sm01(f.shear * m, 5, 14), 1 - sm01(f.rh, 0.38, 0.62), sm01(26.5 - f.sst, 0, 3)); }          // how hostile the air is to an eye (0 to 1): strong shear, dry air or cool water
 function ringInto(vt, rp, Vp, nIn, tail) {                                    // a ring of peak wind Vp (m/s) at radius rp (km) merged into the wind table by the stronger; `tail(r)` is its wind beyond rp
   for (let i = 0; i < NR; i++) { const r = Math.max(i, 0.01), v = r <= rp ? Vp * Math.pow(r / rp, nIn) : tail(r); if (v > vt[i]) vt[i] = v; }
 }
@@ -551,10 +571,49 @@ Nest.prototype.display = function (frac, tex, ir) {
 };
 
 /* the radar's texture: what a 2-km cell cannot hold, the cells and the patchiness of the rain below it (a few km), as a multiplicative variation that is carried by the flow like the supply noise it is made of */
-Nest.prototype.texture = function (ir) {
-  const P = PAR, drc = this.drc, drs = this.drs, qn = this.qn, cl = this.cl, a = ir ? 0 : P.texS, b = P.texC, c0 = -0.5 * (a * a + 0.7 * b * b), a2 = P.texR, b2 = P.texCc, c2 = -0.5 * (a2 * a2 + 0.7 * b2 * b2);
+/* the picture between two steps without a leap at the next one (the page's clock): the state one step ago and the state now are mixed over the step, the old one carried forward by the flow to the instant and the new one carried
+   back, so the picture shows the model a step late but what the next step brings has already been arriving; phi runs from 0 to 1 over the step, the noise of the texture is mixed the same way */
+Nest.prototype.savePrev = function () {
+  const names = ['rc', 'rs', 'cir', 'cih', 'Q', 'qn', 'cl'], pv = this.pv || (this.pv = {});
+  for (const n of names) { if (!pv[n]) pv[n] = new Float32Array(NN); pv[n].set(this[n]); }
+};
+Nest.prototype.displayBlend = function (phi, tex, ir) {
+  if (!this.keepPrev) this.keepPrev = true;
+  if (!this.pv) this.savePrev();
+  if (!this.cur) return this.display(0, tex, ir);
+  phi = phi < 0 ? 0 : phi > 1 ? 1 : phi;
+  if (!this.drc) { this.drc = new Float32Array(NN); this.drs = new Float32Array(NN); }
+  if (ir && !this.dcr) { this.dcr = new Float32Array(NN); this.dch = new Float32Array(NN); this.dQ = new Float32Array(NN); }
+  const dt = this.lastDt, hF = phi * dt / DX, hB = (1 - phi) * dt / DX, pv = this.pv;
+  const mix = (a, b, dst, U, V) => {
+    for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+      const k = j * N + i, u = U[k], v = V[k]; let va = 0, vb = 0;
+      for (let w = 0; w < 2; w++) {
+        const x = i + (w ? u * hB : -u * hF), y = j + (w ? v * hB : -v * hF), src = w ? b : a, xi = Math.floor(x), yi = Math.floor(y), tx = x - xi, ty = y - yi, c0 = xi & 255, c1 = (xi + 1) & 255, d0 = (yi & 255) * N, d1 = ((yi + 1) & 255) * N;
+        const r = (src[d0 + c0] * (1 - tx) + src[d0 + c1] * tx) * (1 - ty) + (src[d1 + c0] * (1 - tx) + src[d1 + c1] * tx) * ty; if (w) vb = r; else va = r;
+      }
+      dst[k] = (1 - phi) * va + phi * vb;
+    }
+  };
+  mix(pv.rc, this.rc, this.drc, this.U, this.V); mix(pv.rs, this.rs, this.drs, this.us, this.vs);
+  if (ir) { mix(pv.cir, this.cir, this.dcr, this.uc, this.vc); mix(pv.cih, this.cih, this.dch, this.uc, this.vc); mix(pv.Q, this.Q, this.dQ, this.U, this.V); }
+  if (tex) { const qb = this.t1, cb = this.t2, q0 = pv.qn, c0 = pv.cl, q1 = this.qn, c1 = this.cl; for (let k = 0; k < NN; k++) { qb[k] = (1 - phi) * q0[k] + phi * q1[k]; cb[k] = (1 - phi) * c0[k] + phi * c1[k]; } this.texture(ir, qb, cb); }
+};
+/* the anvil spreads sideways: the cloud's opacity and its top (weighted by the opacity) are mixed over a few km, so the gaps between the cells of a canopy fill in and its edges soften */
+Nest.prototype.blurOpen = function (a, tmp) {                                  // [1 2 1]/4 in x then y, the box's edge value standing beyond the edge (an open boundary: nothing wraps round), in place
+  for (let j = 0; j < N; j++) { const o = j * N; for (let i = 0; i < N; i++) tmp[o + i] = 0.25 * a[o + (i > 0 ? i - 1 : 0)] + 0.5 * a[o + i] + 0.25 * a[o + (i < N - 1 ? i + 1 : N - 1)]; }
+  for (let j = 0; j < N; j++) { const o = j * N, om = (j > 0 ? j - 1 : 0) * N, op = (j < N - 1 ? j + 1 : N - 1) * N; for (let i = 0; i < N; i++) a[o + i] = 0.25 * tmp[om + i] + 0.5 * tmp[o + i] + 0.25 * tmp[op + i]; }
+};
+Nest.prototype.spreadCirrus = function () {
+  const e = this.cir, h = this.cih, a = this.t1, b = this.t2, tmp = this.t3;
+  for (let k = 0; k < NN; k++) { a[k] = e[k]; b[k] = e[k] * h[k]; }
+  for (let p = 0; p < PAR.ciSp; p++) { this.blurOpen(a, tmp); this.blurOpen(b, tmp); }
+  for (let k = 0; k < NN; k++) { const w = a[k]; if (w > 1e-4) { const hm = b[k] / w; if (!(e[k] > 0.3 && h[k] > hm)) h[k] = hm; e[k] = w > 1 ? 1 : w; } else e[k] = 0; }          // (a gap takes the canopy's level, a cloud keeps its own top where it is higher: the domes stay)
+};
+Nest.prototype.texture = function (ir, qnIn, clIn) {                                          // (the cirrus' texture is in its transparency: thick cirrus stays opaque, thin cirrus is streaky)
+  const P = PAR, drc = this.drc, drs = this.drs, qn = qnIn || this.qn, cl = clIn || this.cl, a = ir ? 0 : P.texS, b = P.texC, c0 = -0.5 * (a * a + 0.7 * b * b), a2 = P.texR, b2 = P.texCc, c2 = -0.5 * (a2 * a2 + 0.7 * b2 * b2);
   if (!ir) for (let k = 0; k < NN; k++) { const q = qn[k], c = cl[k]; if (drs[k] > 0.005) drs[k] *= Math.exp(c0 + a * q + b * c); if (drc[k] > 0.005) drc[k] *= Math.exp(c2 + a2 * q + b2 * c); }
-  if (ir && this.dcr) { const dcr = this.dcr, t0 = P.ciTex[0], t1 = P.ciTex[1]; for (let k = 0; k < NN; k++) { const e = dcr[k]; if (e > 0.01) { const v = e * Math.exp(t0 * qn[k] + t1 * cl[k] - 0.08); dcr[k] = v > 1 ? 1 : v; } } }
+  if (ir && this.dcr) { const dcr = this.dcr, t0 = P.ciTex[0], t1 = P.ciTex[1]; for (let k = 0; k < NN; k++) { const e = dcr[k]; if (e > 0.01) { const v = 1 - (1 - e) * Math.exp(t0 * qn[k] + t1 * cl[k] - 0.5 * (t0 * t0 + 0.7 * t1 * t1)); dcr[k] = v < 0 ? 0 : v > 1 ? 1 : v; } } }
 };
 
 /* ---- the infrared picture: the brightness temperature (C) of every cell: the sea (or the land) seen through what is above it, layer by layer: scattered low clouds from the water of the column, the tops of the
@@ -566,7 +625,8 @@ function irColor(t) {                                                          /
   let i = 1; while (i < S.length - 1 && t < S[i][0]) i++;
   const a = S[i - 1], b = S[i], u = (a[0] - t) / (a[0] - b[0]); return [a[1][0] + (b[1][0] - a[1][0]) * u, a[1][1] + (b[1][1] - a[1][1]) * u, a[1][2] + (b[1][2] - a[1][2]) * u];
 }
-const topZ = (r) => { const z = PAR.top[0] + PAR.top[1] * Math.log(1 + r / 3), c = PAR.top[2], w = PAR.top[3]; return z > c ? c + w * Math.tanh((z - c) / w) : z; };
+const capZ = (z) => { const c = PAR.top[2], w = PAR.top[3]; return z > c ? c + w * Math.tanh((z - c) / w) : z; };                // (no cloud top is higher than the tropopause's overshoot, convective or stratiform)
+const topZ = (r) => capZ(PAR.top[0] + PAR.top[1] * Math.log(1 + r / 3));
 const irTz = (ts, z, ztp, ttp) => (z <= ztp ? ts + (ttp - ts) * z / ztp : Math.max(-105, ttp - 9 * (z - ztp)));       // the temperature at height z (km): a straight fall to the tropopause, colder above it for a cell that overshoots
 Nest.prototype.irTb = function (out, ts0) {
   if (!this.dcr) this.display(0, true, true);
@@ -577,7 +637,7 @@ Nest.prototype.irTb = function (out, ts0) {
     let tb = ts;
     if (aL > 0) tb += 0.9 * aL * (irTz(ts, zk * (1 + 4.5 * sm01(qr, 0.94, 1.02)), ztp, ttp) - ts);                    // scattered low cloud
     const r1 = rc[k], r2 = rs[k];
-    if (r1 > 0.05 || r2 > 0.05) { const zt = Math.max(r1 > 0.05 ? topZ(r1) : 0, 7 + 2.4 * Math.log(1 + r2 / 0.5)); tb += (1 - Math.exp(-(r1 / 3 + r2 / 0.7))) * (irTz(ts, zk * zt, ztp, ttp) - tb); }     // the rain clouds
+    if (r1 > 0.05 || r2 > 0.05) { const zt = Math.max(r1 > 0.05 ? topZ(r1) : 0, capZ(7 + 2.4 * Math.log(1 + r2 / 0.5))); tb += (1 - Math.exp(-(r1 / 3 + r2 / 0.7))) * (irTz(ts, zk * zt, ztp, ttp) - tb); }     // the rain clouds
     const e = ci[k]; if (e > 0.01) { const m = tb + e * (irTz(ts, zk * cz[k], ztp, ttp) - tb); if (m < tb) tb = m; }                                           // the cirrus over them
     out[k] = tb;
   }
