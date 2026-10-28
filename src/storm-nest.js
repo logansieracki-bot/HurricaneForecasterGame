@@ -47,6 +47,7 @@ const PAR = {
   aW: 45, Pmax: 0.03, kr: [1.1, 2.4],                      // the mass flux per mm/s of rain (m per mm), the most rain convection can make from the supply (mm/s), the rain a mm/s of condensation is, for a weak and for a strong vortex (the column above the layer converges moisture too, the more the deeper the convection)
   sq: 1.3, noiseTau: 300, sc: 1.1, clTau: 7200, cl2Tau: 14400, bgSig: [1.1, 0.9, 0.8], bgA: 2, bgR: [150, 270], bgOrg: 0.75, etW: 0.08, etF: 0.35, eyeRag: 0.3, eyeClr: 0.4, edgeS: [215, 252], vTurb: [1.0, 0.06, 0.45], vOut: 700, vTau: 420, texS: 0.25, texC: 0.45, texR: 0.25, texCc: 0.15, inA: 0.07, inR: 3.5, rhQ: 0.2, dryK: 0.88, dryR: 1.0, shAmp: 1.3, landR: [8, 10], landK: 0.7, landSq: 0.06, gsC: 0.35, sBlur: 4, wBlur: 5, pcv: 0.0015, pcx: 2.5,                             // the multiplicative variability of the supply: cell scale (and its memory, s) and mesoscale clusters 30 km across (their share and memory), which the swirl shears into spiral arms
   tauUp: 300, tauC2: 1200, sigS: 0.05, tauS: 1800, gs: 0.4,    // radar rain: rise time of convective rain (s), its fall time; the share of it stratiform rain receives (per tauC2), its life (s), the rain of broad ascent (mm/h)
+  top: [8.5, 2.4, 15.2, 2.0],      // the top (km) of a convective cell raining r mm/h: top[0] + top[1] ln(1 + r/3), soft-capped (above top[2] it levels off toward top[2] + top[3]); fitted so that a category 1 and 2 hurricane's core has the cold tops of the real ones (Nolo 25-26 Sep 2026, GOES: within 100 km about 17 thousand km2 colder than -60 C and 8 thousand colder than -70 C, the coldest top within 60 km about -78 C)
   tauCi: 9000, dzCi: 0.4, ciOut: 8, ciTex: [0.2, 0.25], ciDt: 300,      // infrared: the life of the cirrus the convection spreads (s), its top's fall (km an hour), the upper outflow that spreads it (m/s), the texture on its thickness (cell and cluster scale), how often it is advected (s)
   outflow: 4, gsW: 1.6,                                 // the upper-level outflow (m/s) that carries stratiform rain outward from the core; the stratiform rain of an extratropical transition's warm sector (mm/h)
   tauN: [1200, 900], tauG: 3 * 3600, zmax: 0.05, nu: 0, meanStretch: 0, zCap: 3e-3, eye: 0.8, tauA: [1500, 7200],     // relaxation of the mean vorticity to the engine's (inner and outer, s); the time the efficiency adapts over; the cap on |zeta| (1/s); the smoothing of zeta per step; the damping time of the departures from the circle mean in the core and outside it (s: what the third dimension and the convective heating do to the two-dimensional instabilities of a ring); the share of the circle-mean stretching that is kept (the rest is the engine's to say), the vorticity above which stretching stops growing with it (1/s), the eye's share of the radius of maximum wind
@@ -449,7 +450,7 @@ Nest.prototype.convect = function (f, dt, fcor) {
     const R = p * 3600 * kr * (1 + Math.min(P.pcx, p / pcS)), rcn = rc[k] + (R - rc[k]) * (R > rc[k] ? aUp : 1 - aDn);
     rc[k] = ey > 0 ? rcn * (1 - P.eyeClr * ey) : rcn;
     { const e0 = cir[k] * aCi, z0 = cih[k] - dzCi;                                                                    // the cirrus: a cell's top (km) and how opaque it is; the old cirrus thins and sinks, the highest top stays
-      if (rcn > 0.05) { const zc = 8.5 + 2.0 * Math.log(1 + rcn / 3), es = 1 - Math.exp(-rcn / 2.5); if (es > e0) { cir[k] = es; cih[k] = e0 > 0.15 && z0 > zc ? z0 : zc; } else { cir[k] = e0; cih[k] = z0 < 6 ? 6 : z0; } } else { cir[k] = e0; cih[k] = z0 < 6 ? 6 : z0; }
+      if (rcn > 0.05) { const zc = topZ(rcn), es = 1 - Math.exp(-rcn / 2.5); if (es > e0) { cir[k] = es; cih[k] = e0 > 0.15 && z0 > zc ? z0 : zc; } else { cir[k] = e0; cih[k] = z0 < 6 ? 6 : z0; } } else { cir[k] = e0; cih[k] = z0 < 6 ? 6 : z0; }
       if (ey > 0) cir[k] *= 1 - 0.8 * P.eyeClr * ey; }
     const sSrc = P.sigS * (P.tauS / P.tauC2) * rcn + P.gsC * rcB[k] + P.gs * Math.min(1, Math.max(0, w * vEff) / 0.4) * (1 - 0.7 * eta * dry) + strat;
     rs[k] = ey > 0 ? (rs[k] * aS + bS * sSrc * (1 - 0.95 * ey)) * (1 - 0.25 * ey) : rs[k] * aS + bS * sSrc;
@@ -565,6 +566,7 @@ function irColor(t) {                                                          /
   let i = 1; while (i < S.length - 1 && t < S[i][0]) i++;
   const a = S[i - 1], b = S[i], u = (a[0] - t) / (a[0] - b[0]); return [a[1][0] + (b[1][0] - a[1][0]) * u, a[1][1] + (b[1][1] - a[1][1]) * u, a[1][2] + (b[1][2] - a[1][2]) * u];
 }
+const topZ = (r) => { const z = PAR.top[0] + PAR.top[1] * Math.log(1 + r / 3), c = PAR.top[2], w = PAR.top[3]; return z > c ? c + w * Math.tanh((z - c) / w) : z; };
 const irTz = (ts, z, ztp, ttp) => (z <= ztp ? ts + (ttp - ts) * z / ztp : Math.max(-105, ttp - 9 * (z - ztp)));       // the temperature at height z (km): a straight fall to the tropopause, colder above it for a cell that overshoots
 Nest.prototype.irTb = function (out, ts0) {
   if (!this.dcr) this.display(0, true, true);
@@ -575,7 +577,7 @@ Nest.prototype.irTb = function (out, ts0) {
     let tb = ts;
     if (aL > 0) tb += 0.9 * aL * (irTz(ts, zk * (1 + 4.5 * sm01(qr, 0.94, 1.02)), ztp, ttp) - ts);                    // scattered low cloud
     const r1 = rc[k], r2 = rs[k];
-    if (r1 > 0.05 || r2 > 0.05) { const zt = Math.max(r1 > 0.05 ? 8.5 + 2.0 * Math.log(1 + r1 / 3) : 0, 7 + 2.4 * Math.log(1 + r2 / 0.5)); tb += (1 - Math.exp(-(r1 / 3 + r2 / 0.7))) * (irTz(ts, zk * zt, ztp, ttp) - tb); }     // the rain clouds
+    if (r1 > 0.05 || r2 > 0.05) { const zt = Math.max(r1 > 0.05 ? topZ(r1) : 0, 7 + 2.4 * Math.log(1 + r2 / 0.5)); tb += (1 - Math.exp(-(r1 / 3 + r2 / 0.7))) * (irTz(ts, zk * zt, ztp, ttp) - tb); }     // the rain clouds
     const e = ci[k]; if (e > 0.01) { const m = tb + e * (irTz(ts, zk * cz[k], ztp, ttp) - tb); if (m < tb) tb = m; }                                           // the cirrus over them
     out[k] = tb;
   }

@@ -3,7 +3,7 @@
 //   node tools/ir_research/page_lab.mjs '<json: one case or a list>' <outprefix> [--shots]
 // a case: { label, basin (atlantic|eastpacific|westpacific|nio|aus|swio|spac|satl|med), day (days into the page's year before the system is placed), at: [lat, lon], seed, kind (td|wave|sd|low),
 //           force: { th, v, vr, p, cx, cy } (held every hour when hold is true), hold, env: { shear (kt), rh (%), sst (C) } (the test hook: the floater's own air) or none (the page's own),
-//           hours, every (hours between dumps), warm (hours of the floater clock run before the first dump), shots: [hours to screenshot] }
+//           hours, every (hours between dumps), warm (hours of the floater clock run before the first dump), shots: [hours to screenshot], par: { nest PAR keys to set for this case } }
 // writes <outprefix>_<label>_<hour>.f32 (256 x 256 float32), <outprefix>_<label>.json (the metas and the picture statistics of irstats.mjs, res = the cell's km)
 import { chromium } from 'playwright';
 import { pathToFileURL } from 'node:url';
@@ -28,6 +28,7 @@ async function pageFor(basin) {
 }
 for (const c of cases) {
   const page = await pageFor(c.basin || 'atlantic'), ev = (fn, arg) => page.evaluate(fn, arg), at = c.at || [14, -45], hours = c.hours || 24, every = c.every || 6, force = c.force || {}, log = [];
+  await ev((p) => { const N = window.HFNest, D = window.__parDefault || (window.__parDefault = JSON.parse(JSON.stringify(N.PAR))); Object.assign(N.PAR, JSON.parse(JSON.stringify(D)), p || {}); }, c.par || null);    // par: nest numbers to set for this case (a before-and-after in the page's own air); every case starts from the built defaults
   // placed: a system put at a place and held at a stage; follow: the page's own season (auto genesis) run until a tropical cyclone of the wanted wind appears, and then followed as the engine has it
   const id = await ev((q) => { const S = window.SSTSIM; S.setPlaying(false); S.applySeed(q.seed || 4242); S.setPlaying(false); S.storms(true); S.stormAuto(!!q.follow); S.summary(false); S.tick(24 * q.day);
     if (q.follow) { const F = q.follow; let id = null; for (let h = 0; h < 24 * (F.days || 200) && !id; h += 3) { S.tick(3); const s = S.stormState().systems.find((x) => x.alive && x.th === (F.th || 'tc') && x.v >= (F.minV || 0) && x.v <= (F.maxV || 999) && (!F.skip || (F.skip = F.skip - 1) < 0)); if (s) id = s.id; } if (!id) return null; if (q.env && S.floaterEnv) S.floaterEnv(q.env); S.floaterOpen(id); S.floaterSet({ view: 'ir', play: false }); return id; }
