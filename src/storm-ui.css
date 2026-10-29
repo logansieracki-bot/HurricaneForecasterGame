@@ -147,10 +147,10 @@ body.no-waves .st-waves { display: none; }      /* a basin without a wave train 
 #fl-bar[hidden]{display:none}
 #fl-head{display:flex;align-items:baseline;gap:10px;padding-right:26px}
 #fl-name{font-size:14.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-#fl-time{font-size:13px;color:var(--text);font-variant-numeric:tabular-nums;margin-left:auto;white-space:nowrap}
+#fl-time{font-size:13px;color:var(--text);font-variant-numeric:tabular-nums;margin-left:auto;flex:none;white-space:nowrap}
 #fl-close{position:absolute;right:8px;top:7px;width:26px;height:26px;border:0;background:transparent;color:var(--dim);border-radius:6px;cursor:pointer;font-size:17px;line-height:1}
 #fl-close:hover{background:rgba(255,255,255,.09);color:var(--text)}
-#fl-bare{position:absolute;right:40px;top:8px;height:24px;padding:0 9px;border:1px solid rgba(255,255,255,.18);background:transparent;color:var(--dim);border-radius:12px;cursor:pointer;font-size:11px}
+#fl-bare{flex:none;align-self:center;height:22px;padding:0 9px;border:1px solid rgba(255,255,255,.18);background:transparent;color:var(--dim);border-radius:12px;cursor:pointer;font-size:11px}
 #fl-bare[aria-pressed=true]{background:rgba(255,255,255,.16);color:var(--text)}
 #fl-sub{font-size:11.5px;color:var(--dim);margin-top:2px;line-height:1.4}
 #fl-ctl{display:flex;gap:12px;margin-top:7px;flex-wrap:wrap}
