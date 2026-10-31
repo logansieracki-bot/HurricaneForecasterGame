@@ -267,7 +267,7 @@ function labRecord(m) {
 function stormsReset() {
   if (flOn) flClose();
   stormMgr = HFStorms.create({ seed: stormSeed(), startMs: START_MS, hour0: simHour, auto: stormAuto, autoRate: stormActivity, maps: stormMapsNow(), basin: STORM_BASIN }); stormCitiesBind();
-  landSeen.clear(); fxMarks.length = 0; fxAng.clear();
+  landLog.clear(); landFired.clear(); fxMarks.length = 0; fxAng.clear();
   stormLab = null; shadow = null; stormFieldsDirty = true; kfBreak = true; kfFieldHour = -1; stormSel = null; olSel = null; plainSel = null; ensPack = null; coneMem = null; wwPack = null; wwCones = {}; ensHot = -1; stormHot = null; stormHits = []; olHeld = null; olEagerSlot = -1e9; olHits = []; stormsDirty = true;
   sumArch = 0; if (sumOpen) closeSummary();
   const card = $('storm-card'), tip = $('storm-tip'), acard = $('aoi-card'); if (card) card.hidden = true; if (acard) acard.hidden = true; if (tip) tip.style.display = 'none';
@@ -534,9 +534,9 @@ const shapeOf = (th) => (th === 'sc' ? 'square' : th === 'ex' || th === 'nl' ? '
    tropical or subtropical cyclone coming ashore: the engine's hourly position over water, then over land) shoots out an X for a moment, which shrinks to a square that turns for three seconds and fades; on the radar floater the square only,
    smaller, and when the floater's head gets to the coast (landAhead: the floater runs inside the hour between two engine states). */
 const LOOK_KEY = 'hf-look';
-let stTrack = 'default', stIcons = true, stLand = true;
-try { const o = JSON.parse(localStorage.getItem(LOOK_KEY) || 'null'); if (o) { stTrack = o.track === 'wiki' ? 'wiki' : 'default'; stIcons = o.icons !== false; stLand = o.land !== false; } } catch (e) { /* storage blocked: the defaults */ }
-function lookSave() { try { localStorage.setItem(LOOK_KEY, JSON.stringify({ track: stTrack, icons: stIcons, land: stLand })); } catch (e) { /* storage blocked */ } }
+let stTrack = 'default', stIcons = true, stLand = true, stShown = 'season';                // the path style, the icons, the landfall markers, and whether the paths of the whole season or only of the storms that are active are drawn
+try { const o = JSON.parse(localStorage.getItem(LOOK_KEY) || 'null'); if (o) { stTrack = o.track === 'wiki' ? 'wiki' : 'default'; stIcons = o.icons !== false; stLand = o.land !== false; stShown = o.shown === 'active' ? 'active' : 'season'; } } catch (e) { /* storage blocked: the defaults */ }
+function lookSave() { try { localStorage.setItem(LOOK_KEY, JSON.stringify({ track: stTrack, icons: stIcons, land: stLand, shown: stShown })); } catch (e) { /* storage blocked */ } }
 const WIKI_COLS = ['#6EC1E7', '#4DFFFF', '#FFFFD9', '#FFD98C', '#FF9E59', '#FF738A', '#A188FC'];          // Wikipedia's track maps today (read off a real one, pixel by pixel): tropical depression, tropical storm, Category 1 to 5 of the Saffir-Simpson scale (the winds as a best track holds them, 5 kt apart)
 const wikiClass = (v) => { const k = Math.round(v / 5) * 5; return k < 34 ? 0 : k < 64 ? 1 : k < 83 ? 2 : k < 96 ? 3 : k < 113 ? 4 : k < 137 ? 5 : 6; };
 const wikiColor = (fix) => WIKI_COLS[wikiClass(fix.v)];
@@ -632,9 +632,10 @@ function fxDraw(now) {                                                          
     drawLandfall(g, p.x, p.y, Math.max(0, (now - m.t0) / 1000), pathColor(m.f), flOn);
   }
 }
-const landSeen = new Map();                                                       // per system: where its centre was the hour before and whether that was land, and the hour of its last landfall marker
+const landLog = new Map();                                                        // per system: how many of the landfalls in its log (S.lfs, the engine's) the page has looked at, a marker for each new one
+const landFired = new Map();                                                      // per system: the hour of the landfall the radar floater has already made the marker of, when its head got to the coast
 function landMarkAdd(S, lat, lon, f) { if (!stLand) return; fxMarks.push({ id: S.id, lat, lon, f, t0: performance.now() }); if (fxMarks.length > 24) fxMarks.shift(); fxWake(); }
-function landCoast(a, b) {                                                        // the coast between two places, the first over water and the second over land: the share of the way and the place, found by halving ten times
+function landCoast(a, b) {                                                        // the coast between two places, the first over water and the second over land: the share of the way and the place, found by halving ten times (the engine's way)
   let dl = b.lon - a.lon; if (dl > 180) dl -= 360; else if (dl < -180) dl += 360;
   let lo = 0, hi = 1;
   for (let k = 0; k < 10; k++) { const m = (lo + hi) / 2; if (stormLand(a.lat + (b.lat - a.lat) * m, a.lon + dl * m)) hi = m; else lo = m; }
@@ -642,31 +643,26 @@ function landCoast(a, b) {                                                      
   return { k: hi, lat: a.lat + (b.lat - a.lat) * hi, lon };
 }
 const landTropical = (S) => S.alive && S.depNum > 0 && (S.th === 'tc' || S.th === 'sc');
-function landScan() {                                                             // after every simulated hour: a tropical or subtropical cyclone whose centre was over water and is now over land has made landfall (the coast between the two positions found by halving; not twice within six hours)
+function landScan() {                                                             // after every simulated hour: a landfall the engine has logged since the last look is a marker (not for the ones before the page looked, a resumed season's: the first look only counts)
   if (!stormMgr) return;
   const live = new Set();
   for (const S of stormMgr.systems) {
-    if (!landTropical(S)) continue;
     live.add(S.id);
-    const land = stormLand(S.lat, S.lon), p = landSeen.get(S.id);
-    if (p && !p.land && land && stormMgr.hour - p.mark >= 6) {
-      const c = landCoast(p, S);
-      landMarkAdd(S, c.lat, c.lon, { v: p.v + (S.v - p.v) * c.k, th: S.th });
-      landSeen.set(S.id, { lat: S.lat, lon: S.lon, land, v: S.v, mark: stormMgr.hour }); continue;
-    }
-    landSeen.set(S.id, { lat: S.lat, lon: S.lon, land, v: S.v, mark: p ? p.mark : -1e9 });
+    const n = S.lfs ? S.lfs.length : 0, seen = landLog.get(S.id);
+    if (seen === undefined) { landLog.set(S.id, n); continue; }
+    for (let k = seen; k < n; k++) { const e = S.lfs[k]; if (landFired.get(S.id) === e.h) landFired.delete(S.id); else landMarkAdd(S, e.lat, e.lon, { v: e.v, th: e.th }); }
+    landLog.set(S.id, n);
   }
-  for (const id of Array.from(landSeen.keys())) if (!live.has(id)) landSeen.delete(id);        // (a system that has ended or is not tropical any more, and the ones of a season that is over)
+  for (const id of Array.from(landLog.keys())) if (!live.has(id)) { landLog.delete(id); landFired.delete(id); }        // (a system of a season that is over)
 }
 function landAhead(S, C) {                                                        // the radar floater runs inside the hour between the engine's state now (S) and its look-ahead (C): a landfall in that hour is { k: the share of the hour the centre crosses the coast at, where, the intensity } so that the marker comes when the head gets there, not at the end of the hour
   if (!landTropical(S) || !(C.th === 'tc' || C.th === 'sc') || stormLand(S.lat, S.lon) || !stormLand(C.lat, C.lon)) return null;
-  const p = landSeen.get(S.id); if (p && stormMgr.hour - p.mark < 6) return null;
+  const last = S.lfs && S.lfs.length ? S.lfs[S.lfs.length - 1] : null; if (last && stormMgr.hour + 1 - last.h < 6) return null;
   const c = landCoast(S, C);
-  return { id: S.id, k: c.k, lat: c.lat, lon: c.lon, f: { v: S.v + (C.v - S.v) * c.k, th: C.th } };
+  return { id: S.id, k: c.k, lat: c.lat, lon: c.lon, f: { v: S.vr + (C.vr - S.vr) * c.k, th: C.th } };
 }
-function landFire(S, L) {                                                         // the floater's head has reached the coast: the marker, and a mark that the engine's own look at the end of the hour does not make another
-  landMarkAdd(S, L.lat, L.lon, L.f);
-  const p = landSeen.get(S.id); if (p) p.mark = stormMgr.hour + 1; else landSeen.set(S.id, { lat: S.lat, lon: S.lon, land: false, v: S.v, mark: stormMgr.hour + 1 });
+function landFire(S, L) {                                                         // the floater's head has reached the coast: the marker, and a note that the engine's own log of it, at the end of the hour, does not make another
+  landMarkAdd(S, L.lat, L.lon, L.f); landFired.set(S.id, stormMgr.hour + 1);
 }
 
 /* ---- the outlook: areas of interest, X's and arrows (the engine's Manager.prototype.outlook makes them, the same for every basin; this block only draws, picks and describes) ---- */
@@ -1123,7 +1119,7 @@ function drawStorms() {
     stormHits.push({ x: p.x, y: p.y, r: 13, wave: S });
   }
   drawOutlookMarks(g, toPx, marks, showNames);
-  const list = stormMgr.systems.filter((S) => (aoiKey || plainId ? false : only ? S.id === only : S.depNum > 0 || (S.alive && S.th !== 'wv'))).sort((a, b) => (a.alive - b.alive) || (a.tdHour - b.tdHour) || (a.born - b.born));
+  const list = stormMgr.systems.filter((S) => (aoiKey || plainId ? false : only ? S.id === only : (S.depNum > 0 || (S.alive && S.th !== 'wv')) && (stShown === 'season' || S.alive))).sort((a, b) => (a.alive - b.alive) || (a.tdHour - b.tdHour) || (a.born - b.born));
   g.lineJoin = 'round'; g.lineCap = 'round';
   const wiki = stTrack === 'wiki', icons = stIcons && !flOn;                       // (the icons are not for the radar floater: it has the echoes to look at)
   for (const S of list) {
@@ -1284,107 +1280,4 @@ function updateSeasonBar() {
   $('se-year').textContent = BI.label + ' ' + seasonLabel(s.year); $('se-dep').textContent = s.dep; $('se-named').textContent = s.named; $('se-hurr').textContent = s.hurr;
   $('se-major').textContent = s.major; $('se-c5').textContent = s.cat5; $('se-ace').textContent = s.ace.toFixed(1);
 }
-
-/* ---- the season summary: the totals against the real normals, the accumulated cyclone energy through the year, one row per storm ------------------ */
-const SUM = DATA.storms || null;                                     // the real 1991-2020 normals and daily ACE percentiles (tools/merge_data.mjs --storms)
-const sumF1 = (x) => (Math.round(x * 10) / 10).toFixed(1);
-const sumDay = (y, d) => { const t = new Date(Date.UTC(y, SM, 1 + d)); return MON[t.getUTCMonth()] + ' ' + t.getUTCDate(); };            // day d of the season that starts in month SM of year y
-const sumYearDays = (y) => Math.round((Date.UTC(y + 1, SM, 1) - Date.UTC(y, SM, 1)) / 86400000);
-function sumNiceTop(v) { for (const t of [30, 60, 100, 150, 200, 250, 300, 350, 400, 500, 650, 800, 1000]) if (v <= t) return t; return Math.ceil(v / 250) * 250; }
-function openSummary(year) {
-  if (!stormMgr) return;
-  sumYear = year == null ? stormMgr.season.year : year; sumOpen = true;
-  closeStormCard(); $('storm-tip').style.display = 'none';
-  $('sum-card').hidden = false; $('se-sum').setAttribute('aria-expanded', 'true'); fillSummary();
-}
-function closeSummary() { sumOpen = false; sumGeo = null; $('sum-card').hidden = true; $('se-sum').setAttribute('aria-expanded', 'false'); }
-function sumStep(dir) {
-  const ys = stormMgr.seasonYears(), i = ys.indexOf(sumYear), j = i + dir;
-  if (i >= 0 && j >= 0 && j < ys.length) { sumYear = ys[j]; fillSummary(); }
-}
-function seasonEnded() {
-  const n = stormMgr.archive.length, e = stormMgr.archive[n - 1]; sumArch = n;
-  stormSel = null; olSel = null; plainSel = null; ensPack = null; $('storm-card').hidden = true; $('aoi-card').hidden = true; stormHot = null; $('storm-tip').style.display = 'none'; stormsDirty = true;
-  openSummary(e.year);
-}
-function fillSummary() {
-  const rec = stormMgr && stormMgr.seasonRecord(sumYear); if (!rec) { closeSummary(); return; }
-  sumAt = performance.now();
-  const ys = stormMgr.seasonYears(), i = ys.indexOf(rec.year);
-  $('sum-prev').disabled = i <= 0; $('sum-next').disabled = i < 0 || i >= ys.length - 1;
-  $('sum-title').textContent = BI.label + ' ' + seasonLabel(rec.year);
-  const n = SUM ? SUM.normals : null;
-  $('sum-sub').textContent = (rec.current ? 'Season so far, to ' + sumDay(rec.year, rec.day) : rec.open ? 'Season over, a storm is still active' : 'Season complete') + (rec.from > 0 ? ' · counted from ' + sumDay(rec.year, rec.from) : '');
-  const cells = [['DEP', rec.dep, n && n.dep], ['NAMED', rec.named, n && n.named], [BAR[0], rec.hurr, n && n.hurr], [BAR[1], rec.major, n && n.major], [BAR[2], rec.cat5, n && n.cat5], ['ACE', sumF1(rec.ace), n && n.ace]];
-  $('sum-tot').innerHTML = cells.map(([k, v, a]) => '<div><b>' + v + '</b><span>' + k + '</span><small>' + (a == null ? '' : 'avg ' + sumF1(a)) + '</small></div>').join('');
-  { const im = rec.imp, el = $('sum-imp'); el.hidden = !(im && (im.d > 0 || im.k > 0 || im.i > 0));
-    if (!el.hidden) el.innerHTML = 'Damage <b>' + stormUsd(im.d) + '</b> · deaths <b>' + im.k.toLocaleString('en-US') + '</b> · injured <b>' + im.i.toLocaleString('en-US') + '</b>' + (im.worst ? ' · worst hit: <b>' + im.worst.city + '</b> (' + stormUsd(im.worst.d) + ', ' + im.worst.storm + ')' : ''); }
-  drawSumGraph(rec);
-  const tb = $('sum-table').querySelector('tbody'); tb.innerHTML = '';
-  $('sum-empty').hidden = rec.storms.length > 0; $('sum-table').style.display = rec.storms.length ? '' : 'none';
-  for (const s of rec.storms) {
-    const col = stormColor({ th: 'tc', v: s.peakV }), live = s.end == null;
-    const tr = document.createElement('tr'); if (live) tr.className = 'live'; tr.dataset.id = s.id;
-    const d0 = s.tdHour >= 0 ? simDate(s.tdHour) : null, d1 = s.end != null ? simDate(s.end) : null;
-    const dates = d0 ? MON[d0.getUTCMonth()] + ' ' + d0.getUTCDate() + ' – ' + (d1 ? (d1.getUTCMonth() === d0.getUTCMonth() ? '' : MON[d1.getUTCMonth()] + ' ') + d1.getUTCDate() : 'now') : '–';
-    tr.innerHTML = '<td><i style="background:' + col + '"></i><b>' + (s.name || 'TD ' + s.depNum) + '</b></td><td>' + HFStorms.classOf(STORM_BASIN, s.peakV, 'tc').short + ' · ' + HFStorms.ktToMph(s.peakV) + '<span class="u"> mph</span></td><td>' + (s.peakV > 0 ? s.peakP : '–') + '</td><td>' + dates + '</td><td>' + sumF1(s.ace) + '</td><td>' + (s.imp && s.imp.d > 0 ? stormUsd(s.imp.d) : '–') + '</td>';
-    tr.onclick = () => sumPick(s.id);
-    tb.appendChild(tr);
-  }
-}
-function sumPick(id) {                                              // a row of the table: fly to that storm and open its stat card (only while its track still exists)
-  const S = stormMgr.get(id); if (!S) return;
-  const f = S.alive ? null : (S.fixes.find((q) => q.h === S.peakHour) || S.fixes[S.fixes.length - 1]), pos = f || { lat: S.lat, lon: S.lon };
-  map.panTo([pos.lat, pos.lon]); openStormCard(S, f || HFStorms.makeFix(S, stormMgr.hour, S.ace), !f);
-}
-function drawSumGraph(rec) {
-  const cv = $('sum-graph'), w = Math.max(240, Math.round(cv.clientWidth) || 460), h = 172;
-  if (cv.width !== Math.round(w * DPR) || cv.height !== Math.round(h * DPR)) { cv.width = Math.round(w * DPR); cv.height = Math.round(h * DPR); }
-  const g = cv.getContext('2d'); g.setTransform(DPR, 0, 0, DPR, 0, 0); g.clearRect(0, 0, w, h);
-  const L = 34, R = 10, T = 10, B = 20, pw = w - L - R, ph = h - T - B, nd = sumYearDays(rec.year);
-  const cum = (a) => { let t = 0; return a.map((x) => (t += x)); };
-  const mine = cum(rec.aceDaily), last = rec.current ? Math.min(nd - 1, rec.day) : nd - 1;
-  const others = stormMgr.seasonYears().filter((y) => y !== rec.year).map((y) => ({ y, c: cum(stormMgr.seasonRecord(y).aceDaily), nd: sumYearDays(y) }));
-  const A = SUM ? SUM.ace : null;
-  let top = Math.max(mine[last] * 1.08, A ? A.p90[365] * 1.04 : 0, 40);
-  for (const o of others) top = Math.max(top, o.c[o.nd - 1] * 1.08);
-  top = sumNiceTop(top);
-  const X = (d) => L + pw * d / (nd - 1), Y = (v) => T + ph * (1 - v / top);
-  g.font = '11px system-ui, sans-serif'; g.textBaseline = 'middle';
-  const step = [10, 20, 25, 50, 100, 200].find((q) => top / q <= 5.01) || 250;
-  g.lineWidth = 1; g.strokeStyle = 'rgba(255,255,255,.08)'; g.fillStyle = 'rgba(255,255,255,.5)'; g.textAlign = 'right';
-  for (let v = 0; v <= top + 1e-9; v += step) { const y = Math.round(Y(v)) + 0.5; g.beginPath(); g.moveTo(L, y); g.lineTo(w - R, y); g.stroke(); g.fillText(String(v), L - 5, y); }
-  g.textAlign = 'center'; g.textBaseline = 'alphabetic';
-  const s0 = Date.UTC(rec.year, SM, 1), monthStart = (m) => Math.round((Date.UTC(rec.year + (SM + m >= 12 ? 1 : 0), (SM + m) % 12, 1) - s0) / 86400000);      // the season's 12 months, in order from its first
-  for (let m = 0; m < 12; m++) {
-    const d0 = monthStart(m), d1 = m < 11 ? monthStart(m + 1) : nd;
-    if (m) { g.strokeStyle = 'rgba(255,255,255,.06)'; g.beginPath(); g.moveTo(Math.round(X(d0)) + 0.5, T); g.lineTo(Math.round(X(d0)) + 0.5, T + ph); g.stroke(); }
-    g.fillStyle = 'rgba(255,255,255,.5)'; g.fillText('JFMAMJJASOND'[(SM + m) % 12], X((d0 + d1) / 2), h - 6);
-  }
-  const band = (lo, hi, fill) => {                                   // a band between two real percentile curves
-    g.beginPath(); for (let d = 0; d < nd; d++) { const x = X(d), y = Y(A[hi][Math.min(d, 365)]); if (d) g.lineTo(x, y); else g.moveTo(x, y); }
-    for (let d = nd - 1; d >= 0; d--) g.lineTo(X(d), Y(A[lo][Math.min(d, 365)]));
-    g.closePath(); g.fillStyle = fill; g.fill();
-  };
-  if (A) {
-    band('p10', 'p90', 'rgba(127,166,255,.13)'); band('p25', 'p75', 'rgba(127,166,255,.22)');
-    g.save(); g.setLineDash([4, 3]); g.lineWidth = 1.2; g.strokeStyle = 'rgba(190,210,255,.6)'; g.beginPath();
-    for (let d = 0; d < nd; d++) { const x = X(d), y = Y(A.p50[Math.min(d, 365)]); if (d) g.lineTo(x, y); else g.moveTo(x, y); } g.stroke(); g.restore();
-  }
-  g.lineJoin = 'round';
-  for (const o of others) { g.lineWidth = 1.2; g.strokeStyle = 'rgba(255,255,255,.3)'; g.beginPath(); for (let d = 0; d < o.nd; d++) { const x = X(Math.min(d, nd - 1) * (nd - 1) / (o.nd - 1)), y = Y(o.c[d]); if (d) g.lineTo(x, y); else g.moveTo(x, y); } g.stroke(); }
-  const from = Math.max(0, rec.from - 1);
-  g.lineWidth = 2.4; g.strokeStyle = '#f2f2f2'; g.beginPath(); for (let d = from; d <= last; d++) { const x = X(d), y = Y(mine[d]); if (d > from) g.lineTo(x, y); else g.moveTo(x, y); } g.stroke();
-  const ex = X(last), ey = Y(mine[last]);
-  g.beginPath(); g.arc(ex, ey, 3.6, 0, 7); g.fillStyle = '#f2f2f2'; g.fill(); g.lineWidth = 1.5; g.strokeStyle = 'rgba(18,18,18,.9)'; g.stroke();
-  if (rec.current) { g.save(); g.setLineDash([2, 3]); g.strokeStyle = 'rgba(255,255,255,.35)'; g.beginPath(); g.moveTo(Math.round(ex) + 0.5, T); g.lineTo(Math.round(ex) + 0.5, T + ph); g.stroke(); g.restore(); }
-  const lab = sumF1(mine[last]); g.font = '600 11.5px system-ui, sans-serif'; g.textAlign = ex > w - 46 ? 'right' : 'left'; g.textBaseline = 'middle';
-  g.lineWidth = 3; g.strokeStyle = 'rgba(26,26,28,.9)'; g.strokeText(lab, ex + (ex > w - 46 ? -7 : 7), ey - 8); g.fillStyle = '#f2f2f2'; g.fillText(lab, ex + (ex > w - 46 ? -7 : 7), ey - 8);
-  sumGeo = { w, h, L, T, pw, ph, top, nd, last, endX: ex, endY: ey, value: mine[last] };
-  const med = A ? A.p50[Math.min(last, 365)] : null;
-  $('sum-cap').textContent = A ? 'Real seasons ' + SUM.years[0] + '–' + SUM.years[1] + ': the middle 50 % and 80 % are shaded, the median dashed.' + (rec.current ? ' By ' + sumDay(rec.year, last) + ' the median season had ' + Math.round(med) + ' ACE (10th–90th percentile ' + Math.round(A.p10[Math.min(last, 365)]) + '–' + Math.round(A.p90[Math.min(last, 365)]) + ').' : ' The median season ends on ' + Math.round(A.p50[365]) + '.') : '';
-}
-$('se-sum').onclick = () => { if (sumOpen) closeSummary(); else openSummary(); };
-$('sum-close').onclick = closeSummary;
-$('sum-prev').onclick = () => sumStep(-1); $('sum-next').onclick = () => sumStep(1);
 /* ==== STORM HOOKS END ==== */

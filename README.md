@@ -49,7 +49,7 @@ nothing to run by hand.
   `window.SSTSIM` is the test/debug hook. `src/template-<basin>.html` are the other
   eight basins' versions of the same app (per-basin constants and data; the steering
   and shear blocks are ported between them by script, see `docs/roadmap.md`).
-- `src/storm-hooks.js`, `src/storm-late.js`, `src/storm-ui.css`, `src/storm-ui.html` the storm layer's page code, ONE copy for
+- `src/storm-hooks.js`, `src/storm-summary.js` (the season summary card), `src/storm-late.js`, `src/storm-ui.css`, `src/storm-ui.html` the storm layer's page code, ONE copy for
   all nine pages (the build inlines it at the placeholders above): the storm grid (the engine's own, lighter copy of the environment),
   the keyframes and the clock, lakes as water, the drawing, hover and click cards, Place mode, the season bar and summary, and the
   save / resume. A template only says which basin it is (`const STORM_BASIN`) and how to read and set its ocean-feature state

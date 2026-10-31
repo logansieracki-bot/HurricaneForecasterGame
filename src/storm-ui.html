@@ -9,6 +9,12 @@
             <button data-t="default" aria-pressed="true" title="Our own paths: a dark outline, a large dot every six hours (00, 06, 12, 18Z) and a small one between">Default</button><button data-t="wiki" aria-pressed="false" title="As the track maps on Wikipedia draw them: a thin white line, one size of dot every six hours coloured by the Saffir-Simpson scale, triangles (extratropical) and squares (subtropical) in their intensity colour, no outlines">Wiki</button>
           </div>
         </div>
+        <div class="row st-only">
+          <div class="sl"><span>Paths shown</span></div>
+          <div class="seg" id="seg-shown" role="group" aria-label="Which storm paths are shown">
+            <button data-s="season" aria-pressed="true" title="Every path of the season, the finished ones too, until the year turns">Whole season</button><button data-s="active" aria-pressed="false" title="Only the storms that are active now (their whole path so far); a finished storm's path goes when it dissipates">Active only</button>
+          </div>
+        </div>
         <label class="chk st-only"><input type="checkbox" id="sticons" checked><span> Current-position icons: a spinning cyclone with its intensity (a ring for a depression)</span></label>
         <label class="chk st-only"><input type="checkbox" id="stland" checked><span> Landfall markers: a flash, then a spinning square where a cyclone comes ashore</span></label>
         <label class="chk st-only"><input type="checkbox" id="stens"><span> Ensembles: a fan of tracks for the system you select</span></label>
@@ -87,11 +93,29 @@
 <aside id="sum-card" class="card" hidden role="dialog" aria-label="Season summary">
   <button id="sum-close" aria-label="Close season summary" title="Close (Esc)">&times;</button>
   <div id="sum-head"><button id="sum-prev" aria-label="Previous season" title="Previous season">&#8249;</button><div><b id="sum-title">{{BASIN_LABEL}}</b><span id="sum-sub"></span></div><button id="sum-next" aria-label="Next season" title="Next season">&#8250;</button></div>
-  <div id="sum-tot"></div>
-  <div id="sum-imp" hidden></div>
-  <canvas id="sum-graph" role="img" aria-label="Accumulated cyclone energy through the year against the real seasons"></canvas>
-  <div id="sum-cap"></div>
-  <div id="sum-scroll"><table id="sum-table"><thead><tr><th>Storm</th><th>Peak</th><th>hPa</th><th>Dates</th><th>ACE</th><th>Damage</th></tr></thead><tbody></tbody></table><div id="sum-empty" hidden>No depression has formed this season yet.</div></div>
+  <div id="sum-body">
+    <div id="sum-tot"></div>
+    <div id="sum-tot2"></div>
+    <div id="sum-imp" hidden></div>
+    <div id="sum-hl"></div>
+    <h3>Season map <button class="sum-save" data-for="sum-map" type="button" title="Save the map as a PNG picture">Save image</button></h3>
+    <div id="sum-mapwrap"><canvas id="sum-map" role="img" aria-label="Map of the season's storm tracks on Blue Marble, as the Wikipedia track maps draw them"></canvas></div>
+    <div id="sum-key"></div>
+    <h3>Overview <button class="sum-save" data-for="sum-tl" type="button" title="Save the overview as a PNG picture">Save image</button></h3>
+    <canvas id="sum-tl" role="img" aria-label="Timeline of every storm of the season, coloured by classification"></canvas>
+    <h3>Accumulated cyclone energy</h3>
+    <canvas id="sum-graph" role="img" aria-label="Accumulated cyclone energy through the year against the real seasons"></canvas>
+    <div id="sum-cap"></div>
+    <h3>Intensity of each storm</h3>
+    <div id="sum-sparks"></div>
+    <div id="sum-sparkcap"></div>
+    <h3>Storms</h3>
+    <div id="sum-scroll"><table id="sum-table"><thead><tr><th data-k="n">Storm</th><th data-k="t">Dates active</th><th data-k="v">Peak classification</th><th data-k="v">Peak wind <span class="u">(mph)</span></th><th data-k="p">Pressure <span class="u">(hPa)</span></th><th data-k="a">ACE</th><th data-k="l">Landfalls</th><th>Areas affected</th><th data-k="d">Damage</th><th data-k="k">Deaths</th></tr></thead><tbody></tbody></table><div id="sum-empty" hidden>No depression has formed this season yet.</div></div>
+    <h3>Wikitext <span id="sum-wikinote"></span></h3>
+    <div id="sum-wikibar"><button id="sum-copy" type="button">Copy wikitext</button><button id="sum-copy-t" type="button">Copy the table</button><button id="sum-copy-l" type="button">Copy the timeline</button><span id="sum-copied" aria-live="polite"></span></div>
+    <textarea id="sum-wiki" readonly spellcheck="false" aria-label="Wikitext of the season: the effects table and the timeline"></textarea>
+  </div>
+  <div id="sum-tip" role="tooltip"></div>
 </aside>
 <!--[dockMenu]-->
   <a class="btn" id="b-menu" href="../index.html" aria-label="Main menu" title="Main menu: your season is saved and waits under Continue">

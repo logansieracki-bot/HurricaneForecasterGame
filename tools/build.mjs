@@ -28,7 +28,9 @@ function build({ basin = 'atlantic', templatePath = join(ROOT, 'src/template.htm
   if (nest.includes('</script>')) throw new Error('src/storm-nest.js must not contain a closing script tag: it is inlined into a <script>');
   const floater = readFileSync(join(ROOT, 'src/storm-floater.js'), 'utf8').trimEnd();                // the radar floater's page half: it goes in front of the hooks (its variables are set before anything can call it)
   if (floater.includes('</script>')) throw new Error('src/storm-floater.js must not contain a closing script tag: it is inlined into a <script>');
-  const hooks = floater + '\n' + readFileSync(join(ROOT, 'src/storm-hooks.js'), 'utf8').trimEnd();                   // everything that connects the engine to a page (the same file in every basin's page); a template without the placeholder gets none
+  const summary = readFileSync(join(ROOT, 'src/storm-summary.js'), 'utf8').trimEnd();                // the season summary card (the Summary button of the season bar): it goes straight after the hooks, whose names it reads
+  if (summary.includes('</script>')) throw new Error('src/storm-summary.js must not contain a closing script tag: it is inlined into a <script>');
+  const hooks = floater + '\n' + readFileSync(join(ROOT, 'src/storm-hooks.js'), 'utf8').trimEnd() + '\n' + summary;               // everything that connects the engine to a page (the same file in every basin's page); a template without the placeholder gets none
   if (hooks.includes('</script>')) throw new Error('src/storm-hooks.js must not contain a closing script tag: it is inlined into a <script>');
   const late = readFileSync(join(ROOT, 'src/storm-late.js'), 'utf8').trimEnd();                      // the storm controls' wiring, the save / resume block and the storm half of window.SSTSIM
   if (late.includes('</script>')) throw new Error('src/storm-late.js must not contain a closing script tag: it is inlined into a <script>');

@@ -1642,5 +1642,40 @@ const LAND = (la, lo) => (lo > -16.3 && lo < 38 && la > 4 && la < 30) || (lo < -
     check(`every one of the ${n} cities of the nine pages has a row of the table with people, an income class, terrain and a coast (${bad.length} without: ${bad.slice(0, 4).join(', ')})`, n > 500 && bad.length === 0); }
 }
 
+/* ---- milestone 23: landfalls (the engine's own log), the track of a storm in the season summary, the cities a storm hurt most -------------------------------------------------------------------- */
+{
+  const west = [-12, 0, -12, 0, -12, 0], coast = (la, lo) => lo < -96;                      // the trades carry a storm west at 12 kt (0.22 degrees an hour at 25N) onto a straight coast along 96W
+  const go = (o) => {
+    const m = H.create({ seed: o.seed || 7, startMs: Date.UTC(2026, 7, 1), auto: false }), env = makeEnv({ land: o.land || coast, sst: 29, shear: 5, rh: 66, steer: () => west });
+    const S = m.place({ kind: o.kind || 'td', lat: o.lat || 25, lon: o.lon === undefined ? -92 : o.lon, v: o.v || 70 }); m.advanceTo(o.hours || 48, env); return { m, S, env };
+  };
+  const a = go({}), L = a.S.lfs, fx = a.S.fixes, wat = fx.filter((f) => !coast(f.lat, f.lon)), lnd = fx.filter((f) => coast(f.lat, f.lon));
+  check(`a hurricane that crosses a straight coast makes one landfall, logged in the hour its centre comes ashore (hour ${L[0] && L[0].h}, between the last water fix at ${wat.length && wat[wat.length - 1].h} and the first land fix at ${lnd.length && lnd[0].h}), on the coast (${L[0] && L[0].lon}, the coast is 96W), at ${L[0] && L[0].v} kt`,
+    L.length === 1 && L[0].h > wat[wat.length - 1].h && L[0].h <= lnd[0].h && Math.abs(L[0].lon + 96) < 0.02 && L[0].th === 'tc' && L[0].v > 40 && L[0].v < 100 && Math.abs(L[0].lat - 25) < 1.5);
+  const lw = go({ land: (la, lo) => (lo < -94.6 && lo > -95.0) || (lo < -93.8 && lo > -94.2), hours: 30 });
+  check(`a coast crossed twice within a few hours (two strips of land 0.4 degrees apart: the centre is over land at ${lw.S.fixes.filter((f) => (f.lon < -94.6 && f.lon > -95.0) || (f.lon < -93.8 && f.lon > -94.2)).length} fixes) is one landfall, not two (${lw.S.lfs.length})`, lw.S.lfs.length === 1);
+  const lo = go({ kind: 'low', v: 35 }), pl = go({ lon: -98 }), wt = go({ land: () => false });
+  check(`no landfall for a low (${lo.S.lfs.length}), a system put on land (${pl.S.lfs.length}) or a hurricane that stays at sea (${wt.S.lfs.length})`, lo.S.lfs.length === 0 && pl.S.lfs.length === 0 && wt.S.lfs.length === 0);
+  const rec = a.m.seasonRecord(a.m.season.year).storms[0];
+  check(`the season record keeps the landfalls of a storm (${rec.lfs.length}) and its track, six-hourly: ${rec.trk.length} rows of [hour, lat, lon, kt, hPa, kind], in order, the positions those of the fixes`,
+    rec.lfs.length === 1 && rec.lfs[0].lon === L[0].lon && rec.trk.length >= 6 && rec.trk.every((r, i) => r.length === 6 && r[0] % 6 === 0 && (i === 0 || r[0] > rec.trk[i - 1][0])) && rec.trk.every((r) => { const f = fx.find((q) => q.h === r[0]); return f && f.lat === r[1] && f.lon === r[2] && f.v === r[3] && f.p === r[4]; }) && rec.trk[0][5] === 0);
+  const rs = H.restore(JSON.parse(JSON.stringify(a.m.serialize())), {});
+  check('the landfall log and the position of the hour before are part of the saved season: a restored manager holds them and serialises to the same text', rs.systems[0].lfs.length === 1 && JSON.stringify(rs.systems[0].lp) === JSON.stringify(a.S.lp) && JSON.stringify(rs.serialize()) === JSON.stringify(a.m.serialize()));
+  // the track keeps the stage a storm was followed in: a disturbance or low before the depression, a subtropical stage, the post-tropical one
+  const stg = H.create({ seed: 3, startMs: Date.UTC(2026, 7, 1), auto: false }), w = stg.place({ kind: 'wave', lat: 15, lon: -40 });
+  stg.advanceTo(12, makeEnv({})); w.kind = 'N'; stg.advanceTo(48, makeEnv({})); w.th = 'tc'; w.v = w.vr = 45; stg.advanceTo(72, makeEnv({}));
+  const tr = stg.seasonRecord(stg.season.year).storms[0];
+  check(`a storm's track begins with the low it was followed as (kind 4: ${tr && tr.trk.filter((r) => r[5] === 4).length} rows) and goes on as a tropical storm (kind 0: ${tr && tr.trk.filter((r) => r[5] === 0).length}); a plain wave is not on it`, !!tr && tr.trk.filter((r) => r[5] === 4).length >= 2 && tr.trk.filter((r) => r[5] === 0).length >= 2 && tr.trk.findIndex((r) => r[5] === 0) > tr.trk.findIndex((r) => r[5] === 4));
+  // the cities a storm hurt most
+  { const Cc = globalThis.HF_CITIES, CITY = (name, lat, lon) => { const x = Cc.info(name, lat); return { name, lat, lon, inland: false, pop: x.pop, inc: x.inc, oro: x.oro, coast: x.coast }; };
+    const m = H.create({ seed: 5, startMs: Date.UTC(2026, 8, 1), auto: false }), mia = CITY('Miami', 25.76, -80.19), nap = CITY('Naples', 26.14, -81.79); m.setCities([mia, nap]);
+    const S = H.newSystem({ id: 'T1', num: H.idNum('M', 1), th: 'tc', lat: 21.8, lon: -80.3, v: 125, hour: 0 }); S.name = 'Test'; S.alive = true; S.depNum = 1; S.tdHour = 0; S.season = m.season.year; m.systems.push(S); m.byId[S.id] = S;
+    const env = makeEnv({ land: (la, lo) => lo < -80.15, sst: 28.5, shear: 6 }); S.cx = 0; S.cy = 12;
+    for (let h = 0; h < 64; h++) { if (h < 40) { S.lat = 21.8 + 0.2 * h; S.lon = -80.3; S.v = S.vr = 125; } else { S.cx = 0; S.cy = 0; S.v = S.vr = Math.max(20, 125 * Math.exp(-(h - 40) / 8)); } H.stepWind(S, m.par, 9, h, Math.abs(S.lat), 0); m.hour = h; m._impacts(h + 1, env); m.hour = h + 1; }
+    const r = m.seasonRecord(m.season.year).storms[0];
+    check(`the summary names the cities a storm hurt most, the worst first (${r.areas.map((x) => x[0] + ' ' + (x[1] / 1e9).toFixed(1) + ' B').join(', ')}), their damage adding up to the storm's (${(r.imp.d / 1e9).toFixed(1)} B), and the record does not carry the ledger itself`,
+      r.areas.length >= 1 && r.areas[0][0] === 'Miami' && r.areas.every((x, i) => i === 0 || x[1] <= r.areas[i - 1][1]) && near(r.areas.reduce((t, x) => t + x[1], 0), r.imp.d, 1) && !('cs' in r.imp) && r.imp.d > 1e9); }
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed) process.exit(1);

@@ -669,7 +669,7 @@ function newSystem(o) {
     lat: o.lat, lon: o.lon, v: o.v, vr: o.v, p: 1008, cx: o.cx || 0, cy: o.cy || 0, wx: 0, wy: 0, zv: 0, zp: 0,
     q: o.q || 0, dist: false, invest: '', ck: '', shSm: null, rhSm: null, cw: 0, ri: null, riCoolUntil: -1, riTotal: 0, onLand: false, genCount: 0, lowCount: 0, landLow: 0, convCount: 0, nlTill: -1,
     exDeep: 0, exEp: null, exLift: 0, ux: 0, uy: 0, etAt: -1, remnant: false, erc: null, ercDef: 0, ercRm: 0, ercSz: 0, ercCool: -1, ercN: 0, ercPh: '', hiH: 0, alive: true, end: null, endReason: '', depNum: 0, name: '', tdHour: -1, namedHour: -1,
-    peakV: 0, peakP: 1020, peakHour: -1, ace: 0, season: 0, fixes: [], st: 'WV', lastShear: 15, lastRh: 50, lastSst: 27, lastLf: 0, kill: false,
+    peakV: 0, peakP: 1020, peakHour: -1, ace: 0, season: 0, fixes: [], st: 'WV', lastShear: 15, lastRh: 50, lastSst: 27, lastLf: 0, kill: false, lfs: [], lp: null,
   };
 }
 function statusOf(S) {
@@ -1147,9 +1147,22 @@ LowTracker.prototype.update = function (hour, dets) {
 
 /* ---- seasons ------------------------------------------------------------------------------------------------------------ */
 function newSeason(year) { return { year, dep: 0, named: 0, hurr: 0, major: 0, cat5: 0, ace: 0, aceDaily: new Array(366).fill(0), storms: [], namedIdx: 0 }; }
+/* a storm's track for the season summary and its map: the six-hourly fixes, compact: [h, lat, lon, wind kt, hPa, kind] with kind 0 tropical, 1 subtropical, 2 extratropical, 3 a remnant or other
+   low, 4 the disturbance or low that was followed before the depression (a plain wave is not on it) */
+function trackOf(S) {
+  const out = [];
+  for (const f of S.fixes) {
+    if (f.h % 6) continue;
+    const k = f.th === 'tc' ? 0 : f.th === 'sc' ? 1 : f.th === 'ex' ? 2 : f.th === 'nl' ? 3 : (f.st === 'DB' || f.st === 'LO') ? 4 : -1;
+    if (k >= 0) out.push([f.h, f.lat, f.lon, f.v, f.p, k]);
+  }
+  return out;
+}
 function summarize(S) {
+  const im = S.imp, areas = im && im.cs ? Object.keys(im.cs).map((c) => [c, im.cs[c]]).sort((a, b) => b[1] - a[1]).slice(0, 5) : [];
   return { id: S.id, name: S.name, depNum: S.depNum, origin: S.origin, tdHour: S.tdHour, namedHour: S.namedHour, peakV: S.peakV, peakP: S.peakP, peakHour: S.peakHour,
-    ace: S.ace, end: S.end, endReason: S.endReason, season: S.season, th: S.th, imp: S.imp || null };       // unrounded: the page rounds once, to a tenth (rounding here too turned 10.5475 into 10.55 and then 10.6)
+    ace: S.ace, end: S.end, endReason: S.endReason, season: S.season, th: S.th, imp: im ? { d: im.d, k: im.k, i: im.i } : null,       // unrounded: the page rounds once, to a tenth (rounding here too turned 10.5475 into 10.55 and then 10.6)
+    trk: trackOf(S), lfs: (S.lfs || []).map((l) => Object.assign({}, l)), areas };
 }
 
 /* ---- the manager ----------------------------------------------------------------------------------------------------------
@@ -1404,6 +1417,28 @@ Manager.prototype._merge = function (h) {
     if (rnd(this.seed, w.num, h, ST.ABS + 100) < X.mergeP) { w.alive = false; w.endReason = 'absorbed'; w.end = h + 1; }
   }
 };
+/* Landfalls: the centre of a tropical or subtropical cyclone that was over water an hour ago and is over land now (the host's own land test: a lake is water). The coast between the two hourly positions is found by
+   halving ten times, so a landfall is where the coast is and the hour it happens in, not the next advisory; one system has no second landfall within six hours (a strait crossed, a coast skimmed). The log of a
+   system is S.lfs, [{ h: the hour after the step, lat, lon, v: the reported wind then (kt), th }]; S.lp is where its centre was the hour before, [lat, lon, v, over land]. The page's markers, the summary's
+   count and the wikitext all read this one log. */
+Manager.prototype._landfalls = function (h, env) {
+  if (!env || typeof env.isLand !== 'function') return;
+  for (const S of this.systems) {
+    if (!S.alive) { S.lp = null; continue; }
+    const land = !!env.isLand(S.lat, S.lon), p = S.lp;
+    if (p && !p[3] && land && S.depNum > 0 && (S.th === 'tc' || S.th === 'sc')) {
+      const lf = S.lfs || (S.lfs = []);
+      if (!lf.length || h + 1 - lf[lf.length - 1].h >= 6) {
+        let dl = S.lon - p[1]; if (dl > 180) dl -= 360; else if (dl < -180) dl += 360;
+        let a = 0, b = 1;
+        for (let k = 0; k < 10; k++) { const m = (a + b) / 2; if (env.isLand(p[0] + (S.lat - p[0]) * m, p[1] + dl * m)) b = m; else a = m; }
+        let lo = p[1] + dl * b; if (lo > 180) lo -= 360; else if (lo < -180) lo += 360;
+        lf.push({ h: h + 1, lat: Math.round((p[0] + (S.lat - p[0]) * b) * 100) / 100, lon: Math.round(lo * 100) / 100, v: Math.round((p[2] + (S.vr - p[2]) * b) * 10) / 10, th: S.th });
+      }
+    }
+    S.lp = [S.lat, S.lon, S.vr, land];
+  }
+};
 Manager.prototype.advanceTo = function (target, envSrc) {
   while (this.hour < target) {
     const h = this.hour, env = envSrc && typeof envSrc.at === 'function' ? envSrc.at(h) : envSrc;
@@ -1414,6 +1449,7 @@ Manager.prototype.advanceTo = function (target, envSrc) {
     if (this.auto) this._spawn(h, env);
     for (const S of this.systems) if (S.alive) stepSystem(S, env, h, this.seed, this.par, doy, this.ctx);
     this._merge(h);
+    this._landfalls(h, env);
     this.hour = h + 1;
     this._impacts(h + 1, env);
     if (this.hour % 3 === 0) this._record(this.hour, env);
@@ -2092,6 +2128,7 @@ Manager.prototype._impacts = function (h, env) {
       if (best && (dD > 0 || dk > 0 || di > 0)) {
         const S = best.S, T = S.imp || (S.imp = { d: 0, k: 0, i: 0 }), rec = S.season === this.season.year ? this.season : (this.prev && this.prev.year === S.season ? this.prev : this.season), Y = rec.imp || (rec.imp = { d: 0, k: 0, i: 0, worst: null });
         T.d += Math.max(0, dD); T.k += Math.max(0, dk); T.i += Math.max(0, di); Y.d += Math.max(0, dD); Y.k += Math.max(0, dk); Y.i += Math.max(0, di);
+        if (dD > 0) { const cs = T.cs || (T.cs = {}); cs[c.name] = (cs[c.name] || 0) + dD; }                                    // (where the damage was: the summary lists the cities a storm hurt most)
         if (!Y.worst || D > Y.worst.d) Y.worst = { city: c.name, d: D, k: ds.k, storm: S.name || S.id };
       }
     } else if (e && h - e.last >= I.on[2]) {

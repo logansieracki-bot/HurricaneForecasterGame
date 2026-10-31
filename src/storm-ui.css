@@ -69,7 +69,7 @@ body.steer-on #panel{max-height:calc(100% - 606px)}
 #season button{margin:0 5px 0 4px;border:1px solid var(--line);background:rgba(255,255,255,.07);color:var(--text);font:inherit;font-size:12px;padding:3px 11px;border-radius:8px;cursor:pointer}
 #season button:hover{background:rgba(255,255,255,.14)}
 #season button[aria-expanded=true]{background:rgba(255,255,255,.2);border-color:var(--ice)}
-#sum-card{left:50%;bottom:92px;transform:translateX(-50%);width:492px;max-height:calc(100% - 170px);display:flex;flex-direction:column;padding:12px 14px 10px;z-index:930}
+#sum-card{left:50%;top:66px;bottom:92px;transform:translateX(-50%);width:min(1120px,calc(100% - 28px));display:flex;flex-direction:column;padding:12px 16px 10px;z-index:930;box-shadow:0 0 0 100vmax rgba(4,7,13,.5),0 24px 70px rgba(0,0,0,.55)}
 #sum-card[hidden]{display:none}
 #sum-close{position:absolute;right:8px;top:8px;width:26px;height:26px;border:0;background:transparent;color:var(--dim);border-radius:6px;cursor:pointer;font-size:17px;line-height:1}
 #sum-close:hover,#sum-head button:hover:not(:disabled){background:rgba(255,255,255,.09);color:var(--text)}
@@ -77,26 +77,65 @@ body.steer-on #panel{max-height:calc(100% - 606px)}
 #sum-head button{width:26px;height:26px;border:0;background:transparent;color:var(--dim);border-radius:6px;cursor:pointer;font-size:19px;line-height:1;flex:none}
 #sum-head button:disabled{opacity:.3;cursor:default}
 #sum-head div{min-width:0}
-#sum-title{font-size:17px;font-weight:600;display:block}
+#sum-title{font-size:18px;font-weight:600;display:block}
 #sum-sub{font-size:12px;color:var(--dim);display:block}
-#sum-tot{display:grid;grid-template-columns:repeat(6,1fr);gap:4px;margin:10px 0 6px;text-align:center;flex:none}
-#sum-tot div{padding:5px 0 4px;border-radius:8px;background:rgba(255,255,255,.045)}
-#sum-tot b{display:block;font-size:19px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1.15}
-#sum-tot span{display:block;font-size:10.5px;color:var(--dim);letter-spacing:.03em}
-#sum-tot small{display:block;font-size:10.5px;color:var(--dim);margin-top:2px;font-variant-numeric:tabular-nums;white-space:nowrap}
-#sum-graph{display:block;width:100%;height:172px;flex:none}
-#sum-imp{font-size:11.5px;color:var(--dim);line-height:1.45;margin:0 0 6px;flex:none;text-align:center}
-#sum-imp b{color:var(--ink,#e9eef7);font-weight:600;font-variant-numeric:tabular-nums}
-#sum-cap{font-size:11px;color:var(--dim);line-height:1.45;margin:2px 0 8px;flex:none}
-#sum-scroll{overflow:auto;min-height:0;flex:1 1 auto}
-#sum-table{width:100%;border-collapse:collapse;font-size:12px;font-variant-numeric:tabular-nums}
-#sum-table th{position:sticky;top:0;background:var(--panel);text-align:left;font-weight:500;font-size:11px;color:var(--dim);padding:2px 8px 4px 0}
-#sum-table td{padding:5px 8px 5px 0;border-top:1px solid var(--line);white-space:nowrap}
+#sum-body{overflow:auto;min-height:0;flex:1 1 auto;margin-top:6px;padding-right:6px}
+#sum-body h3{display:flex;align-items:center;gap:10px;margin:18px 0 7px;font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--dim)}
+#sum-body h3 .sum-save{margin-left:auto}
+.sum-save,#sum-wikibar button{border:1px solid var(--line);background:rgba(255,255,255,.06);color:var(--text);border-radius:8px;font:inherit;font-size:11.5px;letter-spacing:0;text-transform:none;font-weight:500;padding:3px 10px;cursor:pointer}
+.sum-save:hover,#sum-wikibar button:hover{background:rgba(255,255,255,.13)}
+#sum-tot,#sum-tot2{display:grid;gap:6px;margin:8px 0 0;text-align:center}
+#sum-tot{grid-template-columns:repeat(6,1fr)}
+#sum-tot2{grid-template-columns:repeat(4,1fr)}
+#sum-tot div,#sum-tot2 div{padding:6px 0 5px;border-radius:9px;background:rgba(255,255,255,.045)}
+#sum-tot b,#sum-tot2 b{display:block;font-size:20px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1.15}
+#sum-tot span,#sum-tot2 span{display:block;font-size:10.5px;color:var(--dim);letter-spacing:.03em}
+#sum-tot small,#sum-tot2 small{display:block;font-size:10.5px;color:var(--dim);margin-top:2px;font-variant-numeric:tabular-nums;white-space:nowrap}
+#sum-imp{font-size:11.5px;color:var(--dim);line-height:1.45;margin:8px 0 0;text-align:center}
+#sum-imp b{color:var(--text);font-weight:600;font-variant-numeric:tabular-nums}
+#sum-hl{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-top:10px}
+#sum-hl button{text-align:left;border:1px solid var(--line);background:rgba(255,255,255,.035);color:var(--text);border-radius:10px;padding:8px 11px 8px 12px;font:inherit;cursor:pointer;display:block;position:relative;overflow:hidden}
+#sum-hl button:hover{background:rgba(255,255,255,.09)}
+#sum-hl button::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--c,#888)}
+#sum-hl small{display:block;font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--dim)}
+#sum-hl b{display:block;font-size:15px;font-weight:600;margin-top:1px}
+#sum-hl span{display:block;font-size:11.5px;color:var(--dim);margin-top:1px;font-variant-numeric:tabular-nums}
+#sum-mapwrap{position:relative}
+#sum-map{display:block;width:100%;border-radius:10px;background:#0b1b2f}
+#sum-key{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:11.5px;color:var(--dim);margin-top:7px;line-height:1.5}
+#sum-key i{display:inline-block;width:11px;height:11px;border-radius:50%;margin-right:5px;vertical-align:-1px}
+#sum-key i.sq{border-radius:2px}
+#sum-key i.tri{border-radius:0;clip-path:polygon(50% 0,100% 100%,0 100%)}
+#sum-tl{display:block;width:100%;border-radius:8px}
+#sum-graph{display:block;width:100%;height:172px}
+#sum-cap,#sum-sparkcap{font-size:11px;color:var(--dim);line-height:1.45;margin:3px 0 0}
+#sum-sparks{display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:8px}
+#sum-sparks button{display:block;text-align:left;border:1px solid var(--line);background:rgba(255,255,255,.03);color:var(--text);border-radius:8px;padding:5px 6px 4px;font:inherit;cursor:pointer}
+#sum-sparks button:hover{background:rgba(255,255,255,.09)}
+#sum-sparks span{display:block;font-size:11px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:2px}
+#sum-sparks canvas{display:block;width:100%;height:58px}
+#sum-scroll{overflow-x:auto}
+#sum-table{width:100%;border-collapse:collapse;font-size:12.5px;font-variant-numeric:tabular-nums}
+#sum-table th{text-align:left;font-weight:500;font-size:11px;color:var(--dim);padding:3px 10px 5px 0;white-space:nowrap;cursor:pointer;user-select:none}
+#sum-table th:hover{color:var(--text)}
+#sum-table th[aria-sort]::after{content:" \25B4";font-size:9px}
+#sum-table th[aria-sort=descending]::after{content:" \25BE"}
+#sum-table td{padding:5px 10px 5px 0;border-top:1px solid var(--line);white-space:nowrap}
+#sum-table td.cls{padding:3px 8px;border-radius:6px;font-weight:600;font-size:11.5px;color:#10151f;border-top:1px solid transparent;background-clip:padding-box}
 #sum-table tbody tr{cursor:pointer}
-#sum-table tbody tr:hover td{background:rgba(255,255,255,.05)}
+#sum-table tbody tr:hover td:not(.cls){background:rgba(255,255,255,.05)}
 #sum-table tr.live td:first-child b::after{content:" \25CF";color:#6ee7a8;font-size:9px;font-weight:400}
 #sum-table i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px}
+#sum-table td.cls+td,#sum-table th:nth-child(4){padding-left:12px}
+#sum-table td.areas{max-width:190px;overflow:hidden;text-overflow:ellipsis;color:var(--dim)}
+
 #sum-empty{color:var(--dim);font-size:12px;padding:8px 0}
+#sum-wikibar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px}
+#sum-copied{font-size:11.5px;color:#6ee7a8}
+#sum-wikinote{font-weight:400;text-transform:none;letter-spacing:0;font-size:11px}
+#sum-wiki{display:block;width:100%;height:170px;box-sizing:border-box;resize:vertical;background:rgba(0,0,0,.35);color:#cfd8e6;border:1px solid var(--line);border-radius:8px;padding:8px 10px;font:11.5px/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:pre}
+#sum-tip{position:absolute;z-index:5;pointer-events:none;display:none;padding:6px 9px;border-radius:8px;background:rgba(10,14,24,.94);border:1px solid var(--line);font-size:11.5px;line-height:1.45;max-width:260px;white-space:nowrap}
+#sum-tip b{font-weight:600}
 
 @media (max-width:1040px){
   #lg-stack{bottom:150px}
@@ -108,7 +147,9 @@ body.steer-on #panel{max-height:calc(100% - 606px)}
   #season button{grid-column:3;grid-row:1;justify-self:end;margin:0 8px 4px 0}
   #season span:nth-child(2),#season span:nth-child(5){border-left:0}
   #storm-card, #aoi-card{right:14px;top:auto;bottom:130px;transform:none}
-  #sum-card{top:14px;max-height:none;width:min(492px,calc(100% - 28px))}
+  #sum-card{top:14px;left:14px;right:14px;width:auto;transform:none}
+  #sum-tot{grid-template-columns:repeat(3,1fr)}
+  #sum-tot2{grid-template-columns:repeat(2,1fr)}
 }
 @media (max-width:640px){
   #ww-legend{display:none!important}
@@ -116,14 +157,13 @@ body.steer-on #panel{max-height:calc(100% - 606px)}
   #ol-legend, #ww-legend, #wf-legend{width:190px}
   #season{top:192px;font-size:11.5px}
   #storm-card, #aoi-card{left:14px;right:14px;width:auto;bottom:120px}
-  #sum-card{left:14px;right:14px;width:auto;transform:none;padding:12px 12px 8px}
-  #sum-tot b{font-size:16px}
-  #sum-tot small{font-size:9.5px}
+  #sum-card{left:10px;right:10px;padding:12px 12px 8px}
+  #sum-tot b,#sum-tot2 b{font-size:16px}
+  #sum-tot small,#sum-tot2 small{font-size:9.5px}
   #sum-table{font-size:11.5px}
   #sum-table td,#sum-table th{padding-right:6px}
-  #sum-table .u{display:none}
-  #sum-table th:nth-child(2)::after{content:" (mph)"}
-  #sum-table th:nth-child(3),#sum-table td:nth-child(3){display:none}
+  #sum-table td.cls{padding:2px 5px}
+  #sum-wiki{height:130px}
   #b-place{margin-left:0;padding:0 10px}
   #b-place span{display:none}
   #place-menu{bottom:96px}
