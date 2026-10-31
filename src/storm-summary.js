@@ -145,7 +145,9 @@ function sumDrawMap(D) {
     const px = X(q[2]), py = Y(q[1]), k = q[5], sh = k === 0 ? 'circle' : k === 1 ? 'square' : 'triangle', rr = sh === 'circle' ? r : sh === 'square' ? r * 0.88 : r * 0.8;
     stormShape(g, sh, px, py, rr, wikiColor({ v: q[3] }), null, 0); sumHits.map.push({ x: px, y: py, x0: x, q });
   }
-  $('sum-key').innerHTML = WIKI_COLS.map((c, i) => '<span><i style="background:' + c + '"></i>' + ['Tropical depression', 'Tropical storm', 'Category 1', 'Category 2', 'Category 3', 'Category 4', 'Category 5'][i] + ' <small>' + (i === 0 ? '≤38' : SUM_SSHWS_MPH[i] + (i === 6 ? '+' : '–' + (SUM_SSHWS_MPH[i + 1] - 1))) + ' mph</small></span>').join('')
+  const SS_NAMES = ['Tropical depression', 'Tropical storm', 'Category 1', 'Category 2', 'Category 3', 'Category 4', 'Category 5'];
+  const key = WIKI_OWN ? D.CL.map((c) => [c.color, c.name, sumRange(c)]) : WIKI_COLS.map((c, i) => [c, SS_NAMES[i], i === 0 ? '≤38 mph' : SUM_SSHWS_MPH[i] + (i === 6 ? '+' : '–' + (SUM_SSHWS_MPH[i + 1] - 1)) + ' mph']);           // the dots are coloured as the Wiki path is: the region's own scale where Wikipedia gives it its colours, the Saffir-Simpson scale otherwise
+  $('sum-key').innerHTML = key.map(([c, n, r]) => '<span><i style="background:' + c + '"></i>' + n + ' <small>' + r + '</small></span>').join('')
     + '<span><i class="sq" style="background:#cfd6e2"></i>subtropical</span><span><i class="tri" style="background:#cfd6e2"></i>extratropical, remnant low, disturbance</span>';
 }
 
@@ -369,7 +371,7 @@ function sumInfo() {                                                // what the 
     tot: [...$('sum-tot').children].map((e) => e.textContent), tot2: [...$('sum-tot2').children].map((e) => e.textContent), imp: $('sum-imp').hidden ? '' : tx('sum-imp'),
     tl: T ? Object.assign({ rows: T.rows, months: T.P.months.map((m) => MONTH_FULL[m.m]), monthStarts: T.P.months.map((m) => m.h0), h0: T.P.h0, h1: T.P.h1, hits: sumHits.tl.length }, sumTlGeo) : null,
     map: { pts: sumHits.map.length, region: sumRegion(D), w: $('sum-map').clientWidth, h: $('sum-map').clientHeight },
-    sparks: $('sum-sparks').children.length, key: tx('sum-key'), sparkcap: tx('sum-sparkcap'), cap: tx('sum-cap'),
+    sparks: $('sum-sparks').children.length, key: tx('sum-key'), keyColors: [...$('sum-key').querySelectorAll('i')].map((e) => e.style.background), sparkcap: tx('sum-sparkcap'), cap: tx('sum-cap'),
     rows: [...$('sum-table').querySelectorAll('tbody tr')].map((tr) => [...tr.children].map((td) => td.textContent)), heads: [...$('sum-table').querySelectorAll('th')].map((th) => th.textContent),
     wiki: $('sum-wiki').value, wikiTable: sumWikiTable(D), wikiTimeline: sumWikiTimeline(D),
   };
