@@ -6,6 +6,12 @@ $('stwaves').onchange = $('stlows').onchange = $('stdist').onchange = $('stlabel
 $('stww').onchange = () => { wwPack = null; stormsDirty = true; drawStorms(); };
 $('stens').onchange = () => { $('stdens').disabled = !$('stens').checked; ensPack = null; ensHot = -1; stormsDirty = true; drawStorms(); };
 $('st-auto').onchange = () => { stormAuto = $('st-auto').checked; if (stormMgr) stormMgr.auto = stormAuto; markDirty(); };
+/* the look of the storms: the path style, the current-position icons, the landfall markers (kept in this browser; the layer buttons do not stand for them) */
+function lookSync() { $('sticons').checked = stIcons; $('stland').checked = stLand; document.querySelectorAll('#seg-track button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.t === stTrack))); }
+lookSync();
+document.querySelectorAll('#seg-track button').forEach((b) => { b.onclick = () => { stTrack = b.dataset.t === 'wiki' ? 'wiki' : 'default'; lookSync(); lookSave(); stormsDirty = true; drawStorms(); }; });
+$('sticons').onchange = () => { stIcons = $('sticons').checked; lookSave(); stormsDirty = true; drawStorms(); };
+$('stland').onchange = () => { stLand = $('stland').checked; if (!stLand) fxMarks.length = 0; lookSave(); fxDrawnAt = 0; fxWake(); };
 $('p-stact').oninput = () => { stormActivity = parseFloat($('p-stact').value); $('p-stact-o').textContent = stormActivity.toFixed(1) + '×'; if (stormMgr) stormMgr.autoRate = stormActivity; markDirty(); };
 $('sc-close').onclick = closeStormCard; $('ac-close').onclick = closeStormCard;
 flBind();                                                         // the radar floater: its buttons, the playback buttons while it is open
@@ -77,7 +83,7 @@ function applySave(s) {
   speedIdx = u.speedIdx; updateSpeedUI();
   initSim(P.seed);                                                                // the static structure of this seed (waves, jet modes ...) and a throw-away new season
   simRestoreLight(s.weather);
-  stormMgr = HFStorms.restore(JSON.parse(s.storms), { maps: stormMapsNow() }); stormCitiesBind();
+  stormMgr = HFStorms.restore(JSON.parse(s.storms), { maps: stormMapsNow() }); stormCitiesBind(); landSeen.clear(); fxMarks.length = 0; fxAng.clear();
   stormLab = null; shadow = null; stormSel = null; olSel = null; plainSel = null; ensPack = null; coneMem = null; wwPack = null; wwCones = {}; ensHot = -1; $('aoi-card').hidden = true; stormHot = null; stormHits = []; olHeld = null; olEagerSlot = -1e9; olHits = []; stormsDirty = true; sumArch = stormMgr.archive.length; if (sumOpen) closeSummary();
   lowsStamp = -1; kfBreak = true; stormKeyframe(true); stormFieldsDirty = false;      // fresh keyframes of the steering and the fields at the restored hour
   if (s.kf0 && simHour === kfHour) { for (let i = 0; i < 3; i++) { b64f32(s.kf0.u[i], kfU0[i]); b64f32(s.kf0.v[i], kfV0[i]); } kfHour0 = s.kf0.h; wkHour = -1e9; stormEnv.beginHour(simHour); }
@@ -162,7 +168,7 @@ const STORM_API = {
   stormPx(id) { const S = stormMgr.get(id); if (!S) return null; const p = map.latLngToContainerPoint([S.lat, S.lon]); return { x: p.x, y: p.y }; },
   stormFixPx(id, i) { const S = stormMgr.get(id); const f = S && S.fixes[i < 0 ? S.fixes.length + i : i]; if (!f) return null; const p = map.latLngToContainerPoint([f.lat, f.lon]); return { x: p.x, y: p.y, h: f.h, th: f.th }; },
   stormDraw() { drawStorms(); }, stormDrawn() { return Array.from(new Set(stormHits.filter((h) => h.S).map((h) => h.S.id))); }, stormHover, stormClick,
-  stormDots(id) { return stormHits.filter((h) => h.S && h.S.id === id && !h.live).map((h) => ({ x: h.x, y: h.y, r: h.r, h: h.f.h, v: h.f.v, t: stormDate(h.f.h) })); },     // the advisory dots of one system as drawn: position, hit radius (8 six-hourly, 6 in between), hour, wind, time text
+  stormDots(id) { return stormHits.filter((h) => h.S && h.S.id === id && !h.live).map((h) => ({ x: h.x, y: h.y, r: h.r, h: h.f.h, v: h.f.v, t: stormDate(h.f.h), th: h.f.th, st: h.f.st })); },     // the advisory dots of one system as drawn: position, hit radius (8 six-hourly, 6 in between), hour, wind, time text
   stormLowsSet(list) {                                                // the tracked lows are replaced by synthetic ones, each [lat, lon, hPa]; null puts the real ones back
     if (!stormMgr) return 0;
     if (list === null) { if (lowsKept) stormMgr.lows.tracks = lowsKept; lowsKept = null; }
@@ -216,6 +222,13 @@ const STORM_API = {
     return { max: fresh.max, nanMismatch: fresh.nanMismatch, nodes: fresh.nodes, live, interp, pts };
   },
   shadowEnso() { if (!shadow) shadowBuild(); return shadowEnv(simHour + 24).enso(); },                 // the Nino 3.4 index the Place preview's environment hands the engine (tests)
+  lookState() { return { track: stTrack, icons: stIcons, land: stLand, heads: fxHeads.map((h) => ({ id: h.S.id, v: h.f.v, ring: h.f.v < 34, sg: h.S.lat < 0 ? -1 : 1, ang: fxAng.get(h.S.id) || 0, text: iconText(h.f) })), marks: fxMarks.map((m) => ({ id: m.id, lat: m.lat, lon: m.lon, v: m.f.v, th: m.f.th, age: (performance.now() - m.t0) / 1000 })), active: fxActive(), R: FX_R }; },
+  lookSet(o) { if (o.track) $('seg-track').querySelector('[data-t="' + o.track + '"]').click(); if (o.icons != null && $('sticons').checked !== !!o.icons) $('sticons').click(); if (o.land != null && $('stland').checked !== !!o.land) $('stland').click(); return STORM_API.lookState(); },
+  fxRender(ms) { fxDrawnAt = 0; fxMarks.forEach((m) => { m.t0 = performance.now() - (ms == null ? 0 : ms) * 1000; }); fxDraw(performance.now()); return fxMarks.length; },        // tests: one picture of the icons and markers now, the markers `ms` seconds after their landfall
+  fxMarkAdd(id, lat, lon, v, th) { const S = stormMgr.get(id); landMarkAdd(S, lat, lon, { v, th: th || 'tc' }); return fxMarks.length; },
+  fxPixel(x, y) { const c = fxCanvas, d = c.width / c.clientWidth, a = c.getContext('2d').getImageData(Math.round(x * d), Math.round(y * d), 1, 1).data; return [a[0], a[1], a[2], a[3]]; },
+  landAheadOf(a, b) { const S = stormMgr.get(a.id); return S ? landAhead(Object.assign({}, S, { lat: a.lat, lon: a.lon, v: a.v }), { lat: b.lat, lon: b.lon, v: b.v, th: b.th || 'tc' }) : null; }, floaterLand() { return flLand ? Object.assign({}, flLand) : null; }, floaterLandSet(L) { flLand = L ? Object.assign({ id: flId }, L) : null; return !!flLand; },       // tests: the landfall the floater is waiting for in its hour
+  landScanNow() { landScan(); return fxMarks.length; }, landSeenOf(id) { const p = landSeen.get(id); return p ? Object.assign({}, p) : null; }, fxClear() { fxMarks.length = 0; landSeen.clear(); fxDrawnAt = 0; fxDraw(performance.now()); },
   stormEnvSample(lat, lon) { return { hour: kfFieldHour, enso: stormEnv.enso(), land: stormLand(lat, lon), sst: stormEnv.sst(lat, lon), rh: sampleFieldS(kfHumid, lat, lon), shear: sampleFieldS(kfShear, lat, lon), lake: lakeIdAt(lat, lon) }; }
 };
 /* ==== STORM LATE END ==== */

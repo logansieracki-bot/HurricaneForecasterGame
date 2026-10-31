@@ -6,7 +6,7 @@
    The radar is either a composite (every echo of the nest) or a site: a city's radar with the beam's height and width, range rings, the echoes that pass under or over the beam.                              */
 const FL_SPEEDS = [0.25, 0.5, 1, 2, 5, 10, 30, 60, 120, 300, 600, 1200, 1800, 2700], FL_NAMES = ['quarter speed', 'half speed', 'real time', '2× real time', '5× real time', '10× real time', '30× real time', '1 min every second', '2 min every second', '5 min every second', '10 min every second', '20 min every second', '30 min every second', '45 min every second'];
 const FL_DT = 120, FL_SPIN = 30, FL_MAXKM = 460;
-let flView = 'radar', flTb = null, flTbMin = 0, flProd = 'z', flVr = null, flVu = null, flVv = null, flVTex = null, flOn = false, flBare = false, flRenderAt = 0, flSstOpacity = '', flId = null, flNest = null, flSpeed = 5, flPlay = true, flPrevPlay = true, flSpinN = 0, flAcc = 0, flLast = 0, flSite = null, flTilt = 0.5, flLandStep = -99, flCanvas = null, flOff = null, flRaf = 0, flGone = false, flTextAt = 0, flDirty = true, flF1 = null, flSites = [], flDbz = null, flTop = null, flImg = null, flColAt = null;
+let flLand = null, flView = 'radar', flTb = null, flTbMin = 0, flProd = 'z', flVr = null, flVu = null, flVv = null, flVTex = null, flOn = false, flBare = false, flRenderAt = 0, flSstOpacity = '', flId = null, flNest = null, flSpeed = 5, flPlay = true, flPrevPlay = true, flSpinN = 0, flAcc = 0, flLast = 0, flSite = null, flTilt = 0.5, flLandStep = -99, flCanvas = null, flOff = null, flRaf = 0, flGone = false, flTextAt = 0, flDirty = true, flF1 = null, flSites = [], flDbz = null, flTop = null, flImg = null, flColAt = null;
 const flKmDeg = 111.195;
 
 const FL_BANDS = ['04e9e7', '019ff4', '0300f4', '02fd02', '01c501', '008e00', 'fdf802', 'e5bc00', 'fd9500', 'fd0000', 'd40000', 'bc0000', 'f800fd', '9854c6', 'ffffff'];       // the National Weather Service's base reflectivity colours, one band per 5 dBZ from 5 up (a radar's picture is in steps, with crisp edges between them, not a gradient)
@@ -34,6 +34,7 @@ function flForcing(S, h, m) { return HFNest.forcingOf(S, stormMgr.par, stormEnv,
 function flScale(S, h, prev) { const f = HFNest.forcingOf(S, stormMgr.par, stormEnv, h, 1); return HFNest.scaleOf(f.szT, f.rmaxT, prev); }          // the scale a system of this size wants: a larger storm gets a larger box (coarser cells)
 function flLook() {                                                              // the look-ahead state one hour on (the same state when there is none: the system ends or cannot be asked)
   const C = stormMgr.peek(flId, stormEnv), S = flSystem();
+  flLand = C && S ? landAhead(S, C) : null;                                      // (a landfall inside that hour: its marker comes when the head reaches the coast)
   if (!C || !S) return null;
   const f = flForcing(C, simHour + 1); let d = f.clon - flNest.f0.clon; if (d > 180) f.clon -= 360; else if (d < -180) f.clon += 360;
   return f;
@@ -88,7 +89,7 @@ function flOpen(id) {
 }
 function flClose() {
   if (!flOn) return;
-  flOn = false; cancelAnimationFrame(flRaf); flId = null; flNest = null;
+  flOn = false; cancelAnimationFrame(flRaf); flId = null; flNest = null; flLand = null;
   if (flCanvas) { flCanvas.style.display = 'none'; const g = flCanvas.getContext('2d'); g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, flCanvas.width, flCanvas.height); }
   document.body.classList.remove('fl-on'); sstCanvas.style.opacity = flSstOpacity; $('fl-bar').hidden = true; $('fl-legend').style.display = 'none'; $('fl-legend-v').style.display = 'none';
   setPlaying(flPrevPlay); updateSpeedUI(); if (stormSel) { lastStormCardAt = 0; fillStormCard(); } if (olSel) { lastAoiCardAt = 0; fillAoiCard(); } stormsDirty = true; drawStorms();
@@ -134,6 +135,7 @@ function flWork(sec, budget) {                                                  
   while (flAcc >= dts && performance.now() - t0 < budget) {
     const rem = 3600 - (nest.t - nest.tF0), d = rem > 1 && rem < dts ? rem : dts;                              // (a step never goes past the hour: the engine moves on exactly there)
     nest.step(d); flAcc -= d; n++;
+    if (flLand && (nest.t - nest.tF0) / 3600 >= flLand.k) { const S = flSystem(); if (S) landFire(S, flLand); flLand = null; }
     if ((nest.steps % 3) === 0) flLandUpdate();
     if ((nest.steps % 5) === 0) flEnvUpdate();
     if (nest.t - nest.tF0 >= 3600 - 1e-6) { flStepHour(); if (flGone) break; }

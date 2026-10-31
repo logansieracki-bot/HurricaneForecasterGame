@@ -337,7 +337,15 @@ nothing to run by hand.
   subtropical depressions / storms (squares) and extratropical / post-tropical cyclones and remnant or other non-tropical lows (grey triangles), each with a track of advisory dots every three hours
   (big at the synoptic 00 / 06 / 12 / 18Z, small between, so a peak that comes and goes in a few hours still shows), a white dot where it
   became a depression, and a name label; the waves, lows, areas of interest and name labels are toggles under `Customization`, and the
-  Advanced tab has `Storms form on their own` and `Storm activity (seeds)`. Hover a dot for name, category, wind in mph
+  Advanced tab has `Storms form on their own` and `Storm activity (seeds)`. **The look of the storms** is also under `Customization` (kept in this browser): *Storm paths* is
+  the **Default** path (ours: a dark halo under the line, a big dot every six hours and a small one between, all a little larger than before) or the **Wiki** path, as the track maps of Wikipedia draw it: a thin white line
+  through the six-hourly fixes, a dot of one size at each and none between, no outline, coloured by the Saffir-Simpson scale in every basin with the colours the maps use today (read off a real one: `#6EC1E7` depression, `#4DFFFF` storm, `#FFFFD9`, `#FFD98C`, `#FF9E59`, `#FF738A`, `#A188FC`
+  for categories 1 to 5), a triangle (about four fifths of a circle across) for an extratropical or remnant low and for the disturbance or low that was followed before the depression, and a square for a subtropical cyclone, in the colour of their own wind. *Current-position icons* mark where a cyclone is now: a cyclone of tropical
+  storm strength or more is the weather map's symbol (a disc with two curled tails) turning the way its hemisphere turns (counter-clockwise in the north, mirrored and clockwise in the south, faster the stronger it is) with its intensity
+  on it (the category, `TS` below a hurricane, or the basin's own letters: `T ST VT SU`, `CS SCS VSCS`, `MTS STS TC ITC VITC`, `1` to `5`) in the colour of its class, a depression is a ring, and both are larger than the track's line; they are drawn
+  on their own canvas (the storms are not redrawn for them) and not on the radar floater, which keeps its small marker. *Landfall markers*: when the centre of a tropical or subtropical cyclone comes ashore (its hourly position
+  over water, then over land; the coast found by halving between the two; not twice within six hours) an X in the colour of its intensity shoots out at the coast for a moment, shrinks into a square that turns for three seconds
+  and fades; on the radar floater only the square, smaller, and it comes when the floater's head reaches the coast (and none at all when the floater's overlays are cleared). Hover a dot for name, category, wind in mph
   (kt) and gusts; click a live storm or a finished track for the stat card (category, wind, pressure, Peak, ACE, shear,
   gusts, movement, SST, formed). The top bar is the season: `Atlantic 2026 | DEP | NAMED | HURR | MAJOR | CAT 5 | ACE`
   from the fixes with HURDAT2's own definitions (the ACE from the 00 / 06 / 12 / 18Z ones only); the three strength tags are the basin's own (`TYPH | MAJOR | SUPER` in the West Pacific,

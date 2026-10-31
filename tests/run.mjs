@@ -459,20 +459,20 @@ async function checkStorms(page, label) {
   // the three marker shapes: circle (tropical), square (subtropical), triangle (extratropical), read off the canvas pixels around each head
   const shapes = await ev((ids) => {
     const S = window.SSTSIM, cv = document.getElementById('storm-canvas'), g = cv.getContext('2d'), d = cv.width / cv.clientWidth, out = {};
-    document.getElementById('stlabels').checked = false;
+    document.getElementById('stlabels').checked = false; S.lookSet({ icons: false });          // (a tropical cyclone's head is its own icon on the icon canvas: this probe reads the marker shapes on the storm canvas, the ones the icons are off for and the ones that are not tropical)
     const forced = { circle: { th: 'tc', v: 80, vr: 80 }, square: { th: 'sc', v: 45, vr: 45 }, triangle: { th: 'ex', v: 50, vr: 50 }, remnant: { th: 'nl', v: 20, vr: 20 } };
     const at = (id, dx, dy) => { const p = S.stormPx(id); return g.getImageData(Math.round((p.x + dx) * d), Math.round((p.y + dy) * d), 1, 1).data[3] > 100; };
     ['circle', 'square', 'triangle', 'remnant'].forEach((k, i) => {
       S.stormForce(ids[i % 3], forced[k]); S.stormDraw(); i = i % 3;
-      out[k] = { center: at(ids[i], 0, 0), c: [[-8, -8], [8, -8], [-8, 8], [8, 8]].map(([x, y]) => at(ids[i], x, y)), top: [[-6, -6], [6, -6]].map(([x, y]) => at(ids[i], x, y)), bottom: [[-6, 6], [6, 6]].map(([x, y]) => at(ids[i], x, y)) };
+      out[k] = { center: at(ids[i], 0, 0), c: [[-9, -9], [9, -9], [-9, 9], [9, 9]].map(([x, y]) => at(ids[i], x, y)), top: [[-7, -8], [7, -8]].map(([x, y]) => at(ids[i], x, y)), bottom: [[-6, 6], [6, 6]].map(([x, y]) => at(ids[i], x, y)) };
     });
-    document.getElementById('stlabels').checked = true;
+    document.getElementById('stlabels').checked = true; S.lookSet({ icons: true });
     return out;
   }, b.ids);
   const nFilled = (arr) => arr.filter(Boolean).length;
   check(`[${label}] a tropical cyclone is drawn as a circle (no corners: ${nFilled(shapes.circle.c)}/4), a subtropical one as a square (corners ${nFilled(shapes.square.c)}/4), an extratropical one as a triangle (top ${nFilled(shapes.triangle.top)}/2, base ${nFilled(shapes.triangle.bottom)}/2) and so is a remnant low (top ${nFilled(shapes.remnant.top)}/2, base ${nFilled(shapes.remnant.bottom)}/2)`,
-    shapes.circle.center && nFilled(shapes.circle.c) <= 1 && shapes.square.center && nFilled(shapes.square.c) >= 3 && shapes.triangle.center && nFilled(shapes.triangle.top) === 0 && nFilled(shapes.triangle.bottom) === 2
-    && shapes.remnant.center && nFilled(shapes.remnant.top) === 0 && nFilled(shapes.remnant.bottom) === 2);
+    shapes.circle.center && nFilled(shapes.circle.c) <= 1 && shapes.square.center && nFilled(shapes.square.c) >= 3 && shapes.triangle.center && nFilled(shapes.triangle.top) <= 1 && nFilled(shapes.triangle.bottom) === 2
+    && shapes.remnant.center && nFilled(shapes.remnant.top) <= 1 && nFilled(shapes.remnant.bottom) === 2);       // (the track's own line, a thick one, may cross one of the probes at the top: a circle would fill both)
 
   // precursors are drawn by the stage they have reached: a wave as a dashed north-south axis, a low as a red disc with an L (a disturbance is the same wave or low: its X belongs to the outlook, below); each under its own box
   const pre = await ev(() => {
@@ -950,9 +950,9 @@ async function checkPlace(page, label) {
     S.map.fitBounds(live.fixes.map((f) => [f.lat, f.lon]), { animate: false, padding: [110, 110] }); S.stormDraw();
     return { hours: live.fixes.map((f) => f.h), dots: S.stormDots('M1') };
   });
-  const syn = (d) => /^(00|06|12|18)Z/.test(d.t), big = dots.dots.filter((d) => d.r === 8), small = dots.dots.filter((d) => d.r === 6);
-  check(`[${label}] the placed system's fixes are three hours apart (${dots.hours.length}), the dots at 00, 06, 12 and 18Z are the big ones (${big.length}, hit radius 8) and the ones between them small (${small.length}, hit radius 6)`,
-    dots.hours.length >= 40 && dots.hours.every((h, i) => i === 0 || h - dots.hours[i - 1] === 3) && big.length >= 10 && small.length >= 10 && dots.dots.slice(1).every((d) => (d.r === 8) === syn(d)));
+  const syn = (d) => /^(00|06|12|18)Z/.test(d.t), big = dots.dots.filter((d) => d.r === 9), small = dots.dots.filter((d) => d.r === 7);
+  check(`[${label}] the placed system's fixes are three hours apart (${dots.hours.length}), the dots at 00, 06, 12 and 18Z are the big ones (${big.length}, hit radius 9) and the ones between them small (${small.length}, hit radius 7)`,
+    dots.hours.length >= 40 && dots.hours.every((h, i) => i === 0 || h - dots.hours[i - 1] === 3) && big.length >= 10 && small.length >= 10 && dots.dots.slice(1).every((d) => (d.r === 9) === syn(d)));
   const alone = small.filter((d) => dots.dots.every((o) => o === d || Math.hypot(o.x - d.x, o.y - d.y) > 14)).sort((a, b) => a.y - b.y)[0];
   if (alone) { await page.mouse.move(alone.x - 30, alone.y - 30); await page.mouse.move(alone.x, alone.y, { steps: 3 }); await page.waitForTimeout(120); }
   const tipDot = await ev(() => { const t = document.getElementById('storm-tip'); return { shown: t.style.display === 'block', text: t.innerText.replace(/\n/g, ' | ') }; });
@@ -1126,13 +1126,121 @@ async function checkLook(page, label, prefix) {
     const id = S.stormPlace({ kind: 'td', lat: q.td[0], lon: q.td[1], v: 60 }); S.tick(12); S.advance(0); const st = S.stormState().systems.find((x) => x.id === id);
     S.map.setView([st.lat, st.lon], 4, { animate: false }); S.stormForce(id, { th: 'tc', v: 105, vr: 105, p: 946 }); S.stormDraw(); return { id, px: S.stormPx(id) }; }, sp);
   await page.mouse.click(r.px.x, r.px.y); await page.waitForTimeout(300);
-  const lk = await ev(({ x, y }) => { const c = document.getElementById('storm-canvas'), d = c.width / c.clientWidth, a = c.getContext('2d').getImageData(Math.round(x * d), Math.round(y * d), 1, 1).data, hex = '#' + [a[0], a[1], a[2]].map((v) => v.toString(16).padStart(2, '0')).join(''), t = document.getElementById('sc-tag'), rgb = getComputedStyle(t).backgroundColor.match(/\d+/g).map(Number), thex = '#' + rgb.slice(0, 3).map((v) => v.toString(16).padStart(2, '0')).join('');
+  const lk = await ev(({ x, y }) => { const S = window.SSTSIM; S.stormDraw(); S.fxRender(); const c = document.getElementById('fx-canvas'), d = c.width / c.clientWidth, a = c.getContext('2d').getImageData(Math.round(x * d), Math.round((y + 0.8 * S.lookState().R) * d), 1, 1).data, hex = '#' + [a[0], a[1], a[2]].map((v) => v.toString(16).padStart(2, '0')).join(''), t = document.getElementById('sc-tag'), rgb = getComputedStyle(t).backgroundColor.match(/\d+/g).map(Number), thex = '#' + rgb.slice(0, 3).map((v) => v.toString(16).padStart(2, '0')).join('');
     return { head: hex, a: a[3], tag: t.textContent, tagBg: thex, shown: t.offsetParent !== null }; }, r.px);
   await lyrSet(page, 'stcone', true); await page.waitForFunction(() => window.SSTSIM.coneState() !== null, null, { timeout: 15000 }); await page.waitForTimeout(200);
   const lc = await ev(() => { const cs = window.SSTSIM.coneState(); return cs ? cs.pts.map((q) => [q.v, q.letter, q.post]) : null; });
   await lyrSet(page, 'stcone', false); await page.keyboard.press('Escape'); await page.waitForTimeout(100);
   check(`[${label}] the 105-kt storm is drawn in this region's colour (${lk.head}, expected ${LOOK105[0]}), its card shows the class ${lk.tag} on ${lk.tagBg} (expected ${LOOK105[1]} on ${LOOK105[0]}) and the cone's letters are the region's (${lc ? lc.map((q) => q[1]).join(' ') : 'no cone'})`,
     lk.head === LOOK105[0] && lk.a === 255 && lk.shown && lk.tag === LOOK105[1] && lk.tagBg === LOOK105[0] && !!lc && lc.length >= 4 && lc.every((q) => q[1] === SC.tag[H.classOf(prefix, q[0], 'tc').idx]));
+}
+// the look of the storms (Customization in the panel): a cyclone of tropical storm strength or more is a spinning symbol with its intensity on it in the colour of its class (the way its hemisphere turns), a depression a ring, drawn on their own canvas; the Wiki
+// path as Wikipedia's track maps draw it (a thin white line through the six-hourly fixes, one size of dot, no outline, the Saffir-Simpson colours, triangles and squares in the colour of their wind); the Default path larger; a landfall (the centre coming ashore) shoots
+// out an X that shrinks into a square that turns and fades, a smaller square and no X on the radar floater, and none when the overlays of the floater are cleared
+async function checkIcons(page, label, prefix) {
+  const ev = (fn, arg) => page.evaluate(fn, arg);
+  await import('../src/storms.js');
+  const H = globalThis.HFStorms, SC = H.scaleOf(prefix), sp = prefix === 'atlantic' ? { td: [15, -45], day: 200 } : STORM_SPECS[prefix];
+  const WIKI = ['#6EC1E7', '#4DFFFF', '#FFFFD9', '#FFD98C', '#FF9E59', '#FF738A', '#A188FC'], wk = (v) => { const k = Math.round(v / 5) * 5; return WIKI[k < 34 ? 0 : k < 64 ? 1 : k < 83 ? 2 : k < 96 ? 3 : k < 113 ? 4 : k < 137 ? 5 : 6]; };
+  const hex = (a) => '#' + [a[0], a[1], a[2]].map((v) => v.toString(16).padStart(2, '0')).join('');
+  const ctl = await ev(() => { const S = window.SSTSIM, seg = document.querySelectorAll('#seg-track button'), vis = (id) => document.getElementById(id).offsetParent !== null; S.lookSet({ track: 'default', icons: true, land: true });
+    return { seg: [...seg].map((b) => b.dataset.t + ':' + b.getAttribute('aria-pressed')), icons: document.getElementById('sticons').checked, land: document.getElementById('stland').checked, shown: ['seg-track', 'sticons', 'stland'].every(vis), st: S.lookState() }; });
+  check(`[${label}] Customization has the path style (${ctl.seg.join(', ')}), the current-position icons (${ctl.icons}) and the landfall markers (${ctl.land}), Default, icons and markers on to begin with`, ctl.shown && ctl.seg.join() === 'default:true,wiki:false' && ctl.icons && ctl.land && ctl.st.track === 'default');
+  const r = await ev((q) => { const S = window.SSTSIM; S.setPlaying(false); S.applySeed(4242); S.setPlaying(false); S.storms(true); S.stormAuto(false); S.tick(24 * q.day);
+    const id = S.stormPlace({ kind: 'td', lat: q.td[0], lon: q.td[1], v: 60 }); S.tick(48); S.advance(0); const st = S.stormState().systems.find((x) => x.id === id);
+    S.stormForce(id, { th: 'tc', v: 105, vr: 105, p: 946 }); document.getElementById('stlabels').checked = false; return { id, lat: st.lat, lon: st.lon, n: st.fixes }; }, sp);
+  // the symbol: the intensity on it in the region's way, the colour of its class, the way its hemisphere turns (a southern cyclone is the mirror image and turns clockwise)
+  const ic = await ev(async ({ id }) => { const S = window.SSTSIM; S.map.setView([S.stormState().systems.find((x) => x.id === id).lat, S.stormState().systems.find((x) => x.id === id).lon], 6, { animate: false }); S.stormDraw(); S.fxRender();
+    const a0 = S.lookState().heads.find((h) => h.id === id).ang; await new Promise((f) => setTimeout(f, 220)); S.fxRender(); const L = S.lookState(), h = L.heads.find((q) => q.id === id), p = S.stormPx(id);
+    let d = h.ang - a0; if (d > Math.PI) d -= 2 * Math.PI; else if (d < -Math.PI) d += 2 * Math.PI;
+    return { h, d, p, body: S.fxPixel(p.x, p.y + 0.8 * L.R), tail: S.fxPixel(p.x, p.y - 1.7 * L.R), far: S.fxPixel(p.x + 2.6 * L.R, p.y), drawn: S.stormDrawn().includes(id), active: L.active }; }, r);
+  const want105 = SC.major != null ? String(H.category(105).cat) : SC.tag[H.classOf(prefix, 105, 'tc').idx], southern = r.lat < 0;
+  check(`[${label}] a 105-kt cyclone's head is the symbol with "${ic.h.text}" on it (expected ${want105}), in its class colour ${hex(ic.body)} (expected ${SC.cols[H.classOf(prefix, 105, 'tc').idx]}), ${southern ? 'mirrored' : 'the northern way round'} (${ic.h.sg}), turning ${ic.d < 0 ? 'counter-clockwise' : 'clockwise'} (${ic.d.toFixed(2)} rad in 0.2 s) as its hemisphere does, and nothing beyond its tails (${ic.far[3]})`,
+    ic.h.text === want105 && !ic.h.ring && hex(ic.body) === SC.cols[H.classOf(prefix, 105, 'tc').idx] && ic.body[3] === 255 && ic.h.sg === (southern ? -1 : 1) && (southern ? ic.d > 0.03 : ic.d < -0.03) && Math.abs(ic.d) < 1.6 && ic.far[3] === 0 && ic.drawn && ic.active);
+  // a depression is a ring: hollow in the middle, the class colour on the ring, and it does not turn
+  const dep = await ev(({ id }) => { const S = window.SSTSIM; S.stormForce(id, { v: 25, vr: 25, p: 1006 }); S.stormDraw(); S.fxRender(); const L = S.lookState(), h = L.heads.find((q) => q.id === id), p = S.stormPx(id), R = L.R - 0.5, w = Math.max(3, R * 0.4);
+    return { h, mid: S.fxPixel(p.x, p.y), ring: S.fxPixel(p.x + R - w / 2, p.y), ring2: S.fxPixel(p.x, p.y - (R - w / 2)), out: S.fxPixel(p.x + R + 4, p.y) }; }, r);
+  check(`[${label}] a 25-kt depression is a ring: hollow (${dep.mid[3]}), ${hex(dep.ring)} on the ring (expected ${SC.cols[0]}), clear outside it (${dep.out[3]})`, dep.h.ring && dep.mid[3] === 0 && hex(dep.ring) === SC.cols[0] && hex(dep.ring2) === SC.cols[0] && dep.out[3] === 0);
+  // the icons off: the old marker of the shape, larger, on the storm canvas; and the layer is empty; on: it is back
+  const off = await ev(({ id }) => { const S = window.SSTSIM; S.stormForce(id, { th: 'tc', v: 105, vr: 105, p: 946 }); S.lookSet({ icons: false }); S.stormDraw(); S.fxRender(); const p = S.stormPx(id), cv = document.getElementById('storm-canvas'), d = cv.width / cv.clientWidth, a = cv.getContext('2d').getImageData(Math.round(p.x * d), Math.round(p.y * d), 1, 1).data;
+    const o = { heads: S.lookState().heads.length, fx: S.fxPixel(p.x, p.y + 11)[3], head: [a[0], a[1], a[2], a[3]], hit: S.stormClick ? 1 : 0 }; S.lookSet({ icons: true }); S.stormDraw(); S.fxRender(); o.back = S.lookState().heads.length; return o; }, r);
+  check(`[${label}] with the icons off the head is the marker of its shape on the storm canvas (${hex(off.head)}) and the icon layer is empty (${off.heads} icons, ${off.fx}); on again: ${off.back}`, off.heads === 0 && off.fx === 0 && off.head[3] === 255 && hex(off.head) === SC.cols[H.classOf(prefix, 105, 'tc').idx] && off.back === 1);
+  // the Wiki path: one size of dot at the six-hourly fixes only, in Wikipedia's Saffir-Simpson colours, no outline, a thin white line between; the Default one larger
+  const wi = await ev(({ id }) => { const S = window.SSTSIM, st = S.stormState().systems.find((x) => x.id === id); S.lookSet({ icons: false }); const def = S.stormDots(id);
+    const fx = S.fixesOf(id), ll = fx.filter((f) => f[0] % 6 === 0).map((f) => [f[1], f[2]]); S.map.fitBounds(ll, { animate: false, padding: [200, 200] }); S.map.setZoom(Math.max(5, S.map.getZoom() - 0.6), { animate: false });
+    S.lookSet({ track: 'wiki' }); S.stormDraw(); const dots = S.stormDots(id), cv = document.getElementById('storm-canvas'), g = cv.getContext('2d'), d = cv.width / cv.clientWidth, rd = (x, y) => Array.from(g.getImageData(Math.round(x * d), Math.round(y * d), 1, 1).data);
+    const hd = S.stormPx(id), alone = dots.filter((q) => Math.hypot(hd.x - q.x, hd.y - q.y) > 16 && dots.every((o) => o === q || Math.hypot(o.x - q.x, o.y - q.y) > 16));       // (dots that nothing else is drawn over: another dot, the live head)
+    const probe = alone.map((q) => ({ v: q.v, c: rd(q.x, q.y), edge: Array.from({ length: 16 }, (_, k) => rd(q.x + 6.6 * Math.cos(k * Math.PI / 8), q.y + 6.6 * Math.sin(k * Math.PI / 8))[3]) }));       // (a ring 1.6 px outside the dot: empty but for the line that comes and goes; an outline would fill it)
+    let line = null; for (let i = 1; i < dots.length && !line; i++) { const a = dots[i - 1], b = dots[i]; if (Math.hypot(a.x - b.x, a.y - b.y) <= 24) continue; const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2; let best = [0, 0, 0, 0]; for (let dx = -2; dx <= 2; dx++) for (let dy = -2; dy <= 2; dy++) { const c = rd(mx + dx, my + dy); if (c[3] > best[3]) best = c; } line = best; }
+    const saved = JSON.parse(localStorage.getItem('hf-look')); const out = { def: def.map((q) => [q.r, q.h % 6]), dots: dots.map((q) => [q.r, q.h % 6]), probe, line, saved, fixes: fx.length, st: S.lookState().track };
+    S.lookSet({ track: 'default', icons: true }); return out; }, r);
+  const six = wi.def.filter((q) => q[1] === 0).length, nine = wi.def.filter((q) => q[0] === 9).length;
+  check(`[${label}] the Wiki path has only the six-hourly dots (${wi.dots.length}, all of one hit size ${[...new Set(wi.dots.map((q) => q[0]))]}, none between: ${wi.dots.every((q) => q[1] === 0)}) where the Default one has the big ones (${nine}) and the small ones (${wi.def.length - nine}), of which ${six} are at the six-hourly times; saved in this browser as ${wi.saved.track}`,
+    wi.st === 'wiki' && wi.dots.length >= 6 && wi.dots.length === six && wi.dots.every((q) => q[0] === 8 && q[1] === 0) && wi.def.length > wi.dots.length && wi.saved.track === 'wiki');
+  check(`[${label}] a Wiki dot is exactly Wikipedia's colour of its class (${wi.probe.slice(0, 4).map((q) => hex(q.c) + ' at ' + q.v + ' kt').join(', ')}) with no outline round it (${wi.probe.slice(0, 4).map((q) => q.edge.filter((e) => e === 0).length + '/16 clear').join(', ')}) and the line between is thin and white (${wi.line ? wi.line.join() : 'none found'})`,
+    wi.probe.length >= 3 && wi.probe.every((q) => hex(q.c) === wk(q.v).toLowerCase() && q.c[3] === 255 && q.edge.filter((e) => e === 0).length >= 11) && !!wi.line && wi.line[0] > 235 && wi.line[1] > 235 && wi.line[2] > 235 && wi.line[3] > 200);
+  // the start of a real best track: the disturbance or low that was followed before the depression is on the Wiki path as triangles in the colour of its wind (a plain wave is not), the Default one draws that stage as a faint dotted trail and no dots
+  if (prefix === 'atlantic') {
+    const pg = await ev((q) => { const S = window.SSTSIM; S.fxClear(); const id = S.stormPlace({ kind: 'wave', lat: q.td[0], lon: q.td[1] + 8 }); S.tick(24); S.stormForce(id, { kind: 'N' }); S.tick(36); S.stormForce(id, { th: 'tc', v: 38, vr: 38 }); S.tick(36); S.advance(0);       // (a wave, then a low that is followed, then the depression)
+      const st = S.stormState().systems.find((x) => x.id === id), fx = S.fixesOf(id); S.lookSet({ icons: false });
+      const pts = fx.map((f) => [f[1], f[2]]); S.map.fitBounds(pts, { animate: false, padding: [150, 150] }); const cv = document.getElementById('storm-canvas'), g = cv.getContext('2d'), d = cv.width / cv.clientWidth;
+      const out = { alive: st.alive, th: st.th, n: fx.length, ths: fx.map((f) => f[4]) };
+      S.lookSet({ track: 'default' }); S.stormDraw(); out.defDots = S.stormDots(id).filter((q) => q.th === 'wv').length;
+      S.lookSet({ track: 'wiki' }); S.stormDraw(); const dots = S.stormDots(id), hd = S.stormPx(id); out.wiki = dots.map((q) => ({ th: q.th, st: q.st, h: q.h % 6, v: q.v }));
+      const alone = dots.filter((q) => q.th === 'wv' && Math.hypot(hd.x - q.x, hd.y - q.y) > 16 && dots.every((o) => o === q || Math.hypot(o.x - q.x, o.y - q.y) > 16));
+      out.tri = alone.map((q) => { const px = (dx, dy) => Array.from(g.getImageData(Math.round((q.x + dx) * d), Math.round((q.y + dy) * d), 1, 1).data); return { c: px(0, 1), top: px(-2.5, -2.5)[3] > 100 && px(2.5, -2.5)[3] > 100, base: px(-2.5, 2)[3] > 100 && px(2.5, 2)[3] > 100 }; });
+      S.lookSet({ track: 'default', icons: true }); S.stormForce(id, { alive: false }); return out; }, sp);
+    const wv = pg.wiki.filter((q) => q.th === 'wv');
+    check(`[${label}] the Wiki path starts with the disturbance stage as triangles (${wv.length} of ${pg.wiki.length} dots are before the depression, ${wv.filter((q) => q.st === 'DB' || q.st === 'LO').length} of them disturbances or lows, all six-hourly: ${wv.every((q) => q.h === 0)}), each in the colour of its wind (${pg.tri.slice(0, 3).map((q) => hex(q.c)).join(', ')}, expected ${WIKI[0].toLowerCase()}), where the Default path has no dot there (${pg.defDots}); top/base ${pg.tri.map((q) => (q.top ? 'T' : '-') + (q.base ? 'B' : '-')).join(' ')}`,
+      pg.alive !== undefined && wv.length >= 2 && wv.every((q) => (q.st === 'DB' || q.st === 'LO') && q.h === 0) && pg.defDots === 0 && pg.tri.length >= 1 && pg.tri.every((q) => hex(q.c) === WIKI[0].toLowerCase() && !q.top && q.base));
+  }
+  // the live head in the Wiki style: a dot of its class colour, and the extratropical triangle and the subtropical square in the colour of their wind (the Default style keeps the post-tropical grey)
+  const sh = await ev(({ id }) => { const S = window.SSTSIM, cv = document.getElementById('storm-canvas'), g = cv.getContext('2d'), d = cv.width / cv.clientWidth, out = {}; S.lookSet({ icons: false }); { const s0 = S.stormState().systems.find((x) => x.id === id); S.stormForce(id, { lat: s0.lat + (s0.lat < 0 ? -4 : 4) }); }       // (four degrees from its own track: nothing else is drawn near the head)
+    for (const [k, patch] of [['ex', { th: 'ex', v: 90, vr: 90 }], ['sc', { th: 'sc', v: 45, vr: 45 }]]) { S.stormForce(id, patch); S.map.setView([S.stormState().systems.find((x) => x.id === id).lat, S.stormState().systems.find((x) => x.id === id).lon], 6, { animate: false }); out[k] = {};
+      for (const style of ['wiki', 'default']) { S.lookSet({ track: style }); S.stormDraw(); const p = S.stormPx(id), px = (dx, dy) => Array.from(g.getImageData(Math.round((p.x + dx) * d), Math.round((p.y + dy) * d), 1, 1).data); out[k][style] = { c: px(0, 1), corners: [[-2.5, -2.5], [2.5, -2.5], [-2.5, 2], [2.5, 2]].map(([x, y]) => px(x, y)[3] > 100), sq: [[-3, -3], [3, -3], [-3, 3], [3, 3]].map(([x, y]) => px(x, y)[3] > 100), wide: [[-6, 0], [6, 0], [0, -6], [0, 6]].map(([x, y]) => px(x, y)[3] > 100) }; } }
+    S.lookSet({ track: 'default', icons: true }); return out; }, r);
+  const nc = (a) => a.filter(Boolean).length;
+  check(`[${label}] in the Wiki style an extratropical triangle is the colour of its wind (${hex(sh.ex.wiki.c)}, expected ${wk(90).toLowerCase()}; the Default one is grey ${hex(sh.ex.default.c)}) and a subtropical square too (${hex(sh.sc.wiki.c)}, expected ${wk(45).toLowerCase()}; corners ${nc(sh.sc.wiki.sq)}/4; the triangle's base corners ${nc(sh.ex.wiki.corners.slice(2))}/2, smaller than a circle: ${nc(sh.ex.wiki.wide)}/4 of the points 6 px out)`,
+    hex(sh.ex.wiki.c) === wk(90).toLowerCase() && hex(sh.ex.default.c) === '#a9a9a9' && sh.ex.wiki.corners[2] && sh.ex.wiki.corners[3] && nc(sh.ex.wiki.corners.slice(0, 2)) <= 1 && nc(sh.ex.wiki.wide) <= 2 && hex(sh.sc.wiki.c) === wk(45).toLowerCase() && nc(sh.sc.wiki.sq) === 4 && nc(sh.sc.wiki.wide) <= 2);
+  // landfall markers: the X shoots out, shrinks into a square of the colour of the intensity that turns, and fades; on the radar floater a smaller square and no X; none at all when the floater's overlays are cleared
+  const lf = await ev(({ id }) => { const S = window.SSTSIM; S.stormForce(id, { th: 'tc', v: 105, vr: 105, p: 946 }); S.map.setView([S.stormState().systems.find((x) => x.id === id).lat, S.stormState().systems.find((x) => x.id === id).lon], 5, { animate: false }); S.stormDraw(); S.fxClear();
+    const s0 = S.stormState().systems.find((x) => x.id === id), la = s0.lat + (s0.lat < 0 ? -3 : 3), p = S.placePx(la, s0.lon); S.fxMarkAdd(id, la, s0.lon, 105, 'tc'); const px = (dx, dy) => S.fxPixel(p.x + dx, p.y + dy), at = {};       // (three degrees from the cyclone's own icon)
+    for (const t of [0.05, 0.3, 1, 2.2, 3.4]) { S.fxRender(t); at[t] = { x: px(45, 45), x2: px(-45, 45), mid: px(10, 0), far: px(26, 0) }; }
+    const out = { at, marks: S.lookState().marks.length, active: S.lookState().active }; S.fxRender(3.6); out.gone = S.lookState().marks.length; return out; }, r);
+  const col105 = SC.cols[H.classOf(prefix, 105, 'tc').idx];
+  check(`[${label}] a landfall's X shoots out at once (${lf.at[0.05].x[3]}, ${lf.at[0.05].x2[3]}) in the colour of the intensity (${hex(lf.at[0.05].x)}), is shrunk to the square after half a second (the X's arm is gone: ${lf.at[1].x[3]}; the square: ${hex(lf.at[1].mid)}, none outside it: ${lf.at[1].far[3]}), still turns at 2.2 s (${lf.at[2.2].mid[3]}) and has faded by 3.4 s (${lf.at[3.4].mid[3]}) and is gone after 3.5 s (${lf.gone} markers)`,
+    lf.at[0.05].x[3] === 255 && lf.at[0.05].x2[3] === 255 && hex(lf.at[0.05].x) === col105 && lf.at[1].x[3] === 0 && lf.at[1].mid[3] === 255 && hex(lf.at[1].mid) === col105 && lf.at[1].far[3] === 0 && lf.at[2.2].mid[3] === 255 && lf.at[3.4].mid[3] < 60 && lf.gone === 0);
+  const fl = await ev(({ id }) => { const S = window.SSTSIM; S.fxClear(); const ok = S.floaterOpen(id); S.floaterRun(60); S.stormDraw(); const s0 = S.stormState().systems.find((x) => x.id === id), p = S.placePx(s0.lat, s0.lon); S.fxMarkAdd(id, s0.lat, s0.lon, 105, 'tc'); const px = (dx, dy) => S.fxPixel(p.x + dx, p.y + dy), out = { ok };
+    S.fxRender(0.05); out.x = px(45, 45); S.fxRender(1); out.mid = px(5, 0); out.far = px(15, 0); out.heads = S.lookState().heads.length;
+    document.getElementById('fl-bare').click(); S.stormDraw(); S.fxRender(1); out.bare = px(5, 0); out.bareMarks = S.lookState().marks.length; document.getElementById('fl-bare').click(); S.floaterClose(); return out; }, r);
+  check(`[${label}] on the radar floater a landfall is a small square and no X (X ${fl.x[3]}, square ${fl.mid[3]}, none at 15 px ${fl.far[3]}), the cyclone has no icon there (${fl.heads}) and clearing the overlays clears the marker (${fl.bare[3]}, ${fl.bareMarks} left)`,
+    fl.ok && fl.x[3] === 0 && fl.mid[3] === 255 && fl.far[3] === 0 && fl.heads === 0 && fl.bare[3] === 0 && fl.bareMarks === 0);
+  if (prefix === 'atlantic') {                                       // the engine's own landfalls: the centre over water, then over land, hour after hour (here two places a day's sail apart on the Mexican coast): one marker at the coast, none for a low, none twice within six hours
+    const sc = await ev(({ id }) => { const S = window.SSTSIM, land = (la, lo) => S.stormEnvSample(la, lo).land; S.fxClear(); S.floaterClose();
+      const W = [19.8, -95.2], L = [19.8, -97.8]; if (land(...W) || !land(...L)) return { bad: true };
+      const go = (la, lo, patch) => { S.stormForce(id, Object.assign({ lat: la, lon: lo }, patch || {})); return S.landScanNow(); };
+      go(...W, { th: 'tc', v: 90, vr: 90 }); const n1 = go(...L), m = S.lookState().marks[0] || {};
+      let lo = -97.8, hi = -95.2; for (let k = 0; k < 18; k++) { const mid = (lo + hi) / 2; if (land(19.8, mid)) lo = mid; else hi = mid; }                   // (the coast on that parallel, found independently)
+      go(...W); const n2 = go(...L);
+      S.fxClear(); go(...W, { th: 'nl', v: 40, vr: 40 }); const n3 = go(...L, { th: 'nl' });
+      S.fxClear(); go(...W, { th: 'tc', v: 90, vr: 90 }); const n4 = go(...L), m4 = S.lookState().marks[0] || {};
+      return { n1, n2, n3, n4, lat: m.lat, lon: m.lon, v: m.v, coast: lo, lon4: m4.lon }; }, r);
+    const ah = await ev(({ id }) => { const S = window.SSTSIM, land = (la, lo) => S.stormEnvSample(la, lo).land; S.fxClear();
+      const a = S.landAheadOf({ id, lat: 19.8, lon: -95.2, v: 90 }, { lat: 19.8, lon: -97.8, v: 70 }), b = S.landAheadOf({ id, lat: 19.8, lon: -97.0, v: 90 }, { lat: 19.8, lon: -97.8, v: 70 }), c = S.landAheadOf({ id, lat: 19.8, lon: -94.0, v: 90 }, { lat: 19.8, lon: -95.0, v: 70 });
+      let lo = -97.8, hi = -95.2; for (let k = 0; k < 18; k++) { const mid = (lo + hi) / 2; if (land(19.8, mid)) lo = mid; else hi = mid; }
+      const out = { a, b, c, coast: lo, k: (lo + 95.2) / -2.6 };
+      // the floater waits for the head to get there: nothing before, the marker after, and the engine's look at the end of the hour does not make another
+      S.stormForce(id, { th: 'tc', v: 90, vr: 90, lat: 19.8, lon: -95.2 }); S.landScanNow(); const ok = S.floaterOpen(id); S.floaterRun(60); S.stormDraw(); S.fxClear();
+      const s0 = S.stormState().systems.find((x) => x.id === id); S.landScanNow(); S.floaterLandSet({ k: 0.05, lat: 19.81, lon: -96.4, f: { v: 85, th: 'tc' } });
+      S.floaterRun(60); out.early = S.lookState().marks.length; S.floaterRun(240); out.late = S.lookState().marks.length; const m = S.lookState().marks[0] || {}; out.at = [m.lat, m.lon, m.v]; out.pending = S.floaterLand();
+      S.stormForce(id, { lat: 19.8, lon: -95.2 }); S.landScanNow(); S.stormForce(id, { lat: 19.8, lon: -97.8 }); out.twice = S.landScanNow();           // (what the engine's look at the end of the hour sees: the centre has crossed, a marker was made a moment ago)
+      S.floaterClose(); out.ok = ok; return out; }, r);
+    check(`[${label}] the radar floater knows a landfall in its hour ahead (k ${ah.a && ah.a.k.toFixed(2)}, the coast independently ${ah.k.toFixed(2)}; ${ah.a && ah.a.f.v.toFixed(0)} kt; none from inland ${ah.b}, none over water ${ah.c}), shows the marker when its head gets there (${ah.early} at 1 minute, ${ah.late} at 5; ${ah.pending}) and the engine's own look at the hour's end makes no second one (${ah.twice})`,
+      ah.ok && !!ah.a && Math.abs(ah.a.k - ah.k) < 0.05 && Math.abs(ah.a.f.v - (90 - 20 * ah.a.k)) < 0.5 && ah.b === null && ah.c === null && ah.early === 0 && ah.late === 1 && ah.pending === null && Math.abs(ah.at[1] + 96.4) < 1e-9 && ah.at[2] === 85 && ah.twice === 1);
+    check(`[${label}] a cyclone whose centre comes ashore gets one landfall marker at the coast (${sc.n1} marker at ${sc.lon && sc.lon.toFixed(2)}, the coast is at ${sc.coast && sc.coast.toFixed(2)}, ${sc.v && sc.v.toFixed(0)} kt), not a second within six hours (${sc.n2}), none for a low (${sc.n3}) and one again once the record is clear (${sc.n4})`,
+      !sc.bad && sc.n1 === 1 && Math.abs(sc.lon - sc.coast) < 0.3 && sc.lat === 19.8 && Math.abs(sc.v - 90) < 1 && sc.n2 === 1 && sc.n3 === 0 && sc.n4 === 1 && Math.abs(sc.lon4 - sc.coast) < 0.3);
+  }
+  await ev(({ id }) => { const S = window.SSTSIM; S.fxClear(); S.lookSet({ track: 'default', icons: true, land: true }); document.getElementById('stlabels').checked = true; S.stormForce(id, { alive: false }); S.stormDraw(); }, r);
 }
 // the radar floater: a 2-km model of one system drawn as radar over the map, opened from the system's card; its own clock (real time to 20 minutes a second) running inside the hour and moving the engine on at the hour,
 // the storm layers on top of it, a radar site with its beam, crisp colours in the National Weather Service's steps, and everything back as it was when it is closed
@@ -1467,6 +1575,7 @@ async function checkStormsBasin(page, label, prefix) {
   }, { sm: BI.seasonMonth, start: sp.start, day: Math.min(sp.day, 120), td: sp.td });
   check(`[${label}] a season saved at a midnight (hour ${sv.mid}) and resumed continues bit for bit like the uninterrupted one (${sv.kb} KB of storms)`, sv.same && sv.mid < sv.ha);
   await checkLook(page, label, prefix);
+  await checkIcons(page, label, prefix);
   await checkImpacts(page, label, prefix);
   await checkFloater(page, label, prefix);
   await checkSatellite(page, label, prefix);
@@ -2879,6 +2988,7 @@ await checkBasin('Atlantic', ATLANTIC_DIST, async (page, label) => {
   await checkStorms(page, label);
   await checkForecastSkill(page, label);
   await checkLook(page, label, 'atlantic');
+  await checkIcons(page, label, 'atlantic');
   await checkImpacts(page, label, 'atlantic');
   await checkFloater(page, label, 'atlantic');
   await checkSatellite(page, label, 'atlantic');

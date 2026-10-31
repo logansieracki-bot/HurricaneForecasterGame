@@ -109,6 +109,7 @@ const HURR_TAG = BAR[0];
 const hurrWord = (t) => (BI.hurricane === 'hurricane' ? t : t.replace(/Hurricane/g, BI.hurricane[0].toUpperCase() + BI.hurricane.slice(1)).replace(/hurricane/g, BI.hurricane));      // the local word for a hurricane-strength cyclone
 const seasonLabel = (y) => (SM ? y + '\u2013' + String((y + 1) % 100).padStart(2, '0') : String(y));      // 2026, or 2026-27 for a southern season
 const stormCanvas = makeCanvas(461); stormCanvas.id = 'storm-canvas';
+const fxCanvas = makeCanvas(462); fxCanvas.id = 'fx-canvas';           // over the storm canvas: what moves by itself (the spinning icons of the cyclones, the landfall markers), drawn a frame at a time without redrawing the storms
 let sumOpen = false, sumYear = 0, sumArch = 0, sumAt = 0, sumGeo = null;
 let saveStamp = 0, savedStamp = 0, saveLast = 0, saveOwner = true;     // saveOwner: this page may write the save (false when it opened beside a season it did not resume: see the save / resume block)
 function markDirty() { saveStamp++; }                                // anything that changes the running season: the saver writes it out within seconds
@@ -266,6 +267,7 @@ function labRecord(m) {
 function stormsReset() {
   if (flOn) flClose();
   stormMgr = HFStorms.create({ seed: stormSeed(), startMs: START_MS, hour0: simHour, auto: stormAuto, autoRate: stormActivity, maps: stormMapsNow(), basin: STORM_BASIN }); stormCitiesBind();
+  landSeen.clear(); fxMarks.length = 0; fxAng.clear();
   stormLab = null; shadow = null; stormFieldsDirty = true; kfBreak = true; kfFieldHour = -1; stormSel = null; olSel = null; plainSel = null; ensPack = null; coneMem = null; wwPack = null; wwCones = {}; ensHot = -1; stormHot = null; stormHits = []; olHeld = null; olEagerSlot = -1e9; olHits = []; stormsDirty = true;
   sumArch = 0; if (sumOpen) closeSummary();
   const card = $('storm-card'), tip = $('storm-tip'), acard = $('aoi-card'); if (card) card.hidden = true; if (acard) acard.hidden = true; if (tip) tip.style.display = 'none';
@@ -282,7 +284,7 @@ function stormsAdvance(n) {
     if (simHour % 24 === 0) stepDay();                               // a sub-chunk never crosses midnight: it ends exactly on it
     jetClockH += k * P.jetSpeed;
     left -= k;
-    stormMgr.advanceTo(simHour, stormEnv);                           // every hour runs on the keyframe taken at or before its start
+    while (stormMgr.hour < simHour) { stormMgr.advanceTo(stormMgr.hour + 1, stormEnv); landScan(); }       // every hour runs on the keyframe taken at or before its start (one at a time: a landfall is seen in the hour it happens)
     if (stormMgr.archive.length !== sumArch) seasonEnded();            // Jan 1: the finished season's paths are gone; show how it went
     if (stormLab) for (const m of stormLab) m.advanceTo(simHour, stormEnv);
     if (simHour % STORM_KEY_H === 0) {
@@ -523,6 +525,149 @@ function stormShape(g, shape, x, y, r, fill, stroke, lw) {          // circle (t
   g.fillStyle = fill; g.fill(); if (stroke) { g.lineWidth = lw || 1.4; g.strokeStyle = stroke; g.stroke(); }
 }
 const shapeOf = (th) => (th === 'sc' ? 'square' : th === 'ex' || th === 'nl' ? 'triangle' : 'circle');          // a remnant or other non-tropical low is a triangle like a post-tropical cyclone
+
+/* ---- the look of the storms: the path style, the current-position icons and the landfall markers ---------------------------------------------------------------------------------------------------------
+   Customization in the panel (kept in this browser, not in the season). The Default path is ours: a dark halo under the line, a large dot every six hours (00, 06, 12, 18Z) and a small one between. The Wiki path is the one the
+   track maps of Wikipedia draw: a thin white line through the six-hourly fixes, a dot of one size at each, no outline, coloured by the Saffir-Simpson scale whatever the basin (the colours of the maps today, WIKI_COLS), a
+   triangle for an extratropical or remnant low and for the disturbance or low that was followed before the depression, a square for a subtropical cyclone, in the colour of their own wind. The icons are drawn on their own canvas: a cyclone
+   of tropical storm strength or more is the weather map's symbol (a disc with two curled tails) turning, the way its hemisphere turns, with its intensity on it in the colour of its class; a depression is a ring. A landfall (the centre of a
+   tropical or subtropical cyclone coming ashore: the engine's hourly position over water, then over land) shoots out an X for a moment, which shrinks to a square that turns for three seconds and fades; on the radar floater the square only,
+   smaller, and when the floater's head gets to the coast (landAhead: the floater runs inside the hour between two engine states). */
+const LOOK_KEY = 'hf-look';
+let stTrack = 'default', stIcons = true, stLand = true;
+try { const o = JSON.parse(localStorage.getItem(LOOK_KEY) || 'null'); if (o) { stTrack = o.track === 'wiki' ? 'wiki' : 'default'; stIcons = o.icons !== false; stLand = o.land !== false; } } catch (e) { /* storage blocked: the defaults */ }
+function lookSave() { try { localStorage.setItem(LOOK_KEY, JSON.stringify({ track: stTrack, icons: stIcons, land: stLand })); } catch (e) { /* storage blocked */ } }
+const WIKI_COLS = ['#6EC1E7', '#4DFFFF', '#FFFFD9', '#FFD98C', '#FF9E59', '#FF738A', '#A188FC'];          // Wikipedia's track maps today (read off a real one, pixel by pixel): tropical depression, tropical storm, Category 1 to 5 of the Saffir-Simpson scale (the winds as a best track holds them, 5 kt apart)
+const wikiClass = (v) => { const k = Math.round(v / 5) * 5; return k < 34 ? 0 : k < 64 ? 1 : k < 83 ? 2 : k < 96 ? 3 : k < 113 ? 4 : k < 137 ? 5 : 6; };
+const wikiColor = (fix) => WIKI_COLS[wikiClass(fix.v)];
+const wikiShape = (th) => (th === 'tc' ? 'circle' : th === 'sc' ? 'square' : 'triangle');          // circle: tropical, square: subtropical, triangle: extratropical, a remnant or other low and a disturbance
+const WIKI_R = { circle: 5, square: 4.4, triangle: 4 };                                            // (a triangle on the real maps is about four fifths of a circle across)
+const pathColor = (fix) => (stTrack === 'wiki' ? wikiColor(fix) : stormColor(fix));
+const FX_INK = '#07101c';
+const darker = (hex, k) => { const n = parseInt(hex.slice(1), 16); return 'rgb(' + [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((c) => Math.round(c * k)).join(',') + ')'; };
+const FX_R = 14;                                                                  // the disc of the symbol (the tails reach twice as far), in pixels
+function cycloneBody(g, R) {                                                      // the symbol of a tropical cyclone: a disc with two curled tails (y down; the tails curl clockwise outward, a northern cyclone's)
+  g.beginPath(); g.moveTo(0, -R);
+  g.arc(0, 0, R, -Math.PI / 2, 0, false);
+  g.bezierCurveTo(1.05 * R, 0.9 * R, 0.5 * R, 1.45 * R, 0.06 * R, 1.95 * R);
+  g.bezierCurveTo(0.4 * R, 1.7 * R, 0.45 * R, 1.15 * R, 0, R);
+  g.arc(0, 0, R, Math.PI / 2, Math.PI, false);
+  g.bezierCurveTo(-1.05 * R, -0.9 * R, -0.5 * R, -1.45 * R, -0.06 * R, -1.95 * R);
+  g.bezierCurveTo(-0.4 * R, -1.7 * R, -0.45 * R, -1.15 * R, 0, -R);
+  g.closePath();
+}
+function drawCyclone(g, x, y, R, ang, sg, fill, text) {                           // the symbol turned by `ang` (a southern cyclone is the mirror image), its intensity upright on it
+  g.save(); g.translate(x, y); g.rotate(ang); if (sg < 0) g.scale(-1, 1);
+  cycloneBody(g, R); g.fillStyle = fill; g.fill(); g.lineJoin = 'round'; g.lineWidth = 1.3; g.strokeStyle = darker(fill, 0.42); g.stroke();
+  g.restore();
+  if (text) {
+    g.save(); g.textAlign = 'center'; g.textBaseline = 'middle'; g.lineJoin = 'round';
+    let fs = R * 1.32; g.font = '800 ' + fs + 'px system-ui, sans-serif'; const w = g.measureText(text).width; if (w > 1.5 * R) { fs *= 1.5 * R / w; g.font = '800 ' + fs + 'px system-ui, sans-serif'; }
+    g.lineWidth = Math.max(2, R * 0.2); g.strokeStyle = darker(fill, 0.42); g.strokeText(text, x, y + fs * 0.04); g.fillStyle = '#ffffff'; g.fillText(text, x, y + fs * 0.04);
+    g.restore();
+  }
+}
+function drawDepRing(g, x, y, R, fill) {                                          // a depression: a ring in its colour with a thin white edge on both sides
+  const w = Math.max(3, R * 0.4);
+  g.save(); g.beginPath(); g.arc(x, y, R - w / 2, 0, Math.PI * 2);
+  g.lineWidth = w + 2.6; g.strokeStyle = 'rgba(255,255,255,.88)'; g.stroke();
+  g.lineWidth = w; g.strokeStyle = fill; g.stroke(); g.restore();
+}
+function iconText(f) {                                                            // what the symbol says: the Saffir-Simpson category (TS below a hurricane) on the scales that have one, the region's own letters on the others (T ST VT SU, CS SCS VSCS, MTS STS TC ITC VITC, 1 to 5)
+  if (SCALE.major != null) return f.v >= 64 ? String(HFStorms.category(f.v).cat) : 'TS';
+  return SCALE.tag[HFStorms.classOf(STORM_BASIN, f.v, 'tc').idx];
+}
+const fxPeriod = (v) => 3.2 - 1.8 * Math.max(0, Math.min(1, (v - 34) / 103));       // seconds a turn takes: 3.2 for a tropical storm, 1.4 for a Category 5
+const FX_LIFE = 3.5;                                                              // seconds a landfall marker lives
+const ease01 = (t) => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
+function drawX(g, x, y, s, lw, fill) {                                            // the X of a landfall: two crossing bars of half-extent s, a dark outline under the colour
+  g.save(); g.translate(x, y); g.lineCap = 'round';
+  for (const [w, c] of [[lw + 6, FX_INK], [lw, fill]]) { g.lineWidth = w; g.strokeStyle = c; g.beginPath(); g.moveTo(-s, -s); g.lineTo(s, s); g.moveTo(s, -s); g.lineTo(-s, s); g.stroke(); }
+  g.restore();
+}
+function drawSquare(g, x, y, h, ang, fill, lw) {
+  g.save(); g.translate(x, y); g.rotate(ang); g.lineJoin = 'miter'; g.beginPath(); g.rect(-h, -h, 2 * h, 2 * h);
+  g.fillStyle = fill; g.fill(); g.lineWidth = lw; g.strokeStyle = FX_INK; g.stroke(); g.restore();
+}
+function drawLandfall(g, x, y, t, fill, small) {                                  // t seconds after the landfall: the X shoots out in 0.09 s, holds a moment, then shrinks into a square over 0.36 s; the square turns and fades in the last 0.9 s (small: the radar floater's, no X)
+  const H0 = small ? 8 : 15, LW = small ? 2.4 : 3.4;
+  if (t < 0 || t > FX_LIFE) return;
+  const tau = Math.max(0, t - 0.14), ang = 3.9 * (tau - 0.12 * (1 - Math.exp(-tau / 0.12))), fade = t < 2.6 ? 1 : 1 - ease01((t - 2.6) / 0.9);
+  g.save(); g.globalAlpha = fade;
+  if (small) { const pop = ease01(t / 0.08); drawSquare(g, x, y, H0 * pop * (t < 0.25 ? 1 + 0.25 * Math.sin(Math.PI * t / 0.25) : 1), ang, fill, LW); }
+  else if (t < 0.5) {
+    const grow = 1 - Math.pow(1 - Math.min(1, t / 0.09), 3), shr = ease01((t - 0.14) / 0.36), s = 70 * grow * (1 - shr) + H0 * 1.1 * shr;
+    g.save(); g.globalAlpha = fade * (1 - ease01((t - 0.2) / 0.3)); drawX(g, x, y, s, 10 * (1 - 0.65 * shr), fill); g.restore();
+    if (shr > 0) { g.save(); g.globalAlpha = fade * shr; drawSquare(g, x, y, H0 * (0.55 + 0.45 * shr), ang, fill, LW); g.restore(); }
+  } else drawSquare(g, x, y, H0, ang, fill, LW);
+  g.restore();
+}
+/* the canvas of the moving things: redrawn every frame while a cyclone has its icon or a marker is alive (about thirty a second for the icons alone), asleep otherwise */
+let fxHeads = [], fxMarks = [], fxRaf = 0, fxDrawnAt = 0, fxLastAt = 0, fxSolo = false, fxOnly = null;
+const fxAng = new Map();                                                          // the turn of each cyclone's icon, by system: it carries on when the storm canvas is redrawn
+function fxWake() { if (!fxRaf) fxRaf = requestAnimationFrame(fxFrame); }
+function fxFrame(now) { fxRaf = 0; fxDraw(now); if (fxActive() && !fxRaf) fxRaf = requestAnimationFrame(fxFrame); }
+function fxShown() { return stormsOn && !!stormMgr && !(flOn && flBare); }
+function fxActive() { return fxShown() && ((stIcons && !flOn && fxHeads.length > 0) || (stLand && fxMarks.length > 0)); }
+function fxDraw(now) {                                                            // one picture: the markers (each by its own clock), then the icons turned a little further
+  const c = fxCanvas, pw = Math.round(W * DPR), ph = Math.round(H * DPR);
+  if (!fxMarks.length && now - fxDrawnAt < 30 && c.width === pw) return;
+  if (c.width !== pw || c.height !== ph) { c.width = pw; c.height = ph; }
+  const g = c.getContext('2d'); g.setTransform(DPR, 0, 0, DPR, 0, 0); g.clearRect(0, 0, W, H);
+  const dt = Math.min(0.1, Math.max(0, (now - (fxLastAt || now)) / 1000)); fxLastAt = now; fxDrawnAt = now;
+  if (!fxShown()) { fxMarks.length = 0; return; }
+  const toPx = (lat, lon) => map.latLngToContainerPoint([lat, lon]);
+  if (stIcons && !flOn) for (const h of fxHeads) {
+    const S = h.S; if (!S.alive) continue;
+    const p = toPx(S.lat, S.lon), sg = S.lat < 0 ? -1 : 1, f = h.f; if (p.x < -60 || p.y < -60 || p.x > W + 60 || p.y > H + 60) continue;
+    const col = pathColor(f);
+    if (f.v < 34) { drawDepRing(g, p.x, p.y, FX_R - 0.5, col); continue; }
+    const a = (fxAng.get(S.id) || 0) - sg * 2 * Math.PI * dt / fxPeriod(f.v); fxAng.set(S.id, a % (2 * Math.PI));
+    drawCyclone(g, p.x, p.y, FX_R, a, sg, col, iconText(f));
+  }
+  fxMarks = fxMarks.filter((m) => (now - m.t0) / 1000 <= FX_LIFE);
+  if (stLand) for (const m of fxMarks) {                                           // (over the icons: a cyclone is still at the coast in the first moments)
+    if (fxSolo && m.id !== fxOnly) continue;                                       // (a system looked at alone: its own markers only)
+    const p = toPx(m.lat, m.lon); if (p.x < -120 || p.y < -120 || p.x > W + 120 || p.y > H + 120) continue;
+    drawLandfall(g, p.x, p.y, Math.max(0, (now - m.t0) / 1000), pathColor(m.f), flOn);
+  }
+}
+const landSeen = new Map();                                                       // per system: where its centre was the hour before and whether that was land, and the hour of its last landfall marker
+function landMarkAdd(S, lat, lon, f) { if (!stLand) return; fxMarks.push({ id: S.id, lat, lon, f, t0: performance.now() }); if (fxMarks.length > 24) fxMarks.shift(); fxWake(); }
+function landCoast(a, b) {                                                        // the coast between two places, the first over water and the second over land: the share of the way and the place, found by halving ten times
+  let dl = b.lon - a.lon; if (dl > 180) dl -= 360; else if (dl < -180) dl += 360;
+  let lo = 0, hi = 1;
+  for (let k = 0; k < 10; k++) { const m = (lo + hi) / 2; if (stormLand(a.lat + (b.lat - a.lat) * m, a.lon + dl * m)) hi = m; else lo = m; }
+  let lon = a.lon + dl * hi; if (lon > 180) lon -= 360; else if (lon < -180) lon += 360;
+  return { k: hi, lat: a.lat + (b.lat - a.lat) * hi, lon };
+}
+const landTropical = (S) => S.alive && S.depNum > 0 && (S.th === 'tc' || S.th === 'sc');
+function landScan() {                                                             // after every simulated hour: a tropical or subtropical cyclone whose centre was over water and is now over land has made landfall (the coast between the two positions found by halving; not twice within six hours)
+  if (!stormMgr) return;
+  const live = new Set();
+  for (const S of stormMgr.systems) {
+    if (!landTropical(S)) continue;
+    live.add(S.id);
+    const land = stormLand(S.lat, S.lon), p = landSeen.get(S.id);
+    if (p && !p.land && land && stormMgr.hour - p.mark >= 6) {
+      const c = landCoast(p, S);
+      landMarkAdd(S, c.lat, c.lon, { v: p.v + (S.v - p.v) * c.k, th: S.th });
+      landSeen.set(S.id, { lat: S.lat, lon: S.lon, land, v: S.v, mark: stormMgr.hour }); continue;
+    }
+    landSeen.set(S.id, { lat: S.lat, lon: S.lon, land, v: S.v, mark: p ? p.mark : -1e9 });
+  }
+  for (const id of Array.from(landSeen.keys())) if (!live.has(id)) landSeen.delete(id);        // (a system that has ended or is not tropical any more, and the ones of a season that is over)
+}
+function landAhead(S, C) {                                                        // the radar floater runs inside the hour between the engine's state now (S) and its look-ahead (C): a landfall in that hour is { k: the share of the hour the centre crosses the coast at, where, the intensity } so that the marker comes when the head gets there, not at the end of the hour
+  if (!landTropical(S) || !(C.th === 'tc' || C.th === 'sc') || stormLand(S.lat, S.lon) || !stormLand(C.lat, C.lon)) return null;
+  const p = landSeen.get(S.id); if (p && stormMgr.hour - p.mark < 6) return null;
+  const c = landCoast(S, C);
+  return { id: S.id, k: c.k, lat: c.lat, lon: c.lon, f: { v: S.v + (C.v - S.v) * c.k, th: C.th } };
+}
+function landFire(S, L) {                                                         // the floater's head has reached the coast: the marker, and a mark that the engine's own look at the end of the hour does not make another
+  landMarkAdd(S, L.lat, L.lon, L.f);
+  const p = landSeen.get(S.id); if (p) p.mark = stormMgr.hour + 1; else landSeen.set(S.id, { lat: S.lat, lon: S.lon, land: false, v: S.v, mark: stormMgr.hour + 1 });
+}
 
 /* ---- the outlook: areas of interest, X's and arrows (the engine's Manager.prototype.outlook makes them, the same for every basin; this block only draws, picks and describes) ---- */
 const OL_COL = { low: '#ffe24d', medium: '#ff9d2e', high: '#ff3b30' }, OL_NAME = { low: 'Low', medium: 'Medium', high: 'High' };      // the National Hurricane Center's yellow, orange and red
@@ -924,12 +1069,12 @@ function drawWindFields(g, toPx, only) {
 function drawStorms() {
   stormsDirty = false;
   const g = stormCanvas.getContext('2d'); g.setTransform(DPR, 0, 0, DPR, 0, 0); g.clearRect(0, 0, W, H);
-  stormHits = [];
-  if (!stormsOn || !stormMgr || (flOn && flBare)) { updateOutlookLegend(false, null); updateWWLegend(); return; }              // (or the floater with its overlays cleared: nothing is drawn over it)              // (storms off: no legend of the outlook either)
+  stormHits = []; fxHeads = [];
+  if (!stormsOn || !stormMgr || (flOn && flBare)) { updateOutlookLegend(false, null); updateWWLegend(); fxDrawnAt = 0; fxWake(); return; }              // (or the floater with its overlays cleared: nothing is drawn over it)              // (storms off: no legend of the outlook either)
   const toPx = (lat, lon) => map.latLngToContainerPoint([lat, lon]);
   olSelCheck();                                                     // (a disturbance picked to look at alone that has formed becomes a cyclone pick here)
   plainCheck();
-  const only = stormSel ? stormSel.id : (flOn && !olSel && !plainSel ? flId : null), aoiKey = olSel ? olSel.key : null, plainId = plainSel ? plainSel.id || plainSel.low : null, solo = only || aoiKey || plainId;       // a selected system is shown alone: every other path, wave, low and area disappears until it is deselected
+  const only = stormSel ? stormSel.id : (flOn && !olSel && !plainSel ? flId : null), aoiKey = olSel ? olSel.key : null, plainId = plainSel ? plainSel.id || plainSel.low : null, solo = only || aoiKey || plainId; fxSolo = !!solo; fxOnly = only;       // a selected system is shown alone: every other path, wave, low and area disappears until it is deselected
   const showWaves = $('stwaves').checked && !solo, showLows = $('stlows').checked && !solo, showDist = $('stdist').checked && !only, showNames = $('stlabels').checked;
   // precursors are one lifecycle: a wave (dashed line) or a low (L) that has the potential to become a cyclone turns into a disturbance (X in a dashed ring), then a depression
   const drawLow = (p, hPa) => {
@@ -980,37 +1125,55 @@ function drawStorms() {
   drawOutlookMarks(g, toPx, marks, showNames);
   const list = stormMgr.systems.filter((S) => (aoiKey || plainId ? false : only ? S.id === only : S.depNum > 0 || (S.alive && S.th !== 'wv'))).sort((a, b) => (a.alive - b.alive) || (a.tdHour - b.tdHour) || (a.born - b.born));
   g.lineJoin = 'round'; g.lineCap = 'round';
+  const wiki = stTrack === 'wiki', icons = stIcons && !flOn;                       // (the icons are not for the radar floater: it has the echoes to look at)
   for (const S of list) {
     const fx = S.fixes, pts = fx.map((f) => { const p = toPx(f.lat, f.lon); return { x: p.x, y: p.y, f }; });
     if (S.alive) { const fp = flPos(S), p = toPx(fp ? fp.lat : S.lat, fp ? fp.lon : S.lon), f = HFStorms.makeFix(S, stormMgr.hour, S.ace); f.lat = fp ? fp.lat : S.lat; f.lon = fp ? fp.lon : S.lon; pts.push({ x: p.x, y: p.y, f, live: true }); }       // (the radar floater says where a system is between two hours)
     if (pts.length === 0) continue;
     if (pts.every((q) => q.x < -60 || q.y < -60 || q.x > W + 60 || q.y > H + 60)) continue;
-    // pre-genesis trail: faint and dotted
     let first = pts.findIndex((q) => q.f.th !== 'wv'); if (first < 0) first = pts.length;
-    if (first > 1) { g.save(); g.setLineDash([2, 4]); g.lineWidth = 1.5; g.strokeStyle = 'rgba(255,255,255,.35)'; g.beginPath(); g.moveTo(pts[0].x, pts[0].y); for (let i = 1; i <= Math.min(first, pts.length - 1); i++) g.lineTo(pts[i].x, pts[i].y); g.stroke(); g.restore(); }
-    const from = Math.max(0, first - 1);
-    // the track: dark halo, then the colour of each leg by the intensity at its end
-    g.lineWidth = 5.5; g.strokeStyle = 'rgba(8,10,16,.6)'; g.beginPath(); g.moveTo(pts[from].x, pts[from].y); for (let i = from + 1; i < pts.length; i++) g.lineTo(pts[i].x, pts[i].y); g.stroke();
-    for (let i = from + 1; i < pts.length; i++) { g.lineWidth = 3; g.strokeStyle = stormColor(pts[i].f); g.beginPath(); g.moveTo(pts[i - 1].x, pts[i - 1].y); g.lineTo(pts[i].x, pts[i].y); g.stroke(); }
-    // advisory dots every three hours: the six-hourly (synoptic) ones are the big dots, the ones between them small, so a peak that comes and goes quickly still shows; the first tropical fix is the white start dot
-    let startDone = false;
-    for (let i = from; i < pts.length; i++) {
-      const q = pts[i], f = q.f; if (q.live || f.th === 'wv') continue;
-      const white = !startDone && (f.th === 'tc' || f.th === 'sc'); if (white) startDone = true;
-      const syn = white || f.h % 6 === 0;
-      stormShape(g, shapeOf(f.th), q.x, q.y, syn ? 4.2 : 2.7, white ? '#ffffff' : stormColor(f), 'rgba(8,10,16,.85)', syn ? 1.3 : 0.9);
-      stormHits.push({ x: q.x, y: q.y, r: syn ? 8 : 6, S, f });
+    if (wiki) {
+      // the Wikipedia track map: a thin white line through the six-hourly fixes (and where the system is now), a dot of one size at each, no outline, in the colour of the Saffir-Simpson class; the weak start of a wave is not on it
+      const w0 = pts.findIndex((q) => q.f.th !== 'wv' || q.f.st === 'DB' || q.f.st === 'LO');       // (it starts where the best track would: a disturbance or a low that was being followed, or the depression itself; a plain wave is not on it)
+      const w = w0 < 0 ? [] : pts.slice(w0).filter((q) => q.live || q.f.h % 6 === 0);
+      if (w.length > 1) { g.lineWidth = 1.9; g.strokeStyle = '#ffffff'; g.beginPath(); w.forEach((q, i) => (i ? g.lineTo(q.x, q.y) : g.moveTo(q.x, q.y))); g.stroke(); }
+      for (const q of w) {
+        if (q.live) continue;
+        const sh = wikiShape(q.f.th); stormShape(g, sh, q.x, q.y, WIKI_R[sh], wikiColor(q.f), null, 0);
+        stormHits.push({ x: q.x, y: q.y, r: 8, S, f: q.f });
+      }
+    } else {
+      // pre-genesis trail: faint and dotted
+      if (first > 1) { g.save(); g.setLineDash([2, 4]); g.lineWidth = 2; g.strokeStyle = 'rgba(255,255,255,.35)'; g.beginPath(); g.moveTo(pts[0].x, pts[0].y); for (let i = 1; i <= Math.min(first, pts.length - 1); i++) g.lineTo(pts[i].x, pts[i].y); g.stroke(); g.restore(); }
+      const from = Math.max(0, first - 1);
+      // the track: dark halo, then the colour of each leg by the intensity at its end
+      g.lineWidth = 7; g.strokeStyle = 'rgba(8,10,16,.6)'; g.beginPath(); g.moveTo(pts[from].x, pts[from].y); for (let i = from + 1; i < pts.length; i++) g.lineTo(pts[i].x, pts[i].y); g.stroke();
+      for (let i = from + 1; i < pts.length; i++) { g.lineWidth = 4; g.strokeStyle = stormColor(pts[i].f); g.beginPath(); g.moveTo(pts[i - 1].x, pts[i - 1].y); g.lineTo(pts[i].x, pts[i].y); g.stroke(); }
+      // advisory dots every three hours: the six-hourly (synoptic) ones are the big dots, the ones between them small, so a peak that comes and goes quickly still shows; the first tropical fix is the white start dot
+      let startDone = false;
+      for (let i = from; i < pts.length; i++) {
+        const q = pts[i], f = q.f; if (q.live || f.th === 'wv') continue;
+        const white = !startDone && (f.th === 'tc' || f.th === 'sc'); if (white) startDone = true;
+        const syn = white || f.h % 6 === 0;
+        stormShape(g, shapeOf(f.th), q.x, q.y, syn ? 5.4 : 3.4, white ? '#ffffff' : stormColor(f), 'rgba(8,10,16,.85)', syn ? 1.5 : 1.1);
+        stormHits.push({ x: q.x, y: q.y, r: syn ? 9 : 7, S, f });
+      }
     }
-    // the live head
+    // the live head: the cyclone's icon on its own canvas (a spinning symbol, a ring for a depression), or, with the icons off or on the radar floater, the marker of its shape
     const last = pts[pts.length - 1];
+    let dx = 15;
     if (S.alive) {
-      const f = last.f; stormShape(g, shapeOf(S.th), last.x, last.y, 8.5, stormColor(f), '#ffffff', 2.2);
-      stormHits.push({ x: last.x, y: last.y, r: 13, S, f, live: true });
+      const f = last.f;
+      if (icons && f.th === 'tc') { fxHeads.push({ S, f }); stormHits.push({ x: last.x, y: last.y, r: f.v < 34 ? 16 : 20, S, f, live: true, icon: true }); dx = f.v < 34 ? 21 : 31; }
+      else {
+        if (wiki) stormShape(g, wikiShape(f.th), last.x, last.y, WIKI_R[wikiShape(f.th)], wikiColor(f), null, 0); else stormShape(g, shapeOf(S.th), last.x, last.y, flOn ? 8.5 : 10.5, stormColor(f), '#ffffff', flOn ? 2.2 : 2.6);
+        stormHits.push({ x: last.x, y: last.y, r: 14, S, f, live: true });
+      }
     }
     if (showNames) {
       let lab = null;
-      if (S.alive) lab = { x: last.x, y: last.y, text: stormShortLabel(S, last.f), dx: 13 };
-      else { const pk = pts.find((q) => q.f.h === S.peakHour && !q.live) || pts[pts.length - 1]; lab = { x: pk.x, y: pk.y, text: stormShortLabel(S, pk.f), dx: 9 }; }
+      if (S.alive) lab = { x: last.x, y: last.y, text: stormShortLabel(S, last.f), dx };
+      else { const pk = pts.find((q) => q.f.h === S.peakHour && !q.live) || pts[pts.length - 1]; lab = { x: pk.x, y: pk.y, text: stormShortLabel(S, pk.f), dx: wiki ? 9 : 11 }; }
       g.font = '600 12.5px system-ui, sans-serif'; g.textAlign = 'left'; g.textBaseline = 'middle';
       g.lineWidth = 3.5; g.strokeStyle = 'rgba(8,10,16,.85)'; g.strokeText(lab.text, lab.x + lab.dx, lab.y); g.fillStyle = '#fff'; g.fillText(lab.text, lab.x + lab.dx, lab.y);
     }
@@ -1022,10 +1185,11 @@ function drawStorms() {
   // the selected fix / storm gets a ring
   if (stormSel) {
     const S = stormMgr.get(stormSel.id); const hit = stormHits.find((hh) => hh.S === S && (stormSel.h < 0 ? hh.live : hh.f && hh.f.h === stormSel.h));
-    if (hit) { g.lineWidth = 2.4; g.strokeStyle = '#ffffff'; g.beginPath(); g.arc(hit.x, hit.y, hit.r + 3, 0, 7); g.stroke(); }
+    if (hit && !hit.icon) { g.lineWidth = 2.4; g.strokeStyle = '#ffffff'; g.beginPath(); g.arc(hit.x, hit.y, hit.r + 3, 0, 7); g.stroke(); }       // (the icon of the live head is selected by being the only one left on the map)
   }
   if (stormSel && stormSel.h < 0 && performance.now() - lastStormCardAt > 400) { lastStormCardAt = performance.now(); fillStormCard(); }
   if (olSel && performance.now() - lastAoiCardAt > 400) { lastAoiCardAt = performance.now(); fillAoiCard(); }
+  fxDrawnAt = 0; fxWake();                                          // (the icons and markers follow what was just drawn)
 }
 function fillStormCard() {
   const card = $('storm-card'); if (!card || !stormSel) return;
