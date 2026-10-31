@@ -3,7 +3,7 @@
 // vendor/leaflet + data/generated/data.json + src/storms.js. No bundler: the template
 // is plain HTML/CSS/JS with placeholders substituted verbatim (the storm ones from src/storm-*.js, src/storm-ui.*) (a template that has
 // no `/*__STORMS__*/` or `/*__STORM_HOOKS__*/` placeholder simply does not get the storm engine / its page hooks yet).
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -19,7 +19,9 @@ function build({ basin = 'atlantic', templatePath = join(ROOT, 'src/template.htm
   const template = readFileSync(templatePath, 'utf8');
   const css = readFileSync(join(ROOT, 'vendor/leaflet/leaflet.css'), 'utf8');
   const js = readFileSync(join(ROOT, 'vendor/leaflet/leaflet.js'), 'utf8');
-  const data = readFileSync(dataPath, 'utf8');
+  let data = readFileSync(dataPath, 'utf8');
+  const mapPath = join(ROOT, 'data/generated', basin + '-summap.json');                                // the Blue Marble of the season summary's map (tools/make_summary_map.mjs), a picture of its own beside the page's: smap, smapBox, smapSize
+  if (existsSync(mapPath)) data = JSON.stringify(Object.assign(JSON.parse(data), JSON.parse(readFileSync(mapPath, 'utf8'))));
   const storms = readFileSync(join(ROOT, 'src/storms.js'), 'utf8');
   if (storms.includes('</script>')) throw new Error('src/storms.js must not contain a closing script tag: it is inlined into a <script>');
   const cities = readFileSync(join(ROOT, 'src/storm-cities.js'), 'utf8').trimEnd();                    // what each city holds (people, income, terrain, coast): the engine's impacts read it; it goes in front of the engine

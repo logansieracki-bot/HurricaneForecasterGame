@@ -14,6 +14,9 @@ SOURCES = {
     # resolution alternative was tried (8192x4096) but it turned out to have clouds baked in, so
     # this basin's imagery went back to this smaller but reliably cloud-free source.
     "blue_marble_2048.jpg": "https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/textures/planets/earth_atmos_2048.jpg",
+    # NASA Blue Marble day map, 4096x2048, cloud-free (the ocean is one flat blue): the season summary's map (tools/make_summary_map.mjs)
+    # turns that blue into the deep navy of Wikipedia's track maps and keeps the land and the shallow-water shades.
+    "earth_day_4096.jpg": "https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/textures/planets/earth_day_4096.jpg",
 }
 
 

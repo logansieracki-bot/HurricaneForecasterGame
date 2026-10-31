@@ -111,8 +111,14 @@ function sumTotals(D) {
 
 /* ---- the map: Blue Marble, and the tracks as Wikipedia's maps draw them ----------------------------------------------------------------------------------------------------------------------------------------- */
 const SUM_REGION = { atlantic: [-102, 6, -7, 59], eastpacific: [-165, -85, 0, 38], westpacific: [105, 180, 0, 52], nio: [42, 100, 0, 30], aus: [95, 172, -36, -4], swio: [32, 100, -38, -2], spac: [160, 236, -36, -2], satl: [-60, 14, -40, -8], med: [-8, 40, 30, 46] };       // (the region a basin's season is usually seen in; it grows to hold every track)
+let sumMapImg = null;
+function sumMapPicture() {                                          // the map's Blue Marble: the page's own embedded picture is lifted and dimmed to sit under the sea-surface colours, so the map has one of its own (tools/make_summary_map.mjs: the same Blue Marble with the deep navy ocean of Wikipedia's track maps); loaded when the card is first opened
+  if (!DATA.smap) return { img: bmImg, box: DATA.bmBox, ready: bmReady || bmImg.complete };
+  if (!sumMapImg) { sumMapImg = new Image(); sumMapImg.onload = () => { if (sumOpen && sumD) sumDrawMap(sumD); }; sumMapImg.src = 'data:image/jpeg;base64,' + DATA.smap; }
+  return { img: sumMapImg, box: DATA.smapBox, ready: sumMapImg.complete && sumMapImg.naturalWidth > 0 };
+}
 function sumRegion(D) {
-  const d = SUM_REGION[STORM_BASIN] || [ST_LON0, ST_LON1, ST_LAT0, ST_LAT1], [BL, BR, BB, BT] = DATA.bmBox;
+  const d = SUM_REGION[STORM_BASIN] || [ST_LON0, ST_LON1, ST_LAT0, ST_LAT1], [BL, BR, BB, BT] = sumMapPicture().box;
   let L = d[0], R = d[1], B = d[2], T = d[3];
   for (const x of D.list) for (const r of x.trk) { L = Math.min(L, r[2] - 4); R = Math.max(R, r[2] + 4); B = Math.min(B, r[1] - 4); T = Math.max(T, r[1] + 4); }
   L = Math.max(L, BL); R = Math.min(R, BR); B = Math.max(B, BB); T = Math.min(T, BT);
@@ -125,9 +131,9 @@ function sumDrawMap(D) {
   const cv = $('sum-map'), W = Math.max(280, Math.round(cv.clientWidth) || 900), reg = sumRegion(D), aspect = (reg.R - reg.L) / (reg.T - reg.B), H = Math.round(W / aspect);
   if (cv.width !== Math.round(W * DPR) || cv.height !== Math.round(H * DPR)) { cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR); }
   cv.style.height = H + 'px';
-  const g = cv.getContext('2d'); g.setTransform(DPR, 0, 0, DPR, 0, 0); g.clearRect(0, 0, W, H); g.fillStyle = '#0b1b2f'; g.fillRect(0, 0, W, H);
-  const [BL, BR, BB, BT] = DATA.bmBox, iw = bmImg.naturalWidth || DATA.bmSize[0], ih = bmImg.naturalHeight || DATA.bmSize[1];
-  if (bmReady || bmImg.complete) { g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high'; g.drawImage(bmImg, (reg.L - BL) / (BR - BL) * iw, (BT - reg.T) / (BT - BB) * ih, (reg.R - reg.L) / (BR - BL) * iw, (reg.T - reg.B) / (BT - BB) * ih, 0, 0, W, H); }
+  const g = cv.getContext('2d'); g.setTransform(DPR, 0, 0, DPR, 0, 0); g.clearRect(0, 0, W, H); g.fillStyle = '#0b0b33'; g.fillRect(0, 0, W, H);
+  const pic = sumMapPicture(), [BL, BR, BB, BT] = pic.box, iw = pic.img.naturalWidth || 1, ih = pic.img.naturalHeight || 1;
+  if (pic.ready) { g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high'; g.drawImage(pic.img, (reg.L - BL) / (BR - BL) * iw, (BT - reg.T) / (BT - BB) * ih, (reg.R - reg.L) / (BR - BL) * iw, (reg.T - reg.B) / (BT - BB) * ih, 0, 0, W, H); }
   const X = (lon) => (lon - reg.L) / (reg.R - reg.L) * W, Y = (lat) => (reg.T - lat) / (reg.T - reg.B) * H, r = Math.max(2.2, W / 380), lw = Math.max(0.9, W / 1000);
   sumHits.map = [];
   g.lineJoin = 'round'; g.lineCap = 'round';
