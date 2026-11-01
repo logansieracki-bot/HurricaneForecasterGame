@@ -345,6 +345,7 @@ async function checkExperiment(page, label) {
   // ---- 2. the Moisture and Wind shear sliders
   const r = await ev(() => {
     const S = window.SSTSIM, $ = (id) => document.getElementById(id), out = {};
+    if (S.storms) S.storms(false);                                    // the environment alone (the storm layer, on by default, moves the humidity a little: the bands below are for the page without it)
     S.setPlaying(false); S.applySeed(4242); S.setPlaying(false); S.advance(24 * 103);
     const slide = (id, v) => { const el = $(id); el.value = String(v); el.dispatchEvent(new Event('input')); };
     const pts = [];
