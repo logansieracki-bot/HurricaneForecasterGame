@@ -64,3 +64,12 @@ build({ basin: 'swio', templatePath: join(ROOT, 'src/template-swio.html'), dataP
 build({ basin: 'spac', templatePath: join(ROOT, 'src/template-spac.html'), dataPath: join(ROOT, 'data/generated/spac-data.json') });
 build({ basin: 'satl', templatePath: join(ROOT, 'src/template-satl.html'), dataPath: join(ROOT, 'data/generated/satl-data.json') });
 build({ basin: 'med', templatePath: join(ROOT, 'src/template-med.html'), dataPath: join(ROOT, 'data/generated/med-data.json') });
+
+// The main menu: index.html (at the root, where the deployed site and the simulators' Menu button expect it) is made from src/menu.html and the picture of its world map
+// (data/generated/menu-art.json, from tools/make_menu_art.mjs): the picture goes in as one data object where the template says /*__MENU_ART__*/.
+{
+  const art = readFileSync(join(ROOT, 'data/generated/menu-art.json'), 'utf8').trim();
+  const html = readFileSync(join(ROOT, 'src/menu.html'), 'utf8').replace('/*__MENU_ART__*/', () => 'const ART = ' + art + ';');
+  writeFileSync(join(ROOT, 'index.html'), html);
+  console.log(`Built ${join(ROOT, 'index.html')} (${(html.length / 1024).toFixed(0)} KB)`);
+}

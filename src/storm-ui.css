@@ -14,10 +14,10 @@ a.btn{color:var(--text);text-decoration:none}
 body.placing .leaflet-container, body.placing #storm-canvas{cursor:crosshair}
 #toast{top:64px}   /* below the season bar */
 /* the layer buttons: the layers that show the weather and the storms, one pill each at the bottom right (the checkboxes they stand for stay in the panel, hidden) */
-#lyr-dock{position:absolute;right:14px;bottom:112px;display:flex;flex-direction:column;align-items:flex-end;gap:6px;z-index:470;pointer-events:none}
-body.steer-on #lyr-dock{bottom:218px}
+#lyr-dock{position:absolute;right:14px;bottom:104px;display:flex;flex-direction:column;align-items:flex-end;gap:6px;z-index:470;pointer-events:none}
+body.steer-on #lyr-dock{bottom:190px}
 .lyr{pointer-events:auto;display:flex;align-items:center;gap:8px;height:32px;padding:0 14px 0 10px;border:1px solid var(--line);border-radius:16px;background:var(--panel);color:var(--text);font:inherit;font-size:12.5px;font-weight:600;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.4);backdrop-filter:blur(8px);white-space:nowrap}
-.lyr svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.lyr svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
 .lyr:hover{background:rgba(255,255,255,.14)}
 .lyr[aria-pressed="true"]{background:var(--ice);color:#141414;border-color:var(--ice)}
 .lyr:disabled{opacity:.45;cursor:default}
@@ -35,19 +35,23 @@ body.steer-on #panel{max-height:calc(100% - 606px)}
 #storm-tip{padding:9px 12px;max-width:236px;pointer-events:none;display:none;z-index:960}
 #storm-tip b{font-size:13px;font-weight:600;display:block}
 #storm-tip div{font-size:11.5px;color:var(--dim);margin-top:3px;line-height:1.5}
-#lg-stack{position:absolute;left:64px;bottom:82px;z-index:900;display:flex;flex-direction:column-reverse;align-items:flex-start;gap:8px;pointer-events:none}
+/* the hover readout stands beside the zoom buttons with a width of its own; the keys of the layers are small and stand over them in the lower left corner (never in the middle of the map) */
+#readout{left:60px;width:262px;min-width:0;box-sizing:border-box}
+.leaflet-bottom.leaflet-left{margin-bottom:16px}
+#lg-stack{position:absolute;left:14px;bottom:98px;z-index:900;display:flex;flex-direction:column-reverse;align-items:flex-start;gap:6px;pointer-events:none}
 #lg-stack .card{position:static}
-#ol-legend, #ww-legend, #wf-legend, #fl-legend, #fl-legend-v, #fl-legend-ir{width:206px;padding:6px 10px 7px;display:none;font-size:11px;line-height:1.4;pointer-events:none}
-#ol-legend b, #ww-legend b, #wf-legend b, #fl-legend b, #fl-legend-v b, #fl-legend-ir b{font-size:11.5px}
-#ol-legend i, #ww-legend i, #wf-legend i{width:20px;height:9px}
-#ol-legend b{font-size:12px;font-weight:600;display:block;margin-bottom:3px}
-#ol-legend div{display:flex;align-items:center;gap:8px;color:var(--dim)}
-#ol-legend i{display:inline-block;width:20px;height:9px;border:2px solid;border-radius:3px;flex:none}
+#fl-legend, #fl-legend-v, #fl-legend-ir{width:206px;padding:6px 10px 7px;display:none;font-size:11px;line-height:1.4;pointer-events:none}
+#fl-legend b, #fl-legend-v b, #fl-legend-ir b{font-size:11.5px}
+#ol-legend, #ww-legend, #wf-legend{width:max-content;max-width:190px;padding:5px 9px 6px;display:none;font-size:10.5px;line-height:1.32;border-radius:10px;pointer-events:none}
+#ol-legend b, #ww-legend b, #wf-legend b{font-size:11px;font-weight:600;display:block;margin:0 0 2px}
+#ol-legend div, #ww-legend div, #wf-legend div{display:flex;align-items:center;gap:6px;color:var(--dim);white-space:nowrap}
+#ol-legend i, #ww-legend i, #wf-legend i{display:inline-block;width:15px;height:8px;border-radius:2px;flex:none}
+#ww-legend i, #wf-legend i{border:1px solid rgba(0,0,0,.4)}
+#ol-legend i{border:2px solid;border-radius:3px}
 #ol-legend i.low{border-color:#ffe24d;background:repeating-linear-gradient(135deg,#ffe24d 0 1.4px,rgba(255,226,77,.1) 1.4px 5px)}
 #ol-legend i.medium{border-color:#ff9d2e;background:repeating-linear-gradient(135deg,#ff9d2e 0 1.7px,rgba(255,157,46,.1) 1.7px 4.6px)}
 #ol-legend i.high{border-color:#ff3b30;background:repeating-linear-gradient(135deg,#ff3b30 0 2px,rgba(255,59,48,.1) 2px 4.2px)}
-#ol-legend small{display:block;font-size:11px;color:var(--dim);margin-top:3px;line-height:1.35}
-#ol-legend u{text-decoration:none;color:var(--text);font-weight:700}
+#ol-legend small, #ww-legend small, #wf-legend small{display:block;font-size:10px;color:var(--dim);margin-top:2px;line-height:1.25}
 #storm-card, #aoi-card{right:324px;top:50%;transform:translateY(-50%);width:262px;padding:12px 14px}
 #storm-card[hidden], #aoi-card[hidden]{display:none}
 #panel.collapsed ~ #storm-card, #panel.collapsed ~ #aoi-card{right:14px}
@@ -138,7 +142,8 @@ body.steer-on #panel{max-height:calc(100% - 606px)}
 #sum-tip b{font-weight:600}
 
 @media (max-width:1040px){
-  #lg-stack{bottom:150px}
+  #readout{bottom:92px}                                   /* (a little above the dock, whose top is at 84px: they never touch) */
+  #lg-stack{bottom:173px}                                 /* (and the keys over the readout, which is up to 73px high) */
   #wf-legend{display:none!important}                      /* (the three keys do not fit one over another on a small screen: the wind field's colours are the storm's own, the watches and warnings' key replaces the outlook's) */
   body.ww-key #ol-legend{display:none!important}
   #season{left:14px;top:209px;transform:none;display:grid;grid-template-columns:repeat(3,1fr);width:max-content;min-width:236px;row-gap:5px;padding:8px 2px;font-size:12px}
@@ -153,8 +158,8 @@ body.steer-on #panel{max-height:calc(100% - 606px)}
 }
 @media (max-width:640px){
   #ww-legend{display:none!important}
-  #lg-stack{bottom:112px}
-  #ol-legend, #ww-legend, #wf-legend{width:190px}
+  #lg-stack{left:14px;bottom:112px}
+  #ol-legend, #ww-legend, #wf-legend{max-width:170px}
   #season{top:192px;font-size:11.5px}
   #storm-card, #aoi-card{left:14px;right:14px;width:auto;bottom:120px}
   #sum-card{left:10px;right:10px;padding:12px 12px 8px}
@@ -171,11 +176,7 @@ body.steer-on #panel{max-height:calc(100% - 606px)}
 /* a basin whose page has no storm climatology yet (STORMS_READY, src/storm-hooks.js) shows none of the storm controls */
 body.no-storms .st-only, body.no-storms #season, body.no-storms #storm-tip, body.no-storms #lg-stack, body.no-storms #storm-card, body.no-storms #aoi-card, body.no-storms #sum-card, body.no-storms #b-place, body.no-storms #place-menu { display: none !important; }
 body.no-waves .st-waves { display: none; }      /* a basin without a wave train of its own (BASINS[..].waves in src/storms.js) has no waves to show or hide */
-/* the key of watches and warnings and of the wind field (the NHC's colours; high wind warning: the National Weather Service's goldenrod) */
-#ww-legend b, #wf-legend b{font-weight:600;display:block;margin:0 0 2px}
-#ww-legend div, #wf-legend div{display:flex;align-items:center;gap:7px;color:var(--dim)}
-#ww-legend i, #wf-legend i{display:inline-block;border-radius:2px;border:1px solid rgba(0,0,0,.4);flex:none}
-#ww-legend small, #wf-legend small{display:block;font-size:10.5px;color:var(--dim);margin-top:2px;line-height:1.3}
+/* the key of watches and warnings and of the wind field: the NHC's colours (extreme wind warning: the National Weather Service's dark orange); their rules are with the other keys, above */
 @media (max-height:820px) and (min-width:641px){#lyr-dock{gap:4px}.lyr{height:28px;font-size:12px;padding:0 12px 0 9px}#panel{max-height:calc(100% - 444px)}body.steer-on #panel{max-height:calc(100% - 554px)}}
 @media (max-height:820px) and (min-width:641px) and (max-width:1040px){#panel{max-height:calc(100% - 524px)}body.steer-on #panel{max-height:calc(100% - 634px)}}
 

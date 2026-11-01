@@ -20,7 +20,7 @@ flBind();                                                         // the radar f
 const LYR = { stens: ['stens'], stcone: ['stcone'], stdens: ['stdens'], stwf: ['stwf'], stww: ['stww'], jetline: ['jetline'], hl: ['highs', 'stlows'], nhc: ['stwaves', 'stdist'], steer: ['steerarrows'] };
 function lyrSync() {
   document.querySelectorAll('#lyr-dock .lyr').forEach((b) => { const ids = LYR[b.dataset.l]; b.setAttribute('aria-pressed', ids.every((id) => $(id).checked) ? 'true' : 'false'); b.disabled = ids.some((id) => $(id).disabled); });
-  const jn = $('jet-note'); if (jn) $('lyr-dock').querySelector('[data-l="jetline"]').title = 'The jet stream: the axis of strongest shear' + (jn.textContent ? ' ' + jn.textContent.trim() : '');
+  const jn = $('jet-note'); if (jn) $('lyr-dock').querySelector('[data-l="jetline"]').title = 'Jet stream' + (jn.textContent ? ' ' + jn.textContent.trim() : '');
 }
 document.querySelectorAll('#lyr-dock .lyr').forEach((b) => {
   const ids = LYR[b.dataset.l];
@@ -33,6 +33,41 @@ window.addEventListener('keydown', (e) => {                                     
   if (e.key === 'Escape') { if (placeMode) placeSet(false); else if (!$('storm-card').hidden || !$('aoi-card').hidden || plainSel) closeStormCard(); else if (sumOpen) closeSummary(); }
   else if (e.key === 'p' || e.key === 'P') placeSet(!placeMode);
 });
+
+/* ---- settings from the menu ------------------------------------------------------------------------------------------------------------------
+   The menu's Begin button opens the page with the settings in its query, only those that differ from the normal:
+     enso (Nino 3.4 at the start, -3..3.4), lock=1 (ENSO stays where it is), warm (-3..4 degC), shear (-20..20 kt), moist (-20..20 %), act (storm activity, 0..3),
+     auto=0 (storms do not form on their own), var, wx, wxs, jets (0..3), sea, feat (0..2), ensoinf (0..4).
+   They are read once, at the start, and set through the controls the model has always read (they stay in the page, in #settings-store, hidden: there is no
+   experiment panel and no seed in what the player sees). A value outside a control's range is brought to the nearest end of it, one that is not a number is
+   ignored, and a page opened without a query (a bookmark, the tests) starts as it always did. A resumed season (?resume=1) brings its own. */
+const MENU_SLIDERS = { warm: 'p-warm', moist: 'p-moist', shear: 'p-shear', var: 'p-var', wx: 'p-wx', wxs: 'p-wxs', jets: 'p-jets', sea: 'p-sea', feat: 'p-feat', ensoinf: 'p-enso', act: 'p-stact' };
+function menuQuery() {
+  const q = new URLSearchParams(location.search), out = { sliders: {}, enso: null, lock: false, auto: true, act: null, any: false };
+  const num = (k) => { if (!q.has(k) || q.get(k).trim() === '') return null; const v = Number(q.get(k)); return Number.isFinite(v) ? v : null; };
+  for (const k in MENU_SLIDERS) {
+    const v = num(k), el = $(MENU_SLIDERS[k]); if (v == null || !el) continue;
+    const c = Math.min(+el.max, Math.max(+el.min, v)); out.any = true;
+    if (k === 'act') out.act = c; else out.sliders[MENU_SLIDERS[k]] = c;
+  }
+  const e = num('enso'); if (e != null) { out.enso = Math.min(3.4, Math.max(-3, Math.round(e * 10) / 10)); out.any = true; }
+  if (q.get('lock') === '1') { out.lock = true; out.any = true; }
+  if (q.get('auto') === '0') { out.auto = false; out.any = true; }
+  return out;
+}
+function menuStart() {                                                           // before the season starts: the sliders, the storm activity and whether storms form on their own
+  const M = menuQuery(); if (!M.any || RESUME) return null;
+  setSliderValues(M.sliders);
+  if (M.act != null) { $('p-stact').value = M.act; $('p-stact').oninput(); }
+  if (!M.auto) { $('st-auto').checked = false; $('st-auto').onchange(); }
+  if (M.enso != null) { ensoHold = true; ensoHeld = M.enso; }                    // the season about to start is made already in that ENSO regime, the lagged responses of the fields included (what a restart with ENSO held does)
+  return M;
+}
+function menuEnso(M) {                                                           // after it: let go of the index unless it is to stay where it is
+  if (!M) return;
+  if (M.enso != null && !M.lock) ensoHold = false;                               // it starts at the chosen state and drifts from there
+  if (M.lock) { $('enso-hold').checked = true; $('enso-hold').onchange(); }
+}
 
 /* ---- save / resume -------------------------------------------------------------------------------------------------------------------------
    A season in progress is kept in localStorage as one JSON text (a few hundred KB): the weather (simCaptureLight(): the generators' states and the
@@ -125,6 +160,7 @@ const STORM_API = {
     return n;
   },
   stormClimGet() { const C = stormClim; stormClim = null; return C ? { n: C.n, steer: Array.from(C.steer), ns: Array.from(C.ns), sst: Array.from(C.sst), rh: Array.from(C.rh), shear: Array.from(C.shear), rel: Array.from(C.rel), ne: Array.from(C.ne) } : null; },
+  menuQuery,
   saveNow, deleteSave, loadSave() { const t = localStorage.getItem(SAVE_KEY), s = t && JSON.parse(t); return s ? { v: s.v, startMs: s.startMs, bytes: t.length, weatherBytes: JSON.stringify(s.weather).length, stormBytes: s.storms.length } : null; },
   saveInfo() { return { stamp: saveStamp, saved: savedStamp, owner: saveOwner, meta: localStorage.getItem(SAVE_META) }; },
   snapSave() { window.__save = JSON.stringify(captureSave()); return window.__save.length; }, snapLoad() { applySave(JSON.parse(window.__save)); return true; }, saveTick() { saveLast = -1e9; saveTick(); },

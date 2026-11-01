@@ -57,11 +57,12 @@ async function checkHumidity(page, label, lat, lon) {
     pressed: document.querySelector('#seg-view button[data-v="humid"]').getAttribute('aria-pressed'),
     caption: document.getElementById('legend-cap').textContent,
     l265: document.getElementById('l265-label').textContent,
+    t265: document.getElementById('l265-label').parentElement.title,
     l2: document.getElementById('l2-label').textContent,
   }));
   check(`[${label}] Humidity button becomes pressed when selected`, state.pressed === 'true');
   check(`[${label}] legend caption switches to the humidity scale`, state.caption === '700 hPa relative humidity, %');
-  check(`[${label}] key-line checkbox label mentions this basin's own %RH threshold`, /^\s*\d+% line \(favorable for development\)\s*$/.test(state.l265));
+  check(`[${label}] key-line checkbox label mentions this basin's own %RH threshold ("${state.l265.trim()}"), and its tooltip says what it means (${state.t265})`, /^\s*\d+% line\s*$/.test(state.l265) && state.t265 === 'favorable for development');
   check(`[${label}] step-line checkbox label mentions its own %RH step`, /^\s*Contour lines every \d+%\s*$/.test(state.l2));
 
   const sample0 = await page.evaluate(([lat, lon]) => window.SSTSIM.sample(lat, lon), [lat, lon]);
@@ -99,11 +100,12 @@ async function checkShear(page, label, S) {
     pressed: document.querySelector('#seg-view button[data-v="shear"]').getAttribute('aria-pressed'),
     caption: document.getElementById('legend-cap').textContent,
     l265: document.getElementById('l265-label').textContent,
+    t265: document.getElementById('l265-label').parentElement.title,
     l2: document.getElementById('l2-label').textContent,
   }));
   check(`[${label}] Wind Shear button becomes pressed when selected`, view.pressed === 'true');
   check(`[${label}] legend caption switches to the wind shear scale`, view.caption === '200–850 hPa wind shear, kt');
-  check(`[${label}] Shear view's key-line checkbox label mentions the 20 kt key, not 26.5 or a %RH key`, /^\s*20 kt line \(disruptive shear threshold\)\s*$/.test(view.l265));
+  check(`[${label}] Shear view's key-line checkbox label mentions the 20 kt key, not 26.5 or a %RH key ("${view.l265.trim()}"; tooltip: ${view.t265})`, /^\s*20 kt line\s*$/.test(view.l265) && view.t265 === 'disruptive shear threshold');
   check(`[${label}] Shear view's step-line checkbox label mentions its 10 kt step`, /^\s*Contour lines every 10 kt\s*$/.test(view.l2));
   const s0 = await ev(([la, lo]) => window.SSTSIM.sample(la, lo), S.pt);
   check(`[${label}] open-ocean wind shear sample is real data in a sane range`, Number.isFinite(s0.shear) && s0.shear >= 0 && s0.shear < 200);
@@ -327,49 +329,18 @@ async function checkShear(page, label, S) {
 // 17.4-19.8 (humidity) and 14.8-20.0 (shear), less than the slider reads only where the field meets its floor (shear) or 100% (humidity).
 async function checkExperiment(page, label) {
   const ev = (fn, arg) => page.evaluate(fn, arg);
-  const BASIC = ['p-ensonow', 'enso-hold', 'p-warm', 'p-moist', 'p-shear'];
-  const ADV = ['p-var', 'p-wx', 'p-wxs', 'p-jets', 'p-sea', 'p-feat', 'p-enso', 'seed-vary', 'steer-depth-row'];
-  const SEED = ['seed', 'b-newseed', 'b-reset'];
-  const look = () => ev(([basic, adv, seed]) => {
+  // ---- 1. the panel is the map's Customization: Experimentation and the seed are not in what the player sees (the settings are chosen in the main menu; the controls the model reads stay in the page, hidden)
+  const lay = await ev(() => {
     const $ = (id) => document.getElementById(id), shown = (id) => { const el = $(id); return !!el && el.offsetParent !== null; };
-    const tabs = [...document.querySelectorAll('#seg-xp button')];
-    return { tabs: tabs.map((b) => b.textContent.trim() + ':' + b.getAttribute('aria-selected') + ':' + b.tabIndex).join(' '), active: document.activeElement && document.activeElement.id,
-      panels: [shown('xp-basic'), shown('xp-adv')], basic: basic.map(shown), adv: adv.map(shown), seed: seed.map(shown) };
-  }, [BASIC, ADV, SEED]);
-  const all = (a, v) => a.every((x) => x === v);
-  const BASIC_STATE = 'Basic:true:0 Advanced:false:-1', ADV_STATE = 'Basic:false:-1 Advanced:true:0';
-
-  // ---- 1. the layout, and what each tab shows
-  const lay = await ev(([basic, adv, seed]) => {
-    const $ = (id) => document.getElementById(id);
-    const home = (id) => { const el = $(id); return !el ? 'missing' : el.closest('#xp-basic') ? 'basic' : el.closest('#xp-adv') ? 'adv' : el.closest('#sec-custom') ? 'custom' : el.closest('#sec-exp') ? 'shared' : 'other'; };
-    return { role: $('seg-xp').getAttribute('role'), tabRoles: [...document.querySelectorAll('#seg-xp button')].map((b) => b.getAttribute('role') + '>' + b.getAttribute('aria-controls')).join(' '),
-      panelRoles: ['xp-basic', 'xp-adv'].map((id) => $(id).getAttribute('role') + '<' + $(id).getAttribute('aria-labelledby')).join(' '),
-      basicHome: basic.map(home), advHome: adv.map(home), seedHome: seed.map(home), basicOrder: [...$('xp-basic').querySelectorAll('input')].map((e) => e.id).join(','),
-      customTabs: document.querySelectorAll('#sec-custom [role=tab], #sec-custom [role=tablist]').length, customSliders: document.querySelectorAll('#sec-custom input[id^="p-"]').length, customLayers: !!document.querySelector('#sec-custom #seg-view'),
-      customDepth: !!document.querySelector('#sec-custom #seg-depth') };
-  }, [BASIC, ADV, SEED]);
-  const t0 = await look();
-  check(`[${label}] Experimentation opens on its Basic tab: only the basic controls show, the Advanced ones are hidden, the seed row is there (${t0.tabs})`, t0.tabs === BASIC_STATE && t0.panels[0] === true && t0.panels[1] === false && all(t0.basic, true) && all(t0.adv, false) && all(t0.seed, true));
-  check(`[${label}] Basic holds exactly Set ENSO now, Keep ENSO at this value, Warming, Moisture and Wind shear, in that order (${lay.basicOrder})`, all(lay.basicHome, 'basic') && lay.basicOrder === BASIC.join(','));
-  check(`[${label}] Advanced holds the rest: year-to-year variability, both day-to-day weather sliders, weather speed, seasonal swing, currents, ENSO influence, the seed nudge and the storm-strength selector`, all(lay.advHome, 'adv'));
-  check(`[${label}] the seed row (seed, New seed, Reset) belongs to neither tab and shows on both`, all(lay.seedHome, 'shared'));
-  check(`[${label}] the tabs are a proper tab list: roles, aria-controls and aria-labelledby line up (${lay.tabRoles}; ${lay.panelRoles})`, lay.role === 'tablist' && lay.tabRoles === 'tab>xp-basic tab>xp-adv' && lay.panelRoles === 'tabpanel<xp-tab-basic tabpanel<xp-tab-adv');
-  check(`[${label}] Customization is unchanged by all this: no tabs, no experiment sliders, still the layer buttons, and the storm-strength selector is not in it`, lay.customTabs === 0 && lay.customSliders === 0 && lay.customLayers && !lay.customDepth);
-  await page.click('#xp-tab-adv');
-  const t1 = await look();
-  check(`[${label}] clicking Advanced swaps the tabs over: the advanced controls show, the basic ones hide, the seed row stays (${t1.tabs})`, t1.tabs === ADV_STATE && t1.panels[0] === false && t1.panels[1] === true && all(t1.basic, false) && all(t1.adv, true) && all(t1.seed, true));
-  await page.click('#xp-tab-basic');
-  const t2 = await look();
-  check(`[${label}] clicking Basic brings the basic controls back (${t2.tabs})`, t2.tabs === BASIC_STATE && all(t2.basic, true) && all(t2.adv, false));
-  await page.focus('#xp-tab-basic'); await page.keyboard.press('ArrowRight'); const k1 = await look();
-  await page.keyboard.press('ArrowRight'); const k2 = await look();
-  await page.keyboard.press('ArrowLeft'); const k3 = await look();
-  await page.keyboard.press('Home'); const k4 = await look();
-  await page.keyboard.press('End'); const k5 = await look();
-  await page.keyboard.press('Home'); const k6 = await look();
-  check(`[${label}] arrow keys, Home and End move between the tabs and focus follows (right ${k1.tabs.startsWith('Basic:false') && k1.active}, right again ${k2.tabs.startsWith('Basic:true') && k2.active}, left ${k3.active}, Home ${k4.active}, End ${k5.active})`,
-    k1.tabs === ADV_STATE && k1.active === 'xp-tab-adv' && k2.tabs === BASIC_STATE && k2.active === 'xp-tab-basic' && k3.tabs === ADV_STATE && k3.active === 'xp-tab-adv' && k4.tabs === BASIC_STATE && k4.active === 'xp-tab-basic' && k5.tabs === ADV_STATE && k5.active === 'xp-tab-adv' && k6.tabs === BASIC_STATE);
+    const MODEL = ['p-ensonow', 'enso-hold', 'p-warm', 'p-moist', 'p-shear', 'p-var', 'p-wx', 'p-wxs', 'p-jets', 'p-sea', 'p-feat', 'p-enso', 'seed-vary', 'seed', 'st-auto', 'p-stact'];
+    const text = [...document.querySelectorAll('#panel *')].filter((e) => e.children.length === 0 && e.offsetParent !== null).map((e) => e.textContent).join(' | ');
+    return { title: document.querySelector('#panel h2').textContent, aria: $('panel').getAttribute('aria-label'), exp: !!$('sec-exp'), seedUi: ['b-newseed', 'b-reset'].filter((i) => !!$(i)), tabs: document.querySelectorAll('#seg-xp, #panel [role=tab], #panel [role=tablist]').length,
+      folds: document.querySelectorAll('#panel .subhead').length, hidden: MODEL.filter((i) => !!$(i) && !shown(i)).length, all: MODEL.length, words: /experiment|seed/i.test(text), view: shown('seg-view'), theme: shown('themes'), depth: shown('seg-depth') && !!document.querySelector('#sec-custom #seg-depth'),
+      store: !!$('settings-store') && getComputedStyle($('settings-store')).display === 'none' };
+  });
+  check(`[${label}] the panel is the map's "Customization" (${lay.title}), with no Experimentation section, no tabs, no folding headers and no seed buttons`, lay.title === 'Customization' && lay.aria === 'Customization' && !lay.exp && lay.tabs === 0 && lay.folds === 0 && lay.seedUi.length === 0);
+  check(`[${label}] nothing of the experiment controls, the seed or the storm-activity settings is shown (${lay.hidden} of ${lay.all} controls are in the page, hidden, for the model to read; no visible text mentions experiments or a seed)`, lay.hidden === lay.all && lay.store && !lay.words);
+  check(`[${label}] Customization still has the layer buttons and the map theme, and the storm-strength selector of the steering arrows is in it (${lay.view}, ${lay.theme}, ${lay.depth})`, lay.view && lay.theme && lay.depth);
 
   // ---- 2. the Moisture and Wind shear sliders
   const r = await ev(() => {
@@ -401,7 +372,7 @@ async function checkExperiment(page, label) {
     // the sliders' own read-outs and the model's parameters
     slide('p-moist', 10); slide('p-shear', -5); out.read1 = [$('p-moist-o').textContent, $('p-shear-o').textContent, S.sliderVals().moisture, S.sliderVals().shearShift];
     slide('p-moist', -5); slide('p-shear', 10); out.read2 = [$('p-moist-o').textContent, $('p-shear-o').textContent, S.sliderVals().moisture, S.sliderVals().shearShift];
-    slide('p-moist', 15); slide('p-shear', 15); slide('p-warm', 1.5); out.warmMoved = S.sliderVals().warming; $('b-reset').click();
+    slide('p-moist', 15); slide('p-shear', 15); slide('p-warm', 1.5); out.warmMoved = S.sliderVals().warming; slide('p-moist', 0); slide('p-shear', 0); slide('p-warm', 0);
     out.reset = [$('p-moist').value, $('p-shear').value, $('p-moist-o').textContent, $('p-shear-o').textContent, S.sliderVals().moisture, S.sliderVals().shearShift, S.sliderVals().warming];
     const afterReset = grab(); out.resetExact = same(afterReset.h, base.h) && same(afterReset.sh, base.sh);
     out.attrs = [$('p-moist').min, $('p-moist').max, $('p-moist').step, $('p-moist').value, $('p-shear').min, $('p-shear').max, $('p-shear').step, $('p-shear').value].join(' ');
@@ -420,7 +391,7 @@ async function checkExperiment(page, label) {
   check(`[${label}] each slider moves only its own field: Moisture leaves shear and sea temperature exactly as they were, Wind shear leaves humidity and temperature`, r.indep.moist && r.indep.shear);
   check(`[${label}] both sliders are monotone point by point (more slider, never less humidity / shear anywhere) and back at 0 every field is exactly what it was`, r.mono['p-moist'] && r.mono['p-shear'] && r.exact);
   check(`[${label}] the read-outs say what they do: ${r.read1[0]} / ${r.read1[1]} and ${r.read2[0]} / ${r.read2[1]}, and the model's parameters follow (${r.read1[2]}, ${r.read1[3]}, ${r.read2[2]}, ${r.read2[3]})`, r.read1[0] === '+10 %' && r.read1[1] === '−5 kt' && r.read1[2] === 10 && r.read1[3] === -5 && r.read2[0] === '−5 %' && r.read2[1] === '+10 kt' && r.read2[2] === -5 && r.read2[3] === 10);
-  check(`[${label}] Reset puts Moisture and Wind shear back to zero (${r.reset[2]}, ${r.reset[3]}) along with Warming (${r.warmMoved} -> ${r.reset[6]}), and the fields come back exactly`, r.reset[0] === '0' && r.reset[1] === '0' && r.reset[2] === '+0 %' && r.reset[3] === '+0 kt' && r.reset[4] === 0 && r.reset[5] === 0 && r.warmMoved === 1.5 && r.reset[6] === 0 && r.resetExact);
+  check(`[${label}] taking Moisture and Wind shear back to zero (${r.reset[2]}, ${r.reset[3]}) along with Warming (${r.warmMoved} -> ${r.reset[6]}) brings the fields back exactly`, r.reset[0] === '0' && r.reset[1] === '0' && r.reset[2] === '+0 %' && r.reset[3] === '+0 kt' && r.reset[4] === 0 && r.reset[5] === 0 && r.warmMoved === 1.5 && r.reset[6] === 0 && r.resetExact);
   await ev(() => { window.SSTSIM.restart(); });
 }
 
@@ -1228,6 +1199,39 @@ const STORM_SPECS = {
   med: { td: [37, 12], sd: [38, 10], low: [41, 6], day: 92, start: [8, 1], seeds: [903, 947, 901] },
 };
 // the basin's own palette and letters: the head of a 105-kt storm is the colour of its class in the region's scheme, the card has the class in its letters on that colour, and the cone's points are lettered the region's way
+// The hover readout, the zoom buttons, the keys of the layers, the layer buttons and the playback dock never lie over one another, with the layers that bring a key on (the readout used to be hidden under the keys)
+async function checkLayout(page, label, prefix) {
+  const sp = prefix === 'atlantic' ? { td: [15, -45], day: 200 } : STORM_SPECS[prefix], size0 = page.viewportSize(), res = [];
+  const id = await page.evaluate(async (q) => {
+    const S = window.SSTSIM, $ = (id) => document.getElementById(id);
+    S.setPlaying(false); S.applySeed(4242); S.setPlaying(false); S.storms(true); S.stormAuto(false); S.tick(24 * q.day);
+    const id = S.stormPlace({ kind: 'td', lat: q.td[0], lon: q.td[1], v: 100 }); S.tick(30); S.stormForce(id, { th: 'tc', v: 120, vr: 120, p: 930 }); S.advance(0);
+    for (const k of ['stww', 'stwf', 'stdist', 'steerarrows']) { const c = $(k); if (c && !c.checked && !c.disabled) c.click(); }
+    return id;
+  }, { td: sp.td, day: sp.day });
+  for (const [w, h] of [[1280, 800], [900, 700], [1920, 1080], [700, 760]]) {
+    await page.setViewportSize({ width: w, height: h });
+    await page.evaluate(async (id) => { const S = window.SSTSIM, st = S.stormState().systems.find((x) => x.id === id); S.map.setView([st.lat, st.lon], 5, { animate: false }); S.advance(0); await new Promise((ok) => setTimeout(ok, 700)); }, id);
+    await page.mouse.move(Math.round(w * 0.55), Math.round(h * 0.45)); await page.waitForTimeout(250);
+    const boxes = await page.evaluate(() => {
+      const out = [], add = (name, e) => { if (!e) return; const cs = getComputedStyle(e), b = e.getBoundingClientRect(); if (cs.display === 'none' || cs.visibility === 'hidden' || b.width < 2 || b.height < 2) return; out.push({ name, l: b.left, t: b.top, r: b.right, b: b.bottom }); };
+      add('readout', document.getElementById('readout')); add('zoom', document.querySelector('.leaflet-control-zoom')); add('dock', document.getElementById('dock')); add('lyr-dock', document.getElementById('lyr-dock'));
+      add('sst-legend', document.getElementById('legend')); add('steer-legend', document.getElementById('steer-legend'));
+      document.querySelectorAll('#lg-stack > .card').forEach((c) => add(c.id, c));
+      const keys = ['ol-legend', 'ww-legend', 'wf-legend'].map((id) => document.getElementById(id)).filter((e) => e && getComputedStyle(e).display !== 'none').map((e) => { const b = e.getBoundingClientRect(); return { id: e.id, w: b.width, r: b.right, h: b.height, fs: parseFloat(getComputedStyle(e).fontSize) }; });
+      return { out, keys, readout: document.getElementById('readout').innerText.replace(/\s+/g, ' ') };
+    });
+    const clash = [];
+    for (let i = 0; i < boxes.out.length; i++) for (let j = i + 1; j < boxes.out.length; j++) { const a = boxes.out[i], b = boxes.out[j]; if (a.l < b.r - 0.5 && b.l < a.r - 0.5 && a.t < b.b - 0.5 && b.t < a.b - 0.5) clash.push(a.name + ' / ' + b.name); }
+    const inside = boxes.out.every((b) => b.l >= -1 && b.t >= -1 && b.r <= w + 1 && b.b <= h + 1);
+    res.push({ w, h, names: boxes.out.map((b) => b.name), clash, inside, readout: boxes.out.some((b) => b.name === 'readout'), keys: boxes.keys });
+  }
+  await page.setViewportSize(size0);
+  await page.evaluate(() => { const S = window.SSTSIM; for (const k of ['stww', 'stwf', 'stdist', 'steerarrows']) { const c = document.getElementById(k); if (c && c.checked && !c.disabled && k !== 'stdist') c.click(); } S.storms(false); S.restart(); });
+  const kk = res.flatMap((x) => x.keys.map((k) => ({ ...k, vw: x.w })));
+  check(`[${label}] the keys of the layers are small and stand in the lower left corner, not in the middle of the map: ${kk.slice(0, 3).map((k) => k.id.replace('-legend', '') + ' ' + Math.round(k.w) + '×' + Math.round(k.h) + ' px, ' + k.fs + ' px type').join('; ')} at ${res[0].w} px wide; the right-most edge of any is ${Math.round(Math.max(...kk.map((k) => k.r)))} px from the left, the widest key ${Math.round(Math.max(...kk.map((k) => k.w)))} px`, kk.length >= 3 && kk.every((k) => k.w <= 200 && k.r <= 216 && k.fs <= 11));
+  check(`[${label}] with the watches and warnings, wind field, outlook and steering keys up, the hover readout, zoom buttons, keys, layer buttons and dock never lie over one another, at ${res.map((x) => x.w + '×' + x.h).join(', ')} (${res.map((x) => x.names.length + ' boxes').join(', ')}${res.some((x) => x.clash.length) ? '; over one another: ' + res.map((x) => x.w + ': ' + x.clash.join(', ')).join('; ') : ''})`, res.every((x) => x.clash.length === 0 && x.inside) && res[0].readout && res[0].names.includes('ww-legend') && res[0].names.includes('wf-legend'));
+}
 async function checkLook(page, label, prefix) {
   const ev = (fn, arg) => page.evaluate(fn, arg);
   await import('../src/storms.js');
@@ -1705,6 +1709,7 @@ async function checkStormsBasin(page, label, prefix) {
     return { same: a === b, ha, mid, kb: Math.round(a.length / 1024) };
   }, { sm: BI.seasonMonth, start: sp.start, day: Math.min(sp.day, 120), td: sp.td });
   check(`[${label}] a season saved at a midnight (hour ${sv.mid}) and resumed continues bit for bit like the uninterrupted one (${sv.kb} KB of storms)`, sv.same && sv.mid < sv.ha);
+  await checkLayout(page, label, prefix);
   await checkLook(page, label, prefix);
   await checkIcons(page, label, prefix);
   await checkImpacts(page, label, prefix);
@@ -1780,8 +1785,8 @@ async function checkStormGate(page, label, dist, forceOff) {
   const stormsDefault = await page.evaluate(() => (window.SSTSIM.storms ? window.SSTSIM.storms() : null));
   check(`[${label}] the storm engine is ${ready ? 'on' : 'off'} by default (the page ${ready ? 'carries' : 'has no'} storm climatology)`, stormsDefault === ready);
   const hasWaves = (await import('../src/storms.js'), globalThis.HFStorms.basinInfo(prefix).waves);
-  const stormUi = await page.evaluate(() => { const vis = (el) => !!el && getComputedStyle(el).display !== 'none'; const g = (id) => document.getElementById(id); return { body: document.body.classList.contains('no-storms'), season: vis(g('season')), place: vis(g('b-place')), menu: vis(g('b-menu')), rows: ['stlabels', 'st-auto'].map((i) => vis(g(i).parentElement)), btns: ['stens', 'stcone', 'stdens', 'nhc'].map((l) => vis(document.querySelector('#lyr-dock [data-l="' + l + '"]'))), always: ['jetline', 'hl', 'steer'].map((l) => vis(document.querySelector('#lyr-dock [data-l="' + l + '"]'))) }; });
-  check(`[${label}] the storm controls (season bar, Place button, Names / automatic storms rows, the Ensembles / Cones / Track density / NHC disturbances buttons) are ${ready ? 'shown' : 'hidden'}, the Jet stream / Highs & lows / Streamlines buttons are there either way (this basin ${hasWaves ? 'has' : 'has no'} wave train), and so is the Menu button`,
+  const stormUi = await page.evaluate(() => { const vis = (el) => !!el && getComputedStyle(el).display !== 'none'; const g = (id) => document.getElementById(id); return { body: document.body.classList.contains('no-storms'), season: vis(g('season')), place: vis(g('b-place')), menu: vis(g('b-menu')), rows: ['stlabels'].map((i) => vis(g(i).parentElement)), btns: ['stens', 'stcone', 'stdens', 'nhc'].map((l) => vis(document.querySelector('#lyr-dock [data-l="' + l + '"]'))), always: ['jetline', 'hl', 'steer'].map((l) => vis(document.querySelector('#lyr-dock [data-l="' + l + '"]'))) }; });
+  check(`[${label}] the storm controls (season bar, Place button, Names row, the Ensembles / Cones / Track density / NHC disturbances buttons) are ${ready ? 'shown' : 'hidden'}, the Jet stream / Highs & lows / Streamlines buttons are there either way (this basin ${hasWaves ? 'has' : 'has no'} wave train), and so is the Menu button`,
     stormUi.body === !ready && stormUi.season === ready && stormUi.place === ready && stormUi.rows.every((v) => v === ready) && stormUi.btns.every((v) => v === ready) && stormUi.always.every((v) => v) && stormUi.menu === true);
 }
 
@@ -1879,7 +1884,7 @@ async function checkAlerts(page, label) {
   const hv = cells[5] ? await (async () => { const q = await ev((pt) => window.SSTSIM.placePx(pt[0], pt[1]), cells[5]); await page.mouse.move(q.x + 30, q.y + 30); await page.mouse.move(q.x, q.y, { steps: 4 }); await page.waitForTimeout(200); return ev(() => { const t = document.getElementById('storm-tip'); return { shown: t.style.display === 'block', title: t.querySelector('b').textContent, body: t.querySelector('div').innerText.replace(/\n/g, ' | ') }; }); })() : null;
   check(`[${label}] hovering the warned land names the alert and its time (${hv && hv.title} | ${hv && hv.body})`, !!hv && hv.shown && hv.title === 'Hurricane Warning' && /hurricane conditions are expected within 36 hours/.test(hv.body) && /issued \d\dz [A-Z][a-z]{2} \d+ \d{4}/.test(hv.body));
   const key1 = await ev(() => { const w = document.getElementById('ww-legend'); return { shown: getComputedStyle(w).display !== 'none', text: w.innerText.replace(/\s+/g, ' '), wf: getComputedStyle(document.getElementById('wf-legend')).display }; });
-  check(`[${label}] the small key shows only while the layer is on and has the NHC's names and the high wind warning ("${key1.text}"; the wind field's key stays hidden: ${key1.wf})`, key1.shown && /Hurricane Watch/.test(key1.text) && /Tropical Storm Watch/.test(key1.text) && /Hurricane Warning/.test(key1.text) && /Tropical Storm Warning/.test(key1.text) && /High Wind Warning/.test(key1.text) && /Hurricane Watch \+ TS Warning/.test(key1.text) && /Issued \d\dZ/.test(key1.text) && key1.wf === 'none');
+  check(`[${label}] the small key shows only while the layer is on and has the NHC's names and the extreme wind warning ("${key1.text}"; the wind field's key stays hidden: ${key1.wf})`, key1.shown && /Hurricane Watch/.test(key1.text) && /Tropical Storm Watch/.test(key1.text) && /Hurricane Warning/.test(key1.text) && /Tropical Storm Warning/.test(key1.text) && /Extreme Wind Warning/.test(key1.text) && /Hurricane Watch \+ TS Warning/.test(key1.text) && /Issued \d\dZ/.test(key1.text) && key1.wf === 'none');
   // not per storm: picking the hurricane (or the other storm) leaves the alerts as they are, and both storms are in them
   const before = await ev(() => window.SSTSIM.wwState()), qa = await ev((id) => window.SSTSIM.stormPx(id), setup.a);
   await page.mouse.click(qa.x, qa.y); await page.waitForTimeout(300);
@@ -2112,9 +2117,8 @@ async function checkSteering(page, label, S) {
   check(`[${label}] every floating card is a direct child of the page, so the playback dock, the toast and the attribution show while the steering legend is hidden (its markup is closed)`, await ev(() => ['clock', 'panel', 'readout', 'legend', 'steer-legend', 'toast', 'city-tip', 'attr', 'dock'].every((id) => document.getElementById(id).parentElement === document.body) && (() => { const d = document.getElementById('dock'), r = d.getBoundingClientRect(); return getComputedStyle(d).display !== 'none' && r.width > 100 && r.height > 20; })()));
   const u0 = await ui();
   check(`[${label}] "Steering arrows" and "Highs" checkboxes exist and start unchecked; the speed legend starts hidden`, u0.arrows === false && u0.highs === false && !u0.legend);
-  check(`[${label}] the storm-strength selector lives in Experimentation > Advanced (not in Customization), always shown there whether or not the arrows are on`, await ev(() => { const r = document.getElementById('steer-depth-row'); return !!r && !!r.closest('#xp-adv') && !r.closest('#sec-custom') && getComputedStyle(r).display !== 'none'; }));
-  // the selector sits in the Advanced tab: show it (a real click on a hidden button would wait forever) before using it
-  const pickDepth = async (d) => { await ev(() => { document.getElementById('sec-exp').classList.remove('collapsed'); window.SSTSIM.setXpTab('adv'); }); await page.click(`#seg-depth button[data-d="${d}"]`); };
+  check(`[${label}] the storm-strength selector lives in Customization, always shown there whether or not the arrows are on`, await ev(() => { const r = document.getElementById('steer-depth-row'); return !!r && !!r.closest('#sec-custom') && r.offsetParent !== null; }));
+  const pickDepth = async (d) => { await page.click(`#seg-depth button[data-d="${d}"]`); };
   await lyrSet(page, 'highs', true);
   const uH = await ui();
   check(`[${label}] ticking only "Highs" does not bring up the steering legend`, uH.highs && !uH.legend);
@@ -2131,7 +2135,6 @@ async function checkSteering(page, label, S) {
   check(`[${label}] each storm-strength button selects its layer and renames the legend (weak 850-700, medium 850-500, strong 850-200 hPa)`, caps.shallow && caps.medium && caps.deep);
   const ends = await ev(() => { const c = document.getElementById('steer-legend-canvas'), g = c.getContext('2d'); return [...g.getImageData(0, 5, 1, 1).data].slice(0, 3).concat([...g.getImageData(c.width - 1, 5, 1, 1).data].slice(0, 3)); });
   check(`[${label}] the legend colour runs from indigo at 0 kt (${ends.slice(0, 3)}) to white-hot at 70+ kt (${ends.slice(3)})`, ends[2] >= 200 && ends[0] <= 140 && ends[3] >= 240 && ends[4] >= 200 && ends[5] >= 220);
-  check(`[${label}] the day-to-day slider's label says it drives shear, steering and highs, and the speed slider's says jet, steering and highs`, await ev(() => document.querySelector('label[for="p-wxs"]').textContent === 'Day-to-day weather (shear, steering, highs)' && document.querySelector('label[for="p-jets"]').textContent === 'Weather speed (jet, steering, highs)'));
   check(`[${label}] there is no separate high-strength control (the shared day-to-day slider is the only one)`, await ev(() => !document.querySelector('#panel input[id*="high"][type="range"]')));
 
   // ---- 2. the arrows on the real pixels of their canvas
@@ -2602,7 +2605,7 @@ async function checkBasin(label, dist, extra) {
   await page.waitForFunction(() => window.__ready === true, { timeout: 15000 });
   await page.waitForTimeout(1000);
   if (process.env.ONLY_FN) {                                                          // ONLY_FN='summary,icons' runs just those check functions of the page, without the shared checks before them (a working aid; CI runs everything)
-    const prefix = BASIN_PREFIX[label], FN = { summary: () => checkSummary(page, label), icons: () => checkIcons(page, label, prefix), look: () => checkLook(page, label, prefix), impacts: () => checkImpacts(page, label, prefix), basin: () => checkStormsBasin(page, label, prefix) };
+    const prefix = BASIN_PREFIX[label], FN = { summary: () => checkSummary(page, label), icons: () => checkIcons(page, label, prefix), look: () => checkLook(page, label, prefix), layout: () => checkLayout(page, label, prefix), settings: () => checkExperiment(page, label), impacts: () => checkImpacts(page, label, prefix), basin: () => checkStormsBasin(page, label, prefix) };
     for (const f of process.env.ONLY_FN.split(',')) await FN[f]();
     check(`[${label}] loads with no JS errors`, errors.length === 0); if (errors.length) console.log('  ' + errors.join('\n  '));
     await browser.close(); return;
@@ -2645,14 +2648,8 @@ async function checkBasin(label, dist, extra) {
   }
   check(`[${label}] all theme buttons switch without errors`, errors.length === 0);
 
-  // Panel: Customization / Experimentation split, Experimentation starts closed.
-  const customCollapsed = await page.evaluate(() => document.getElementById('sec-custom').classList.contains('collapsed'));
-  const expCollapsed = await page.evaluate(() => document.getElementById('sec-exp').classList.contains('collapsed'));
-  check(`[${label}] Customization section starts open`, !customCollapsed);
-  check(`[${label}] Experimentation section starts closed`, expCollapsed);
-  await page.click('#sec-exp button.subhead');
-  const expCollapsedAfter = await page.evaluate(() => document.getElementById('sec-exp').classList.contains('collapsed'));
-  check(`[${label}] Experimentation section opens on click`, !expCollapsedAfter);
+  // Panel: it is the map's Customization (the settings are chosen in the main menu), and it starts open.
+  check(`[${label}] the Customization panel starts open`, await page.evaluate(() => !document.getElementById('panel').classList.contains('collapsed') && !document.getElementById('sec-custom').classList.contains('collapsed')));
   await checkExperiment(page, label);
 
   // ENSO: "Set ENSO now" is a slider that forces the Nino 3.4 index directly (soft ceiling, not
@@ -3648,26 +3645,144 @@ await checkBasin('Mediterranean', MED_DIST, async (page, label) => {
   await checkStormsBasin(page, label, 'med');
 });
 
-// Main menu: basin/mode select, disabled cards stay disabled, Start navigates to the built basin.
-async function checkMenu(basinCardText, expectedDistSuffix) {
-  const menuErrors = [];
-  const menuBrowser = await chromium.launch(launchOpts);
-  const menuPage = await menuBrowser.newPage({ viewport: { width: 1000, height: 700 } });
-  menuPage.on('pageerror', (e) => menuErrors.push(e.message));
-  await menuPage.goto(pathToFileURL(join(ROOT, 'index.html')).href, { waitUntil: 'load' });
+// Main menu (Isobar): home -> discipline -> basin on the map and the settings -> Begin opens the built basin. Severe and Forecaster are "soon" and cannot be picked.
+const MENU_URL = pathToFileURL(join(ROOT, 'index.html')).href;
+const menuGo = async (pg, basinId) => { await pg.click('#play'); await pg.click('#d-tropical'); if (basinId) await pg.click(`.basin[data-id="${basinId}"]`); };
+async function checkMenuBasin(basinId, name, expectedDistSuffix) {
+  const errors = [], browser = await chromium.launch(launchOpts), pg = await browser.newPage({ viewport: { width: 1100, height: 760 } });
+  pg.on('pageerror', (e) => errors.push(e.message));
+  await pg.goto(MENU_URL, { waitUntil: 'load' });
+  await menuGo(pg);
+  check(`[menu -> ${name}] Begin is disabled with no basin picked`, await pg.isDisabled('#start'));
+  await pg.click(`.basin[data-id="${basinId}"]`);
+  const info = await pg.evaluate(() => ({ name: document.querySelector('#binfo .g-head b').textContent, pressed: [...document.querySelectorAll('.basin[aria-pressed="true"]')].map((b) => b.dataset.id) }));
+  check(`[menu -> ${name}] picking it on the map selects it alone and names it (${info.name})`, info.name === name && info.pressed.length >= 1 && info.pressed.every((x) => x === basinId));
+  check(`[menu -> ${name}] Begin is enabled once the basin is picked`, !(await pg.isDisabled('#start')));
+  await Promise.all([pg.waitForNavigation({ waitUntil: 'load' }), pg.click('#start')]);
+  await pg.waitForFunction(() => window.__ready === true, { timeout: 30000 });
+  check(`[menu -> ${name}] Begin opens the simulator, which loads clean, with no settings in its address (${pg.url().split('/').pop()})`, pg.url().endsWith(expectedDistSuffix) && errors.length === 0);
+  await browser.close();
+}
+async function checkMenu() {
+  const errors = [], browser = await chromium.launch(launchOpts), pg = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+  pg.on('pageerror', (e) => errors.push(e.message)); pg.on('console', (m) => { if (m.type() === 'error' && /index\.html/.test(m.location().url)) errors.push('console: ' + m.text()); });
+  await pg.route('**://**/*', (r) => (r.request().url().startsWith('file://') ? r.continue() : r.abort()));      // (the simulator pages ask for online imagery: not in a test)
+  await pg.goto(MENU_URL, { waitUntil: 'load' });
+  const vis = (sel) => pg.evaluate((q) => { const e = document.querySelector(q); return !!e && e.offsetParent !== null; }, sel);
+  const txt = () => pg.evaluate(() => document.body.innerText);
 
-  check(`[menu -> ${basinCardText}] Start disabled with nothing picked`, await menuPage.isDisabled('#start'));
-  // Every basin card is enabled now; "Forecaster" (the other mode) is the one remaining
-  // disabled card in the whole menu, so it's what proves a disabled card can't be selected.
-  await menuPage.click('button.card:has-text("Forecaster")').catch(() => {});
-  check('disabled mode card ("coming soon") cannot be selected', (await menuPage.getAttribute('button.card:has-text("Forecaster")', 'aria-pressed')) === 'false');
-  await menuPage.click(`button.card:has-text("${basinCardText}")`);
-  await menuPage.click('button.card:has-text("Simulation")');
-  check(`[menu -> ${basinCardText}] Start enabled once basin + mode picked`, !(await menuPage.isDisabled('#start')));
-  await Promise.all([menuPage.waitForNavigation({ waitUntil: 'load' }), menuPage.click('#start')]);
-  await menuPage.waitForFunction(() => window.__ready === true, { timeout: 15000 });
-  check(`[menu -> ${basinCardText}] Start navigates to the simulator, which loads clean`, menuPage.url().endsWith(expectedDistSuffix) && menuErrors.length === 0);
-  await menuBrowser.close();
+  // home: the brand, the version, no sign-in, nothing about tropical cyclones in the name
+  const home = await pg.evaluate(() => ({ title: document.title, word: document.getElementById('word').getAttribute('aria-label'), ver: document.getElementById('ver').textContent, foot: document.querySelector('footer').innerText, text: document.body.innerText, pw: document.querySelectorAll('input[type=password], input[type=email]').length }));
+  check(`[menu] home: the brand is "${home.title}" (not "Hurricane Forecaster", nothing tropical in the name), the version reads ${home.ver} in the top bar and "${home.foot.split('\n')[0]}" below`, home.title === 'Isobar' && home.word === 'Isobar' && home.ver === '0.01A' && /0\.01A/.test(home.foot) && !/hurricane|tropical|cyclone/i.test(home.title + home.word));
+  check('[menu] home: there is no sign-in or account form (that waits for a domain of its own)', home.pw === 0 && !/sign in|log in|login|password/i.test(home.text));
+  check('[menu] home: Play is there and the discipline, basin and settings screens are not shown yet', (await vis('#play')) && !(await vis('#s-disc')) && !(await vis('#s-pick')));
+
+  // discipline: Tropical opens, Severe is coming soon and cannot be picked
+  await pg.click('#play');
+  const disc = await pg.evaluate(() => ({ trop: !document.getElementById('d-tropical').disabled, sev: document.getElementById('d-severe').disabled, soon: /soon/i.test(document.getElementById('d-severe').innerText), hash: location.hash }));
+  check(`[menu] discipline: Tropical can be picked, Severe is marked Soon and disabled (${disc.trop}, ${disc.sev}, ${disc.soon})`, disc.trop && disc.sev && disc.soon && disc.hash === '#disc');
+  await pg.click('#d-severe', { force: true, timeout: 2000 }).catch(() => {});
+  check('[menu] discipline: pressing Severe does nothing (the screen stays)', (await vis('#s-disc')) && !(await vis('#s-pick')));
+  await pg.click('#d-tropical');
+  check('[menu] the basin screen opens at #tropical', (await vis('#s-pick')) && (await pg.evaluate(() => location.hash)) === '#tropical');
+  await pg.goBack(); await pg.waitForTimeout(150);
+  const back1 = (await vis('#s-disc')) && !(await vis('#s-pick'));
+  await pg.goBack(); await pg.waitForTimeout(150);
+  const back2 = (await vis('#s-home')) && !(await vis('#s-disc'));
+  await pg.goForward(); await pg.goForward(); await pg.waitForTimeout(150);
+  check(`[menu] the browser's Back and Forward buttons walk through the screens (back to the discipline: ${back1}, back to home: ${back2}, forward again: ${await vis('#s-pick')})`, back1 && back2 && (await vis('#s-pick')));
+  await pg.click('#back'); await pg.click('#back');
+  check('[menu] the Back button of the page walks back, screen by screen, to home', (await vis('#s-home')) && !(await vis('#back')));
+  await menuGo(pg);
+
+  // the basin screen: nine basins on the world map, nothing picked, Simulation the only mode, no climate buttons, no seed
+  const pick = await pg.evaluate(() => {
+    const ids = [...new Set([...document.querySelectorAll('.basin')].map((b) => b.dataset.id))], world = document.getElementById('world').getBoundingClientRect();
+    const inside = [...document.querySelectorAll('.basin')].every((b) => { const r = b.getBoundingClientRect(); return r.left >= world.left - 1 && r.right <= world.right + 1 && r.top >= world.top - 1 && r.bottom <= world.bottom + 1; });
+    const modes = [...document.querySelectorAll('#seg-mode button')].map((b) => b.textContent.trim().replace(/\s+/g, ' ') + ':' + b.disabled + ':' + b.getAttribute('aria-pressed'));
+    const text = document.body.innerText;
+    return { ids, inside, picked: document.querySelectorAll('.basin[aria-pressed="true"]').length, start: document.getElementById('start').disabled, modes, hint: document.getElementById('hint').textContent, overlord: /overlord/i.test(text), climate: /climate/i.test(text), seed: /seed/i.test(text) || !!document.getElementById('seed'), img: document.getElementById('worldimg').naturalWidth };
+  });
+  check(`[menu] basin screen: the nine basins are on the world map and inside it (${pick.ids.join(', ')}), none picked, Begin disabled ("${pick.hint}")`, pick.ids.length === 9 && pick.inside && pick.picked === 0 && pick.start && pick.img > 1000);
+  check(`[menu] the modes are ours: ${pick.modes.join(' / ')} (not Overlord), and there are no climate buttons and no seed anywhere`, pick.modes.join(' / ') === 'Simulation:false:true / Forecaster Soon:true:false' && !pick.overlord && !pick.climate && !pick.seed);
+  await pg.click('#seg-mode button[data-m="forecaster"]', { force: true, timeout: 2000 }).catch(() => {});
+  check('[menu] Forecaster ("soon") cannot be picked', (await pg.getAttribute('#seg-mode button[data-m="forecaster"]', 'aria-pressed')) === 'false' && (await pg.getAttribute('#seg-mode button[data-m="sim"]', 'aria-pressed')) === 'true');
+
+  // what a basin holds: the real averages of the basin and its season's months
+  await pg.click('.basin[data-id="wpac"]');
+  const gl = await pg.evaluate(() => ({ name: document.querySelector('#binfo .g-head b').textContent, tiles: [...document.querySelectorAll('#binfo .g-tiles div')].map((d) => d.querySelector('b').textContent + ' ' + d.querySelector('span').textContent), months: [...document.querySelectorAll('#binfo .months i')].map((m, i) => m.classList.contains('on') ? i : -1).filter((i) => i >= 0).join(',') }));
+  check(`[menu] picking the Western Pacific shows its real averages (${gl.tiles.join(', ')}) and its season (months ${gl.months})`, gl.name === 'Western Pacific' && gl.tiles.join('|') === '25 Named storms|16 Typhoons|9.1 Major|289 ACE' && gl.months === '5,6,7,8,9,10,11');
+  await pg.click('.basin[data-id="spac"]');
+  const spac = await pg.evaluate(() => ({ n: document.querySelectorAll('.basin[data-id="spac"]').length, on: [...document.querySelectorAll('.basin[data-id="spac"]')].every((b) => b.getAttribute('aria-pressed') === 'true'), others: document.querySelectorAll('.basin[aria-pressed="true"]:not([data-id="spac"])').length }));
+  check(`[menu] the South Pacific crosses the date line: its two parts on the map are one choice (${spac.n} parts, both lit: ${spac.on})`, spac.n === 2 && spac.on && spac.others === 0);
+
+  // the settings: the basic ones, the advanced ones behind a fold, and what they say
+  const set0 = await pg.evaluate(() => ({ adv: document.getElementById('adv').open, advIds: [...document.querySelectorAll('#adv input[type=range]')].map((i) => i.id.slice(2)).join(','), basicIds: [...document.querySelectorAll('#basic input[type=range]')].map((i) => i.id.slice(2)).join(','), drift: [...document.querySelectorAll('#seg-drift button')].map((b) => b.textContent.trim() + ':' + b.getAttribute('aria-pressed')).join(' / '), auto: document.getElementById('m-auto').checked, enso: document.getElementById('m-enso-o').textContent, query: window.ISOBAR.query() }));
+  check(`[menu] settings: basic = ${set0.basicIds}; Advanced is folded and holds ENSO (${set0.drift}) and ${set0.advIds}`, !set0.adv && set0.basicIds === 'warm,shear,moist,act' && set0.drift === 'Drifts naturally:true / Locked:false' && set0.advIds === 'var,ensoinf,wx,wxs,jets,sea,feat' && set0.auto && set0.enso === 'Random start');
+  check(`[menu] settings: untouched, nothing travels to the simulator (query "${set0.query}")`, set0.query === '');
+  const setv = (id, v) => pg.evaluate(([id, v]) => { const el = document.getElementById(id); el.value = String(v); el.dispatchEvent(new Event('input', { bubbles: true })); }, [id, v]);
+  await pg.click('#enso-chips button[data-e="1.2"]');
+  const e1 = await pg.evaluate(() => ({ v: document.getElementById('m-enso').value, o: document.getElementById('m-enso-o').textContent, chips: [...document.querySelectorAll('#enso-chips button')].map((b) => b.getAttribute('aria-pressed')).join(',') }));
+  check(`[menu] the El Niño button sets the ENSO slider to +1.2 and says so (${e1.o}), and only that button is lit (${e1.chips})`, e1.v === '1.2' && e1.o === 'Moderate El Niño (+1.2)' && e1.chips === 'false,false,false,true');
+  await setv('m-enso', -2.3);
+  const e2 = await pg.evaluate(() => ({ o: document.getElementById('m-enso-o').textContent, chips: [...document.querySelectorAll('#enso-chips button')].map((b) => b.getAttribute('aria-pressed')).join(',') }));
+  check(`[menu] the ENSO slider takes any value (${e2.o}); no button is lit for a value of its own (${e2.chips})`, e2.o === 'Very strong La Niña (−2.3)' && e2.chips === 'false,false,false,false');
+  await pg.click('#enso-chips button[data-e="rand"]');
+  check('[menu] Random puts ENSO back to a random start', (await pg.textContent('#m-enso-o')) === 'Random start' && (await pg.evaluate(() => window.ISOBAR.query())) === '');
+  await pg.click('#enso-chips button[data-e="-1.2"]'); await setv('m-warm', 1.5); await setv('m-shear', -8); await setv('m-moist', 6); await setv('m-act', 2);
+  await pg.click('#adv summary'); await pg.click('#seg-drift button[data-d="lock"]'); await setv('m-var', 2); await setv('m-sea', 1.25); await setv('m-ensoinf', 1.5); await pg.click('label.sw');
+  const outs = await pg.evaluate(() => ['warm', 'shear', 'moist', 'act', 'var', 'sea', 'ensoinf'].map((k) => document.getElementById('m-' + k + '-o').textContent).join(' | '));
+  const q1 = await pg.evaluate(() => window.ISOBAR.query());
+  check(`[menu] the settings read out as numbers ("${outs}") and travel as a query of only what differs from the normal ("${q1}")`, outs === '+1.5 °C | −8 kt | +6 % | 2.0× | 2.0× | 1.25× | 1.5×' && q1 === 'enso=-1.2&lock=1&warm=1.5&shear=-8&moist=6&act=2&var=2&ensoinf=1.5&sea=1.25&auto=0');
+  await pg.click('#reset');
+  const r1 = await pg.evaluate(() => ({ q: window.ISOBAR.query(), enso: document.getElementById('m-enso-o').textContent, drift: document.getElementById('seg-drift').querySelector('[aria-pressed="true"]').dataset.d, auto: document.getElementById('m-auto').checked, warm: document.getElementById('m-warm-o').textContent }));
+  check(`[menu] Reset takes every setting back to the normal (query "${r1.q}", ENSO ${r1.enso}, ${r1.drift}, storms on their own ${r1.auto})`, r1.q === '' && r1.enso === 'Random start' && r1.drift === 'drift' && r1.auto && r1.warm === '+0.0 °C');
+
+  // the slider shows how far from normal it is, and a basin's pick survives the settings
+  await setv('m-warm', 2);
+  const lit = await pg.evaluate(() => { const el = document.getElementById('m-warm'); return [el.style.getPropertyValue('--a'), el.style.getPropertyValue('--b'), el.parentElement.style.getPropertyValue('--d')].map((x) => parseFloat(x).toFixed(1)).join(' '); });
+  check(`[menu] a slider lights its track between the normal and its value, and marks the normal (${lit})`, lit === '42.9 71.4 42.9');
+  await pg.click('#reset');
+
+  // the settings arrive in the simulator: pressed Begin, the page applies them through the controls the model reads
+  await pg.click('.basin[data-id="atlantic"]'); await pg.click('#enso-chips button[data-e="1.2"]'); await setv('m-warm', 0.5); await setv('m-shear', 8); await setv('m-moist', -6); await setv('m-act', 1.5); await pg.click('label.sw');
+  await pg.click('#adv summary', { timeout: 3000 }).catch(() => {}); await setv('m-var', 2); await setv('m-wx', 0.5); await setv('m-wxs', 1.5); await setv('m-jets', 0.5); await setv('m-sea', 1.2); await setv('m-feat', 0.8); await setv('m-ensoinf', 1.6);
+  const open = await pg.evaluate(() => document.getElementById('adv').open); if (!open) await pg.click('#adv summary');
+  await pg.click('#seg-drift button[data-d="lock"]');
+  const want = await pg.evaluate(() => window.ISOBAR.query());
+  await Promise.all([pg.waitForNavigation({ waitUntil: 'load' }), pg.click('#start')]);
+  await pg.waitForFunction(() => window.__ready === true, { timeout: 30000 });
+  const got = await pg.evaluate(() => { const S = window.SSTSIM, g = (id) => document.getElementById(id); S.setPlaying(false); const h0 = S.state().simHour, n0 = S.enso().n34; S.tick(24 * 12);
+    return { url: location.search.slice(1), v: S.sliderVals(), enso: S.enso(), n0, act: g('p-stact').value, actO: g('p-stact-o').textContent, auto: g('st-auto').checked, seeds: S.stormState().seeds, outs: ['p-warm-o', 'p-shear-o', 'p-moist-o'].map((i) => g(i).textContent).join(' '), gauge: g('enso-v').textContent + ' ' + g('enso-l').textContent, q: S.menuQuery(), h0, h1: S.state().simHour }; });
+  check(`[menu] Begin opens the simulator with the settings in its address ("${got.url}")`, got.url === want);
+  check(`[menu] the simulator applies them: warming ${got.v.warming}, shear ${got.v.shearShift}, moisture ${got.v.moisture}, variability ${got.v.variability}, humidity weather ${got.v.synoptic}, shear weather ${got.v.shearSynoptic}, weather speed ${got.v.jetSpeed}, seasonal swing ${got.v.seasonal}, currents ${got.v.features}, El Niño influence ${got.v.enso}`,
+    got.v.warming === 0.5 && got.v.shearShift === 8 && got.v.moisture === -6 && got.v.variability === 2 && got.v.synoptic === 0.5 && got.v.shearSynoptic === 1.5 && got.v.jetSpeed === 0.5 && got.v.seasonal === 1.2 && got.v.features === 0.8 && got.v.enso === 1.6 && got.outs === '+0.5 °C +8 kt −6 %');
+  check(`[menu] ... ENSO starts at +1.2 and stays there, locked (${got.n0}, then ${got.enso.n34} twelve days later; "${got.gauge}"), storm activity is ${got.act}× (${got.actO}) and storms do not form on their own (${got.auto}; seeds made: ${JSON.stringify(got.seeds)})`,
+    got.n0 === 1.2 && got.enso.n34 === 1.2 && got.enso.hold === true && got.act === '1.5' && got.actO === '1.5×' && got.auto === false && Object.values(got.seeds).every((n) => n === 0) && got.h1 > got.h0);
+  // a value out of range is brought to the end of its control, one that is not a number is ignored, drifting ENSO starts in its regime and moves
+  const odd = pg.url().split('?')[0];
+  const pg2 = await browser.newPage({ viewport: { width: 1280, height: 800 } }), e2s = []; pg2.on('pageerror', (e) => e2s.push(e.message));
+  await pg2.goto(odd + '?warm=99&shear=abc&moist=-500&act=-5&enso=9&sea=&var=1e9', { waitUntil: 'load' }); await pg2.waitForFunction(() => window.__ready === true, { timeout: 30000 });
+  const clamp = await pg2.evaluate(() => { const S = window.SSTSIM; S.setPlaying(false); const n0 = S.enso().n34; S.tick(24 * 30); return { v: S.sliderVals(), act: document.getElementById('p-stact').value, q: S.menuQuery().enso, n0, n1: S.enso().n34, hold: S.enso().hold, lag6: S.enso().lag6 }; });
+  check(`[menu] out-of-range values are brought to the end of their control (warming ${clamp.v.warming} of 4, moisture ${clamp.v.moisture} of -20, activity ${clamp.act}, ENSO ${clamp.q} of 3.4, variability ${clamp.v.variability} of 3), a word instead of a number is ignored (shear ${clamp.v.shearShift}), no page error (${e2s.length})`,
+    clamp.v.warming === 4 && clamp.v.moisture === -20 && clamp.act === '0' && clamp.q === 3.4 && clamp.v.variability === 3 && clamp.v.shearShift === 0 && e2s.length === 0);
+  check(`[menu] an ENSO chosen without locking starts in that regime (${clamp.n0}, the lagged responses too: ${clamp.lag6.toFixed(1)}) and drifts away from it (${clamp.n1.toFixed(2)} a month later; held: ${clamp.hold})`, Math.abs(clamp.n0 - 3.4) < 1e-6 && Math.abs(clamp.lag6 - 3.4) < 1e-4 && clamp.hold === false && Math.abs(clamp.n1 - 3.4) > 0.05);
+  await pg2.close();
+  await pg.goto(MENU_URL, { waitUntil: 'load' });
+
+  // phone and tablet: the world turns into a list of nine, nothing scrolls sideways
+  const lay = [];
+  for (const [w, h] of [[390, 844], [820, 1000], [1280, 800], [1920, 1080]]) {
+    await pg.setViewportSize({ width: w, height: h }); await menuGo(pg).catch(() => {}); await pg.waitForTimeout(120);
+    lay.push(await pg.evaluate(() => { const b = [...document.querySelectorAll('.basin')].filter((x) => x.offsetParent !== null), r = (e) => e.getBoundingClientRect(), p = r(document.getElementById('settings')), st = r(document.getElementById('start'));
+      return { w: innerWidth, noScroll: document.documentElement.scrollWidth <= innerWidth + 1, basins: new Set(b.map((x) => x.dataset.id)).size, inView: b.every((x) => r(x).left >= -1 && r(x).right <= innerWidth + 1), panel: p.left >= -1 && p.right <= innerWidth + 1, start: st.width > 60 && st.left >= 0 && st.right <= innerWidth + 1, img: getComputedStyle(document.getElementById('worldimg')).display }; }));
+    await pg.goto(MENU_URL, { waitUntil: 'load' });
+  }
+  check(`[menu] layout at ${lay.map((l) => l.w).join(', ')} px: no sideways scrolling, all nine basins reachable and inside the screen, the settings panel and Begin inside it (${lay.map((l) => l.basins + (l.img === 'none' ? ' as a list' : ' on the map')).join('; ')})`,
+    lay.every((l) => l.noScroll && l.basins === 9 && l.inView && l.panel && l.start) && lay[0].img === 'none' && lay[2].img !== 'none');
+  check(`[menu] no page error or console error on the way (${errors.length})`, errors.length === 0);
+  if (errors.length) console.log('  ' + errors.join('\n  '));
+  await browser.close();
 }
 // Save / resume: a season left in progress waits behind the menu's Continue card and comes back as it was; a new game deletes it.
 // One browser context shares localStorage between the pages, as one browser does between the menu and the simulator.
@@ -3695,7 +3810,7 @@ async function checkSave() {
 
   // the menu with nothing saved
   const m0 = await open(MENU);
-  const none = await m0.evaluate(() => ({ hidden: document.getElementById('continue').hidden, cls: document.getElementById('shell').classList.contains('has-save') }));
+  const none = await m0.evaluate(() => ({ hidden: document.getElementById('continue').hidden, cls: document.body.classList.contains('has-save') }));
   check('[save] the menu has no Continue card while nothing is saved', none.hidden && !none.cls);
   await m0.close();
 
@@ -3722,17 +3837,17 @@ async function checkSave() {
   const geom = [];
   for (const [w, h] of [[1280, 800], [390, 844]]) {
     await p1.setViewportSize({ width: w, height: h }); await p1.waitForTimeout(150);
-    geom.push(await p1.evaluate(() => { const r = (id) => document.getElementById(id).getBoundingClientRect(), c = r('continue'), b = r('basins'); return { w: innerWidth, side: c.left >= b.right - 1 && c.top < b.bottom, above: c.bottom <= b.top + 1, inside: c.left >= 0 && c.right <= innerWidth + 1 }; }));
+    geom.push(await p1.evaluate(() => { const r = (id) => document.getElementById(id).getBoundingClientRect(), c = r('continue'), pl = r('play'); return { w: innerWidth, below: c.top >= pl.bottom - 1, inside: c.left >= 0 && c.right <= innerWidth + 1, noScroll: document.documentElement.scrollWidth <= innerWidth + 1 }; }));
   }
   await p1.setViewportSize({ width: 1280, height: 800 });
-  check(`[save] the Continue card sits beside the picker on a wide screen (${geom[0].side}) and above the basin grid on a phone (${geom[1].above}), inside the screen in both`, geom[0].side && geom[0].inside && geom[1].above && geom[1].inside);
-  check('[save] with a season saved, the hint under Start says that a new game replaces it', await (async () => {
-    await p1.click('button.card:has-text("Atlantic")'); await p1.click('button.card:has-text("Simulation")');
+  check(`[save] the Continue card sits under the Play button on a wide screen (${geom[0].below}) and on a phone (${geom[1].below}), inside the screen in both, with no sideways scrolling`, geom.every((g) => g.below && g.inside && g.noScroll));
+  check('[save] with a season saved, the hint by Begin says that a new game replaces it', await (async () => {
+    await p1.click('#play'); await p1.click('#d-tropical'); await p1.click('.basin[data-id="atlantic"]');
     return /replaces your saved Atlantic \d{4} season/.test(await p1.textContent('#hint'));
   })());
 
   // Continue: the page comes back paused, on exactly the season that was left
-  await p1.click('button.card:has-text("Atlantic")');                       // (a toggle: nothing is picked now)
+  await p1.click('#brand');                                                  // (the logo goes home, where the Continue card is)
   await Promise.all([p1.waitForNavigation({ waitUntil: 'load', timeout: 20000 }), p1.click('#rs-go')]);
   await p1.waitForFunction(() => window.__ready === true, { timeout: 30000 });
   const back = await snap(p1);
@@ -3766,7 +3881,7 @@ async function checkSave() {
   // a new game deletes the save
   await Promise.all([p1.waitForNavigation({ waitUntil: 'load', timeout: 20000 }), p1.click('#b-menu')]);
   const had = await meta(p1);
-  await p1.click('button.card:has-text("Atlantic")'); await p1.click('button.card:has-text("Simulation")');
+  await p1.click('#play'); await p1.click('#d-tropical'); await p1.click('.basin[data-id="atlantic"]');
   await Promise.all([p1.waitForNavigation({ waitUntil: 'load', timeout: 20000 }), p1.click('#start')]);
   await p1.waitForFunction(() => window.__ready === true, { timeout: 30000 });
   const gone = await p1.evaluate(() => ({ meta: localStorage.getItem('hf-save-meta'), save: localStorage.getItem('hf-save'), playing: document.getElementById('ic-pause').style.display !== 'none', url: location.href }));
@@ -3835,16 +3950,18 @@ async function checkSave() {
   if (errors.length) console.log('  ' + errors.join('\n  '));
   await browser.close();
 }
-await checkSave();
-await checkMenu('Atlantic', 'atlantic-sst-simulator.html');
-await checkMenu('Eastern Pacific', 'eastpacific-sst-simulator.html');
-await checkMenu('Western Pacific', 'westpacific-sst-simulator.html');
-await checkMenu('Northern Indian Ocean', 'nio-sst-simulator.html');
-await checkMenu('Australian Region', 'aus-sst-simulator.html');
-await checkMenu('South-West Indian Ocean', 'swio-sst-simulator.html');
-await checkMenu('South Pacific', 'spac-sst-simulator.html');
-await checkMenu('South Atlantic', 'satl-sst-simulator.html');
-await checkMenu('Mediterranean', 'med-sst-simulator.html');
+const SKIP = (process.env.SKIP || '').split(',');                                   // SKIP='save,menu' leaves those out (a working aid; CI runs them all)
+if (!SKIP.includes('save')) await checkSave();
+if (!SKIP.includes('menu')) await checkMenu();
+if (!SKIP.includes('menu')) await checkMenuBasin('atlantic', 'Atlantic', 'atlantic-sst-simulator.html');
+if (!SKIP.includes('menu')) await checkMenuBasin('epac', 'Eastern Pacific', 'eastpacific-sst-simulator.html');
+if (!SKIP.includes('menu')) await checkMenuBasin('wpac', 'Western Pacific', 'westpacific-sst-simulator.html');
+if (!SKIP.includes('menu')) await checkMenuBasin('nio', 'Northern Indian Ocean', 'nio-sst-simulator.html');
+if (!SKIP.includes('menu')) await checkMenuBasin('aus', 'Australian Region', 'aus-sst-simulator.html');
+if (!SKIP.includes('menu')) await checkMenuBasin('swio', 'South-West Indian Ocean', 'swio-sst-simulator.html');
+if (!SKIP.includes('menu')) await checkMenuBasin('spac', 'South Pacific', 'spac-sst-simulator.html');
+if (!SKIP.includes('menu')) await checkMenuBasin('satl', 'South Atlantic', 'satl-sst-simulator.html');
+if (!SKIP.includes('menu')) await checkMenuBasin('med', 'Mediterranean', 'med-sst-simulator.html');
 
 if (failed) {
   console.error(`\n${failed} check(s) failed.`);

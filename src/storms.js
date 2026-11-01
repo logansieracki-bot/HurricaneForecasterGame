@@ -483,8 +483,9 @@ function structureParams() {
       recover: { max: 200, d0: 0.4, p: 0.5, min: 2, lag: 0.1, inj: 0.3, keep: 12, min0: 2e-5 },
     },
     // watches and warnings (alertsOf), the NHC's: a warning is for conditions EXPECTED within 36 hours of the onset of tropical-storm-force winds, a watch for conditions POSSIBLE within 48; a cell the forecast's wind radius reaches (expected: plus
-    // mExp of the cone's error circle [its share, nmi added], possible: plus mPos) gets one; once there, one stays while the threat is anywhere in the next keepH hours; a post-tropical cyclone's large field makes a high wind warning (hwwH hours ahead, kept to hwwKeep)
-    alerts: { cell: 0.125, warnH: 36, watchH: 48, keepH: 72, mExp: [0.5, 10], mPos: [1.1, 25], hwwH: 24, hwwKeep: 48, hwwM: 0.3 },
+    // mExp of the cone's error circle [its share, nmi added], possible: plus mPos) gets one; once there, one stays while the threat is anywhere in the next keepH hours; an extreme wind warning is for sustained winds of ewwV kt (115 mph) or more about to arrive: the ground the eyewall of a major hurricane is about to cross, ewwH hours ahead (kept to ewwKeep),
+    // above every other code; the footprint of those winds is the 64 kt radius scaled down by how fast the wind falls off, plus ewwM of the cone's error circle [its share, nmi added]
+    alerts: { cell: 0.125, warnH: 36, watchH: 48, keepH: 72, mExp: [0.5, 10], mPos: [1.1, 25], ewwV: 100, ewwH: 6, ewwKeep: 9, ewwM: [0.5, 5] },
     // the cone of uncertainty (coneOf): the NHC's mean track errors (nautical miles) by hour, a circle of that size round each forecast point; the points; how far a new cone moves from the last one
     cone: { h: [0, 12, 24, 36, 48, 60, 72, 96, 120], nmi: [8, 26, 41, 55, 70, 88, 102, 151, 220], pts: [12, 24, 36, 48, 72, 96, 120], blend: [6, 36, 0.5], minAlive: 0.5 },
   };
@@ -1947,16 +1948,18 @@ function coneOf(E, par, prev, scale) {
    The cones of all the active cyclones (the consensus track, intensity and wind radii every hour to 72, each with the NHC's error circle) become one map of alerts on a grid in (longitude, Mercator y), an eighth of a degree a cell, land or sea (the page paints
    only the land and the coast). For each cell and each cone: Te, the first hour the forecast's 34 kt radius plus a part of the error circle (the winds are expected there) reaches the cell, and Tp, the same with all of the error circle (they are possible).
    Hurricane force the same with the 64 kt radius (a storm forecast at 60 kt or more counts for half of its 50 kt radius). The codes: 1 tropical storm watch, 2 hurricane watch, 3 tropical storm warning, 4 hurricane watch with a tropical storm warning,
-   5 hurricane warning, 6 high wind warning (a post-tropical or remnant cyclone's field, Th within 24 hours). A warning is Te <= 36 h, a watch Tp <= 48 h; the NHC times both from the onset of tropical-storm-force winds, so a hurricane warning is the cell
+   5 hurricane warning, 6 extreme wind warning (sustained winds of 115 mph, 100 kt, or more expected within a few hours: the eyewall of a major hurricane about to cross; the highest of all, it wins wherever it overlaps another, and it is short-fused: ewwH hours). A warning is Te <= 36 h, a watch Tp <= 48 h; the NHC times both from the onset of tropical-storm-force winds, so a hurricane warning is the cell
    where hurricane force is expected and tropical-storm force arrives within 36 hours. The last issue is remembered (prev): a cell that had a warning keeps one while the threat is anywhere in the next 72 hours, a watch likewise, so an area is not dropped
    and picked up again as the forecast wobbles; it is cancelled when the forecast no longer reaches it (the storm has passed or has dissipated). Overlapping cyclones take the higher code. */
 const unmercY = (y) => (2 * Math.atan(Math.exp(y * DEG)) - Math.PI / 2) / DEG;
-const ALERT_RANK = [0, 2, 3, 4, 5, 6, 1];                                        // the order of severity of the codes (a high wind warning is the least)
+const ALERT_RANK = [0, 2, 3, 4, 5, 6, 7];                                        // the order of severity of the codes (an extreme wind warning is above every other)
 function alertsOf(cones, env, par, prev) {
   const A = par.alerts, K = par.cone, d = A.cell, H = Math.min(A.keepH, 72);
   const cs = (cones || []).filter((C) => C && C.line && C.line.length > 1);
   if (!cs.length) return { init: cones && cones[0] ? cones[0].init : null, cell: d, x0: 0, y0: 0, nx: 0, ny: 0, code: new Uint8Array(0), at: () => 0, n: 0 };
-  const tracks = cs.map((C) => { const L = []; for (let t = 0; t <= H && t < C.line.length; t++) { const q = C.line[t], cone = coneRadius(K, t) * 60, post = q.th === 'ex' || q.th === 'nl', r34 = q.r34 > 0 ? q.r34 : q.v >= 30 ? 25 : 0, hr = q.v >= 64 ? q.r64 : q.v >= 60 ? 0.5 * q.r50 : 0; L.push({ lat: q.lat, lon: q.lon, post, r34, r64: q.r64 > 1 ? q.r64 : 0, hr, cone, v: q.v }); } return L; });
+  const tracks = cs.map((C) => { const L = []; for (let t = 0; t <= H && t < C.line.length; t++) { const q = C.line[t], cone = coneRadius(K, t) * 60, post = q.th === 'ex' || q.th === 'nl', r34 = q.r34 > 0 ? q.r34 : q.v >= 30 ? 25 : 0, hr = q.v >= 64 ? q.r64 : q.v >= 60 ? 0.5 * q.r50 : 0;
+      const xo = q.r64 > 1 && q.r50 > q.r64 * 1.02 ? clamp(Math.log(64 / 50) / Math.log(q.r50 / q.r64), 0.35, 1.2) : 0.6, r100 = !post && q.v >= A.ewwV && q.r64 > 1 ? Math.max(6, q.r64 * Math.pow(64 / A.ewwV, 1 / xo)) * (0.35 + 0.65 * smooth01(q.v, A.ewwV, A.ewwV + 8)) : 0;       // (the cone has no 100 kt radius: it is the 64 kt one brought in by the way the wind falls off between the 50 and the 64 kt radii)
+      L.push({ lat: q.lat, lon: q.lon, post, r34, r64: q.r64 > 1 ? q.r64 : 0, r100, hr, cone, v: q.v }); } return L; });
   let la0 = 90, la1 = -90, lo0 = 1e9, lo1 = -1e9;
   for (const L of tracks) { L.bb = [90, -90, 1e9, -1e9]; for (const q of L) { const reach = (Math.max(q.r34, 25) + A.mPos[0] * q.cone + A.mPos[1] + 15) / 60, lr = reach / Math.max(0.3, Math.cos(q.lat * DEG)); la0 = Math.min(la0, q.lat - reach); la1 = Math.max(la1, q.lat + reach); lo0 = Math.min(lo0, q.lon - lr); lo1 = Math.max(lo1, q.lon + lr); L.bb[0] = Math.min(L.bb[0], q.lat - reach); L.bb[1] = Math.max(L.bb[1], q.lat + reach); L.bb[2] = Math.min(L.bb[2], q.lon - lr); L.bb[3] = Math.max(L.bb[3], q.lon + lr); } }
   const B = env && env.box; if (B) { la0 = Math.max(la0, B.lat0); la1 = Math.min(la1, B.lat1); lo0 = Math.max(lo0, B.lon0); lo1 = Math.min(lo1, B.lon1); }
@@ -1968,10 +1971,11 @@ function alertsOf(cones, env, par, prev) {
       const lon = x0 + (i + 0.5) * d, pc = prev && prev.at ? prev.at(lat, lon) : 0; let best = 0;
       for (const L of tracks) {
         if (lat < L.bb[0] || lat > L.bb[1] || lon < L.bb[2] || lon > L.bb[3]) continue;                // (a cell far from this storm's whole swath)
-        let Te = 1e9, Tp = 1e9, Th = 1e9, hurrE = false, hurrP = false;
+        let Te = 1e9, Tp = 1e9, Tx = 1e9, hurrE = false, hurrP = false;
         for (let t = 0; t < L.length; t++) {
           const q = L[t], dn = Math.hypot((lon - q.lon) * cl, (lat - q.lat) * 60);
-          if (q.post) { if (Th === 1e9 && q.r34 > 0 && dn <= q.r34 + A.hwwM * q.cone + 10) Th = t; continue; }
+          if (q.post) continue;                                                                   // (a post-tropical cyclone gets no alert from here)
+          if (Tx === 1e9 && q.r100 > 0 && t <= A.ewwKeep && dn <= q.r100 + A.ewwM[0] * q.cone + A.ewwM[1]) Tx = t;
           if (Te === 1e9 && q.r34 > 0 && dn <= q.r34 + A.mExp[0] * q.cone + A.mExp[1]) Te = t;
           if (Tp === 1e9 && q.r34 > 0 && dn <= q.r34 + A.mPos[0] * q.cone + A.mPos[1]) Tp = t;
           if (q.r64 > 0 && dn <= q.r64 + A.mExp[0] * q.cone + A.mExp[1]) hurrE = true;
@@ -1981,7 +1985,7 @@ function alertsOf(cones, env, par, prev) {
         const warn = Te <= A.warnH || (warnHad && Te <= A.keepH), watch = warn || Tp <= A.watchH || (watchHad && Tp <= A.keepH);
         let c = 0;
         if (warn && hurrE) c = 5; else if (warn) c = hurrP ? 4 : 3; else if (watch) c = hurrP ? 2 : 1;
-        else if (Th <= A.hwwH || (pc === 6 && Th <= A.hwwKeep)) c = 6;
+        if (Tx <= A.ewwH || (pc === 6 && Tx <= A.ewwKeep)) c = 6;                                 // the extreme wind warning over any other
         if (ALERT_RANK[c] > ALERT_RANK[best]) best = c;
       }
       code[j * nx + i] = best;

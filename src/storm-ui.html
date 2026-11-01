@@ -1,27 +1,27 @@
 <!--[panel]-->
-        <label class="chk st-only st-waves"><input type="checkbox" id="stwaves" checked><span> Tropical waves (dashed lines)</span></label>
-        <label class="chk st-only"><input type="checkbox" id="stlows" checked><span> Lows (L), with sea-level pressure</span></label>
-        <label class="chk st-only"><input type="checkbox" id="stdist" checked><span> Areas of interest (outlook): where a depression could form in 2 and 7 days</span></label>
+        <label class="chk st-only st-waves"><input type="checkbox" id="stwaves" checked><span> Tropical waves</span></label>
+        <label class="chk st-only"><input type="checkbox" id="stlows" checked><span> Lows</span></label>
+        <label class="chk st-only"><input type="checkbox" id="stdist" checked><span> Areas of interest</span></label>
         <label class="chk st-only"><input type="checkbox" id="stlabels" checked><span> Storm names</span></label>
         <div class="row st-only">
           <div class="sl"><span>Storm paths</span></div>
           <div class="seg" id="seg-track" role="group" aria-label="Storm path style">
-            <button data-t="default" aria-pressed="true" title="Our own paths: a dark outline, a large dot every six hours (00, 06, 12, 18Z) and a small one between">Default</button><button data-t="wiki" aria-pressed="false" title="As the track maps on Wikipedia draw them: a thin white line, one size of dot every six hours coloured by the Saffir-Simpson scale, or by the region's own scale in the colours of its table (West Pacific, North Indian Ocean, Australian region, South-West Indian Ocean, South Pacific), triangles (extratropical) and squares (subtropical) in their intensity colour, no outlines">Wiki</button>
+            <button data-t="default" aria-pressed="true" title="A dark outline, a large dot every six hours">Default</button><button data-t="wiki" aria-pressed="false" title="A thin white line and one size of dot, as on Wikipedia's track maps">Wiki</button>
           </div>
         </div>
         <div class="row st-only">
           <div class="sl"><span>Paths shown</span></div>
           <div class="seg" id="seg-shown" role="group" aria-label="Which storm paths are shown">
-            <button data-s="season" aria-pressed="true" title="Every path of the season, the finished ones too, until the year turns">Whole season</button><button data-s="active" aria-pressed="false" title="Only the storms that are active now (their whole path so far); a finished storm's path goes when it dissipates">Active only</button>
+            <button data-s="season" aria-pressed="true" title="Every path of the season">Whole season</button><button data-s="active" aria-pressed="false" title="Only the storms that are active">Active only</button>
           </div>
         </div>
-        <label class="chk st-only"><input type="checkbox" id="sticons" checked><span> Current-position icons: a spinning cyclone with its intensity (a ring for a depression)</span></label>
-        <label class="chk st-only"><input type="checkbox" id="stland" checked><span> Landfall markers: a flash, then a spinning square where a cyclone comes ashore</span></label>
-        <label class="chk st-only"><input type="checkbox" id="stens"><span> Ensembles: a fan of tracks for the system you select</span></label>
-        <label class="chk st-only"><input type="checkbox" id="stcone"><span> Cones: the cone of uncertainty of the cyclone you select</span></label>
-        <label class="chk st-only"><input type="checkbox" id="stdens" disabled><span> Track density: where the ensembles agree (red) and spread</span></label>
-        <label class="chk st-only"><input type="checkbox" id="stwf"><span> Wind fields: how far the 34, 50 and 64 kt winds reach round a storm</span></label>
-        <label class="chk st-only"><input type="checkbox" id="stww"><span> Watches and warnings for the coasts and the land inland</span></label>
+        <label class="chk st-only"><input type="checkbox" id="sticons" checked><span> Current-position icons</span></label>
+        <label class="chk st-only"><input type="checkbox" id="stland" checked><span> Landfall markers</span></label>
+        <label class="chk st-only"><input type="checkbox" id="stens"><span> Ensembles</span></label>
+        <label class="chk st-only"><input type="checkbox" id="stcone"><span> Cones</span></label>
+        <label class="chk st-only"><input type="checkbox" id="stdens" disabled><span> Track density</span></label>
+        <label class="chk st-only"><input type="checkbox" id="stwf"><span> Wind fields</span></label>
+        <label class="chk st-only"><input type="checkbox" id="stww"><span> Watches and warnings</span></label>
 <!--[advanced]-->
           <label class="chk st-only"><input type="checkbox" id="st-auto" checked><span> Storms form on their own</span></label>
           <div class="row st-only">
@@ -29,24 +29,23 @@
             <input id="p-stact" type="range" min="0" max="3" step="0.1" value="1">
           </div>
 <!--[cards]-->
-<div id="season" class="card" role="status" aria-label="Season totals"><span id="se-year">{{BASIN_LABEL}}</span><span><b id="se-dep">0</b>DEP</span><span><b id="se-named">0</b>NAMED</span><span><b id="se-hurr">0</b>HURR</span><span><b id="se-major">0</b>MAJOR</span><span><b id="se-c5">0</b>CAT 5</span><span><b id="se-ace">0.0</b>ACE</span><button id="se-sum" type="button" aria-expanded="false" aria-controls="sum-card" title="Season summary: totals against the real normals, the ACE graph and every storm of the season">Summary</button></div>
+<div id="season" class="card" role="status" aria-label="Season totals"><span id="se-year">{{BASIN_LABEL}}</span><span><b id="se-dep">0</b>DEP</span><span><b id="se-named">0</b>NAMED</span><span><b id="se-hurr">0</b>HURR</span><span><b id="se-major">0</b>MAJOR</span><span><b id="se-c5">0</b>CAT 5</span><span><b id="se-ace">0.0</b>ACE</span><button id="se-sum" type="button" aria-expanded="false" aria-controls="sum-card" title="Season summary">Summary</button></div>
 <div id="storm-tip" class="card" role="tooltip"><b></b><div></div></div>
 <div id="lyr-dock" role="group" aria-label="Map layers">
-  <button class="lyr st-only" data-l="stens" aria-pressed="false" title="A fan of ensemble tracks for the system you select"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20C6 13 9 8 12 4M5 20C8 14 13 10 19 8M5 20C9 17 15 15 20 15"/></svg><span>Ensembles</span></button>
-  <button class="lyr st-only" data-l="stcone" aria-pressed="false" title="The cone of uncertainty of the cyclone you select"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12 20 5v14z"/></svg><span>Cones</span></button>
-  <button class="lyr st-only" data-l="stdens" aria-pressed="false" title="Where the ensembles agree (red) and spread" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="10.5"/></svg><span>Track density</span></button>
-  <button class="lyr st-only" data-l="stwf" aria-pressed="false" title="Wind fields: how far the 34, 50 and 64 kt winds reach round a storm (the one you select, or every storm)"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="2"/><path d="M12 4a8 8 0 0 1 8 8M12 20a8 8 0 0 1-8-8M12 8a4 4 0 0 1 4 4M12 16a4 4 0 0 1-4-4"/></svg><span>Wind fields</span></button>
-  <button class="lyr st-only" data-l="stww" aria-pressed="false" title="Watches and warnings for the coasts and the land inland: hurricane and tropical storm, high wind"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 3 20h18zM12 10v4M12 17.2v.1"/></svg><span>Watches &amp; warnings</span></button>
-  <button class="lyr" data-l="jetline" aria-pressed="false" title="The jet stream: the axis of strongest shear"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 15c4-8 9 4 13-4 2-3 4-3 5-2M3 19c4-6 9 3 13-3"/></svg><span>Jet stream</span></button>
-  <button class="lyr" data-l="hl" aria-pressed="false" title="Highs (H) and lows (L) with their sea-level pressure"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5v8M5 9h5M10 5v8M15 15v4h5"/></svg><span>Highs &amp; lows</span></button>
-  <button class="lyr st-only" data-l="nhc" aria-pressed="false" title="The NHC-style outlook: tropical waves, areas of interest and invests"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5l14 14M19 5 5 19"/></svg><span>NHC disturbances</span></button>
-  <button class="lyr" data-l="steer" aria-pressed="false" title="Streamlines: the steering flow, colour = speed"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8h13l-3-3M3 13h18l-3-3M3 18h11l-3-3"/></svg><span>Streamlines</span></button>
+  <button class="lyr st-only" data-l="stens" aria-pressed="false" title="Ensembles"><svg viewBox="0 0 24 24" aria-hidden="true"><g fill="none" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"><path d="M4 13C7.5 10.5 10 12.5 13 10C16 7.6 18.5 9.6 22 4.5" stroke="#f2cf3a"/><path d="M4 13C8 14 10.5 11 13.5 12.8C16.5 14.6 19 12 22.5 12.6" stroke="#f59a2f"/><path d="M4 13C6.5 11.5 9 8.5 12 9.6C15.5 10.9 16.5 6.5 20.5 3" stroke="#9fb0c4"/><path d="M4 13C7.5 13.5 9.5 16 12.5 14.6C15.5 13.2 17 16.6 21.5 15.6" stroke="#c5d84a"/><path d="M4 13C8.5 12 11 14.2 14 12C17 9.8 19.5 11.6 22.5 8.4" stroke="#2fc59a"/><path d="M4 13C7 15 9 17.8 12 17C15 16.2 16.4 19.4 20 21" stroke="#2fc59a"/><path d="M4 13C7 12.2 8.6 10.2 11 11.4C14 12.9 16.6 10.6 18.6 13.8C19.6 15.4 21 15 22.5 17.6" stroke="#f59a2f"/><path d="M4 13C6 14.5 8.4 14.8 10.5 13.2C13 11.3 15 14.8 17.6 16.6C19.4 17.8 21 20.6 22.2 22" stroke="#9fb0c4"/><path d="M4 13C7 10 9 12 12 8.6C14 6.4 16.6 7.6 18 5.4" stroke="#f2cf3a"/></g><circle cx="4" cy="13" r="2.1" fill="#ef4b3a" stroke="#0b0f19" stroke-opacity=".5" stroke-width=".8"/></svg><span>Ensembles</span></button>
+  <button class="lyr st-only" data-l="stcone" aria-pressed="false" title="Cones"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.982 9.59L12.108 5.485A7.3 7.3 0 1 1 12.108 18.515L3.982 14.41A2.7 2.7 0 1 1 3.982 9.59Z" fill="currentColor" fill-opacity=".2" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M5.2 12H15.4" fill="none" stroke="currentColor" stroke-width="1" stroke-opacity=".8"/><circle cx="5.2" cy="12" r="1.9" fill="#ef4b3a" stroke="#0b0f19" stroke-opacity=".5" stroke-width=".8"/><circle cx="10.4" cy="12" r="1.9" fill="#f2cf3a" stroke="#0b0f19" stroke-opacity=".5" stroke-width=".8"/><circle cx="15.8" cy="12" r="1.9" fill="#2fc59a" stroke="#0b0f19" stroke-opacity=".5" stroke-width=".8"/></svg><span>Cones</span></button>
+  <button class="lyr st-only" data-l="stdens" aria-pressed="false" title="Track density" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><defs><filter id="ic-soft" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation=".6"/></filter></defs><g stroke="none" filter="url(#ic-soft)"><path d="M4.258 8.835L14.224 4.925A7.6 7.6 0 1 1 14.224 19.075L4.258 15.165A3.4 3.4 0 1 1 4.258 8.835Z" fill="#3f6ff2"/><path d="M4.518 9.06L13.604 6.025A6.3 6.3 0 1 1 13.604 17.975L4.518 14.94A3.1 3.1 0 1 1 4.518 9.06Z" fill="#27b8d9"/><path d="M4.742 9.304L12.62 7.09A5.1 5.1 0 1 1 12.62 16.91L4.742 14.696A2.8 2.8 0 1 1 4.742 9.304Z" fill="#2fcf6b"/><path d="M4.978 9.555L11.385 8.186A3.9 3.9 0 1 1 11.385 15.814L4.978 14.445A2.5 2.5 0 1 1 4.978 9.555Z" fill="#f2d230"/><path d="M5.173 9.926L9.564 9.234A2.8 2.8 0 1 1 9.564 14.766L5.173 14.074A2.1 2.1 0 1 1 5.173 9.926Z" fill="#f58a1f"/><path d="M5.278 10.315L7.539 10.017A2 2 0 1 1 7.539 13.983L5.278 13.685A1.7 1.7 0 1 1 5.278 10.315Z" fill="#e0312b"/></g></svg><span>Track density</span></button>
+  <button class="lyr st-only" data-l="stwf" aria-pressed="false" title="Wind fields"><svg viewBox="0 0 24 24" aria-hidden="true"><g stroke="#0b0f19" stroke-opacity=".45" stroke-width=".8"><ellipse cx="12.6" cy="11.4" rx="10.2" ry="9.4" fill="#f2cf3a" fill-opacity=".85"/><ellipse cx="12.3" cy="11.7" rx="6.9" ry="6.3" fill="#f59a2f"/><ellipse cx="12" cy="12" rx="3.7" ry="3.5" fill="#e0312b"/></g></svg><span>Wind fields</span></button>
+  <button class="lyr st-only" data-l="stww" aria-pressed="false" title="Watches and warnings"><svg viewBox="0 0 24 24" aria-hidden="true"><defs><clipPath id="ic-ww"><rect x="1.5" y="1.5" width="21" height="21" rx="5.5"/></clipPath></defs><g clip-path="url(#ic-ww)"><rect x="1" y="1" width="22" height="22" fill="#17335c"/><path d="M13 1C15.4 5.6 11.8 8.8 12.8 12.4C13.8 16 9.8 18.2 7 23H1V1Z" fill="#5f6d47"/><path d="M13 1C15.4 5.6 11.8 8.8 12.8 12.4C13.8 16 9.8 18.2 7 23" fill="none" stroke="#fff" stroke-opacity=".8" stroke-width=".9"/><path d="M13 1C15.4 5.6 11.8 8.8 12.8 12.4C13.8 16 9.8 18.2 7 23" pathLength="100" fill="none" stroke="#f2cf3a" stroke-opacity="0.95" stroke-width="11" stroke-linecap="round" stroke-dasharray="92 8.01" stroke-dashoffset="-4"/><path d="M13 1C15.4 5.6 11.8 8.8 12.8 12.4C13.8 16 9.8 18.2 7 23" pathLength="100" fill="none" stroke="#ff8fc0" stroke-opacity="1" stroke-width="9" stroke-linecap="round" stroke-dasharray="70 30.01" stroke-dashoffset="-15"/><path d="M13 1C15.4 5.6 11.8 8.8 12.8 12.4C13.8 16 9.8 18.2 7 23" pathLength="100" fill="none" stroke="#3a62f0" stroke-opacity="1" stroke-width="7" stroke-linecap="round" stroke-dasharray="52 48.01" stroke-dashoffset="-24"/><path d="M13 1C15.4 5.6 11.8 8.8 12.8 12.4C13.8 16 9.8 18.2 7 23" pathLength="100" fill="none" stroke="#e5352b" stroke-opacity="1" stroke-width="5" stroke-linecap="round" stroke-dasharray="32 68.01" stroke-dashoffset="-34"/><path d="M13 1C15.4 5.6 11.8 8.8 12.8 12.4C13.8 16 9.8 18.2 7 23" pathLength="100" fill="none" stroke="#ff8c00" stroke-opacity="1" stroke-width="2.4" stroke-linecap="round" stroke-dasharray="14 86.01" stroke-dashoffset="-43"/></g><rect x="1.5" y="1.5" width="21" height="21" rx="5.5" fill="none" stroke="currentColor" stroke-opacity=".4" stroke-width="1"/></svg><span>Watches &amp; warnings</span></button>
+  <button class="lyr" data-l="jetline" aria-pressed="false" title="Jet stream"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 17C5 17 6 8.5 10 8.5S14.5 16 18 16 21 10 22.5 7" fill="none" stroke="#0b0f19" stroke-opacity=".7" stroke-width="4.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M2 17C5 17 6 8.5 10 8.5S14.5 16 18 16 21 10 22.5 7" fill="none" stroke="#ff3fd2" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Jet stream</span></button>
+  <button class="lyr" data-l="hl" aria-pressed="false" title="Highs and lows"><svg viewBox="0 0 24 24" aria-hidden="true"><g stroke="#fff" stroke-width="1.1"><circle cx="8.5" cy="8.5" r="6" fill="#2f5bea"/><circle cx="16" cy="16" r="6" fill="#e0312b"/></g><g fill="none" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6.6 6.2v4.6M10.4 6.2v4.6M6.6 8.5h3.8"/><path d="M14.4 13.6v4.6h3.2"/></g></svg><span>Highs &amp; lows</span></button>
+  <button class="lyr st-only" data-l="nhc" aria-pressed="false" title="NHC disturbances"><svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="12" rx="9.6" ry="8" fill="#f59a2f" fill-opacity=".3" stroke="#f59a2f" stroke-width="1.6" stroke-dasharray="3 2.2"/><path d="M8.6 8.6l6.8 6.8M15.4 8.6l-6.8 6.8" fill="none" stroke="#e5352b" stroke-width="2.4" stroke-linecap="round"/></svg><span>NHC disturbances</span></button>
+  <button class="lyr" data-l="steer" aria-pressed="false" title="Streamlines"><svg viewBox="0 0 24 24" aria-hidden="true"><g stroke="#0b0f19" stroke-opacity=".55" stroke-width=".7" stroke-linejoin="round"><path d="M1.4 3.8H6.8V2L11 5L6.8 8V6.2H1.4Z" fill="#f0502f"/><path d="M13 3.8H18.4V2L22.6 5L18.4 8V6.2H13Z" fill="#f58a2f"/><path d="M1.4 10.8H6.8V9L11 12L6.8 15V13.2H1.4Z" fill="#f2cf3a"/><path d="M13 10.8H18.4V9L22.6 12L18.4 15V13.2H13Z" fill="#c8d84a"/><path d="M1.4 17.8H6.8V16L11 19L6.8 22V20.2H1.4Z" fill="#2fc59a"/><path d="M13 17.8H18.4V16L22.6 19L18.4 22V20.2H13Z" fill="#46d27a"/></g></svg><span>Streamlines</span></button>
 </div>
 <div id="lg-stack">
 <div id="ol-legend" class="card" aria-label="Areas of interest: the chance of formation in 7 days">
   <b>7-day chance of formation</b>
   <div><i class="low"></i>Low · 0–30 %</div><div><i class="medium"></i>Medium · 40–60 %</div><div><i class="high"></i>High · 70–100 %</div>
-  <small><u>✕</u> disturbance · <u>→</u> where it may form · 2-day · 7-day chance</small>
   <small id="ol-issued"></small>
 </div>
 <div id="ww-legend" class="card" aria-label="Watches and warnings"></div>
@@ -68,8 +67,8 @@
     <div><span>Damage</span><b id="sc-dmg">—</b></div><div><span>Deaths</span><b id="sc-dth">—</b></div>
     <div class="wide"><span>Formed</span><b id="sc-formed">–</b><small id="sc-invest"></small></div>
   </div>
-  <button id="sc-radar" class="fl-btn" type="button" title="A 2-km storm-scale model of this system, drawn as radar over the map, with the clock slowed far below the main one"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="2"/><path d="M12 12 19 6M4 12a8 8 0 0 1 8-8M7 12a5 5 0 0 1 5-5M20 12a8 8 0 0 1-8 8"/></svg>Radar floater</button>
-  <p id="sc-note">Showing only this system. Click the empty map or press Esc to show all.</p>
+  <button id="sc-radar" class="fl-btn" type="button" title="Radar floater"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="2"/><path d="M12 12 19 6M4 12a8 8 0 0 1 8-8M7 12a5 5 0 0 1 5-5M20 12a8 8 0 0 1-8 8"/></svg>Radar floater</button>
+  <p id="sc-note">Showing only this system · Esc shows all</p>
 </aside>
 <aside id="aoi-card" class="card" hidden aria-label="Disturbance details">
   <button id="ac-close" aria-label="Close disturbance details" title="Close (Esc)">&times;</button>
@@ -81,11 +80,11 @@
     <div><span>Shear</span><b id="ac-sh">–</b></div><div><span>SST</span><b id="ac-sst">–</b></div>
     <div class="wide"><span>Formation most likely</span><b id="ac-win">–</b></div>
   </div>
-  <button id="ac-radar" class="fl-btn" type="button" title="A 2-km storm-scale model of this disturbance, drawn as radar over the map"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="2"/><path d="M12 12 19 6M4 12a8 8 0 0 1 8-8M7 12a5 5 0 0 1 5-5M20 12a8 8 0 0 1-8 8"/></svg>Radar floater</button>
-  <p id="ac-note">Showing only this disturbance and its area. Click the empty map or press Esc to show all.</p>
+  <button id="ac-radar" class="fl-btn" type="button" title="Radar floater"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="2"/><path d="M12 12 19 6M4 12a8 8 0 0 1 8-8M7 12a5 5 0 0 1 5-5M20 12a8 8 0 0 1-8 8"/></svg>Radar floater</button>
+  <p id="ac-note">Showing only this disturbance · Esc shows all</p>
 </aside>
 <div id="fl-bar" class="card" hidden role="region" aria-label="Radar floater">
-  <div id="fl-head"><b id="fl-name">Radar</b><span id="fl-time"></span><button id="fl-bare" type="button" aria-pressed="false" title="Hide the tracks, paths and overlays: the floater only (O)">Overlays</button><button id="fl-close" type="button" aria-label="Close the radar floater" title="Close (Esc)">&times;</button></div>
+  <div id="fl-head"><b id="fl-name">Radar</b><span id="fl-time"></span><button id="fl-bare" type="button" aria-pressed="false" title="Floater only (O)">Overlays</button><button id="fl-close" type="button" aria-label="Close the radar floater" title="Close (Esc)">&times;</button></div>
   <div id="fl-sub"></div>
   <div id="fl-ctl"><label id="fl-view-l">View <select id="fl-view"><option value="radar">Radar</option><option value="ir">Satellite (infrared)</option></select></label><label id="fl-site-l">Radar <select id="fl-site"></select></label><label id="fl-prod-l">Product <select id="fl-prod"><option value="z">Reflectivity</option><option value="v">Velocity</option></select></label><label id="fl-tilt-l">Tilt <select id="fl-tilt"><option value="0.5">0.5°</option><option value="1.5">1.5°</option><option value="3">3°</option><option value="6">6°</option></select></label></div>
   <div id="fl-prog"><i></i></div>
@@ -118,11 +117,11 @@
   <div id="sum-tip" role="tooltip"></div>
 </aside>
 <!--[dockMenu]-->
-  <a class="btn" id="b-menu" href="../index.html" aria-label="Main menu" title="Main menu: your season is saved and waits under Continue">
+  <a class="btn" id="b-menu" href="../index.html" aria-label="Main menu" title="Main menu">
     <svg viewBox="0 0 24 24"><path d="M3 11.2 12 3.6l9 7.6V20a1 1 0 0 1-1 1h-5v-6.2H9V21H4a1 1 0 0 1-1-1z"/></svg>
   </a>
 <!--[dockPlace]-->
-  <button class="btn" id="b-place" aria-label="Place a system" aria-pressed="false" aria-haspopup="true" title="Place a tropical wave, depression or low and see where it would go (P)">
+  <button class="btn" id="b-place" aria-label="Place a system" aria-pressed="false" aria-haspopup="true" title="Place a system (P)">
     <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.4"/><path d="M12 2.5v4.5M12 17v4.5M2.5 12H7M17 12h4.5"/></svg><span>Place</span>
   </button>
 <!--[placeMenu]-->
@@ -131,6 +130,6 @@
   <button role="radio" aria-checked="false" data-kind="td"><i></i>Tropical depression</button>
   <button role="radio" aria-checked="false" data-kind="sd"><i></i>Subtropical depression</button>
   <button role="radio" aria-checked="false" data-kind="low"><i></i>Low-pressure area</button>
-  <p>Click the map to place it. The line shows where it goes and how strong it gets; Esc cancels.</p>
+  <p>Click the map to place it · Esc cancels</p>
 </div>
 

@@ -959,9 +959,9 @@ function drawCityRings(g, toPx) {
    Watches and warnings are not for one storm: every active cyclone's cone (a small fan of 10 members, 60 hours) goes into one map of alerts on a grid, made at each six-hour issue and drawn only where it is land or coast (the cell image is
    stretched over the map in its projection, solid and sharp, then cut to the land polygons: colour inland and a thick coloured line along the shore, as the NHC draws it, with the state lines drawn over it). The wind field is the radii of the 34, 50 and 64 kt winds in the four quadrants,
    round the storm you selected (every storm when none is). */
-const WW_COL = { 1: [255, 238, 0], 2: [255, 143, 200], 3: [42, 82, 255], 4: [42, 82, 255], 5: [255, 26, 26], 6: [218, 165, 32] };
-const WW_NAME = { 1: 'Tropical Storm Watch', 2: 'Hurricane Watch', 3: 'Tropical Storm Warning', 4: 'Hurricane Watch and Tropical Storm Warning', 5: 'Hurricane Warning', 6: 'High Wind Warning' };
-const WW_TEXT = { 1: 'tropical storm conditions are possible within 48 hours', 2: 'hurricane conditions are possible within 48 hours', 3: 'tropical storm conditions are expected within 36 hours', 4: 'tropical storm conditions are expected within 36 hours, hurricane conditions are possible', 5: 'hurricane conditions are expected within 36 hours', 6: 'damaging winds from a post-tropical cyclone are expected within 24 hours' };
+const WW_COL = { 1: [255, 238, 0], 2: [255, 143, 200], 3: [42, 82, 255], 4: [42, 82, 255], 5: [255, 26, 26], 6: [255, 140, 0] };
+const WW_NAME = { 1: 'Tropical Storm Watch', 2: 'Hurricane Watch', 3: 'Tropical Storm Warning', 4: 'Hurricane Watch and Tropical Storm Warning', 5: 'Hurricane Warning', 6: 'Extreme Wind Warning' };
+const WW_TEXT = { 1: 'tropical storm conditions are possible within 48 hours', 2: 'hurricane conditions are possible within 48 hours', 3: 'tropical storm conditions are expected within 36 hours', 4: 'tropical storm conditions are expected within 36 hours, hurricane conditions are possible', 5: 'hurricane conditions are expected within 36 hours', 6: 'sustained winds of 115 mph or more are expected within hours' };
 let wwPack = null, wwCones = {}, wwAt = 0, wwOut = null, wwMask = null, wwTmp = null, wwPat = null;
 const wwName = (c) => hurrWord(WW_NAME[c]);
 function wwRefresh() {
@@ -979,7 +979,7 @@ function wwRefresh() {
   for (const id of Object.keys(wwCones)) if (!seen[id]) delete wwCones[id];
   wwPack = { A: HFStorms.alertsOf(cones, stormEnv, stormMgr.par, wwPack ? wwPack.A : null), slot, hour: stormMgr.hour, img: null, key: '' }; wwAt = now;
 }
-const WW_UP = 3, WW_ORDER = [6, 1, 2, 3, 5];                            // (the codes drawn in plain colour, the least severe first; code 4 is the hatching)
+const WW_UP = 3, WW_ORDER = [1, 2, 3, 5, 6];                            // (the codes drawn in plain colour, the least severe first, so the extreme wind warning lies over any other; code 4 is the hatching)
 function wwSolid(A, code) {                                              // the cells of one code as a solid colour with smooth, sharp contours: the cells blown up three times with smoothing, then every pixel more than half in is fully the colour and the rest nothing (no blur, no staircase)
   const sx = A.nx, sy = A.ny, small = document.createElement('canvas'); small.width = sx; small.height = sy;
   const sc = small.getContext('2d'), im = sc.createImageData(sx, sy), d = im.data; let n = 0;
@@ -1032,7 +1032,7 @@ function updateWWLegend() {
   w.style.display = on ? 'block' : 'none'; f.style.display = fon ? 'block' : 'none'; document.body.classList.toggle('ww-key', on);
   if (on && !w.dataset.done) {
     const sw = (bg) => '<i style="background:' + bg + '"></i>';
-    w.innerHTML = '<b>Watches &amp; warnings</b><div>' + sw('#ff8fc8') + hurrWord('Hurricane Watch') + '</div><div>' + sw('#ffee00') + 'Tropical Storm Watch</div><div>' + sw('#ff1a1a') + hurrWord('Hurricane Warning') + '</div><div>' + sw('#2a52ff') + 'Tropical Storm Warning</div><div>' + sw('#daa520') + 'High Wind Warning</div>'
+    w.innerHTML = '<b>Watches &amp; warnings</b><div>' + sw('#ff8c00') + 'Extreme Wind Warning</div><div>' + sw('#ff8fc8') + hurrWord('Hurricane Watch') + '</div><div>' + sw('#ffee00') + 'Tropical Storm Watch</div><div>' + sw('#ff1a1a') + hurrWord('Hurricane Warning') + '</div><div>' + sw('#2a52ff') + 'Tropical Storm Warning</div>'
       + '<div>' + sw('repeating-linear-gradient(135deg,#2a52ff 0 3px,#ff8fc8 3px 6px)') + hurrWord('Hurricane Watch + TS Warning') + '</div><small id="ww-issued"></small>';
     w.dataset.done = '1';
   }

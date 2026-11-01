@@ -1454,13 +1454,22 @@ const LAND = (la, lo) => (lo > -16.3 && lo < 38 && la > 4 && la < 30) || (lo < -
   // a cancelled storm leaves nothing
   const Ax = AL([], Ap);
   check(`when the storm is gone the alerts are gone (${Ax.n} cones, code ${Ax.at(31, -88)} where there was a warning)`, Ax.n === 0 && Ax.at(31, -88) === 0);
-  // a post-tropical low with a large field: a high wind warning, from up to 24 hours ahead, and no tropical alert for it
-  const Cx = mkCone(trk(55, 260, 0, 'ex', 0.6, 25, -88)), Ah = AL([Cx], null);
-  check(`a post-tropical cyclone with a field 260 nmi across the coast gives a high wind warning (${Ah.at(31, -88)} inland, ${Ah.at(32, -85)} a few hundred miles away) and no tropical storm or hurricane alert (${[Ah.at(31, -88), Ah.at(31, -84)].filter((c) => c >= 1 && c <= 5).length})`,
-    Ah.at(31, -88) === 6 && [0, 6].includes(Ah.at(32, -85)) && Ah.at(31, -84) !== 5 && Ah.at(31, -88) !== 3);
-  // two storms: the higher code
-  const Ab = AL([Cx, C1], null);
-  check(`two storms at once: the stronger alert wins where they overlap (${Ab.at(31, -88)} with a hurricane warning and a high wind warning on the same cell)`, Ab.at(31, -88) === 5);
+  // the extreme wind warning: sustained winds of 115 mph (100 kt) or more about to arrive, the eyewall of a major hurricane about to cross; it is above every other code and short-fused
+  const Ce = mkCone(trk(120, 110, 40, 'tc', 0.6, 29.2, -88)), Ae = AL([Ce], null);
+  check(`a 120 kt hurricane whose eyewall crosses the coast within hours is an extreme wind warning (code 6) on the ground it crosses (${Ae.at(30.2, -88)}), a hurricane or tropical storm warning only 70 nmi to the side (${Ae.at(30.2, -86.6)}), and still a hurricane warning for the land its eyewall reaches only half a day from now (${Ae.at(31.6, -88)})`,
+    Ae.at(30.2, -88) === 6 && [3, 4, 5].includes(Ae.at(30.2, -86.6)) && Ae.at(31.6, -88) === 5);
+  const grid = (A) => { let n6 = 0, n = 0; for (let la = 29; la <= 33; la += 0.25) for (let lo = -92; lo <= -84; lo += 0.25) { n++; if (A.at(la, lo) === 6) n6++; } return n6; };
+  const A99 = AL([mkCone(trk(99, 110, 40, 'tc', 0.6, 29.2, -88))], null), A100 = AL([mkCone(trk(100, 110, 40, 'tc', 0.6, 29.2, -88))], null), A90 = AL([mkCone(trk(90, 110, 40, 'tc', 0.6, 29.2, -88))], null), A130 = AL([mkCone(trk(130, 110, 40, 'tc', 0.6, 29.2, -88))], null);
+  check(`it is for 115 mph and up, whatever the rest: a 90 kt storm (${grid(A90)} cells) and a 99 kt one (${grid(A99)}) have none, a 100 kt one has a narrow swath (${grid(A100)} cells), and a 130 kt one a wider one (${grid(A130)}), the swath of the strongest the larger`,
+    grid(A90) === 0 && grid(A99) === 0 && grid(A100) >= 4 && grid(A130) > grid(A100) && grid(A130) > grid(Ae) * 0.99);
+  const Cx = mkCone(trk(130, 260, 60, 'ex', 0.6, 25, -88)), Ah = AL([Cx], null), Axx = AL([mkCone(trk(55, 260, 0, 'nl', 0.6, 25, -88))], null);
+  check(`a post-tropical or remnant cyclone gets no alert at all, however strong or large (${Ah.at(31, -88)}, ${Ah.at(32, -85)}, ${Axx.at(31, -88)})`, Ah.at(31, -88) === 0 && Ah.at(32, -85) === 0 && Axx.at(31, -88) === 0 && grid(Ah) === 0);
+  // two storms: the higher code, and the extreme wind warning is above a hurricane warning
+  const Ab = AL([Ce, C1], null), Ab2 = AL([C1, Ce], null);
+  check(`two storms at once: the stronger alert wins where they overlap, and the extreme wind warning wins over the hurricane warning of the other storm whichever is first (${Ab.at(30.2, -88)}, ${Ab2.at(30.2, -88)}; the other storm alone gives ${AL([C1], null).at(30.2, -88)})`, Ab.at(30.2, -88) === 6 && Ab2.at(30.2, -88) === 6 && AL([C1], null).at(30.2, -88) === 5);
+  // it is short-fused: with the eyewall 8 hours from the ground it is a hurricane warning, kept as an extreme wind warning only where one was issued; the next issue gives it (within ewwKeep) and drops it when the threat is further
+  const Cl = mkCone(trk(120, 110, 40, 'tc', 0.6, 28.4, -88)), Af = AL([Cl], null), Aek = AL([Cl], Ae), Ad = AL([mkCone(trk(120, 110, 40, 'tc', 0.6, 27.2, -88))], Ae);
+  check(`the warning is short-fused (the eyewall 8 hours away: ${Af.at(30.2, -88)}, a hurricane warning), kept by the next issue while it is within nine hours (${Aek.at(30.2, -88)}) and dropped when it is 14 hours off (${Ad.at(30.2, -88)})`, Af.at(30.2, -88) === 5 && Aek.at(30.2, -88) === 6 && Ad.at(30.2, -88) === 5);
 }
 
 /* ---- milestone 15: the wind field as a profile, the eyewall replacement cycle, the long life of a post-tropical cyclone -------------------------------------------------------------------------- */

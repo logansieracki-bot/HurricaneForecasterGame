@@ -1,11 +1,14 @@
-# Hurricane Forecaster Game
+# Isobar
 
-Basin hurricane simulation / forecasting game. Long-term goal: pick a basin and a
-mode from a main menu, then either watch storms form and experiment with the
-ocean (Simulation mode) or run a real forecasting desk — hunters, models, cones,
+(The repository is still called HurricaneForecasterGame; the game's name is **Isobar**, version 0.01A.)
+
+Weather simulation / forecasting game. From the main menu you pick a discipline
+(Tropical now; Severe is coming), a basin and your settings, then either watch
+storms form on a real climate and play with the ocean and the atmosphere
+(Simulation mode) or run a real forecasting desk — hunters, models, cones,
 AOIs (Forecaster mode, not started yet).
 
-**Phase 1 (in progress): Atlantic SST simulator + main menu shell.** See
+**Phase 1 (in progress): tropical cyclone basins + the main menu.** See
 `docs/roadmap.md` for what's next.
 
 **Play it live:** https://logansieracki-bot.github.io/HurricaneForecasterGame/
@@ -16,7 +19,7 @@ Deployment below).
 - `npm install` (Leaflet is vendored, not an npm dep — see Layout — but `playwright`
   for tests needs installing)
 - `npm run build` assembles `dist/atlantic-sst-simulator.html` from `src/template.html`
-  + `vendor/leaflet` + `data/generated/data.json`
+  + `vendor/leaflet` + `data/generated/data.json` (and the other eight pages, and the main menu `index.html`)
 - `npm test` first the node-only storm-engine tests (`tests/storms.mjs`, about eight seconds, no build or
   browser needed), then the end-to-end checks in headless Chromium (network stubbed to `file://`
   only, so it also proves the app never depends on reaching a live tile provider).
@@ -26,8 +29,8 @@ Deployment below).
   otherwise `npx playwright install chromium` once and just run `npm test`.
   CI (`.github/workflows/test.yml`) builds and runs this on every push/PR and
   uploads the built HTML as a downloadable artifact.
-- `npx http-server .` (or any static server) to try `index.html` → basin/mode
-  select → the built simulator
+- `npx http-server .` (or any static server) to try `index.html` → Play → discipline →
+  basin and settings → the built simulator
 
 ## Deployment
 `.github/workflows/test.yml` has a second job, `deploy`, that publishes
@@ -39,9 +42,15 @@ https://logansieracki-bot.github.io/HurricaneForecasterGame/ automatically —
 nothing to run by hand.
 
 ## Layout
-- `index.html` main menu: basin select + mode select. All nine basins run in
-  Simulation mode; the Forecaster card is present but disabled ("Coming soon"). With an Atlantic season
-  saved in the browser it also has a Continue card (beside the picker on a wide screen, above it on a phone).
+- `index.html` the main menu, **Isobar 0.01A**. It is made by `tools/build.mjs` from `src/menu.html` and the picture of its world map
+  (`data/generated/menu-art.json`, from `tools/make_menu_art.mjs`: NASA's Blue Marble with the navy ocean), so edit `src/menu.html`. Home (the brand, the version, **Play**)
+  → the discipline (**Tropical**; **Severe** is marked Soon and cannot be picked) → the basin, picked on a world map (the nine basins; a list on a phone) with what a year of it holds in the real
+  1991–2020 record and the months of its season, beside the **settings**: Mode (Simulation; Forecaster is Soon), ENSO index (Random, La Niña, Neutral, El Niño, or any value on the slider),
+  ocean warmth, wind shear, mid-level moisture, storm activity, storms form on their own, and under Advanced: whether ENSO drifts or stays locked, year-to-year variability, El Niño / La Niña
+  influence, day-to-day humidity, day-to-day shear and steering, weather speed, seasonal swing, currents and upwelling → **Begin**. The brand and the version are two constants at the top of the
+  script (`BRAND`, `VERSION`). There is no sign-in (that waits for a domain of its own), no seed and no climate buttons. Each screen has its own address (`#disc`, `#tropical`), so the browser's Back
+  button walks through them. The settings travel to the simulator in its address, only those that differ from the normal: `enso` (−3..3.4), `lock=1`, `warm`, `shear`, `moist`, `act`, `auto=0`, `var`,
+  `wx`, `wxs`, `jets`, `sea`, `feat`, `ensoinf`; see "Settings from the menu" in `src/storm-late.js`. With a season saved in the browser the home screen also has a Continue card.
 - `src/template.html` the Atlantic simulator app: vanilla JS in one IIFE, build
   placeholders (`/*__LEAFLET_CSS__*/`, `/*__LEAFLET_JS__*/`, `/*__DATA__*/`,
   `/*__STORMS__*/`, and for the storm layer `/*__STORM_HOOKS__*/`, `/*__STORM_LATE__*/`,
@@ -113,11 +122,10 @@ nothing to run by hand.
   when the seasonal swing is stretched; shelf effect only cools.
 - Seeds fix the random year and nudge seasonal swing / currents / ENSO strength
   by roughly 10–35% (checkbox turns it off).
-- Experimentation panel (all 9 basins): two tabs. **Basic** = `Set ENSO now`, `Keep ENSO at this value`,
-  `Warming`, `Moisture (average humidity)` and `Wind shear (average)`; **Advanced** = year-to-year variability,
-  both day-to-day weather sliders, weather speed, seasonal swing, currents and upwelling, El Niño / La Niña
-  influence, the seed-nudge checkbox and the steering arrows' `Storm strength` selector. The seed row (Seed,
-  New seed, Reset) sits under both tabs; `Customization` is separate and unchanged. The two new sliders shift
+- The experiment controls (all 9 basins) are **no longer in the page's panel**: they are chosen in the main menu (milestone 25),
+  and the panel is the map's `Customization` only (the steering arrows' `Storm strength` selector moved into it). The controls the model reads
+  (`p-ensonow`, `enso-hold`, `p-warm`, `p-moist`, `p-shear`, `p-var`, `p-wx`, `p-wxs`, `p-jets`, `p-sea`, `p-feat`, `p-enso`, the seed, `st-auto`, `p-stact`)
+  stay in the page, hidden (`#settings-store`), and the menu's query sets them at the start; there is no seed to see or type. The two new sliders shift
   the *average* everywhere the way `Warming` does for sea temperature (`P.moisture`: −20..+20 points of 700 hPa
   relative humidity; `P.shearShift`: −20..+20 kt of 200–850 hPa shear), added inside the combine loop before the
   soft limits, so they move the weather and the jet's ribbon along with the average. The limits are now smooth
@@ -358,7 +366,7 @@ nothing to run by hand.
   starts the new year from zero, a cyclone still alive finishes under its own year, and the card opens by itself on the season that has just ended. **Save / resume:**
   the season is kept in the browser (`localStorage`, 135-540 KB over a whole season, written in 2-7 ms: the weather generators' states and clocks, the storms as plain JSON, the
   controls) every few seconds while the clock runs, a moment after a change while it is paused, and when the page is hidden, closed or left by the dock's Menu button; the
-  main menu then shows a `Continue` card (season, date, named storms and hurricanes, ACE) that reopens the simulator paused with `?resume=1`, and `Start` (a new game) or
+  main menu then shows a `Continue` card (season, date, named storms and hurricanes, ACE) that reopens the simulator paused with `?resume=1`, and `Begin` (a new game) or
   `Discard this season` deletes it. A season saved at 00Z continues bit for bit like the uninterrupted one; saved at another hour the storms, fields and counters are
   identical at the moment of the resume and the continuation is statistical (the engine takes fresh keyframes there). A simulator page opened directly beside a saved season
   it did not resume leaves that season alone until `Restart`, and a save from another version is refused and removed. **Place:** the dock's `Place` button (key `P`) holds the clock and opens a picker (tropical wave,

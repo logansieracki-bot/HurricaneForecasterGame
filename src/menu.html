@@ -1,0 +1,460 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Isobar</title>
+<meta name="description" content="Isobar: weather, simulated. Tropical cyclone basins, real climate, your settings.">
+<style>
+:root{
+  --bg:#060a12; --panel:rgba(12,19,31,.78); --card:rgba(255,255,255,.045); --card-h:rgba(255,255,255,.09);
+  --line:rgba(255,255,255,.1); --line2:rgba(255,255,255,.22); --text:#e9eef6; --dim:#8d99ac; --faint:#5f6b7e;
+  --acc:#72d6ff; --acc-ink:#04202e; --acc2:#a08cff; --warn:#ffb454; --good:#6ee7a8;
+  --pad:clamp(18px,4vw,56px);
+  --font:"Avenir Next","Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,Roboto,"Helvetica Neue",sans-serif;
+}
+*{box-sizing:border-box}
+html{height:100%;-webkit-text-size-adjust:100%}
+body{
+  margin:0; min-height:100%; color:var(--text); font-family:var(--font); font-size:15px; line-height:1.45;
+  background:var(--bg);
+  overflow-x:hidden;
+}
+body::before{content:"";position:fixed;inset:0;z-index:0;pointer-events:none;background:radial-gradient(1100px 680px at 82% 28%,rgba(114,214,255,.10),transparent 62%),radial-gradient(900px 620px at 6% 96%,rgba(160,140,255,.09),transparent 62%)}
+button{font:inherit;color:inherit;cursor:pointer}
+[tabindex="-1"]:focus{outline:none}
+button:focus-visible,summary:focus-visible,input:focus-visible,a:focus-visible,h1:focus-visible,h2:focus-visible{outline:2px solid var(--acc);outline-offset:3px;border-radius:8px}
+[hidden]{display:none!important}
+
+/* ---- the backdrop: isobars round a low, drawn by script, turning very slowly ---- */
+#iso{position:fixed;right:-18vmin;top:50%;width:140vmin;height:140vmin;margin-top:-70vmin;pointer-events:none;z-index:0;animation:drift 420s linear infinite;opacity:.95}
+#iso path{fill:none;stroke:rgba(255,255,255,.07);stroke-width:1}
+#iso path:nth-child(4n){stroke:rgba(114,214,255,.17)}
+#iso path:nth-child(9n){stroke:rgba(160,140,255,.2)}
+@keyframes drift{to{transform:rotate(360deg)}}
+body[data-screen="pick"] #iso{right:auto;left:-40vmin;opacity:.55}
+
+/* ---- the top bar ---- */
+#top{position:relative;z-index:2;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:22px var(--pad) 0}
+.brand{display:flex;align-items:center;gap:12px;text-decoration:none;color:inherit}
+.brand svg{width:30px;height:30px;flex:none}
+.brand b{font-size:15px;font-weight:600;letter-spacing:.3em;text-transform:uppercase}
+.ver{font-size:11px;font-weight:600;letter-spacing:.06em;color:var(--acc);border:1px solid rgba(114,214,255,.4);background:rgba(114,214,255,.08);border-radius:999px;padding:2px 9px}
+#back{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--card);border-radius:999px;padding:7px 16px 7px 12px;font-size:13px;font-weight:600;color:var(--text)}
+#back:hover{background:var(--card-h)}
+#back svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+
+/* ---- screens ---- */
+main{position:relative;z-index:1;min-height:calc(100vh - 118px);display:flex;flex-direction:column;justify-content:center;padding:18px var(--pad) 28px}
+.screen{animation:rise .45s cubic-bezier(.2,.7,.2,1) both}
+@keyframes rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+h1,h2,h3{margin:0;font-weight:600}
+h2.title{font-size:clamp(26px,3.6vw,38px);font-weight:500;letter-spacing:-.01em;margin-bottom:6px}
+.sub{color:var(--dim);margin:0 0 28px}
+
+/* the home screen */
+#s-home{max-width:780px}
+#word{font-size:clamp(52px,11vw,128px);font-weight:200;letter-spacing:.2em;line-height:1;margin:0 0 14px -.04em;text-transform:uppercase;display:flex;align-items:center;white-space:nowrap}
+#word span{background:linear-gradient(180deg,#fff 20%,#b9e6fb 100%);-webkit-background-clip:text;background-clip:text;color:transparent}
+#word svg{width:.82em;height:.82em;margin:0 .1em 0 -.02em;flex:none;overflow:visible}
+.tag{font-size:clamp(17px,2.2vw,22px);color:var(--dim);margin:0 0 34px;font-weight:300;letter-spacing:.02em}
+.cta{display:flex;flex-wrap:wrap;align-items:center;gap:14px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:10px;border:0;border-radius:999px;font-weight:600;font-size:15px;padding:14px 30px;background:#f1f5f9;color:#0a1118;transition:background .15s,transform .15s,box-shadow .15s,opacity .15s}
+.btn:hover:not(:disabled){background:#fff;transform:translateY(-1px);box-shadow:0 8px 30px rgba(114,214,255,.25)}
+.btn:disabled{opacity:.4;cursor:default}
+.btn svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
+.link{background:none;border:0;color:var(--dim);font-size:13px;padding:6px 2px;text-decoration:underline;text-underline-offset:3px}
+.link:hover{color:var(--text)}
+
+/* the saved season */
+.resume{margin:34px 0 0;max-width:430px;padding:16px 18px 14px;border:1px solid var(--line);border-radius:16px;background:var(--panel);backdrop-filter:blur(10px)}
+.resume h3{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--acc);margin-bottom:8px}
+.resume .name{display:block;font-size:19px;font-weight:600}
+.resume .desc{display:block;font-size:13px;color:var(--dim);margin-top:2px}
+.resume .when{display:block;font-size:12px;color:var(--faint);margin-top:2px}
+.resume .row{display:flex;align-items:center;gap:16px;margin-top:14px}
+.resume .btn{padding:10px 22px;font-size:14px}
+
+/* the discipline cards */
+.discs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;max-width:860px}
+.disc{position:relative;text-align:left;border:1px solid var(--line);border-radius:22px;padding:0;overflow:hidden;background:var(--panel);backdrop-filter:blur(8px);min-height:300px;display:flex;flex-direction:column;transition:border-color .2s,transform .2s,box-shadow .2s;color:var(--text)}
+.disc:hover:not(:disabled){border-color:rgba(114,214,255,.55);transform:translateY(-3px);box-shadow:0 18px 50px rgba(0,0,0,.45),0 0 0 1px rgba(114,214,255,.15)}
+.disc:disabled{cursor:default;opacity:.6}
+.disc .art{flex:1;min-height:170px;display:flex;align-items:center;justify-content:center;background:radial-gradient(circle at 50% 55%,rgba(114,214,255,.16),transparent 62%)}
+.disc:disabled .art{background:radial-gradient(circle at 50% 55%,rgba(160,140,255,.10),transparent 62%)}
+.disc .art svg{width:150px;height:150px;overflow:visible}
+.disc .txt{padding:6px 22px 22px}
+.disc .nm{display:flex;align-items:center;gap:10px;font-size:22px;font-weight:600}
+.disc .ds{display:block;color:var(--dim);font-size:14px;margin-top:2px}
+.soon{font-style:normal;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--warn);border:1px solid rgba(255,180,84,.4);background:rgba(255,180,84,.08);border-radius:999px;padding:2px 8px}
+.spin{transform-origin:50% 50%;animation:spin 18s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* the select page: the world, and the settings */
+#s-pick{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(340px,1fr);gap:26px;align-items:start;width:100%;max-width:1240px;margin:0 auto}
+.col-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:0 0 12px}
+.col-head h2{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);font-weight:600}
+#world{position:relative;border:1px solid var(--line);border-radius:20px;overflow:hidden;background:#080e1e;aspect-ratio:1400/521;box-shadow:0 20px 60px rgba(0,0,0,.4)}
+#worldimg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;filter:saturate(.95) brightness(.92);display:block}
+#world::after{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(180deg,rgba(6,10,18,.35),transparent 24%,transparent 70%,rgba(6,10,18,.5)),radial-gradient(120% 100% at 50% 50%,transparent 55%,rgba(6,10,18,.55))}
+.tropics{position:absolute;left:0;right:0;border-top:1px dashed rgba(255,255,255,.16);pointer-events:none;z-index:1}
+.basin{position:absolute;z-index:2;left:calc(var(--x)*1%);top:calc(var(--y)*1%);width:calc(var(--w)*1%);height:calc(var(--h)*1%);border:1px solid rgba(114,214,255,.55);background:rgba(6,12,26,.42);border-radius:14px;padding:0;display:flex;align-items:center;justify-content:center;color:#eaf6ff;font-size:clamp(9.5px,1.1vw,12.5px);font-weight:600;letter-spacing:.02em;text-shadow:0 1px 6px rgba(0,0,0,.85);transition:background .15s,border-color .15s,box-shadow .15s,transform .15s;backdrop-filter:blur(1.5px)}
+.basin:hover{background:rgba(114,214,255,.26);border-color:rgba(114,214,255,.95)}
+.basin.alt span{display:none}
+.basin[aria-pressed="true"]{background:rgba(114,214,255,.3);border:2px solid var(--acc);box-shadow:0 0 0 4px rgba(114,214,255,.18),0 0 34px rgba(114,214,255,.45);color:#fff;z-index:3}
+.basin span{padding:0 4px;text-align:center;line-height:1.15}
+.glance{margin-top:14px;padding:18px 20px 16px;border:1px solid var(--line);border-radius:20px;background:var(--panel);backdrop-filter:blur(12px)}
+.g-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+.g-head b{font-size:21px;font-weight:600}
+.g-head span{font-size:12px;color:var(--faint)}
+.g-tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.g-tiles div{border:1px solid var(--line);border-radius:14px;padding:11px 12px 9px;background:var(--card)}
+.g-tiles b{display:block;font-size:26px;font-weight:300;line-height:1.1;font-variant-numeric:tabular-nums}
+.g-tiles span{display:block;font-size:11.5px;color:var(--dim);margin-top:3px;white-space:nowrap}
+.g-season{display:flex;align-items:center;gap:14px;margin-top:14px}
+.g-season>span{font-size:12px;color:var(--dim);flex:none;width:48px}
+.months{flex:1;display:grid;grid-template-columns:repeat(12,1fr);gap:3px}
+.months i{font-style:normal;text-align:center;font-size:11px;font-weight:600;padding:5px 0;border-radius:6px;background:rgba(255,255,255,.05);color:var(--faint)}
+.months i.on{background:rgba(114,214,255,.22);color:var(--acc)}
+
+.panel{border:1px solid var(--line);border-radius:20px;background:var(--panel);backdrop-filter:blur(12px);display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.4)}
+.p-head{display:flex;align-items:center;justify-content:space-between;padding:16px 20px 10px}
+.p-head h2{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+.p-body{padding:4px 20px 8px;overflow:auto;max-height:calc(100vh - 290px);min-height:200px;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.2) transparent}
+.grp{padding:12px 0;border-top:1px solid var(--line)}
+.grp:first-child{border-top:0}
+.lbl{font-size:13.5px;font-weight:600}
+.set-h{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:8px}
+.set-h output{font-size:13px;font-variant-numeric:tabular-nums;color:var(--dim)}
+.set-h output.chg{color:var(--acc)}
+.cap{margin:-2px 0 6px;font-size:12px;color:var(--faint)}
+.seg{display:flex;gap:4px;padding:4px;border:1px solid var(--line);border-radius:12px;background:rgba(0,0,0,.25);margin-top:8px}
+.seg button{flex:1;border:0;background:none;border-radius:9px;padding:8px 10px;font-size:13px;font-weight:600;color:var(--dim);display:flex;align-items:center;justify-content:center;gap:7px;white-space:nowrap}
+.seg button:hover:not(:disabled):not([aria-pressed="true"]){color:var(--text);background:var(--card)}
+.seg button[aria-pressed="true"]{background:#f1f5f9;color:#0a1118}
+.seg button:disabled{cursor:default;opacity:.55}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 10px}
+.chips button{border:1px solid var(--line);background:var(--card);border-radius:999px;padding:5px 13px;font-size:12.5px;font-weight:600;color:var(--dim)}
+.chips button:hover{color:var(--text);background:var(--card-h)}
+.chips button[aria-pressed="true"]{border-color:var(--acc);color:var(--acc);background:rgba(114,214,255,.1)}
+.chips .la[aria-pressed="true"]{border-color:#6aa8ff;color:#8dbcff;background:rgba(106,168,255,.12)}
+.chips .el[aria-pressed="true"]{border-color:#ff9a5c;color:#ffb583;background:rgba(255,154,92,.12)}
+
+/* the sliders: filled to the value, with a tick where the normal is */
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:22px;margin:0;background:none;display:block;--a:50%;--b:50%;--d:50%}
+input[type=range]::-webkit-slider-runnable-track{height:4px;border-radius:4px;background:linear-gradient(90deg,rgba(255,255,255,.14) var(--a),var(--acc) var(--a) var(--b),rgba(255,255,255,.14) var(--b))}
+input[type=range]::-moz-range-track{height:4px;border-radius:4px;background:linear-gradient(90deg,rgba(255,255,255,.14) var(--a),var(--acc) var(--a) var(--b),rgba(255,255,255,.14) var(--b))}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;border-radius:50%;background:#f1f5f9;border:0;margin-top:-6px;box-shadow:0 0 0 4px rgba(114,214,255,.18),0 2px 8px rgba(0,0,0,.5)}
+input[type=range]::-moz-range-thumb{width:16px;height:16px;border-radius:50%;background:#f1f5f9;border:0;box-shadow:0 0 0 4px rgba(114,214,255,.18),0 2px 8px rgba(0,0,0,.5)}
+input[type=range].dim::-webkit-slider-thumb{background:#8d99ac;box-shadow:none}
+input[type=range].dim::-moz-range-thumb{background:#8d99ac;box-shadow:none}
+input[type=range].dim::-webkit-slider-runnable-track{background:rgba(255,255,255,.14)}
+input[type=range].dim::-moz-range-track{background:rgba(255,255,255,.14)}
+.rng{position:relative}
+.rng::after{content:"";position:absolute;left:calc(var(--d) * (100% - 16px) / 100% + 8px);top:15px;width:1px;height:5px;background:rgba(255,255,255,.4);pointer-events:none}
+
+/* a switch */
+.sw{display:flex;align-items:center;justify-content:space-between;gap:12px;cursor:pointer;font-size:13.5px;font-weight:600}
+.sw input{position:absolute;opacity:0;pointer-events:none}
+.sw .knob{flex:none;width:40px;height:23px;border-radius:999px;background:rgba(255,255,255,.16);position:relative;transition:background .15s}
+.sw .knob::after{content:"";position:absolute;left:3px;top:3px;width:17px;height:17px;border-radius:50%;background:#f1f5f9;transition:transform .18s}
+.sw input:checked + .knob{background:var(--acc)}
+.sw input:checked + .knob::after{transform:translateX(17px);background:#fff}
+.sw input:focus-visible + .knob{outline:2px solid var(--acc);outline-offset:3px}
+
+details#adv{border-top:1px solid var(--line);margin-top:2px}
+details#adv summary{list-style:none;cursor:pointer;display:flex;align-items:center;justify-content:space-between;padding:14px 0;font-size:13.5px;font-weight:600}
+details#adv summary::-webkit-details-marker{display:none}
+details#adv summary i{width:9px;height:9px;border-right:2px solid var(--dim);border-bottom:2px solid var(--dim);transform:rotate(45deg);transition:transform .2s;margin-right:4px}
+details#adv[open] summary i{transform:rotate(-135deg)}
+details#adv .grp{border-top:1px solid var(--line)}
+.p-foot{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:14px 20px 18px;border-top:1px solid var(--line);background:rgba(0,0,0,.2)}
+#hint{font-size:12.5px;color:var(--dim);min-width:0}
+#hint.warn{color:var(--warn)}
+#start{flex:none;padding:13px 30px}
+
+footer{position:relative;z-index:1;display:flex;flex-wrap:wrap;gap:6px 18px;justify-content:space-between;padding:0 var(--pad) 22px;color:var(--faint);font-size:12px}
+footer b{color:var(--dim);font-weight:600}
+
+/* narrow screens: the world turns into a list, the panels stack */
+@media (max-width:980px){
+  #s-pick{grid-template-columns:minmax(0,1fr)}
+  .p-body{max-height:none}
+}
+@media (max-width:720px){
+  #world{aspect-ratio:auto;background:none;border:0;box-shadow:none;overflow:visible;display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  #world::after,#worldimg,.tropics{display:none}
+  .basin{position:static;width:auto;height:auto;padding:13px 10px;font-size:14px;border-radius:12px}
+  .basin.alt{display:none}
+  .g-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .discs{grid-template-columns:1fr}
+  .disc{min-height:0;flex-direction:row;align-items:center}
+  .disc .art{flex:none;min-height:0;width:120px}
+  .disc .art svg{width:84px;height:84px}
+  .disc .txt{padding:14px 16px 14px 0}
+  .resume{max-width:none}
+  .btn{padding:13px 26px}
+}
+@media (prefers-reduced-motion:reduce){#iso,.spin{animation:none}.screen{animation:none}}
+</style>
+</head>
+<body data-screen="home">
+<svg id="iso" viewBox="-500 -500 1000 1000" aria-hidden="true"></svg>
+
+<header id="top">
+  <a class="brand" href="#" id="brand" aria-label="Isobar, home">
+    <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="16" cy="16" r="2.4" fill="currentColor" stroke="none"/><path d="M16 10.2a5.8 5.8 0 0 1 5.8 5.8" stroke="#72d6ff"/><path d="M16 21.8a5.8 5.8 0 0 1-5.8-5.8" stroke="#72d6ff"/><path d="M16 5.6A10.4 10.4 0 0 1 26.4 16" opacity=".8"/><path d="M16 26.4A10.4 10.4 0 0 1 5.6 16" opacity=".8"/><path d="M16 1.8A14.2 14.2 0 0 1 30.2 16" opacity=".45"/><path d="M16 30.2A14.2 14.2 0 0 1 1.8 16" opacity=".45"/></svg>
+    <b id="brand-name">Isobar</b><span class="ver" id="ver">0.01A</span>
+  </a>
+  <button id="back" type="button" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>Back</button>
+</header>
+
+<main id="main">
+  <!-- 1. home -->
+  <section id="s-home" class="screen" aria-labelledby="word">
+    <h1 id="word" tabindex="-1" aria-label="Isobar"><span>IS</span><svg viewBox="-20 -20 40 40" fill="none" stroke="url(#wg)" stroke-width="2.4" aria-hidden="true"><defs><linearGradient id="wg" x1="0" y1="0" x2="0" y2="1"><stop offset=".2" stop-color="#fff"/><stop offset="1" stop-color="#b9e6fb"/></linearGradient></defs><circle r="17.5"/><circle r="11.5" opacity=".75"/><circle r="5.5" opacity=".5"/></svg><span>BAR</span></h1>
+    <p class="tag">Weather, simulated.</p>
+    <div class="cta"><button class="btn" id="play" type="button">Play<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button></div>
+    <aside class="resume" id="continue" hidden aria-label="Continue your saved season">
+      <h3>Continue</h3>
+      <span class="name" id="rs-name">Atlantic</span>
+      <span class="desc" id="rs-desc"></span>
+      <span class="when" id="rs-when"></span>
+      <div class="row"><button class="btn" id="rs-go" type="button">Continue</button><button class="link" id="rs-del" type="button">Discard this season</button></div>
+    </aside>
+  </section>
+
+  <!-- 2. discipline -->
+  <section id="s-disc" class="screen" hidden aria-labelledby="t-disc">
+    <h2 class="title" id="t-disc" tabindex="-1">What are you forecasting?</h2>
+    <p class="sub">Pick a discipline.</p>
+    <div class="discs">
+      <button class="disc" id="d-tropical" type="button" aria-label="Tropical">
+        <span class="art"><svg viewBox="-50 -50 100 100" fill="none" stroke-linecap="round" aria-hidden="true"><g class="spin" id="swirl" stroke="#72d6ff"></g><circle r="5" fill="#04202e" stroke="#72d6ff" stroke-width="2"/></svg></span>
+        <span class="txt"><span class="nm">Tropical</span><span class="ds">Hurricanes, typhoons and cyclones</span></span>
+      </button>
+      <button class="disc" id="d-severe" type="button" disabled aria-disabled="true" aria-label="Severe, coming soon">
+        <span class="art"><svg viewBox="0 0 100 100" fill="none" stroke="#a08cff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M30 62a14 14 0 0 1-2-27.8A20 20 0 0 1 66 30a15 15 0 0 1 6 29.6" /><path d="M52 52l-9 15h12l-8 16" stroke="#ffb454"/></svg></span>
+        <span class="txt"><span class="nm">Severe <i class="soon">Soon</i></span><span class="ds">Tornadoes, hail and derechos</span></span>
+      </button>
+    </div>
+  </section>
+
+  <!-- 3. basin and settings -->
+  <section id="s-pick" class="screen" hidden aria-labelledby="t-pick">
+    <div id="pick-left">
+      <div class="col-head"><h2 id="t-pick" tabindex="-1">Basin</h2></div>
+      <div id="world" role="group" aria-label="Basin"><img id="worldimg" alt="" draggable="false"></div>
+      <div id="binfo" class="glance" aria-live="polite"></div>
+    </div>
+    <aside class="panel" id="settings" aria-label="Settings">
+      <div class="p-head"><h2>Settings</h2><button class="link" id="reset" type="button">Reset</button></div>
+      <div class="p-body" id="p-body">
+        <div class="grp">
+          <div class="lbl">Mode</div>
+          <div class="seg" id="seg-mode" role="group" aria-label="Mode">
+            <button type="button" data-m="sim" aria-pressed="true">Simulation</button><button type="button" data-m="forecaster" disabled aria-disabled="true">Forecaster <i class="soon">Soon</i></button>
+          </div>
+        </div>
+        <div class="grp">
+          <div class="set-h"><span class="lbl" id="l-enso">ENSO index</span><output id="m-enso-o" for="m-enso">Random start</output></div>
+          <div class="chips" id="enso-chips" role="group" aria-label="ENSO state">
+            <button type="button" data-e="rand" aria-pressed="true">Random</button><button type="button" class="la" data-e="-1.2" aria-pressed="false">La Niña</button><button type="button" data-e="0" aria-pressed="false">Neutral</button><button type="button" class="el" data-e="1.2" aria-pressed="false">El Niño</button>
+          </div>
+          <div class="rng"><input id="m-enso" type="range" min="-3" max="3.4" step="0.1" value="0" aria-labelledby="l-enso"></div>
+        </div>
+        <div id="basic"></div>
+        <div class="grp"><label class="sw"><span>Storms form on their own</span><input type="checkbox" id="m-auto" checked><span class="knob"></span></label></div>
+        <details id="adv">
+          <summary>Advanced<i></i></summary>
+          <div class="grp">
+            <div class="lbl">ENSO</div>
+            <div class="seg" id="seg-drift" role="group" aria-label="ENSO behaviour">
+              <button type="button" data-d="drift" aria-pressed="true">Drifts naturally</button><button type="button" data-d="lock" aria-pressed="false">Locked</button>
+            </div>
+          </div>
+          <div id="advanced"></div>
+        </details>
+      </div>
+      <div class="p-foot"><span id="hint">Pick a basin to begin.</span><button class="btn" id="start" type="button" disabled>Begin</button></div>
+    </aside>
+  </section>
+</main>
+
+<footer><span><b id="ver2">Isobar 0.01A</b> · Early alpha</span><span>Your seasons are kept in this browser</span></footer>
+
+<script>
+/*__MENU_ART__*/
+const BRAND = 'Isobar', VERSION = '0.01A';
+const $ = (id) => document.getElementById(id);
+$('brand-name').textContent = BRAND; $('ver').textContent = VERSION; $('ver2').textContent = BRAND + ' ' + VERSION; document.title = BRAND;
+
+/* ---- the basins: where they are on the map (lon W, lon E, lat S, lat N), the months of their season, and what a year holds in the real record (1991-2020: named storms, hurricanes, major ones, ACE) ---- */
+const BASINS = [
+  { id: 'atlantic', name: 'Atlantic', short: 'Atlantic', word: 'Hurricanes', href: 'dist/atlantic-sst-simulator.html', box: [[-98, -8, 6, 46]], months: [5, 6, 7, 8, 9, 10], norm: [14.4, 7.17, 3.2, 122.5] },
+  { id: 'epac', name: 'Eastern Pacific', short: 'E. Pacific', word: 'Hurricanes', href: 'dist/eastpacific-sst-simulator.html', box: [[-158, -92, 5, 30]], months: [4, 5, 6, 7, 8, 9, 10], norm: [16.63, 8.77, 4.63, 132] },
+  { id: 'wpac', name: 'Western Pacific', short: 'W. Pacific', word: 'Typhoons', href: 'dist/westpacific-sst-simulator.html', box: [[100, 180, 3, 42]], months: [5, 6, 7, 8, 9, 10, 11], norm: [25.13, 15.67, 9.1, 289.1] },
+  { id: 'nio', name: 'Northern Indian Ocean', short: 'N. Indian', word: 'Cyclones', href: 'dist/nio-sst-simulator.html', box: [[44, 100, 3, 28]], months: [3, 4, 5, 9, 10, 11], norm: [5.23, 2.03, 0.97, 22.9] },
+  { id: 'swio', name: 'South-West Indian Ocean', short: 'SW Indian', word: 'Cyclones', href: 'dist/swio-sst-simulator.html', box: [[30, 90, -36, -3]], months: [10, 11, 0, 1, 2, 3], norm: [11.4, 6.37, 3.63, 101.8] },
+  { id: 'aus', name: 'Australian Region', short: 'Australian', word: 'Cyclones', href: 'dist/aus-sst-simulator.html', box: [[90, 160, -36, -5]], months: [10, 11, 0, 1, 2, 3], norm: [11.73, 5.7, 2.93, 74.9] },
+  { id: 'spac', name: 'South Pacific', short: 'S. Pacific', word: 'Cyclones', href: 'dist/spac-sst-simulator.html', box: [[-180, -120, -36, -5], [160, 180, -36, -5]], months: [10, 11, 0, 1, 2, 3], norm: [6.17, 3.37, 1.73, 46.1] },
+  { id: 'satl', name: 'South Atlantic', short: 'S. Atlantic', word: 'Cyclones', href: 'dist/satl-sst-simulator.html', box: [[-55, 12, -40, -6]], months: [10, 11, 0, 1, 2, 3], norm: [0.9, 0.05, 0.01, 1] },
+  { id: 'med', name: 'Mediterranean', short: 'Med.', word: 'Medicanes', href: 'dist/med-sst-simulator.html', box: [[-6, 37, 30, 46]], months: [8, 9, 10, 11, 0], norm: [0.9, 0.08, 0, 0.45] },
+];
+/* ---- the settings. Each travels to the simulator as a query parameter, only when it differs from the normal ---- */
+const sgn = (v, d, u) => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(d) + u;
+const x1 = (v) => v.toFixed(1) + '×', x2 = (v) => v.toFixed(2).replace(/0$/, '') + '×';
+const SET = [
+  { id: 'warm', label: 'Ocean warmth', min: -3, max: 4, step: 0.1, def: 0, fmt: (v) => sgn(v, 1, ' °C'), basic: true },
+  { id: 'shear', label: 'Wind shear', min: -20, max: 20, step: 1, def: 0, fmt: (v) => sgn(v, 0, ' kt'), basic: true },
+  { id: 'moist', label: 'Mid-level moisture', min: -20, max: 20, step: 1, def: 0, fmt: (v) => sgn(v, 0, ' %'), basic: true },
+  { id: 'act', label: 'Storm activity', min: 0, max: 3, step: 0.1, def: 1, fmt: x1, basic: true },
+  { id: 'var', label: 'Year-to-year variability', min: 0, max: 3, step: 0.1, def: 1, fmt: x1 },
+  { id: 'ensoinf', label: 'El Niño / La Niña influence', min: 0, max: 4, step: 0.05, def: 1, fmt: x2 },
+  { id: 'wx', label: 'Day-to-day humidity', min: 0, max: 3, step: 0.1, def: 1, fmt: x1 },
+  { id: 'wxs', label: 'Day-to-day shear and steering', min: 0, max: 3, step: 0.1, def: 1, fmt: x1 },
+  { id: 'jets', label: 'Weather speed', min: 0, max: 3, step: 0.1, def: 1, fmt: x1 },
+  { id: 'sea', label: 'Seasonal swing', min: 0, max: 2, step: 0.05, def: 1, fmt: x2 },
+  { id: 'feat', label: 'Currents and upwelling', min: 0, max: 2, step: 0.05, def: 1, fmt: x2 },
+];
+const ensoWord = (v) => { const a = Math.abs(v); return a < 0.5 ? 'Neutral' : (a < 1 ? 'Weak ' : a < 1.5 ? 'Moderate ' : a < 2 ? 'Strong ' : 'Very strong ') + (v > 0 ? 'El Niño' : 'La Niña'); };
+const S = { screen: 'home', basin: null, mode: 'sim', ensoRand: true, enso: 0, lock: false, auto: true, v: {} };
+SET.forEach((s) => { S.v[s.id] = s.def; });
+
+function fill(el) {                                                          // the filled part of a slider, and where its normal is
+  const lo = +el.min, hi = +el.max, p = (el.value - lo) / (hi - lo) * 100, d = ((el.dataset.def != null ? +el.dataset.def : 0) - lo) / (hi - lo) * 100;
+  el.style.setProperty('--a', Math.min(p, d) + '%'); el.style.setProperty('--b', Math.max(p, d) + '%');          // the track is lit between the normal and the value: how far this is from normal
+  const wrap = el.parentElement; if (wrap && wrap.classList.contains('rng')) wrap.style.setProperty('--d', d + '%');
+}
+function buildSettings() {
+  for (const s of SET) {
+    const box = document.createElement('div'); box.className = 'grp';
+    box.innerHTML = '<div class="set-h"><label class="lbl" for="m-' + s.id + '">' + s.label + '</label><output id="m-' + s.id + '-o" for="m-' + s.id + '"></output></div><div class="rng"><input id="m-' + s.id + '" type="range" min="' + s.min + '" max="' + s.max + '" step="' + s.step + '" value="' + s.def + '" data-def="' + s.def + '"></div>';
+    $(s.basic ? 'basic' : 'advanced').appendChild(box);
+    const el = box.querySelector('input');
+    el.addEventListener('input', () => { S.v[s.id] = parseFloat(el.value); render(); });
+  }
+  $('m-enso').dataset.def = '0';
+  $('m-enso').addEventListener('input', () => { S.ensoRand = false; S.enso = parseFloat($('m-enso').value); render(); });
+  $('enso-chips').querySelectorAll('button').forEach((b) => b.addEventListener('click', () => { if (b.dataset.e === 'rand') S.ensoRand = true; else { S.ensoRand = false; S.enso = parseFloat(b.dataset.e); } render(); }));
+  $('seg-drift').querySelectorAll('button').forEach((b) => b.addEventListener('click', () => { S.lock = b.dataset.d === 'lock'; render(); }));
+  $('m-auto').addEventListener('change', () => { S.auto = $('m-auto').checked; render(); });
+  $('seg-mode').querySelectorAll('button:not(:disabled)').forEach((b) => b.addEventListener('click', () => { S.mode = b.dataset.m; render(); }));
+  $('reset').addEventListener('click', () => { SET.forEach((s) => { S.v[s.id] = s.def; }); S.ensoRand = true; S.enso = 0; S.lock = false; S.auto = true; render(); });
+}
+function render() {
+  for (const s of SET) { const el = $('m-' + s.id), o = $('m-' + s.id + '-o'); el.value = S.v[s.id]; fill(el); o.textContent = s.fmt(S.v[s.id]); o.classList.toggle('chg', Math.abs(S.v[s.id] - s.def) > 1e-9); }
+  const e = $('m-enso'); e.value = S.enso; fill(e); e.classList.toggle('dim', S.ensoRand);
+  const eo = $('m-enso-o'); eo.textContent = S.ensoRand ? 'Random start' : ensoWord(S.enso) + ' (' + sgn(S.enso, 1, '') + ')'; eo.classList.toggle('chg', !S.ensoRand);
+  $('enso-chips').querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.e === 'rand' ? S.ensoRand : !S.ensoRand && Math.abs(parseFloat(b.dataset.e) - S.enso) < 1e-9)));
+  $('seg-drift').querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', String((b.dataset.d === 'lock') === S.lock)));
+  $('seg-mode').querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.m === S.mode)));
+  $('m-auto').checked = S.auto;
+  document.querySelectorAll('.basin').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.id === S.basin)));
+  const bs = BASINS.find((b) => b.id === S.basin);
+  $('binfo').innerHTML = glance(bs);
+  $('start').disabled = !bs;
+  $('hint').classList.toggle('warn', !!(bs && save));
+  $('hint').textContent = !bs ? 'Pick a basin to begin.' : save ? 'Begin replaces your saved ' + save.name + ' ' + (save.season || save.year) + ' season.' : 'Ready.';
+}
+const MONTHS = 'JFMAMJJASOND';
+const num = (v) => (v < 10 ? v.toFixed(v < 0.095 && v > 0 ? 2 : 1).replace(/\.0$/, '') : String(Math.round(v)));
+function glance(b) {                                                         // what a year of this basin holds in the real record, and the months of its season
+  const n = b ? b.norm : [null, null, null, null], tiles = [['Named storms', n[0]], [b ? b.word : 'Hurricanes', n[1]], ['Major', n[2]], ['ACE', n[3]]];
+  return '<div class="g-head"><b>' + (b ? b.name : 'Pick a basin') + '</b><span>' + (b ? 'Real averages, 1991–2020' : 'Click the map') + '</span></div>'
+    + '<div class="g-tiles">' + tiles.map((t) => '<div><b>' + (t[1] == null ? '–' : num(t[1])) + '</b><span>' + t[0] + '</span></div>').join('') + '</div>'
+    + '<div class="g-season"><span>Season</span><div class="months">' + [...MONTHS].map((m, i) => '<i' + (b && b.months.includes(i) ? ' class="on"' : '') + '>' + m + '</i>').join('') + '</div></div>';
+}
+function query() {                                                           // what the simulator is told: only what differs from the normal
+  const q = [];
+  if (!S.ensoRand) q.push('enso=' + S.enso);
+  if (S.lock) q.push('lock=1');
+  for (const s of SET) if (Math.abs(S.v[s.id] - s.def) > 1e-9) q.push(s.id + '=' + +S.v[s.id].toFixed(2));
+  if (!S.auto) q.push('auto=0');
+  return q.join('&');
+}
+
+/* ---- the basins on the map ---- */
+function buildMap() {
+  $('worldimg').src = 'data:image/jpeg;base64,' + ART.world;
+  const [lw, le, ls, ln] = ART.box, W = le - lw, H = ln - ls, world = $('world');
+  for (const lat of [23.4, -23.4]) { const t = document.createElement('div'); t.className = 'tropics'; t.style.top = ((ln - lat) / H * 100) + '%'; world.appendChild(t); }
+  for (const b of BASINS) b.box.forEach((bx, i) => {
+    const el = document.createElement('button'); el.type = 'button'; el.className = 'basin' + (i ? ' alt' : ''); el.dataset.id = b.id; el.setAttribute('aria-label', b.name); el.setAttribute('aria-pressed', 'false'); el.title = b.name;
+    el.style.setProperty('--x', (bx[0] - lw) / W * 100); el.style.setProperty('--w', (bx[1] - bx[0]) / W * 100); el.style.setProperty('--y', (ln - bx[3]) / H * 100); el.style.setProperty('--h', (bx[3] - bx[2]) / H * 100);
+    el.innerHTML = '<span>' + b.short + '</span>';
+    el.addEventListener('click', () => { S.basin = b.id; render(); });
+    world.appendChild(el);
+  });
+}
+
+/* ---- the backdrop and the cyclone on the Tropical card: drawn, not pictures ---- */
+function isobars() {
+  let s = 20260101; const rnd = () => (s = (s * 16807) % 2147483647) / 2147483647;
+  const ph = [0, 1, 2, 3, 4].map(() => rnd() * 6.2832), am = [0.05, 0.034, 0.024, 0.016, 0.011];
+  let out = '';
+  for (let i = 0; i < 26; i++) {
+    const r = 46 + i * 17, k = 1 + i * 0.1, pts = [];
+    for (let j = 0; j < 180; j++) { const t = j / 180 * 6.2832; let m = 1; for (let h = 0; h < 5; h++) m += am[h] * k * Math.sin((h + 2) * t + ph[h] + i * 0.14); pts.push((Math.cos(t) * r * m).toFixed(1) + ' ' + (Math.sin(t) * r * m * 0.84).toFixed(1)); }
+    out += '<path d="M' + pts.join('L') + 'Z"/>';
+  }
+  $('iso').innerHTML = out;
+  let sw = '';
+  for (let a = 0; a < 3; a++) { const pts = []; for (let j = 0; j <= 40; j++) { const t = j / 40, th = a * 2.0944 + t * 3.3, r = 8 + t * 36; pts.push((Math.cos(th) * r).toFixed(1) + ' ' + (Math.sin(th) * r).toFixed(1)); } sw += '<path d="M' + pts.join('L') + '" stroke-width="' + (6 - a * 0.4) + '" opacity="' + (0.95 - a * 0.12) + '"/>'; }
+  $('swirl').innerHTML = sw;
+}
+
+/* ---- a season left in progress (written by the simulator page, see "save / resume" in src/storm-late.js): a few bytes of metadata in localStorage say that one
+   exists, the season itself is the other key. Continue opens the simulator with ?resume=1; Begin (a new game) and Discard delete it ---- */
+const SAVE_META = 'hf-save-meta', SAVE_KEY = 'hf-save';
+let save = null, discardTimer = 0;
+const hrefOf = (id) => { const b = BASINS.find((x) => x.id === id); return b ? b.href : null; };
+function readSave() { try { const m = JSON.parse(localStorage.getItem(SAVE_META)); return m && m.v === 1 && BASINS.some((b) => b.id === m.basin) ? m : null; } catch (e) { return null; } }
+function deleteSave() { try { localStorage.removeItem(SAVE_META); localStorage.removeItem(SAVE_KEY); } catch (e) { /* storage blocked */ } }
+function ago(t) { const s = Math.max(0, (Date.now() - t) / 1000); return s < 90 ? 'just now' : s < 5400 ? Math.round(s / 60) + ' minutes ago' : s < 129600 ? Math.round(s / 3600) + ' hours ago' : Math.round(s / 86400) + ' days ago'; }
+function showSave() {
+  save = readSave(); $('continue').hidden = !save; document.body.classList.toggle('has-save', !!save);
+  if (save) {
+    $('rs-name').textContent = save.name + ' ' + (save.season || save.year);
+    $('rs-desc').textContent = 'Simulation · ' + save.date + ' · ' + save.named + ' named, ' + save.hurr + ' ' + (save.word || 'hurricane') + (save.hurr === 1 ? '' : 's') + ' · ACE ' + save.ace.toFixed(1);
+    $('rs-when').textContent = 'Saved ' + ago(save.savedAt);
+  }
+  $('rs-del').textContent = 'Discard this season';
+  if (S.screen === 'pick') render();
+}
+
+/* ---- the three screens, each with an address of its own (#disc, #tropical), so the browser's Back button walks through them ---- */
+const HASH = { home: '', disc: '#disc', pick: '#tropical' };
+function show(name) {
+  S.screen = name; document.body.dataset.screen = name;
+  for (const id of ['home', 'disc', 'pick']) { const el = $('s-' + id); const on = id === name; if (el.hidden === on) { el.hidden = !on; } }
+  $('back').hidden = name === 'home';
+  const focus = $(name === 'home' ? 'word' : name === 'disc' ? 't-disc' : 't-pick'); if (focus) focus.focus({ preventScroll: true });
+  if (name === 'pick') render();
+  window.scrollTo(0, 0);
+}
+function go(name) { const h = HASH[name]; if (location.hash !== h && !(h === '' && !location.hash)) location.hash = h; show(name); }
+function fromHash() { const h = location.hash, name = h === '#tropical' ? 'pick' : h === '#disc' ? 'disc' : 'home'; if (name !== S.screen) show(name); }
+window.addEventListener('hashchange', fromHash);
+$('play').addEventListener('click', () => go('disc'));
+$('d-tropical').addEventListener('click', () => go('pick'));
+$('back').addEventListener('click', () => { if (S.screen === 'pick') go('disc'); else go('home'); });
+$('brand').addEventListener('click', (e) => { e.preventDefault(); go('home'); });
+
+$('start').addEventListener('click', () => {
+  const href = hrefOf(S.basin); if (!href) return;
+  if (save) deleteSave();                                                            // a new game replaces the saved season
+  const q = query(); location.href = href + (q ? '?' + q : '');
+});
+$('rs-go').addEventListener('click', () => { const href = save && hrefOf(save.basin); if (href) location.href = href + '?resume=1'; });
+$('rs-del').addEventListener('click', () => {                                        // two clicks, so a season is not lost by accident
+  if (!discardTimer) { $('rs-del').textContent = 'Click again to discard it for good'; discardTimer = setTimeout(() => { discardTimer = 0; $('rs-del').textContent = 'Discard this season'; }, 4000); return; }
+  clearTimeout(discardTimer); discardTimer = 0; deleteSave(); showSave();
+});
+window.addEventListener('pageshow', showSave);                                       // coming back with the browser's Back button
+
+buildSettings(); buildMap(); isobars(); showSave(); fromHash(); render();
+window.ISOBAR = { state: S, query, BASINS, SET };                                    // for the tests
+</script>
+</body>
+</html>

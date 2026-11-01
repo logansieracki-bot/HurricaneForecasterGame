@@ -56,11 +56,6 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--focus);outline-
 #panel{right:14px;top:14px;width:296px;max-height:calc(100% - 188px);overflow:auto;padding:12px 16px 14px}
 #panel header{display:flex;align-items:center;justify-content:space-between}
 #panel h2{font-size:14px;font-weight:600;margin:0}
-.subhead{display:flex;align-items:center;justify-content:space-between;width:100%;background:transparent;border:0;border-top:1px solid var(--line);text-align:left;font:inherit;font-size:13px;font-weight:600;color:var(--text);margin:18px 0 2px;padding:14px 0 2px;cursor:pointer}
-.subsec:first-child .subhead{margin-top:0;padding-top:0;border-top:0}
-.subhead .chev{font-style:normal;color:var(--dim);font-size:11px;transition:transform .15s ease}
-.subsec.collapsed .subhead .chev{transform:rotate(-90deg)}
-.subsec.collapsed .subbody{display:none}
 #panel p.hint:empty{display:none}
 #panel p.hint{font-size:11.5px;color:var(--dim);margin:0 0 6px;line-height:1.4}
 #collapse{width:28px;height:28px;border:0;background:transparent;border-radius:6px;cursor:pointer;color:var(--dim)}
@@ -77,26 +72,22 @@ input[type=range]{width:100%;margin:2px 0 0;accent-color:#d4d4d4;height:20px}
 .chk{display:flex;align-items:center;gap:8px;font-size:12.5px;margin-top:9px;cursor:pointer}
 .chk input{accent-color:#d4d4d4;width:15px;height:15px;margin:0}
 #jet-note{font-style:normal;color:var(--dim)}
-.seedrow{display:flex;gap:6px;align-items:center;margin-top:12px;font-size:12.5px}
-.seedrow input[type=number]{width:96px;background:rgba(255,255,255,.07);border:1px solid var(--line);border-radius:7px;color:var(--text);padding:5px 8px;font:inherit;font-variant-numeric:tabular-nums}
-.pill{border:1px solid var(--line);background:rgba(255,255,255,.06);border-radius:8px;padding:5px 10px;font-size:12.5px;cursor:pointer}
-.pill:hover{background:rgba(255,255,255,.13)}
 
 /* readout + legend */
 #readout{left:14px;bottom:16px;padding:8px 14px;min-width:232px}
 #readout b{font-size:19px;font-weight:600;font-variant-numeric:tabular-nums}
 #readout div{font-size:12px;color:var(--dim);font-variant-numeric:tabular-nums;margin-top:1px}
-#legend{right:14px;bottom:34px;width:292px;padding:10px 14px 9px}
+#legend{right:14px;bottom:34px;width:240px;padding:8px 12px 7px}
 #legend canvas{display:block;width:100%;height:11px;border-radius:3px}
-#ticks{position:relative;height:16px;margin-top:3px;font-size:11px;color:var(--dim);font-variant-numeric:tabular-nums}
+#ticks{position:relative;height:15px;margin-top:3px;font-size:10.5px;color:var(--dim);font-variant-numeric:tabular-nums}
 #ticks span{position:absolute;transform:translateX(-50%);white-space:nowrap}
 #ticks span.key{color:var(--text);font-weight:600}
-#legend-cap{font-size:11.5px;color:var(--dim);margin-top:2px}
-#steer-legend{right:14px;bottom:122px;width:292px;padding:10px 14px 9px}
+#legend-cap{font-size:11px;color:var(--dim);margin-top:1px}
+#steer-legend{right:14px;bottom:104px;width:240px;padding:8px 12px 7px}
 #steer-legend canvas{display:block;width:100%;height:11px;border-radius:3px}
-#steer-ticks{position:relative;height:16px;margin-top:3px;font-size:11px;color:var(--dim);font-variant-numeric:tabular-nums}
+#steer-ticks{position:relative;height:15px;margin-top:3px;font-size:10.5px;color:var(--dim);font-variant-numeric:tabular-nums}
 #steer-ticks span{position:absolute;transform:translateX(-50%);white-space:nowrap}
-#steer-cap{font-size:11.5px;color:var(--dim);margin-top:2px}
+#steer-cap{font-size:11px;color:var(--dim);margin-top:1px}
 body.steer-on #panel{max-height:calc(100% - 300px)}   /* the steering legend sits above the field legend, so the panel gives up the room */
 #steer-legend.low{bottom:34px}
 
@@ -163,11 +154,10 @@ canvas.overlay{position:absolute;left:0;top:0;width:100%;height:100%;pointer-eve
   <div id="enso-l">Neutral</div>
 </section>
 
-<aside id="panel" class="card" aria-label="Layers and experiments">
-  <header><h2>Ocean layers</h2><button id="collapse" aria-label="Collapse panel" title="Collapse panel">&#9662;</button></header>
+<aside id="panel" class="card" aria-label="Customization">
+  <header><h2>Customization</h2><button id="collapse" aria-label="Collapse panel" title="Collapse panel">&#9662;</button></header>
   <div class="body">
     <section class="subsec" id="sec-custom">
-      <button class="subhead" aria-expanded="true" aria-controls="sec-custom-b"><span>Customization</span><i class="chev">&#9662;</i></button>
       <div class="subbody" id="sec-custom-b">
         <div class="row seg" id="seg-view" role="group" aria-label="Map layer">
           <button data-v="sst" aria-pressed="true">Temperature</button>
@@ -194,23 +184,23 @@ canvas.overlay{position:absolute;left:0;top:0;width:100%;height:100%;pointer-eve
             <button data-g="off" aria-pressed="true">Off</button><button data-g="grid" aria-pressed="false">Grid</button><button data-g="labels" aria-pressed="false">Labels</button>
           </div>
         </div>
-        <label class="chk"><input type="checkbox" id="l265" checked><span id="l265-label"> 26.5 °C line (cyclone threshold)</span></label>
+        <label class="chk"><input type="checkbox" id="l265" checked><span id="l265-label"> 26.5 °C line</span></label>
         <label class="chk"><input type="checkbox" id="l2"><span id="l2-label"> Contour lines every 2 °C</span></label>
-        <label class="chk"><input type="checkbox" id="jetline"><span> Jet stream line (axis of strongest shear)<i id="jet-note"></i></span></label>
-        <label class="chk"><input type="checkbox" id="steerarrows"><span> Steering arrows (colour = speed)</span></label>
-        <label class="chk"><input type="checkbox" id="highs"><span> Highs (H) with sea-level pressure</span></label>
+        <label class="chk"><input type="checkbox" id="jetline"><span> Jet stream line<i id="jet-note"></i></span></label>
+        <label class="chk"><input type="checkbox" id="steerarrows"><span> Steering arrows</span></label>
+        <label class="chk"><input type="checkbox" id="highs"><span> Highs</span></label>
+        <div class="row" id="steer-depth-row">
+          <div class="sl"><span>Storm strength (steering)</span></div>
+          <div class="seg" id="seg-depth" role="group" aria-label="Storm strength">
+            <button data-d="shallow" aria-pressed="false">Weak</button><button data-d="medium" aria-pressed="false">Medium</button><button data-d="deep" aria-pressed="true">Strong</button>
+          </div>
+        </div>
 <!--__STORM_HTML:panel-->
       </div>
     </section>
-    <section class="subsec collapsed" id="sec-exp">
-      <button class="subhead" aria-expanded="false" aria-controls="sec-exp-b"><span>Experimentation</span><i class="chev">&#9662;</i></button>
-      <div class="subbody" id="sec-exp-b">
-        <p class="hint">Normal = 1991–2020 average.</p>
-        <div class="row seg" id="seg-xp" role="tablist" aria-label="Experiment settings">
-          <button role="tab" id="xp-tab-basic" data-x="basic" aria-selected="true" aria-controls="xp-basic">Basic</button>
-          <button role="tab" id="xp-tab-adv" data-x="adv" aria-selected="false" aria-controls="xp-adv" tabindex="-1">Advanced</button>
-        </div>
-        <div id="xp-basic" role="tabpanel" aria-labelledby="xp-tab-basic">
+    <div id="settings-store" hidden aria-hidden="true">
+      <!-- The controls the model reads. The main menu sets them (the query of the page: see "settings from the menu" in the page script); the page itself shows none of them. -->
+      <div id="xp-basic">
           <div class="row">
             <div class="sl"><label for="p-ensonow">Set ENSO now</label><output id="p-ensonow-o">Neutral</output></div>
             <input id="p-ensonow" type="range" min="-3" max="3.4" step="0.1" value="0">
@@ -228,14 +218,8 @@ canvas.overlay{position:absolute;left:0;top:0;width:100%;height:100%;pointer-eve
             <div class="sl"><label for="p-shear" title="Moves the average 200–850 hPa wind shear everywhere; it never goes below zero">Wind shear (average)</label><output id="p-shear-o">+0 kt</output></div>
             <input id="p-shear" type="range" min="-20" max="20" step="1" value="0">
           </div>
-        </div>
-        <div id="xp-adv" role="tabpanel" aria-labelledby="xp-tab-adv" hidden>
-          <div class="row" id="steer-depth-row">
-            <div class="sl"><span>Storm strength (steering arrows)</span></div>
-            <div class="seg" id="seg-depth" role="group" aria-label="Storm strength">
-              <button data-d="shallow" aria-pressed="false">Weak</button><button data-d="medium" aria-pressed="false">Medium</button><button data-d="deep" aria-pressed="true">Strong</button>
-            </div>
-          </div>
+      </div>
+      <div id="xp-adv">
           <div class="row">
             <div class="sl"><label for="p-var">Year-to-year variability</label><output id="p-var-o">1.0×</output></div>
             <input id="p-var" type="range" min="0" max="3" step="0.1" value="1">
@@ -265,15 +249,10 @@ canvas.overlay{position:absolute;left:0;top:0;width:100%;height:100%;pointer-eve
             <input id="p-enso" type="range" min="0" max="4" step="0.05" value="1">
           </div>
 <!--__STORM_HTML:advanced-->
-          <label class="chk"><input type="checkbox" id="seed-vary" checked> Seed nudges swing, currents and El Niño</label>
-        </div>
-        <div class="seedrow">
-          <label for="seed">Seed</label><input id="seed" type="number" min="1" max="999999" step="1">
-          <button class="pill" id="b-newseed" title="Pick a new random year and restart">New seed</button>
-          <button class="pill" id="b-reset" title="Reset the sliders (seed-nudged ones go back to this seed's values)">Reset</button>
-        </div>
+          <label class="chk"><input type="checkbox" id="seed-vary" checked></label>
       </div>
-    </section>
+      <input id="seed" type="number" min="1" max="999999" step="1">
+    </div>
   </div>
 </aside>
 
@@ -1906,7 +1885,7 @@ function drawGrid(minX, minY, ws) {
 const showLine265 = () => $('l265').checked, showLine2 = () => $('l2').checked;
 function updateThresholdLabels() {
   const V = VIEWS[view];
-  $('l265-label').textContent = ' ' + V.key + V.unit + ' line (' + V.keyLabel + ')';
+  $('l265-label').textContent = ' ' + V.key + V.unit + ' line'; $('l265-label').parentElement.title = V.keyLabel;
   $('l2-label').textContent = ' Contour lines every ' + V.step + V.unit;
 }
 
@@ -2274,18 +2253,6 @@ window.addEventListener('keydown', (e) => {
 
 /* panel */
 $('collapse').onclick = () => { const p = $('panel'); p.classList.toggle('collapsed'); $('collapse').innerHTML = p.classList.contains('collapsed') ? '&#9656;' : '&#9662;'; };
-document.querySelectorAll('.subhead').forEach((h) => h.onclick = () => { const sec = h.closest('.subsec'), collapsed = sec.classList.toggle('collapsed'); h.setAttribute('aria-expanded', !collapsed); });
-/* Experimentation has two tabs: Basic (ENSO, warming, moisture, shear -- what you reach for first) and Advanced (the rest). Basic is shown first. */
-const xpTabs = [...document.querySelectorAll('#seg-xp button')];
-function setXpTab(name) { xpTabs.forEach((b) => { const on = b.dataset.x === name; b.setAttribute('aria-selected', on); b.tabIndex = on ? 0 : -1; $('xp-' + b.dataset.x).hidden = !on; }); }
-xpTabs.forEach((b, i) => {
-  b.onclick = () => setXpTab(b.dataset.x);
-  b.onkeydown = (e) => {   // arrow keys / Home / End move between the tabs, as in any tab list
-    const j = e.key === 'ArrowRight' ? (i + 1) % xpTabs.length : e.key === 'ArrowLeft' ? (i + xpTabs.length - 1) % xpTabs.length : e.key === 'Home' ? 0 : e.key === 'End' ? xpTabs.length - 1 : -1;
-    if (j < 0) return;
-    e.preventDefault(); e.stopPropagation(); setXpTab(xpTabs[j].dataset.x); xpTabs[j].focus();
-  };
-});
 document.querySelectorAll('#seg-view button').forEach((b) => b.onclick = () => { view = b.dataset.v; document.querySelectorAll('#seg-view button').forEach((x) => x.setAttribute('aria-pressed', x === b)); drawLegend(); updateThresholdLabels(); updateReadout(); scheduleRender(); });
 THEME_ORDER.forEach((id) => { const t = THEMES[id], b = document.createElement('button'); b.dataset.th = id; b.setAttribute('aria-pressed', id === 'sat'); b.innerHTML = '<i style="background:' + t.swatch + '"></i><span>' + t.name + '</span>'; b.onclick = () => setTheme(id); $('themes').appendChild(b); });
 document.querySelectorAll('#seg-grid button').forEach((b) => b.onclick = () => setGridMode(b.dataset.g));
@@ -2303,11 +2270,9 @@ function hash01(seed, k) { let t = (seed ^ Math.imul(k, 0x9E3779B1)) >>> 0; t = 
 function seedJitter(seed, k, lo, hi) { const mag = lo + (hi - lo) * hash01(seed, k * 2 + 1), v = 1 + (hash01(seed, k * 2 + 2) < 0.5 ? -mag : mag); return Math.round(v / 0.05) * 0.05; }
 function seedSliderValues(seed) { return { 'p-sea': seedJitter(seed, 1, 0.08, 0.22), 'p-feat': seedJitter(seed, 2, 0.10, 0.30), 'p-enso': seedJitter(seed, 3, 0.12, 0.40) }; }
 function setSliderValues(vals) { for (const id in vals) $(id).value = vals[id]; sliders.forEach(([id, key, fmt]) => { P[key] = parseFloat($(id).value); $(id + '-o').textContent = fmt(P[key]); }); }
-$('b-reset').onclick = () => { setSliderValues(Object.assign({ 'p-warm': 0, 'p-moist': 0, 'p-shear': 0, 'p-var': 1, 'p-wx': 1, 'p-wxs': 1, 'p-jets': 1 }, $('seed-vary').checked ? seedSliderValues(P.seed) : { 'p-sea': 1, 'p-feat': 1, 'p-enso': 1 })); stormEnvChanged(); refresh(); };
 function applySeed(s) { s = Math.max(1, Math.min(999999, Math.floor(s) || 1)); $('seed').value = s; P.seed = s; if ($('seed-vary').checked) setSliderValues(seedSliderValues(s)); restart(); }
 $('seed-vary').onchange = () => { setSliderValues($('seed-vary').checked ? seedSliderValues(P.seed) : { 'p-sea': 1, 'p-feat': 1, 'p-enso': 1 }); refresh(); };
 $('seed').onchange = () => applySeed(parseFloat($('seed').value));
-$('b-newseed').onclick = () => applySeed(1 + Math.floor(Math.random() * 999999));
 
 /*__STORM_LATE__*/
 
@@ -2318,7 +2283,7 @@ setTheme('sat');
 drawLegend(); drawSteerLegend(); updateThresholdLabels(); updateSpeedUI();
 if (window.innerWidth < 700) $('panel').classList.add('collapsed');
 const seed0 = 1 + Math.floor(Math.random() * 999999);
-$('seed').value = seed0; P.seed = seed0; setSliderValues(seedSliderValues(seed0)); initSim(seed0); updateClock();
+$('seed').value = seed0; P.seed = seed0; setSliderValues(seedSliderValues(seed0)); const MENU = menuStart(); initSim(seed0); menuEnso(MENU); updateClock();
 refresh();
 if (RESUME && !resumeFromSave()) setPlaying(true); else if (RESUME) setPlaying(false);
 else if (hasSaveMeta()) { saveOwner = false; document.body.dataset.resume = 'beside'; toast('A saved season is waiting in the main menu. This new one is not being saved: press Restart to replace the saved season, or go back to the menu and press Continue.'); }
@@ -2345,7 +2310,7 @@ window.SSTSIM = {
   setSteerLayer(l) { document.querySelector('#seg-depth button[data-d="' + l + '"]').click(); },
   steerArrows() { steerRec = []; drawSteer(); const r = steerRec; steerRec = null; return r; },                 // the arrows drawn right now: where (lat/lon and screen px), the wind there, how faded
   steerColorOf(sp) { return steerColor((Math.min(STEER_NCOL - 1, Math.floor(sp / STEER_VMAX * STEER_NCOL)) + 0.5) / STEER_NCOL * STEER_VMAX); },   // the colour an arrow of that speed is painted
-  setXpTab, setPlaying, restart, map, render, setTheme, setGridMode, sliderVals() { return { seasonal: P.seasonal, features: P.features, enso: P.enso, warming: P.warming, moisture: P.moisture, shearShift: P.shearShift, variability: P.variability, synoptic: P.synoptic, shearSynoptic: P.shearSynoptic, jetSpeed: P.jetSpeed, seed: P.seed }; }, applySeed, isLand,
+  setPlaying, restart, map, render, setTheme, setGridMode, sliderVals() { return { seasonal: P.seasonal, features: P.features, enso: P.enso, warming: P.warming, moisture: P.moisture, shearShift: P.shearShift, variability: P.variability, synoptic: P.synoptic, shearSynoptic: P.shearSynoptic, jetSpeed: P.jetSpeed, seed: P.seed }; }, applySeed, isLand,
   bm() {
     const detail = !!(detailLayer && map.hasLayer(detailLayer));
     if (themeId === 'sat') { const st = TS.sat; return { theme: 'sat', idx: st.idx, offline: st.offline, loaded: st.loaded, label: st.offline ? 'offline (Blue Marble)' : (TILESETS.sat[st.idx] && TILESETS.sat[st.idx].label), detail, csp: cspBlocked }; }
