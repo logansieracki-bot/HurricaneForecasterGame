@@ -2217,7 +2217,15 @@ async function checkSteering(page, label, S) {
   await ev(([view]) => { const X = window.SSTSIM; X.applySeed(4242); X.setPlaying(false); X.advance(24 * 103); X.map.fitBounds(view, { animate: false }); }, [S.view]);   // a fixed state: mid-September, a fast jet at the hover point
   await page.waitForTimeout(200);
   const hoverAt = async (c) => {
-    const p = await ev((ll) => { const q = window.SSTSIM.map.latLngToContainerPoint(ll); return { x: q.x, y: q.y }; }, c);
+    // the pointer goes to the point asked for, or, where a card of the page (the readout itself, the dock, a key) lies over it or near it, to the nearest pixel the map owns with room to spare: the check is the readout against the model at wherever the pointer is
+    const p = await ev((ll) => {
+      const q = window.SSTSIM.map.latLngToContainerPoint(ll), W = innerWidth, H = innerHeight;
+      const own = (x, y) => { if (x < 6 || y < 6 || x > W - 6 || y > H - 6) return false; const e = document.elementFromPoint(x, y); return !!e && !!e.closest('#map'); };
+      const room = (x, y, m) => own(x, y) && [[m, 0], [-m, 0], [0, m], [0, -m], [m * 0.7, m * 0.7], [-m * 0.7, -m * 0.7], [m * 0.7, -m * 0.7], [-m * 0.7, m * 0.7]].every(([dx, dy]) => own(x + dx, y + dy));
+      if (room(q.x, q.y, 14)) return { x: q.x, y: q.y };                  // (the page leaves a margin of ten pixels round its cards, where the readout does not follow the pointer)
+      for (let r = 10; r <= 500; r += 10) for (let a = 0; a < 24; a++) { const x = Math.round(q.x + r * Math.cos(a * Math.PI / 12)), y = Math.round(q.y - r * Math.sin(a * Math.PI / 12)); if (room(x, y, 70)) return { x, y }; }      // (and the readout grows by a line or two when the pressure and the steering are on: room to spare)
+      return { x: q.x, y: q.y };
+    }, c);
     await page.mouse.move(p.x - 3, p.y - 3); await page.mouse.move(p.x, p.y); await page.waitForTimeout(150);
     return { p, ll: await ev(([x, y]) => { const l = window.SSTSIM.map.containerPointToLatLng([x, y]); return [l.lat, l.lng]; }, [p.x, p.y]), text: await ev(() => document.getElementById('readout').textContent) };
   };
@@ -2606,7 +2614,7 @@ async function checkBasin(label, dist, extra) {
   await page.waitForFunction(() => window.__ready === true, { timeout: 15000 });
   await page.waitForTimeout(1000);
   if (process.env.ONLY_FN) {                                                          // ONLY_FN='summary,icons' runs just those check functions of the page, without the shared checks before them (a working aid; CI runs everything)
-    const prefix = BASIN_PREFIX[label], FN = { summary: () => checkSummary(page, label), icons: () => checkIcons(page, label, prefix), look: () => checkLook(page, label, prefix), layout: () => checkLayout(page, label, prefix), settings: () => checkExperiment(page, label), impacts: () => checkImpacts(page, label, prefix), basin: () => checkStormsBasin(page, label, prefix) };
+    const prefix = BASIN_PREFIX[label], FN = { summary: () => checkSummary(page, label), icons: () => checkIcons(page, label, prefix), look: () => checkLook(page, label, prefix), steering: () => checkSteering(page, label, STEER_SPECS[prefix]), layout: () => checkLayout(page, label, prefix), settings: () => checkExperiment(page, label), impacts: () => checkImpacts(page, label, prefix), basin: () => checkStormsBasin(page, label, prefix) };
     for (const f of process.env.ONLY_FN.split(',')) await FN[f]();
     check(`[${label}] loads with no JS errors`, errors.length === 0); if (errors.length) console.log('  ' + errors.join('\n  '));
     await browser.close(); return;
