@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Isobar</title>
-<meta name="description" content="Isobar: weather, simulated. Tropical cyclone basins, real climate, your settings.">
+<meta name="description" content="Isobar: simulating and forecasting weather around the world.">
 <style>
 :root{
   --bg:#060a12; --panel:rgba(12,19,31,.78); --card:rgba(255,255,255,.045); --card-h:rgba(255,255,255,.09);
@@ -49,8 +49,7 @@ main{position:relative;z-index:1;min-height:calc(100vh - 118px);display:flex;fle
 .screen{animation:rise .45s cubic-bezier(.2,.7,.2,1) both}
 @keyframes rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
 h1,h2,h3{margin:0;font-weight:600}
-h2.title{font-size:clamp(26px,3.6vw,38px);font-weight:500;letter-spacing:-.01em;margin-bottom:6px}
-.sub{color:var(--dim);margin:0 0 28px}
+h2.title{font-size:clamp(26px,3.6vw,38px);font-weight:500;letter-spacing:-.01em;margin-bottom:28px}
 
 /* the home screen */
 #s-home{max-width:780px}
@@ -80,7 +79,8 @@ h2.title{font-size:clamp(26px,3.6vw,38px);font-weight:500;letter-spacing:-.01em;
 .disc{position:relative;text-align:left;border:1px solid var(--line);border-radius:22px;padding:0;overflow:hidden;background:var(--panel);backdrop-filter:blur(8px);min-height:300px;display:flex;flex-direction:column;transition:border-color .2s,transform .2s,box-shadow .2s;color:var(--text)}
 .disc:hover:not(:disabled){border-color:rgba(114,214,255,.55);transform:translateY(-3px);box-shadow:0 18px 50px rgba(0,0,0,.45),0 0 0 1px rgba(114,214,255,.15)}
 .disc:disabled{cursor:default;opacity:.6}
-.disc .art{flex:1;min-height:170px;display:flex;align-items:center;justify-content:center;background:radial-gradient(circle at 50% 55%,rgba(114,214,255,.16),transparent 62%)}
+.disc .art{position:relative;overflow:hidden;flex:1;min-height:170px;display:flex;align-items:center;justify-content:center;background:radial-gradient(circle at 50% 55%,rgba(114,214,255,.16),transparent 62%)}
+.disc .art canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
 .disc:disabled .art{background:radial-gradient(circle at 50% 55%,rgba(160,140,255,.10),transparent 62%)}
 .disc .art svg{width:150px;height:150px;overflow:visible}
 .disc .txt{padding:6px 22px 22px}
@@ -111,6 +111,14 @@ h2.title{font-size:clamp(26px,3.6vw,38px);font-weight:500;letter-spacing:-.01em;
 .g-tiles div{border:1px solid var(--line);border-radius:14px;padding:11px 12px 9px;background:var(--card)}
 .g-tiles b{display:block;font-size:26px;font-weight:300;line-height:1.1;font-variant-numeric:tabular-nums}
 .g-tiles span{display:block;font-size:11.5px;color:var(--dim);margin-top:3px;white-space:nowrap}
+/* the Expected block of the glance card: what the game itself makes of a season of this basin under the settings */
+.g-exp{margin-top:16px;padding-top:14px;border-top:1px solid var(--line)}
+.g-exp .g-head{margin-bottom:10px}
+.g-exp .g-head b{font-size:15px}
+.g-exp .g-head span{color:var(--dim)}
+.g-tiles.ex b{color:var(--acc)}
+.g-tiles.ex small{display:block;font-size:11px;color:var(--faint);margin-top:1px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.g-note{margin:10px 0 0;font-size:11.5px;line-height:1.4;color:var(--faint)}
 .g-season{display:flex;align-items:center;gap:14px;margin-top:14px}
 .g-season>span{font-size:12px;color:var(--dim);flex:none;width:48px}
 .months{flex:1;display:grid;grid-template-columns:repeat(12,1fr);gap:3px}
@@ -191,7 +199,11 @@ footer b{color:var(--dim);font-weight:600}
   .disc{min-height:0;flex-direction:row;align-items:center}
   .disc .art{flex:none;min-height:0;width:120px}
   .disc .art svg{width:84px;height:84px}
+  .disc .art{min-height:96px}
   .disc .txt{padding:14px 16px 14px 0}
+  .disc.tr{flex-direction:column;align-items:stretch}                                   /* the season map keeps its width on a phone: it is the card */
+  .disc.tr .art{width:auto;min-height:150px;height:150px}
+  .disc.tr .txt{padding:8px 18px 16px}
   .resume{max-width:none}
   .btn{padding:13px 26px}
 }
@@ -213,7 +225,7 @@ footer b{color:var(--dim);font-weight:600}
   <!-- 1. home -->
   <section id="s-home" class="screen" aria-labelledby="word">
     <h1 id="word" tabindex="-1" aria-label="Isobar"><span>IS</span><svg viewBox="-20 -20 40 40" fill="none" stroke="url(#wg)" stroke-width="2.4" aria-hidden="true"><defs><linearGradient id="wg" x1="0" y1="0" x2="0" y2="1"><stop offset=".2" stop-color="#fff"/><stop offset="1" stop-color="#b9e6fb"/></linearGradient></defs><circle r="17.5"/><circle r="11.5" opacity=".75"/><circle r="5.5" opacity=".5"/></svg><span>BAR</span></h1>
-    <p class="tag">Weather, simulated.</p>
+    <p class="tag">Simulating and Forecasting weather around the world</p>
     <div class="cta"><button class="btn" id="play" type="button">Play<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button></div>
     <aside class="resume" id="continue" hidden aria-label="Continue your saved season">
       <h3>Continue</h3>
@@ -226,11 +238,10 @@ footer b{color:var(--dim);font-weight:600}
 
   <!-- 2. discipline -->
   <section id="s-disc" class="screen" hidden aria-labelledby="t-disc">
-    <h2 class="title" id="t-disc" tabindex="-1">What are you forecasting?</h2>
-    <p class="sub">Pick a discipline.</p>
+    <h2 class="title" id="t-disc" tabindex="-1">Pick your weather phenomena</h2>
     <div class="discs">
-      <button class="disc" id="d-tropical" type="button" aria-label="Tropical">
-        <span class="art"><svg viewBox="-50 -50 100 100" fill="none" stroke-linecap="round" aria-hidden="true"><g class="spin" id="swirl" stroke="#72d6ff"></g><circle r="5" fill="#04202e" stroke="#72d6ff" stroke-width="2"/></svg></span>
+      <button class="disc tr" id="d-tropical" type="button" aria-label="Tropical">
+        <span class="art"><canvas id="season-art" role="img" aria-label="A highly active simulated Atlantic season: the tracks of its storms drawn day by day over Blue Marble"></canvas></span>
         <span class="txt"><span class="nm">Tropical</span><span class="ds">Hurricanes, typhoons and cyclones</span></span>
       </button>
       <button class="disc" id="d-severe" type="button" disabled aria-disabled="true" aria-label="Severe, coming soon">
@@ -281,10 +292,12 @@ footer b{color:var(--dim);font-weight:600}
   </section>
 </main>
 
-<footer><span><b id="ver2">Isobar 0.01A</b> · Early alpha</span><span>Your seasons are kept in this browser</span></footer>
+<footer><span><b id="ver2">Isobar 0.01A</b> · Early alpha</span></footer>
 
 <script>
 /*__MENU_ART__*/
+/*__MENU_SEASON__*/
+/*__MENU_EXPECT__*/
 const BRAND = 'Isobar', VERSION = '0.01A';
 const $ = (id) => document.getElementById(id);
 $('brand-name').textContent = BRAND; $('ver').textContent = VERSION; $('ver2').textContent = BRAND + ' ' + VERSION; document.title = BRAND;
@@ -359,10 +372,49 @@ function render() {
 }
 const MONTHS = 'JFMAMJJASOND';
 const num = (v) => (v < 10 ? v.toFixed(v < 0.095 && v > 0 ? 2 : 1).replace(/\.0$/, '') : String(Math.round(v)));
+/* ---- Expected: what the game itself makes of a season of this basin under the settings. tools/make_menu_expect.mjs plays whole seasons through the simulator pages (the settings sent the way Begin sends them, an
+   El Nino or La Nina held at the start, free to drift or locked) and fits one response model per basin and count: the number of storms is multiplied by what each setting does (a quasi-Poisson regression with a log
+   link). Counted: ocean warmth, wind shear, mid-level moisture, storm activity, and El Nino or La Nina with its influence. The seasons that come out vary a lot around it, so the 8-in-10 range goes with each number. ---- */
+const EXP_KEYS = ['named', 'hurr', 'major', 'ace'];
+function expFeatures(spec) {                                                 // the model's inputs for this basin's list of names (the same numbers as `inputs` in tools/make_menu_expect.mjs)
+  const mode = S.ensoRand ? 'random' : S.lock ? 'locked' : 'drift', d = mode === 'random' ? 0 : 1, w = S.v.warm / 2, s = S.v.shear / 10, m = S.v.moist / 10, a = Math.log(Math.max(S.v.act, 0.3));
+  const e = Math.max(-3, Math.min(3.2, d * S.enso * S.v.ensoinf / 2)), dr = mode === 'drift' ? 1 : 0;      // (the seasons played reach El Nino and its influence up to a product of about 6)
+  const v = { '1': 1, w, s, m, a, w2: w * w, s2: s * s, m2: m * m, w3: w * w * w, s3: s * s * s, m3: m * m * m, ws: w * s, wm: w * m, sm: s * m, d, e, e2: e * e, dre: dr * e };
+  return spec.map((k) => v[k]);
+}
+function expected(b) {                                                       // -> null (no model), { off }, { zero } or { mu, mu0, phi }: the mean of each count, and what it is at the normal settings
+  const E = typeof EXPECT !== 'undefined' && EXPECT && EXPECT.basins ? EXPECT.basins[b.id] : null; if (!E) return null;
+  if (!S.auto) return { off: true };
+  if (S.v.act <= 0) return { zero: true };
+  const dot = (c, x) => Math.exp(c.reduce((t, v, j) => t + v * x[j], 0)), x = expFeatures(E.spec), f = S.v.act < 0.3 ? S.v.act / 0.3 : 1, mu = {}, mu0 = {};
+  for (const k of EXP_KEYS) { mu[k] = f * dot(E.coef[k], x); mu0[k] = Math.exp(E.coef[k][0]); }
+  mu.hurr = Math.min(mu.hurr, mu.named); mu.major = Math.min(mu.major, mu.hurr);                           // (a hurricane is a named storm, a major one a hurricane)
+  return { mu, mu0, phi: E.phi };
+}
+function countRange(mu, phi) {                                               // the 10th and 90th percentile of a count with this mean and a variance of phi times it (a negative binomial)
+  if (mu < 0.02) return [0, 0];
+  const r = phi > 1.05 ? mu / (phi - 1) : 0; let p = r ? Math.pow(r / (r + mu), r) : Math.exp(-mu), c = p, lo = c >= 0.1 ? 0 : -1, hi = -1;
+  for (let k = 0; k < 400; k++) { if (lo < 0 && c >= 0.1) lo = k; if (c >= 0.9) { hi = k; break; } p *= r ? (k + r) / (k + 1) * mu / (r + mu) : mu / (k + 1); c += p; }
+  return [Math.max(lo, 0), hi < 0 ? Math.ceil(mu * 2 + 5) : hi];
+}
+function aceRange(mu, phi) {                                                 // the same for the accumulated cyclone energy: a log-normal with the variance the fit measured
+  if (mu < 0.5) return [0, Math.round(mu * 3)];
+  const s2 = Math.log(1 + phi / mu), s = Math.sqrt(s2);
+  return [Math.round(mu * Math.exp(-1.2816 * s - s2 / 2)), Math.round(mu * Math.exp(1.2816 * s - s2 / 2))];
+}
+function expectHtml(b) {
+  const X = b ? expected(b) : null; if (!X) return '';
+  const lab = ['Named storms', b.word, 'Major', 'ACE'], head = (right) => '<div class="g-exp"><div class="g-head"><b>Expected</b><span>' + right + '</span></div>';
+  if (X.off || X.zero) return head(X.off ? 'Storms form only where you place them' : 'No storms form at activity 0') + '<div class="g-tiles ex">' + lab.map((l) => '<div><b>' + (X.zero ? '0' : '–') + '</b><span>' + l + '</span></div>').join('') + '</div></div>';
+  const pct = Math.round((X.mu.ace / X.mu0.ace - 1) * 100), word = Math.abs(pct) < 6 ? 'ACE about normal' : 'ACE ' + Math.abs(pct) + ' % ' + (pct > 0 ? 'above' : 'below') + ' normal';
+  const tiles = EXP_KEYS.map((k, i) => { const v = X.mu[k], r = k === 'ace' ? aceRange(v, X.phi[k]) : countRange(v, X.phi[k]); return '<div><b>' + (k === 'ace' ? Math.round(v) : num(v)) + '</b><span>' + lab[i] + '</span><small>' + r[0] + '–' + r[1] + '</small></div>'; });
+  return head(word) + '<div class="g-tiles ex">' + tiles.join('') + '</div><p class="g-note">What a season of this game holds under your settings: ocean warmth, shear, moisture, activity and El Niño count. The small numbers are the range of 8 seasons in 10.</p></div>';
+}
 function glance(b) {                                                         // what a year of this basin holds in the real record, and the months of its season
   const n = b ? b.norm : [null, null, null, null], tiles = [['Named storms', n[0]], [b ? b.word : 'Hurricanes', n[1]], ['Major', n[2]], ['ACE', n[3]]];
   return '<div class="g-head"><b>' + (b ? b.name : 'Pick a basin') + '</b><span>' + (b ? 'Real averages, 1991–2020' : 'Click the map') + '</span></div>'
     + '<div class="g-tiles">' + tiles.map((t) => '<div><b>' + (t[1] == null ? '–' : num(t[1])) + '</b><span>' + t[0] + '</span></div>').join('') + '</div>'
+    + expectHtml(b)
     + '<div class="g-season"><span>Season</span><div class="months">' + [...MONTHS].map((m, i) => '<i' + (b && b.months.includes(i) ? ' class="on"' : '') + '>' + m + '</i>').join('') + '</div></div>';
 }
 function query() {                                                           // what the simulator is told: only what differs from the normal
@@ -399,9 +451,67 @@ function isobars() {
     out += '<path d="M' + pts.join('L') + 'Z"/>';
   }
   $('iso').innerHTML = out;
-  let sw = '';
-  for (let a = 0; a < 3; a++) { const pts = []; for (let j = 0; j <= 40; j++) { const t = j / 40, th = a * 2.0944 + t * 3.3, r = 8 + t * 36; pts.push((Math.cos(th) * r).toFixed(1) + ' ' + (Math.sin(th) * r).toFixed(1)); } sw += '<path d="M' + pts.join('L') + '" stroke-width="' + (6 - a * 0.4) + '" opacity="' + (0.95 - a * 0.12) + '"/>'; }
-  $('swirl').innerHTML = sw;
+}
+
+/* ---- the Tropical card: a highly active season of the game itself (tools/make_menu_season.mjs), drawn track by track over Blue Marble as the summary's season map draws it ---- */
+function seasonArt() {
+  const cv = $('season-art'); if (!cv || !SEASON) return;
+  const img = new Image(); img.src = 'data:image/jpeg;base64,' + SEASON.map;
+  const [L, R, B, T] = SEASON.box, MW = SEASON.size[0], MH = SEASON.size[1], DUR = 17000, HOLD = 3200, FADE = 700;
+  const COL = ['#6EC1E7', '#4DFFFF', '#FFFFD9', '#FFD98C', '#FF9E59', '#FF738A', '#A188FC'];       // Wikipedia's track map colours: depression, storm, categories 1 to 5
+  const cls = (v) => (v < 34 ? 0 : v < 64 ? 1 : v < 83 ? 2 : v < 96 ? 3 : v < 113 ? 4 : v < 137 ? 5 : 6);
+  let h0 = Infinity, h1 = -Infinity;
+  for (const s of SEASON.storms) { s.h0 = s.f[0][0]; s.h1 = s.f[s.f.length - 1][0]; s.named = (s.f.find((q) => q[3] >= 34) || [Infinity])[0]; h0 = Math.min(h0, s.h0); h1 = Math.max(h1, s.h1); }
+  const ace = []; for (const s of SEASON.storms) for (const q of s.f) if (q[3] >= 34) ace.push([q[0], q[3] * q[3] / 10000]); ace.sort((a, b) => a[0] - b[0]);
+  const MON = ['JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC', 'JAN'], DAYS = [30, 31, 31, 30, 31, 30, 31, 31];                  // the season starts on June 1
+  const dateOf = (h) => { let d = Math.floor(h / 24), m = 0; while (m < 7 && d >= DAYS[m]) { d -= DAYS[m]; m++; } return MON[m] + ' ' + (d + 1); };
+  const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let t0 = 0, raf = 0;
+  function draw(h, fade) {
+    const dpr = Math.min(2, window.devicePixelRatio || 1), w = cv.clientWidth, hh = cv.clientHeight; if (!w || !hh) return;
+    if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(hh * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(hh * dpr); }
+    const g = cv.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, w, hh);
+    const sc = Math.max(w / MW, hh / MH), ox = (w - MW * sc) / 2, oy = (hh - MH * sc) / 2;
+    const X = (lon10) => ox + ((lon10 / 10 - L) / (R - L)) * MW * sc, Y = (lat10) => oy + ((T - lat10 / 10) / (T - B)) * MH * sc;
+    g.globalAlpha = 1; if (img.complete && img.naturalWidth) g.drawImage(img, ox, oy, MW * sc, MH * sc); else { g.fillStyle = '#080e22'; g.fillRect(0, 0, w, hh); }
+    g.fillStyle = 'rgba(6,10,20,.3)'; g.fillRect(0, 0, w, hh);
+    g.globalAlpha = fade; g.lineJoin = 'round'; g.lineCap = 'round';
+    const r = Math.max(1.6, w / 230), lw = Math.max(0.9, w / 520);
+    for (const s of SEASON.storms) {
+      if (s.h0 > h) continue;
+      const vis = s.f.filter((q) => q[0] <= h); let head = null;
+      if (h < s.h1) { const a = vis[vis.length - 1], b = s.f[vis.length], u = (h - a[0]) / (b[0] - a[0]); head = [h, a[1] + (b[1] - a[1]) * u, a[2] + (b[2] - a[2]) * u, a[3] + (b[3] - a[3]) * u]; }
+      const pts = head ? vis.concat([head]) : vis, old = h > s.h1 ? Math.min(1, (h - s.h1) / 96) : 0;
+      g.globalAlpha = fade * (1 - 0.32 * old);
+      g.strokeStyle = 'rgba(255,255,255,.9)'; g.lineWidth = lw; g.beginPath(); pts.forEach((q, i) => { const px = X(q[2]), py = Y(q[1]); if (i && q[0] - pts[i - 1][0] <= 12) g.lineTo(px, py); else g.moveTo(px, py); }); g.stroke();
+      for (const q of vis) { g.fillStyle = COL[cls(q[3])]; g.beginPath(); g.arc(X(q[2]), Y(q[1]), r, 0, 6.2832); g.fill(); }
+      if (head) { const px = X(head[2]), py = Y(head[1]); g.strokeStyle = 'rgba(255,255,255,.95)'; g.lineWidth = 1.3; g.fillStyle = COL[cls(head[3])]; g.beginPath(); g.arc(px, py, r * 1.9, 0, 6.2832); g.fill(); g.stroke(); }
+    }
+    g.globalAlpha = fade;
+    const gb = g.createLinearGradient(0, hh - 34, 0, hh); gb.addColorStop(0, 'rgba(6,10,20,0)'); gb.addColorStop(1, 'rgba(6,10,20,.72)'); g.fillStyle = gb; g.fillRect(0, hh - 34, w, 34);
+    const gt = g.createLinearGradient(0, 0, 0, 30); gt.addColorStop(0, 'rgba(6,10,20,.72)'); gt.addColorStop(1, 'rgba(6,10,20,0)'); g.fillStyle = gt; g.fillRect(0, 0, w, 30);
+    if (w >= 260) {
+      let named = 0; for (const s of SEASON.storms) if (s.named <= h) named++;
+      let a = 0; for (const q of ace) { if (q[0] > h) break; a += q[1]; }
+      g.font = '600 9px ' + getComputedStyle(document.body).fontFamily; g.textBaseline = 'alphabetic'; g.textAlign = 'left';
+      if ('letterSpacing' in g) g.letterSpacing = '1.2px';
+      g.fillStyle = 'rgba(255,255,255,.78)'; g.fillText('HYPOTHETICAL from Isobar Hurricane Simulator', 10, 16);
+      g.fillStyle = 'rgba(114,214,255,.95)'; g.fillText(dateOf(h).toUpperCase() + ' · ' + named + ' NAMED · ACE ' + Math.round(a), 10, hh - 9);
+      if ('letterSpacing' in g) g.letterSpacing = '0px';
+    }
+    g.globalAlpha = 1;
+  }
+  function frame(now) {
+    raf = 0; if (S.screen !== 'disc') return;                                    // it runs only while the card is on the screen
+    if (!t0) t0 = now;
+    const t = (now - t0) % (DUR + HOLD + FADE);
+    const h = t < DUR ? h0 + (t / DUR) * (h1 - h0) : h1, fade = t < DUR + HOLD ? 1 : 1 - (t - DUR - HOLD) / FADE;
+    draw(h, Math.max(0, Math.min(1, fade)));
+    raf = requestAnimationFrame(frame);
+  }
+  window.seasonArtStart = () => { if (still) { draw(h1, 1); return; } if (!raf) { t0 = 0; raf = requestAnimationFrame(frame); } };
+  img.onload = () => { if (S.screen === 'disc') window.seasonArtStart(); };
+  window.addEventListener('resize', () => { if (S.screen === 'disc') draw(h1, 1); });
 }
 
 /* ---- a season left in progress (written by the simulator page, see "save / resume" in src/storm-late.js): a few bytes of metadata in localStorage say that one
@@ -431,6 +541,7 @@ function show(name) {
   $('back').hidden = name === 'home';
   const focus = $(name === 'home' ? 'word' : name === 'disc' ? 't-disc' : 't-pick'); if (focus) focus.focus({ preventScroll: true });
   if (name === 'pick') render();
+  if (name === 'disc' && window.seasonArtStart) window.seasonArtStart();
   window.scrollTo(0, 0);
 }
 function go(name) { const h = HASH[name]; if (location.hash !== h && !(h === '' && !location.hash)) location.hash = h; show(name); }
@@ -453,8 +564,8 @@ $('rs-del').addEventListener('click', () => {                                   
 });
 window.addEventListener('pageshow', showSave);                                       // coming back with the browser's Back button
 
-buildSettings(); buildMap(); isobars(); showSave(); fromHash(); render();
-window.ISOBAR = { state: S, query, BASINS, SET };                                    // for the tests
+buildSettings(); buildMap(); isobars(); seasonArt(); showSave(); fromHash(); render();
+window.ISOBAR = { state: S, query, BASINS, SET, expected: () => { const b = BASINS.find((x) => x.id === S.basin); return b ? expected(b) : null; } };                                    // for the tests
 </script>
 </body>
 </html>

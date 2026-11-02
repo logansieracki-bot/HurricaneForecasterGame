@@ -6,6 +6,17 @@
    axes; a table of every storm; and the same season as wikitext (the effects table and the timeline code) to copy. Everything is read from the engine's season record (Manager.seasonRecord): a storm's six-hourly track
    (`trk`), its landfalls (`lfs`), the cities it hurt most (`areas`), its damage and deaths. Winds are in mph: the engine's knots are shown as mph until the page has unit conversions. */
 const SUM = DATA.storms || null;                                     // the real 1991-2020 normals and daily ACE percentiles (tools/merge_data.mjs --storms)
+const HYPO = 'HYPOTHETICAL from Isobar Hurricane Simulator';        // the wording on every picture, text and copy the simulator makes that could be taken for what happened: nothing in a season of it did
+const sumStamps = {};                                                // where each picture's wording was drawn, in the pixels of its canvas (the tests look there)
+function sumStamp(g, key, x, y, px, align, fill, halo, maxW, fam) {  // the wording on a picture, a little smaller if the picture is too narrow for it
+  g.save(); g.textAlign = align; g.textBaseline = 'alphabetic'; g.lineJoin = 'round';
+  const set = (q) => { g.font = '600 ' + q + 'px ' + (fam || 'system-ui, sans-serif'); if ('letterSpacing' in g) g.letterSpacing = (q * 0.09).toFixed(2) + 'px'; };
+  set(px); let w = g.measureText(HYPO).width; if (maxW && w > maxW) { px = Math.max(5, px * maxW / w); set(px); w = g.measureText(HYPO).width; }
+  if (halo) { g.lineWidth = Math.max(2, px * 0.3); g.strokeStyle = halo; g.strokeText(HYPO, x, y); }
+  g.fillStyle = fill; g.fillText(HYPO, x, y);
+  const m = g.getTransform(), x0 = align === 'center' ? x - w / 2 : align === 'right' ? x - w : x; g.restore();
+  sumStamps[key] = { rect: [Math.round(x0 * m.a), Math.round((y - px) * m.d), Math.round(w * m.a), Math.round(px * 1.25 * m.d)], px: +px.toFixed(1), w: Math.round(w) };
+}
 const sumF1 = (x) => (Math.round(x * 10) / 10).toFixed(1);
 const sumDay = (y, d) => { const t = new Date(Date.UTC(y, SM, 1 + d)); return MON[t.getUTCMonth()] + ' ' + t.getUTCDate(); };            // day d of the season that starts in month SM of year y
 const sumYearDays = (y) => Math.round((Date.UTC(y + 1, SM, 1) - Date.UTC(y, SM, 1)) / 86400000);
@@ -139,12 +150,13 @@ function sumDrawMap(D) {
   g.lineJoin = 'round'; g.lineCap = 'round';
   for (const x of D.list) {
     const rows = x.trk; if (!rows.length) continue;
-    g.strokeStyle = '#ffffff'; g.lineWidth = lw; g.beginPath(); rows.forEach((q, i) => { const px = X(q[2]), py = Y(q[1]); if (i) g.lineTo(px, py); else g.moveTo(px, py); }); g.stroke();
+    g.strokeStyle = '#ffffff'; g.lineWidth = lw; g.beginPath(); rows.forEach((q, i) => { const px = X(q[2]), py = Y(q[1]); if (i && q[0] - rows[i - 1][0] <= 12) g.lineTo(px, py); else g.moveTo(px, py); }); g.stroke();                // (no line across the hours a system was too weak to be on the map: an invest that was a depression twice)
   }
   for (const x of D.list) for (const q of x.trk) {
     const px = X(q[2]), py = Y(q[1]), k = q[5], sh = k === 0 ? 'circle' : k === 1 ? 'square' : 'triangle', rr = sh === 'circle' ? r : sh === 'square' ? r * 0.88 : r * 0.8;
     stormShape(g, sh, px, py, rr, wikiColor({ v: q[3] }), null, 0); sumHits.map.push({ x: px, y: py, x0: x, q });
   }
+  sumStamp(g, 'map', 10, H - 9, Math.max(9, W / 78), 'left', 'rgba(255,255,255,.93)', 'rgba(5,9,24,.9)', W - 20);
   const SS_NAMES = ['Tropical depression', 'Tropical storm', 'Category 1', 'Category 2', 'Category 3', 'Category 4', 'Category 5'];
   const key = WIKI_OWN ? D.CL.map((c) => [c.color, c.name, sumRange(c)]) : WIKI_COLS.map((c, i) => [c, SS_NAMES[i], i === 0 ? '≤38 mph' : SUM_SSHWS_MPH[i] + (i === 6 ? '+' : '–' + (SUM_SSHWS_MPH[i + 1] - 1)) + ' mph']);           // the dots are coloured as the Wiki path is: the region's own scale where Wikipedia gives it its colours, the Saffir-Simpson scale otherwise
   $('sum-key').innerHTML = key.map(([c, n, r]) => '<span><i style="background:' + c + '"></i>' + n + ' <small>' + r + '</small></span>').join('')
@@ -156,7 +168,7 @@ function sumDrawTimeline(D) {
   const cv = $('sum-tl'), T = D.tl, CL = D.CL;
   if (!T) { cv.style.display = 'none'; return; } cv.style.display = '';
   const W = TL.W, cssW = Math.max(300, Math.round(cv.clientWidth) || 900), k = cssW / W, nrow = Math.ceil(CL.length / 3);
-  const axisY = TL.T + T.rows * TL.ROW + 15, legY = axisY + 24, H = legY + nrow * 17 + 30;
+  const axisY = TL.T + T.rows * TL.ROW + 15, legY = axisY + 24, H = legY + nrow * 17 + 46;
   sumTlGeo = { W, L: TL.L, R: TL.R, T: TL.T, ROW: TL.ROW, BAR: TL.BAR, axisY, legY, nrow, H, caption: sumScaleName() + ' classification \u00b7 ' + SCALE.avg };
   if (cv.width !== Math.round(cssW * DPR) || cv.height !== Math.round(H * k * DPR)) { cv.width = Math.round(cssW * DPR); cv.height = Math.round(H * k * DPR); }
   cv.style.height = Math.round(H * k) + 'px';
@@ -177,7 +189,8 @@ function sumDrawTimeline(D) {
     const cx = 30 + Math.floor(i / nrow) * 270, cy = legY + (i % nrow) * 17;
     g.fillStyle = c.color; g.fillRect(cx, cy, 13, 13); g.fillStyle = '#000000'; g.fillText(c.name + ' ' + sumRange(c), cx + 21, cy + 10.5);
   });
-  g.textAlign = 'center'; g.fillText(sumTlGeo.caption, W / 2, H - 10);
+  g.textAlign = 'center'; g.fillText(sumTlGeo.caption, W / 2, H - 26);
+  sumStamp(g, 'tl', W / 2, H - 9, 10, 'center', '#262626', null, W - 40, TL.FONT);
 }
 
 /* ---- the wind of each storm on shared axes ------------------------------------------------------------------------------------------------------------------------------------------------------------------ */
@@ -245,7 +258,7 @@ function sumWikiTimeline(D) {
   const T = D.tl; if (!T) return '';
   const CL = D.CL, ids = CL.map((c) => c.short.replace(/[^A-Za-z0-9]/g, '')), P = T.P, ss = SCALE.major != null;
   const dstr = (h) => { const q = simDate(h); return wiki2(q.getUTCDate()) + '/' + wiki2(q.getUTCMonth() + 1) + '/' + q.getUTCFullYear(); }, H = 110 + T.rows * 14;
-  const out = ['<timeline>', 'ImageSize = width:800 height:' + H, 'PlotArea  = top:10 bottom:80 right:20 left:20', 'Legend    = columns:3 left:30 top:58 columnwidth:270', 'AlignBars = early', '',
+  const out = ['<timeline>', '# ' + HYPO, 'ImageSize = width:800 height:' + H, 'PlotArea  = top:10 bottom:80 right:20 left:20', 'Legend    = columns:3 left:30 top:58 columnwidth:270', 'AlignBars = early', '',
     'DateFormat = dd/mm/yyyy', 'Period     = from:' + dstr(P.h0) + ' till:' + dstr(P.h1), 'TimeAxis   = orientation:horizontal', 'ScaleMinor = grid:black unit:month increment:1 start:' + dstr(P.h0), '', 'Colors     =', '  id:canvas value:gray(0.88)', '  id:GP     value:red'];
   CL.forEach((c, i) => out.push('  id:' + ids[i] + ' value:' + wikiRgb(c.color) + ' legend:' + sumWikiLegend(c, i, CL)));
   out.push('', 'Backgroundcolors = canvas:canvas', '', 'BarData =', '  barset:Hurricane', '  bar:Month', '', 'PlotData=', '  barset:Hurricane width:11 align:left fontsize:S shift:(4,-4) anchor:till');
@@ -256,13 +269,13 @@ function sumWikiTimeline(D) {
   }
   out.push('  bar:Month width:15 align:center fontsize:S shift:(0,-20) anchor:middle color:canvas');
   for (const m of P.months) out.push('  from:' + dstr(m.h0) + ' till:' + dstr(m.h1) + ' text:' + MONTH_FULL[m.m]);
-  out.push('', 'TextData =', '  pos:(570,30)', '  text:"(From the"', '  pos:(617,30)', ss ? '  text:"[[Saffir–Simpson scale]])"' : '  text:"' + sumScaleName() + ' scale)"', '</timeline>');
+  out.push('', 'TextData =', '  pos:(570,30)', '  text:"(From the"', '  pos:(617,30)', ss ? '  text:"[[Saffir–Simpson scale]])"' : '  text:"' + sumScaleName() + ' scale)"', '  pos:(30,8)', '  text:"' + HYPO + '"', '</timeline>');
   return out.join('\n');
 }
 const wikiLink = (n) => { const t = n.replace(/#.*$/, ''), m = /^(.+?) \((.+)\)$/.exec(t); return m ? '[[' + m[1] + ', ' + m[2] + '|' + m[1] + ']]' : '[[' + t + ']]'; };          // [[Miami]], and [[Hamilton, Bermuda|Hamilton]] for a name with its country in brackets
 function sumWikiTable(D) {
   const press = STORM_BASIN === 'atlantic' || STORM_BASIN === 'eastpacific' ? '[[Bar (unit)|mbar]]' : '[[Hectopascal|hPa]]', total = D.list.length;
-  const out = ['{| class="wikitable plainrowheaders sortable" style="width:100%; text-align:center;"', '|-', '! scope="col" | Storm<br />name', '! scope="col" | Dates active', '! scope="col" | Storm category<br />at peak intensity', '! scope="col" | Max 1-min<br />wind<br />mph', '! scope="col" | Min.<br />{{abbr|press.|pressure}}<br />(' + press + ')', '! scope="col" | Areas affected', '! scope="col" | [[Tropical cyclone#Damage|Damage]]<br />([[United States dollar|USD]])', '! scope="col" | Deaths'];
+  const out = ['{| class="wikitable plainrowheaders sortable" style="width:100%; text-align:center;"', '|+ ' + HYPO, '|-', '! scope="col" | Storm<br />name', '! scope="col" | Dates active', '! scope="col" | Storm category<br />at peak intensity', '! scope="col" | Max 1-min<br />wind<br />mph', '! scope="col" | Min.<br />{{abbr|press.|pressure}}<br />(' + press + ')', '! scope="col" | Areas affected', '! scope="col" | [[Tropical cyclone#Damage|Damage]]<br />([[United States dollar|USD]])', '! scope="col" | Deaths'];
   const cat = (c) => { const t = c.long; return t.charAt(0) + t.slice(1).toLowerCase(); };
   for (const x of D.list) {
     const s = x.s, d0 = s.tdHour >= 0 ? simDate(s.tdHour) : null, sortv = d0 ? d0.getUTCFullYear() + '-' + wiki2(d0.getUTCMonth() + 1) + '-' + wiki2(d0.getUTCDate()) : '';
@@ -275,7 +288,7 @@ function sumWikiTable(D) {
 }
 function sumWikiAll(D) {
   const title = sumWikiTitle(D.rec.year);
-  return '<!-- ' + title + ': made by the Hurricane Forecaster simulator; the winds are 1-minute sustained winds in mph. -->\n==Season summary==\n' + (sumWikiTimeline(D) || '<!-- no storm has formed yet -->') + '\n\n==Season effects==\n' + sumWikiTable(D) + '\n';
+  return '<!-- ' + title + ': ' + HYPO + '. Made by the Isobar simulator, nothing in it happened; the winds are 1-minute sustained winds in mph. -->\n==Season summary==\n\'\'' + HYPO + '\'\'\n\n' + (sumWikiTimeline(D) || '<!-- no storm has formed yet -->') + '\n\n==Season effects==\n' + sumWikiTable(D) + '\n';
 }
 
 /* ---- the card ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ */
@@ -317,7 +330,7 @@ function drawSumGraph(rec) {
   const cv = $('sum-graph'), w = Math.max(240, Math.round(cv.clientWidth) || 460), h = 172;
   if (cv.width !== Math.round(w * DPR) || cv.height !== Math.round(h * DPR)) { cv.width = Math.round(w * DPR); cv.height = Math.round(h * DPR); }
   const g = cv.getContext('2d'); g.setTransform(DPR, 0, 0, DPR, 0, 0); g.clearRect(0, 0, w, h);
-  const L = 34, R = 10, T = 10, B = 20, pw = w - L - R, ph = h - T - B, nd = sumYearDays(rec.year);
+  const L = 34, R = 10, T = 25, B = 20, pw = w - L - R, ph = h - T - B, nd = sumYearDays(rec.year);
   const cum = (a) => { let t = 0; return a.map((x) => (t += x)); };
   const mine = cum(rec.aceDaily), last = rec.current ? Math.min(nd - 1, rec.day) : nd - 1;
   const others = stormMgr.seasonYears().filter((y) => y !== rec.year).map((y) => ({ y, c: cum(stormMgr.seasonRecord(y).aceDaily), nd: sumYearDays(y) }));
@@ -356,6 +369,7 @@ function drawSumGraph(rec) {
   if (rec.current) { g.save(); g.setLineDash([2, 3]); g.strokeStyle = 'rgba(255,255,255,.35)'; g.beginPath(); g.moveTo(Math.round(ex) + 0.5, T); g.lineTo(Math.round(ex) + 0.5, T + ph); g.stroke(); g.restore(); }
   const lab = sumF1(mine[last]); g.font = '600 11.5px system-ui, sans-serif'; g.textAlign = ex > w - 46 ? 'right' : 'left'; g.textBaseline = 'middle';
   g.lineWidth = 3; g.strokeStyle = 'rgba(26,26,28,.9)'; g.strokeText(lab, ex + (ex > w - 46 ? -7 : 7), ey - 8); g.fillStyle = '#f2f2f2'; g.fillText(lab, ex + (ex > w - 46 ? -7 : 7), ey - 8);
+  sumStamp(g, 'graph', L, 13, 9.5, 'left', 'rgba(255,255,255,.62)', null, w - L - R);
   sumGeo = { w, h, L, T, pw, ph, top, nd, last, endX: ex, endY: ey, value: mine[last] };
   const med = A ? A.p50[Math.min(last, 365)] : null;
   $('sum-cap').textContent = A ? 'Real seasons ' + SUM.years[0] + '–' + SUM.years[1] + ': the middle 50 % and 80 % are shaded, the median dashed.' + (rec.current ? ' By ' + sumDay(rec.year, last) + ' the median season had ' + Math.round(med) + ' ACE (10th–90th percentile ' + Math.round(A.p10[Math.min(last, 365)]) + '–' + Math.round(A.p90[Math.min(last, 365)]) + ').' : ' The median season ends on ' + Math.round(A.p50[365]) + '.') : '';
@@ -371,6 +385,7 @@ function sumInfo() {                                                // what the 
     tot: [...$('sum-tot').children].map((e) => e.textContent), tot2: [...$('sum-tot2').children].map((e) => e.textContent), imp: $('sum-imp').hidden ? '' : tx('sum-imp'),
     tl: T ? Object.assign({ rows: T.rows, months: T.P.months.map((m) => MONTH_FULL[m.m]), monthStarts: T.P.months.map((m) => m.h0), h0: T.P.h0, h1: T.P.h1, hits: sumHits.tl.length }, sumTlGeo) : null,
     map: { pts: sumHits.map.length, region: sumRegion(D), w: $('sum-map').clientWidth, h: $('sum-map').clientHeight },
+    hyp: { text: HYPO, head: tx('sum-hyp'), stamps: JSON.parse(JSON.stringify(sumStamps)) },
     sparks: $('sum-sparks').children.length, key: tx('sum-key'), keyColors: [...$('sum-key').querySelectorAll('i')].map((e) => e.style.background), sparkcap: tx('sum-sparkcap'), cap: tx('sum-cap'),
     rows: [...$('sum-table').querySelectorAll('tbody tr')].map((tr) => [...tr.children].map((td) => td.textContent)), heads: [...$('sum-table').querySelectorAll('th')].map((th) => th.textContent),
     wiki: $('sum-wiki').value, wikiTable: sumWikiTable(D), wikiTimeline: sumWikiTimeline(D),

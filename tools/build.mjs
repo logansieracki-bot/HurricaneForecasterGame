@@ -69,7 +69,11 @@ build({ basin: 'med', templatePath: join(ROOT, 'src/template-med.html'), dataPat
 // (data/generated/menu-art.json, from tools/make_menu_art.mjs): the picture goes in as one data object where the template says /*__MENU_ART__*/.
 {
   const art = readFileSync(join(ROOT, 'data/generated/menu-art.json'), 'utf8').trim();
-  const html = readFileSync(join(ROOT, 'src/menu.html'), 'utf8').replace('/*__MENU_ART__*/', () => 'const ART = ' + art + ';');
+  const seasonPath = join(ROOT, 'data/generated/menu-season.json');                                  // the Tropical card's season (tools/make_menu_season.mjs): without it the card has no picture
+  const season = existsSync(seasonPath) ? readFileSync(seasonPath, 'utf8').trim() : 'null';
+  const expectPath = join(ROOT, 'data/generated/menu-expect.json');                                  // what a season of each basin holds under the settings (tools/make_menu_expect.mjs): without it the basin screen has no Expected section
+  const expect = existsSync(expectPath) ? readFileSync(expectPath, 'utf8').trim() : 'null';
+  const html = readFileSync(join(ROOT, 'src/menu.html'), 'utf8').replace('/*__MENU_ART__*/', () => 'const ART = ' + art + ';').replace('/*__MENU_SEASON__*/', () => 'const SEASON = ' + season + ';').replace('/*__MENU_EXPECT__*/', () => 'const EXPECT = ' + expect + ';');
   writeFileSync(join(ROOT, 'index.html'), html);
   console.log(`Built ${join(ROOT, 'index.html')} (${(html.length / 1024).toFixed(0)} KB)`);
 }

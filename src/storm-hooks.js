@@ -796,6 +796,15 @@ function olSelCheck() {                                                         
   olSel = null; $('aoi-card').hidden = true; stormsDirty = true;
   if (S) openStormCard(S, HFStorms.makeFix(S, stormMgr.hour, S.ace), true);
 }
+function cardClear(card) {                                                  // the card of a storm or a disturbance never covers the layer buttons: beside them (to their left) on a wide screen, above their row on a phone
+  if (!card || card.hidden) return;
+  card.style.right = card.style.bottom = card.style.maxHeight = card.style.overflowY = '';          // (the style sheet's place first)
+  const dock = $('lyr-dock'); if (!dock || getComputedStyle(dock).display === 'none') return;
+  const d = dock.getBoundingClientRect(), r = card.getBoundingClientRect();
+  if (d.width < 2 || d.height < 2 || r.right <= d.left || r.left >= d.right || r.bottom <= d.top || r.top >= d.bottom) return;
+  if (innerWidth <= 640) { card.style.bottom = Math.round(innerHeight - d.top + 10) + 'px'; card.style.maxHeight = Math.max(160, Math.round(d.top - 24)) + 'px'; card.style.overflowY = 'auto'; }
+  else card.style.right = Math.round(innerWidth - d.left + 12) + 'px';
+}
 function fillAoiCard() {
   const card = $('aoi-card'); if (!card || !olSel) return;
   const OL = outlookNow(), a = OL && OL.areas.find((q) => q.key === olSel.key); if (!a) { card.hidden = true; return; }
@@ -812,7 +821,7 @@ function fillAoiCard() {
   $('ac-iss').textContent = stormDate(OL.issued);
   $('ac-win').textContent = a.kind === 'unborn' ? 'Forms ' + abs(Math.max(0, a.birth - OL.hour)) + ' or later' : (a.t0 <= 1 ? 'Now' : abs(a.t0)) + ' – ' + abs(a.t1);
   $('ac-radar').style.display = S && flEligible(S) && !flOn ? '' : 'none';
-  card.hidden = flOn;
+  card.hidden = flOn; cardClear(card);
 }
 function openAoiCard(a) {
   stormSel = null; $('storm-card').hidden = true; $('storm-tip').style.display = 'none';
@@ -1215,7 +1224,7 @@ function fillStormCard() {
     $('sc-erc').textContent = ph === 'forming' ? 'Outer eyewall forming' : ph === 'weakening' ? 'Eyewall replacement: inner eyewall weakening' : ph === 're-intensifying' ? 'Eyewall replacement: outer eyewall taking over' : 'Single eyewall'; }
   { const im = S.imp, hasI = im && (im.d > 0 || im.k > 0 || im.i > 0); $('sc-dmg').textContent = hasI ? stormUsd(im.d) : '—'; $('sc-dth').textContent = hasI ? im.k.toLocaleString('en-US') : '—'; $('sc-dmg').title = hasI ? im.i.toLocaleString('en-US') + ' injured' : ''; }
   flCardButtons(S);
-  card.hidden = flOn;                                                     // (the radar floater has the screen: its bar says what the card would)
+  card.hidden = flOn; cardClear(card);                                    // (the radar floater has the screen: its bar says what the card would)
 }
 function openStormCard(S, f, live) { olSel = null; plainSel = null; $('aoi-card').hidden = true; stormSel = { id: S.id, h: live ? -1 : f.h }; lastStormCardAt = 0; fillStormCard(); stormsDirty = true; drawStorms(); }
 function closeStormCard() { if (flOn) { flClose(); return; } stormSel = null; olSel = null; plainSel = null; $('storm-card').hidden = true; $('aoi-card').hidden = true; stormsDirty = true; drawStorms(); }

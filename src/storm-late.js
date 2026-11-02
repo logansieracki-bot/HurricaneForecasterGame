@@ -34,6 +34,30 @@ window.addEventListener('keydown', (e) => {                                     
   else if (e.key === 'p' || e.key === 'P') placeSet(!placeMode);
 });
 
+/* ---- the overlay canvases follow the map at once -----------------------------------------------------------------------------------------------
+   The canvases (the sea temperature, the base, the grid and borders, the jet line, the arrows, the storms) are each drawn for one view of the map and redrawn for the next a
+   frame later; a whole picture takes tens of milliseconds, so while the map was dragged, coasted or zoomed the satellite tiles, which the browser moves at once, ran ahead of the
+   canvases and the outlines stood offset from the satellite until the picture caught up. Now every move and zoom event puts the picture that is there where the map is (a
+   translation and a scale from the view it was drawn for: the same world pixel stays under the same place of the map), and the next whole picture, drawn for the new view, takes
+   the transform away again. (var: the first picture may be drawn before this block has run.) */
+var OV_CANVASES = null, ovDrawnFor = null;
+function ovDrawn(z, minX, minY) {
+  ovDrawnFor = { z, x: minX, y: minY };
+  if (!OV_CANVASES) return;
+  for (const c of OV_CANVASES) if (c.style.transform) c.style.transform = '';
+}
+function ovSync() {
+  if (!ovDrawnFor || !OV_CANVASES) return;
+  const z = map.getZoom(), pb = map.getPixelBounds(), s = Math.pow(2, z - ovDrawnFor.z), tx = ovDrawnFor.x * s - pb.min.x, ty = ovDrawnFor.y * s - pb.min.y;
+  const t = Math.abs(s - 1) < 1e-9 && Math.abs(tx) < 0.005 && Math.abs(ty) < 0.005 ? '' : 'translate(' + tx.toFixed(3) + 'px,' + ty.toFixed(3) + 'px) scale(' + s + ')';
+  for (const c of OV_CANVASES) { if (t && c.style.transformOrigin !== '0px 0px') c.style.transformOrigin = '0 0'; if (c.style.transform !== t) c.style.transform = t; }
+}
+OV_CANVASES = [baseCanvas, sstCanvas, gridCanvas, jetCanvas, steerCanvas, stormCanvas];
+map.on('move zoom', ovSync);
+
+window.addEventListener('resize', () => { cardClear($('storm-card')); cardClear($('aoi-card')); });
+$('collapse').addEventListener('click', () => setTimeout(() => { cardClear($('storm-card')); cardClear($('aoi-card')); }, 0));      // (the panel folding frees or takes the room beside the layer buttons)
+
 /* ---- settings from the menu ------------------------------------------------------------------------------------------------------------------
    The menu's Begin button opens the page with the settings in its query, only those that differ from the normal:
      enso (Nino 3.4 at the start, -3..3.4), lock=1 (ENSO stays where it is), warm (-3..4 degC), shear (-20..20 kt), moist (-20..20 %), act (storm activity, 0..3),
@@ -161,6 +185,12 @@ const STORM_API = {
   },
   stormClimGet() { const C = stormClim; stormClim = null; return C ? { n: C.n, steer: Array.from(C.steer), ns: Array.from(C.ns), sst: Array.from(C.sst), rh: Array.from(C.rh), shear: Array.from(C.shear), rel: Array.from(C.rel), ne: Array.from(C.ne) } : null; },
   menuQuery,
+  coastLongest(zoom) {                                                           // the longest edge the coastline stroke (the main map's and the floaters') would draw anywhere in the world at a zoom: the seam of a polygon cut at the antimeridian would be as long as the world
+    const ws = 256 * Math.pow(2, zoom), rec = { n: 0, longest: 0, x: 0, y: 0, beginPath() {}, closePath() {}, moveTo(x, y) { if (isFinite(x + y)) { this.x = x; this.y = y; } }, lineTo(x, y) { if (!isFinite(x + y)) return; this.n++; const l = Math.hypot(x - this.x, y - this.y); if (l > this.longest) this.longest = l; this.x = x; this.y = y; } };      // (a canvas ignores a point at a pole, where the Mercator y is infinite)
+    const lists = [POLYS, LAND_OUT, LAKES].concat(typeof LAND_HI !== 'undefined' ? [LAND_HI] : []);
+    for (let y0 = 0; y0 < ws; y0 += H) for (let x0 = 0; x0 < ws * 1.25; x0 += W) for (const list of lists) pathPolys(rec, list, x0, y0, ws, true);
+    return { longest: rec.longest, edges: rec.n, ws };
+  },
   saveNow, deleteSave, loadSave() { const t = localStorage.getItem(SAVE_KEY), s = t && JSON.parse(t); return s ? { v: s.v, startMs: s.startMs, bytes: t.length, weatherBytes: JSON.stringify(s.weather).length, stormBytes: s.storms.length } : null; },
   saveInfo() { return { stamp: saveStamp, saved: savedStamp, owner: saveOwner, meta: localStorage.getItem(SAVE_META) }; },
   snapSave() { window.__save = JSON.stringify(captureSave()); return window.__save.length; }, snapLoad() { applySave(JSON.parse(window.__save)); return true; }, saveTick() { saveLast = -1e9; saveTick(); },

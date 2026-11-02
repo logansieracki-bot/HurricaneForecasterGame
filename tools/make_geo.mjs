@@ -8,7 +8,7 @@ import * as turf from '@turf/turf';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { isSliver, dropSpikes } from './geo_repair.mjs';        // the antimeridian artifacts of a clip (tools/geo_repair.mjs also repairs a finished file)
+import { isSliver, dropSpikes, repairLandOut } from './geo_repair.mjs';        // the antimeridian artifacts of a clip (tools/geo_repair.mjs also repairs a finished file)
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const NM = join(ROOT, 'node_modules');
@@ -333,7 +333,7 @@ export function build(basin, { lon0, lon1, lat0, lat1, padBox }) {
     // client's own BXL/BXR math assumes a single continuous, monotonically increasing frame.
     box: wraps ? [box[0], box[1] + 360, box[2], box[3]] : box,
     land: encodePolygons(landClipped),
-    landOut: encodePolygons(landOutFC),
+    landOut: repairLandOut(encodePolygons(landOutFC)).polys,                    // (without Fiji's uncut antimeridian sliver, a line across the world at 16.5 S)
     b0: encodeLines(b0Clipped),
     b1: encodeLines(b1Clipped),
     lakes: lk.polys, lakeNames: lk.names, lakeAreas: lk.areas,

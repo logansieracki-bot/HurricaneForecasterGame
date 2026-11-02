@@ -4,8 +4,8 @@
 // long and a tenth of a degree tall that spans the whole box, and (2) a spike on the island's ring: two vertices at the far edge of the box
 // joined to the island by long, flat edges. Each is a land edge drawn right across the sea at one latitude (the sliver, a polygon, erases a
 // stripe of the sea-temperature layer and draws a grey line over the whole basin: the South-West Indian, Australian and South Pacific pages).
-//   node tools/geo_repair.mjs [--check] [basin ...]      repairs data/generated/<basin>-data.json in place (--check only reports)
-// make_geo.mjs applies the same two functions to what it clips, so a rebuilt file has none of these to begin with.
+//   node tools/geo_repair.mjs [--check] [basin ...]      repairs data/generated/<basin>-data.json (and <basin>-geo.json) in place (--check only reports)
+// make_geo.mjs applies the same functions to what it clips, so a rebuilt file has none of these to begin with. The world land beyond the data (landOut) has the same sliver once, uncut.
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -53,13 +53,20 @@ export function repairLand(list, lat0, lat1) {                                  
   return { polys, dropped, spikes };
 }
 
+/* the world land beyond a basin's data (landOut) without its slivers: the same Fiji polygon, uncut, is a 5-point ring from -180 to 180 and 0.05 degrees tall, a line that the coastline stroke of a floater draws across the whole map at 16.5 S */
+export function repairLandOut(list) {                                              // -> { polys, dropped }
+  const polys = []; let dropped = 0;
+  for (const poly of list) { const rings = Array.isArray(poly[0]) ? poly : [poly]; if (isSliver(decode(rings[0]))) { dropped++; continue; } polys.push(poly); }
+  return { polys, dropped };
+}
+
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const ROOT = dirname(dirname(fileURLToPath(import.meta.url))), args = process.argv.slice(2), check = args.includes('--check');
   const all = ['atlantic', 'eastpacific', 'westpacific', 'nio', 'aus', 'swio', 'spac', 'satl', 'med'], which = args.filter((a) => !a.startsWith('--'));
-  for (const b of which.length ? which : all) {
-    const file = join(ROOT, 'data/generated', `${b}-data.json`); if (!existsSync(file)) continue;
-    const D = JSON.parse(readFileSync(file, 'utf8')), [, , lat0, lat1] = D.box, R = repairLand(D.land, lat0, lat1);
-    console.log(`${b}: ${R.dropped} sliver polygons and ${R.spikes} spiked rings in land${check ? '' : ' repaired'}`);
-    if (!check && (R.dropped || R.spikes)) { D.land = R.polys; writeFileSync(file, JSON.stringify(D)); }
+  for (const b of which.length ? which : all) for (const name of [b === 'atlantic' ? 'data.json' : `${b}-data.json`, `${b}-geo.json`]) {       // (the finished file and the geo file that merge_data.mjs builds it from)
+    const file = join(ROOT, 'data/generated', name); if (!existsSync(file)) continue;
+    const D = JSON.parse(readFileSync(file, 'utf8')), [, , lat0, lat1] = D.box, R = repairLand(D.land, lat0, lat1), O = repairLandOut(D.landOut || []);
+    console.log(`${name}: ${R.dropped} sliver polygons and ${R.spikes} spiked rings in land, ${O.dropped} sliver polygons in landOut${check ? '' : ' repaired'}`);
+    if (!check && (R.dropped || R.spikes || O.dropped)) { D.land = R.polys; if (D.landOut) D.landOut = O.polys; writeFileSync(file, JSON.stringify(D)); }
   }
 }

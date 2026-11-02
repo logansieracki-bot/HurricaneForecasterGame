@@ -664,6 +664,11 @@ async function checkStorms(page, label) {
   check(`[${label}] the nine layer buttons (${ld.labels.join(', ')}): Wind fields and Watches & warnings light and show their own small key only while they are on (${ld.k0.ww}/${ld.k0.wf} off, ${ld.k1.ww}/${ld.k1.wf} on, ${ld.k2.ww}/${ld.k2.wf} off again), Highs & lows drives both the highs and the lows, NHC disturbances both the waves and the areas, Streamlines the steering arrows, Jet stream the jet line, Ensembles lights and frees Track density (${ld.e1.densOff ? 'still disabled' : 'enabled'}, disabled again ${ld.e2.densOff}); the panel keeps the rest and hides these`,
     ld.labels.join() === 'Ensembles,Cones,Track density,Wind fields,Watches & warnings,Jet stream,Highs & lows,NHC disturbances,Streamlines' && ld.k0.ww === 'none' && ld.k0.wf === 'none' && ld.k1.ww === 'block' && ld.k1.wf === 'block' && ld.k1.b.join() === 'true,true' && ld.k1.c.join() === 'true,true' && ld.k2.ww === 'none' && ld.k2.wf === 'none' && ld.k2.b.join() === 'false,false' && ld.before.dens === true && ld.hl1.b === 'true' && ld.hl1.highs && ld.hl1.lows && ld.hl2.b === 'false' && !ld.hl2.highs && !ld.hl2.lows && ld.n1.b === 'false' && !ld.n1.w && !ld.n1.d && ld.n2.b === 'true' && ld.n2.w && ld.n2.d
     && ld.s1.b === 'true' && ld.s1.c && ld.j1.b === 'true' && ld.j1.c && ld.e1.b === 'true' && ld.e1.c && ld.e1.densOff === false && ld.e2.c === false && ld.e2.densOff === true && ld.hidden && ld.kept);
+  // every button wears a picture of its layer: eight drawn inline, and the Watches & warnings one is the picture of Ellie's landfall (the player's own screenshot: a coast with its warning lines), a small image inside the page
+  const ic = await ev(async () => { const info = [...document.querySelectorAll('#lyr-dock .lyr')].map((b) => ({ l: b.dataset.l, svg: b.querySelectorAll('svg').length, img: b.querySelectorAll('img').length })), im = document.querySelector('#lyr-dock [data-l="stww"] img');
+    if (im && !im.complete) await im.decode().catch(() => {}); return { info, src: im ? im.getAttribute('src').slice(0, 24) : '', nat: im ? [im.naturalWidth, im.naturalHeight] : [0, 0], w: im ? im.getBoundingClientRect().width : 0, kb: im ? Math.round(im.getAttribute('src').length / 1024) : 0 }; });
+  check(`[${label}] each layer button has a picture of its layer: Watches & warnings the picture of Ellie's landfall (${ic.src}... a ${ic.nat.join('×')} image of ${ic.kb} KB, ${Math.round(ic.w)} px on the button) and the other eight a drawing of their own (${ic.info.filter((x) => x.svg === 1 && x.img === 0).length} inline)`,
+    ic.info.length === 9 && ic.info.filter((x) => x.l === 'stww').every((x) => x.img === 1 && x.svg === 0) && ic.info.filter((x) => x.l !== 'stww').every((x) => x.svg === 1 && x.img === 0) && /^data:image\/webp;base64,/.test(ic.src) && ic.nat[0] >= 60 && ic.nat[0] === ic.nat[1] && ic.w >= 14 && ic.kb <= 12);
   const dl = []; await lyrSet(page, 'stww', true); await lyrSet(page, 'stwf', true);                      // (both keys on, with the outlook's: the three of them stand one over the other at the left)
   for (const [w, h, steer] of [[1280, 800, false], [1280, 800, true], [900, 700, false], [390, 844, false], [390, 844, true]]) {
     await page.setViewportSize({ width: w, height: h }); await lyrSet(page, 'steerarrows', steer); await page.waitForTimeout(200);
@@ -1184,6 +1189,14 @@ async function checkSummaryCard(page, label, prefix) {
     out.ta = document.getElementById('sum-wiki').value.length; out.readonly = document.getElementById('sum-wiki').readOnly; out.saves = document.querySelectorAll('.sum-save').length; return out; });
   check(`[${label}] "Copy wikitext" and "Copy the table" answer (${cp.a}, ${cp.b}), the text is ${cp.ta} characters and read-only, a picture can be saved from the map and the overview (${cp.saves} buttons), and there is a small wind graph for each of the ${I.storms.length} storms (${I.sparks})`,
     cp.a === 'Copied' && cp.b === 'Copied' && cp.ta > 3000 && cp.readonly && cp.saves === 2 && I.sparks === I.storms.length);
+  // nothing the summary makes can be taken for what happened: its header, its three pictures (the ones a player saves or copies), the wikitext and its two halves, and the cards of a storm and a disturbance say so
+  const hy = await ev(() => { const I = window.SSTSIM.summaryInfo(), pix = (id, key, test) => { const r = I.hyp.stamps[key] && I.hyp.stamps[key].rect; if (!r) return -1; const c = document.getElementById(id), d = c.getContext('2d').getImageData(Math.max(0, r[0]), Math.max(0, r[1]), Math.min(c.width - r[0], r[2]), Math.min(c.height - r[1], r[3])).data; let n = 0; for (let i = 0; i < d.length; i += 4) if (test(d[i], d[i + 1], d[i + 2], d[i + 3])) n++; return n; };
+    const hd = document.getElementById('sum-hyp'), vis = (e) => !!e && e.offsetParent !== null, cardTxt = (id) => (document.querySelector('#' + id + ' .hyp') || {}).textContent;
+    return { T: I.hyp.text, head: I.hyp.head, headVis: vis(hd), map: pix('sum-map', 'map', (r, g, b, a) => a > 200 && r > 232 && g > 232 && b > 232), tl: pix('sum-tl', 'tl', (r, g, b, a) => a > 200 && r < 90 && g < 90 && b < 90), graph: pix('sum-graph', 'graph', (r, g, b, a) => a > 60), stamps: I.hyp.stamps,
+      wiki: I.wiki, tl_: I.wikiTimeline, tb: I.wikiTable, sc: cardTxt('storm-card'), ac: cardTxt('aoi-card') }; });
+  const T = hy.T, lc = (t) => (t.match(new RegExp(T.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')) || []).length;
+  check(`[${label}] the summary says it is hypothetical wherever it can be copied: "${T}" under the title (${hy.headVis}), drawn on the map (${hy.map} white pixels in its place), on the overview (${hy.tl} dark ones) and on the energy graph (${hy.graph}); in the wikitext as a comment, a visible line, the timeline's text and the table's caption (${lc(hy.wiki)} times; ${lc(hy.tl_)} in the timeline, ${lc(hy.tb)} in the table), and on the cards of a storm ("${hy.sc}") and a disturbance ("${hy.ac}")`,
+    T === 'HYPOTHETICAL from Isobar Hurricane Simulator' && hy.head === T && hy.headVis && hy.map >= 60 && hy.tl >= 60 && hy.graph >= 60 && /^<!-- [^\n]*HYPOTHETICAL from Isobar Hurricane Simulator/.test(hy.wiki) && hy.wiki.includes("\n==Season summary==\n''" + T + "''\n") && /^# HYPOTHETICAL from Isobar Hurricane Simulator$/m.test(hy.tl_) && hy.tl_.includes('  text:"' + T + '"') && /^\|\+ HYPOTHETICAL from Isobar Hurricane Simulator$/m.test(hy.tb) && lc(hy.wiki) === 5 && hy.sc === T && hy.ac === T);
   await ev(() => { document.getElementById('sum-body').scrollTop = 0; });
 }
 
@@ -1710,6 +1723,9 @@ async function checkStormsBasin(page, label, prefix) {
     return { same: a === b, ha, mid, kb: Math.round(a.length / 1024) };
   }, { sm: BI.seasonMonth, start: sp.start, day: Math.min(sp.day, 120), td: sp.td });
   check(`[${label}] a season saved at a midnight (hour ${sv.mid}) and resumed continues bit for bit like the uninterrupted one (${sv.kb} KB of storms)`, sv.same && sv.mid < sv.ha);
+  await checkCoast(page, label);
+  await checkOverlaySync(page, label);
+  await checkCards(page, label, prefix);
   await checkLayout(page, label, prefix);
   await checkLook(page, label, prefix);
   await checkIcons(page, label, prefix);
@@ -1724,6 +1740,75 @@ async function checkStormsBasin(page, label, prefix) {
   const seasonText = sc.year.replace(BI.label + ' ', ''), hw = BI.hurricane + (sc.stats.hurr === 1 ? '' : 's');
   check(`[${label}] the main menu's Continue card for a season saved here reads "${cardText.text.slice(0, 120)}": the basin, the season (${seasonText}), the named storms and the ${hw}`,
     !cardText.hidden && sc.meta.basin === BI.menu && cardText.text.includes(BI.label + ' ' + seasonText) && cardText.text.includes(sc.stats.named + ' named') && cardText.text.includes(sc.stats.hurr + ' ' + hw));
+}
+
+// The coastline stroke (the floaters' white coast, the main map's) draws no line across the map. A polygon cut at the antimeridian leaves seam edges as long as the world (Wrangel Island and Chukotka at 65-71 N,
+// Antarctica) and Fiji's uncut sliver a line at 16.5 S; the radar floater drew that one in white, with its dark halo, across the whole South-West Indian, Australian and South Pacific maps.
+async function checkCoast(page, label) {
+  const r = await page.evaluate(() => { const S = window.SSTSIM; return [2, 4, 6].map((z) => Object.assign({ z }, S.coastLongest(z))); });
+  check(`[${label}] the coastline stroke has no edge that runs across the map: of ${r[0].edges} edges at zoom 2 the longest is ${r[0].longest.toFixed(0)} px in a world ${r[0].ws} px wide (${(r[0].longest / r[0].ws * 360).toFixed(1)} degrees), ${(r[1].longest / r[1].ws * 360).toFixed(1)} degrees at zoom 4 and ${(r[2].longest / r[2].ws * 360).toFixed(1)} at zoom 6: no seam of a polygon cut at the antimeridian, no sliver, no vertex at a pole`,
+    r.every((x) => x.edges > 5000 && x.longest > 0 && x.longest < 0.08 * x.ws));
+}
+
+// The overlay canvases follow the map. Their full redraw (coastlines, the sea-temperature layer, the grid, the jets) takes tens of milliseconds while the satellite tiles move at once, so for a few frames the outline
+// used to stand where the map had been ("very commonly the outline for the maps get offset and don't follow with the satellite"). Every pan and zoom now moves the canvases by the CSS transform that carries the last drawn
+// view onto the current one, at once, and the next draw clears it. The probe works inside one task, so no redraw can have run: a point of the map is marked on the stale canvas, the map is moved, and the canvas's
+// matrix must carry the mark to where the map now has that point.
+async function checkOverlaySync(page, label) {
+  const r = await page.evaluate(async () => {
+    const S = window.SSTSIM, M = S.map; S.setPlaying(false);
+    const settle = () => new Promise((ok) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(ok, 700))));
+    M.setView(M.getCenter(), 6, { animate: false }); await settle();
+    const cv = [...document.querySelectorAll('canvas.overlay')], tf = () => cv.map((c) => c.style.transform || ''), mat = (c) => new DOMMatrix(getComputedStyle(c).transform === 'none' ? undefined : getComputedStyle(c).transform);
+    const out = { n: cv.length, rest: tf().filter((x) => x).length, errs: [], moved: [] }, ll = M.getCenter(), q = M.latLngToContainerPoint(ll), p0 = { x: q.x, y: q.y };
+    const probe = (name) => { const m = mat(cv[0]), pr = m.transformPoint(new DOMPoint(p0.x, p0.y)), tr = M.latLngToContainerPoint(ll); out.errs.push(Math.hypot(pr.x - tr.x, pr.y - tr.y)); out.moved.push(Math.hypot(tr.x - p0.x, tr.y - p0.y)); out[name] = tf().filter((x) => x).length; };
+    M.panBy([120, 80], { animate: false }); probe('pan');
+    M.panBy([-300, 40], { animate: false }); probe('pan2');
+    M.setZoom(6.5, { animate: false }); probe('zoomIn');
+    M.setZoom(5.25, { animate: false }); probe('zoomOut');
+    await settle(); out.after = tf().filter((x) => x).length;
+    return out;
+  });
+  check(`[${label}] the overlay canvases follow a pan and a zoom at once, before they are redrawn: the stale canvas's matrix puts a mark where the map has it (errors ${r.errs.map((e) => e.toFixed(2)).join(', ')} px after a pan of ${r.moved[0].toFixed(0)} px, another to ${r.moved[1].toFixed(0)}, a zoom in to ${r.moved[2].toFixed(0)} and out to ${r.moved[3].toFixed(0)} px away; ${r.pan} of the ${r.n} overlay canvases carry it: the base map, sea temperature, grid, jets, steering and storms), and once drawn again none is left displaced (${r.after}; Leaflet rounds the map's origin to whole pixels, so a zoom can be a pixel off)`,
+    r.n >= 6 && r.rest === 0 && r.errs.every((e) => e < 1.25) && r.moved.every((m) => m > 20) && r.pan >= 6 && r.zoomOut >= 6 && r.after === 0);
+}
+
+// The card of the selected storm (what the player clicked on the map) never covers the layer buttons ("the info for the selected TC covers the selecting for the overlays"): it stands left of the column of buttons on a
+// wide screen and above the row of them on a phone, whether the Customization panel is open or folded, and it stays on the screen.
+async function checkCards(page, label, prefix) {
+  const sp = prefix === 'atlantic' ? { td: [15, -45], day: 200 } : STORM_SPECS[prefix], size0 = page.viewportSize(), res = [];
+  const id = await page.evaluate((q) => {
+    const S = window.SSTSIM; S.setPlaying(false); S.applySeed(4242); S.setPlaying(false); S.storms(true); S.stormAuto(false); S.tick(24 * q.day);
+    const id = S.stormPlace({ kind: 'td', lat: q.td[0], lon: q.td[1], v: 100 }); S.tick(30); S.stormForce(id, { th: 'tc', v: 105, vr: 105, p: 950 }); S.advance(0); return id;
+  }, sp);
+  for (const [w, h, fold] of [[1280, 800, false], [1280, 800, true], [900, 700, false], [390, 844, false]]) {
+    await page.setViewportSize({ width: w, height: h });
+    if (fold) await page.click('#collapse');
+    await page.waitForTimeout(400);
+    const px = await page.evaluate(async (id) => {                                   // the storm is brought to a place of the map nothing else covers (on a phone the open panel takes half of it)
+      const S = window.SSTSIM, st = S.stormState().systems.find((x) => x.id === id), mapEl = document.getElementById('map'); S.map.invalidateSize(); S.map.setView([st.lat, st.lon], 5, { animate: false });
+      let found = false;
+      for (const z of innerWidth <= 640 ? [6, 7, 8] : [5]) {                           // (a tall phone screen at zoom 5 shows more than the pan limits let the storm move)
+        for (const [fx, fy] of [[0.5, 0.45], [0.5, 0.3], [0.5, 0.2], [0.3, 0.3], [0.7, 0.3], [0.5, 0.6], [0.5, 0.12]]) {
+          const half = S.map.getSize().divideBy(2), tgt = L.point(innerWidth * fx, innerHeight * fy), c = S.map.unproject(S.map.project([st.lat, st.lon], z).add(half.subtract(tgt)), z);
+          S.map.setView(c, z, { animate: false }); const p = S.map.latLngToContainerPoint([st.lat, st.lon]), e = document.elementFromPoint(p.x, p.y); if (e && mapEl.contains(e)) { found = true; break; }
+        }
+        if (found) break;
+      }
+      S.advance(0); S.stormDraw(); await new Promise((ok) => setTimeout(ok, 500)); return S.stormPx(id); }, id);
+    await page.mouse.click(px.x, px.y); await page.waitForTimeout(700);
+    const r = await page.evaluate(() => {
+      const card = document.getElementById('storm-card'), c = card.getBoundingClientRect(), bs = [...document.querySelectorAll('#lyr-dock .lyr')].filter((e) => e.offsetParent !== null).map((e) => e.getBoundingClientRect());
+      return { shown: !card.hidden, c: [c.left, c.top, c.right, c.bottom].map(Math.round), buttons: bs.length, hit: bs.filter((d) => !(c.right <= d.left || c.left >= d.right || c.bottom <= d.top || c.top >= d.bottom)).length, inside: c.left >= -1 && c.top >= -1 && c.right <= innerWidth + 1 && c.bottom <= innerHeight + 1 };
+    });
+    res.push(Object.assign({ w, h, fold }, r));
+    if (fold) await page.click('#collapse');
+    await page.evaluate(() => { const b = document.getElementById('sc-close'); if (b) b.click(); });
+  }
+  await page.setViewportSize(size0);
+  await page.evaluate(() => { const S = window.SSTSIM; S.storms(false); S.restart(); });
+  check(`[${label}] the card of a selected storm does not cover the layer buttons, open or folded panel: ${res.map((x) => x.w + '×' + x.h + (x.fold ? ' folded' : '') + ' card ' + x.c.join(',') + ' over ' + x.hit + ' of ' + x.buttons + ' buttons').join('; ')}`,
+    res.every((x) => x.shown && x.buttons >= 6 && x.hit === 0 && x.inside));
 }
 
 // El Nino reaches the storm engine through the page: the live environment hands it the Nino 3.4 index (the lab's engines and the live one read it there) and so does the shadow environment of the Place preview.
@@ -2614,7 +2699,7 @@ async function checkBasin(label, dist, extra) {
   await page.waitForFunction(() => window.__ready === true, { timeout: 15000 });
   await page.waitForTimeout(1000);
   if (process.env.ONLY_FN) {                                                          // ONLY_FN='summary,icons' runs just those check functions of the page, without the shared checks before them (a working aid; CI runs everything)
-    const prefix = BASIN_PREFIX[label], FN = { summary: () => checkSummary(page, label), icons: () => checkIcons(page, label, prefix), look: () => checkLook(page, label, prefix), steering: () => checkSteering(page, label, STEER_SPECS[prefix]), layout: () => checkLayout(page, label, prefix), settings: () => checkExperiment(page, label), impacts: () => checkImpacts(page, label, prefix), basin: () => checkStormsBasin(page, label, prefix) };
+    const prefix = BASIN_PREFIX[label], FN = { summary: () => checkSummary(page, label), icons: () => checkIcons(page, label, prefix), look: () => checkLook(page, label, prefix), steering: () => checkSteering(page, label, STEER_SPECS[prefix]), layout: () => checkLayout(page, label, prefix), coast: () => checkCoast(page, label), sync: () => checkOverlaySync(page, label), cards: () => checkCards(page, label, prefix), settings: () => checkExperiment(page, label), impacts: () => checkImpacts(page, label, prefix), basin: () => checkStormsBasin(page, label, prefix) };
     for (const f of process.env.ONLY_FN.split(',')) await FN[f]();
     check(`[${label}] loads with no JS errors`, errors.length === 0); if (errors.length) console.log('  ' + errors.join('\n  '));
     await browser.close(); return;
@@ -3685,11 +3770,20 @@ async function checkMenu() {
   check(`[menu] home: the brand is "${home.title}" (not "Hurricane Forecaster", nothing tropical in the name), the version reads ${home.ver} in the top bar and "${home.foot.split('\n')[0]}" below`, home.title === 'Isobar' && home.word === 'Isobar' && home.ver === '0.01A' && /0\.01A/.test(home.foot) && !/hurricane|tropical|cyclone/i.test(home.title + home.word));
   check('[menu] home: there is no sign-in or account form (that waits for a domain of its own)', home.pw === 0 && !/sign in|log in|login|password/i.test(home.text));
   check('[menu] home: Play is there and the discipline, basin and settings screens are not shown yet', (await vis('#play')) && !(await vis('#s-disc')) && !(await vis('#s-pick')));
+  check(`[menu] home: the line under the name is "Simulating and Forecasting weather around the world" (not "Weather, simulated"), and the footer says nothing about where seasons are kept ("${home.foot.replace(/\s+/g, ' ')}")`,
+    home.text.includes('Simulating and Forecasting weather around the world') && !/weather, simulated/i.test(home.text) && !/browser/i.test(home.text));
 
   // discipline: Tropical opens, Severe is coming soon and cannot be picked
   await pg.click('#play');
   const disc = await pg.evaluate(() => ({ trop: !document.getElementById('d-tropical').disabled, sev: document.getElementById('d-severe').disabled, soon: /soon/i.test(document.getElementById('d-severe').innerText), hash: location.hash }));
   check(`[menu] discipline: Tropical can be picked, Severe is marked Soon and disabled (${disc.trop}, ${disc.sev}, ${disc.soon})`, disc.trop && disc.sev && disc.soon && disc.hash === '#disc');
+  const dw = await pg.evaluate(() => ({ h: document.getElementById('t-disc').innerText, sub: document.querySelectorAll('#s-disc .sub, #s-disc p').length, text: document.getElementById('s-disc').innerText.replace(/\s+/g, ' ') }));
+  check(`[menu] discipline: the heading is "${dw.h}", with no description under it (no "Pick a discipline", no "What are you forecasting")`, dw.h === 'Pick your weather phenomena' && dw.sub === 0 && !/discipline|what are you forecasting/i.test(dw.text));
+  // the Tropical card is not a picture but a season of the game's own storms, drawn track by track over Blue Marble (tools/make_menu_season.mjs), and it moves
+  const sa = () => pg.evaluate(() => { const c = document.getElementById('season-art'), g = c.getContext('2d'), d = g.getImageData(0, 0, c.width, c.height).data; let sig = 0; for (let i = 0; i < d.length; i += 28) sig = (sig * 31 + d[i] + d[i + 1] * 3 + d[i + 2] * 7) >>> 0; return { w: c.width, h: c.height, sig, season: typeof SEASON !== 'undefined' && SEASON ? { named: SEASON.stats.named, hurr: SEASON.stats.hurr, ace: SEASON.stats.ace, tracks: SEASON.storms.length, fixes: SEASON.storms.reduce((t, x) => t + x.f.length, 0), gaps: SEASON.storms.some((x) => x.f.some((q, i) => i && q[0] - x.f[i - 1][0] > 12)) } : null, label: document.documentElement.innerHTML.includes('HYPOTHETICAL from Isobar Hurricane Simulator') }; });
+  const sa1 = await sa(); await pg.waitForTimeout(2600); const sa2 = await sa();
+  check(`[menu] the Tropical card draws a highly active season of the game (${sa1.season && sa1.season.named} named storms, ${sa1.season && sa1.season.hurr} hurricanes, ACE ${sa1.season && sa1.season.ace}; ${sa1.season && sa1.season.tracks} tracks of ${sa1.season && sa1.season.fixes} fixes) on a ${sa1.w}x${sa1.h} canvas, and it moves (${sa1.sig} then ${sa2.sig}), labelled as hypothetical`,
+    sa1.season && sa1.season.named >= 15 && sa1.season.ace >= 250 && sa1.season.tracks >= 18 && sa1.season.fixes > 500 && !sa1.season.gaps && sa1.w > 300 && sa1.h > 100 && sa1.sig !== sa2.sig && sa1.label);
   await pg.click('#d-severe', { force: true, timeout: 2000 }).catch(() => {});
   check('[menu] discipline: pressing Severe does nothing (the screen stays)', (await vis('#s-disc')) && !(await vis('#s-pick')));
   await pg.click('#d-tropical');

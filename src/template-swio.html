@@ -1403,7 +1403,7 @@ function buildLines(list) {
   });
 }
 const POLYS = buildPolys(DATA.land), LAKES = buildPolys(DATA.lakes), LAND_OUT = buildPolys(DATA.landOut), B0 = buildLines(DATA.b0), B1 = buildLines(DATA.b1);
-const BXL = (DATA.box[0] + 180) / 360, BXR = (DATA.box[1] + 180) / 360, BYT = mercN(DATA.box[3]), BYB = mercN(DATA.box[2]), EPS = 1e-12;
+const BXL = (DATA.box[0] + 180) / 360, BXR = (DATA.box[1] + 180) / 360, BYT = mercN(DATA.box[3]), BYB = mercN(DATA.box[2]), EPS = 4e-5;          // (an edge within 0.014 degrees of a side of the data box lies on it: the clip rounds to a hundredth of a degree)
 const onLine = (a, b, c) => Math.abs(a - c) < EPS && Math.abs(b - c) < EPS;
 const onBox = (x1, y1, x2, y2) => onLine(x1, x2, BXL) || onLine(x1, x2, BXR) || onLine(y1, y2, BYT) || onLine(y1, y2, BYB);
 
@@ -1757,7 +1757,7 @@ function pathPolys(ctx, list, minX, minY, ws, strokeOnly) {
       let pen = false;                                   // stroke coastlines only: skip edges that run along the data-clip boundary
       for (let q = 0; q < n; q++) {
         const q2 = (q + 1) % n, x1 = r.xs[q], y1 = r.ys[q], x2 = r.xs[q2], y2 = r.ys[q2];
-        if (onBox(x1, y1, x2, y2)) { pen = false; continue; }
+        if (onBox(x1, y1, x2, y2) || Math.abs(x2 - x1) > 0.5 || !isFinite(y1 + y2)) { pen = false; continue; }          // (the seam edges of a polygon cut at the antimeridian run half the world, and a vertex at a pole has no place on a Mercator map: not coast)
         if (!pen) { ctx.moveTo(x1 * ws - minX, y1 * ws - minY); pen = true; }
         ctx.lineTo(x2 * ws - minX, y2 * ws - minY);
       }
@@ -2085,6 +2085,7 @@ const featState = {                                                   // the sta
 function render() {
   needRender = false; fitCanvases();
   const z = map.getZoom(), ws = 256 * Math.pow(2, z), pb = map.getPixelBounds(), minX = pb.min.x, minY = pb.min.y;
+  ovDrawn(z, minX, minY);                       // the pictures are drawn for this view of the map (they follow it from here: see "the overlay canvases follow the map at once")
   const ctx = sstCanvas.getContext('2d');
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0); ctx.clearRect(0, 0, W, H);
 

@@ -4,19 +4,30 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { isSliver, dropSpikes, repairLand } from '../tools/geo_repair.mjs';
+import { isSliver, dropSpikes, repairLand, repairLandOut } from '../tools/geo_repair.mjs';
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 let failed = 0, passed = 0;
 function check(name, cond) { if (cond) { passed++; console.log('ok   ' + name); } else { failed++; console.log('FAIL ' + name); } }
 
 const BASINS = ['atlantic', 'eastpacific', 'westpacific', 'nio', 'aus', 'swio', 'spac', 'satl', 'med'].filter((b) => existsSync(join(ROOT, 'data/generated', `${b}-data.json`)));
+const encodeRing = (ring) => { let lx = 0, ly = 0; const out = []; for (const [lon, lat] of ring) { const x = Math.round(lon * 100), y = Math.round(lat * 100); out.push(x - lx, y - ly); lx = x; ly = y; } return out; };
 const dec = (flat) => { const out = []; let x = flat[0], y = flat[1]; out.push([x / 100, y / 100]); for (let i = 2; i + 1 < flat.length; i += 2) { x += flat[i]; y += flat[i + 1]; out.push([x / 100, y / 100]); } return out; };
 const rows = BASINS.map((b) => { const D = JSON.parse(readFileSync(join(ROOT, 'data/generated', `${b}-data.json`), 'utf8')), [, , lat0, lat1] = D.box, R = repairLand(D.land, lat0, lat1);
   let flat = 0; for (const poly of D.land) for (const fl of (Array.isArray(poly[0]) ? poly : [poly])) { const p = dec(fl); for (let i = 1; i < p.length; i++) if (Math.abs(p[i][0] - p[i - 1][0]) > 6 && Math.abs(p[i][1] - p[i - 1][1]) <= 0.1 && Math.abs(p[i][1] - lat0) > 0.1 && Math.abs(p[i][1] - lat1) > 0.1) flat++; }
   return { b, sliver: R.dropped, spikes: R.spikes, flat, n: D.land.length }; });
 check(`no basin's land has a sliver polygon or a spiked island (${rows.map((r) => r.b + ' ' + r.sliver + '/' + r.spikes).join(', ')} of ${BASINS.length} basins with a data file: the Atlantic's land is in its own page)`, BASINS.length === 8 && rows.every((r) => r.sliver === 0 && r.spikes === 0));
 check(`and none has a long flat coast edge (over 6 degrees of longitude, flat to a tenth of a degree) anywhere but on the box's own north and south sides (${rows.map((r) => r.b + ' ' + r.flat).join(', ')})`, rows.every((r) => r.flat === 0));
+
+// the world land beyond the data (landOut) and the geo files the data files are merged from (tools/merge_data.mjs) have none either: Fiji's polygon, uncut, is a 5-point ring from -180 to 180 and 0.05 degrees tall
+const lo = BASINS.map((b) => { const D = JSON.parse(readFileSync(join(ROOT, 'data/generated', `${b}-data.json`), 'utf8')); return { b, n: repairLandOut(D.landOut || []).dropped }; });
+check(`no basin's landOut (the world land beyond its data) has a sliver polygon (${lo.map((r) => r.b + ' ' + r.n).join(', ')}): the stroke of a floater's coast drew Fiji's across the whole map at 16.5 S`, lo.every((r) => r.n === 0));
+const geo = BASINS.map((b) => join(ROOT, 'data/generated', `${b}-geo.json`)).filter((f) => existsSync(f)).map((f) => { const D = JSON.parse(readFileSync(f, 'utf8')), [, , lat0, lat1] = D.box, R = repairLand(D.land, lat0, lat1); return { f: f.split('/').pop(), n: R.dropped + R.spikes + repairLandOut(D.landOut || []).dropped }; });
+check(`and neither do the geo files that merge_data.mjs builds them from (${geo.length} files, ${geo.reduce((t, r) => t + r.n, 0)} artifacts)`, geo.length >= 6 && geo.every((r) => r.n === 0));
+const worldSliver = [[-180, -16.49], [180, -16.54], [180, -16.52], [-180, -16.49], [-180, -16.49]];
+const fijiIsland = Array.from({ length: 60 }, (_, i) => [178 + 0.5 * Math.cos(i / 60 * 6.2832), -17 + 0.4 * Math.sin(i / 60 * 6.2832)]);
+const kept = repairLandOut([[encodeRing(worldSliver)], [encodeRing(fijiIsland)]]);
+check(`Fiji's uncut sliver (a ring from -180 to 180 and 0.05 degrees tall) is dropped from a landOut and the real island beside it stays (${kept.dropped} dropped, ${kept.polys.length} of 2 left)`, kept.dropped === 1 && kept.polys.length === 1 && kept.polys[0][0].length === encodeRing(fijiIsland).length);
 
 // the repair on the shape of the real artifacts
 const sliver = [[110, -16.79], [28, -16.79], [28, -16.89], [110, -16.93], [110, -16.79]];
