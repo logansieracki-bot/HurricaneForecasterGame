@@ -1,6 +1,6 @@
 # Isobar
 
-(The repository is still called HurricaneForecasterGame; the game's name is **Isobar**, version 0.01A.)
+(The repository is still called HurricaneForecasterGame; the game's name is **Isobar**, version 0.10A.)
 
 Weather simulation / forecasting game. From the main menu you pick a discipline
 (Tropical now; Severe is coming), a basin and your settings, then either watch
@@ -42,7 +42,7 @@ https://logansieracki-bot.github.io/HurricaneForecasterGame/ automatically —
 nothing to run by hand.
 
 ## Layout
-- `index.html` the main menu, **Isobar 0.01A**. It is made by `tools/build.mjs` from `src/menu.html` and the picture of its world map
+- `index.html` the main menu, **Isobar 0.10A**. It is made by `tools/build.mjs` from `src/menu.html` and the picture of its world map
   (`data/generated/menu-art.json`, from `tools/make_menu_art.mjs`: NASA's Blue Marble with the navy ocean), so edit `src/menu.html`. Home (the brand, the version, **Play**)
   → the discipline (**Tropical**; **Severe** is marked Soon and cannot be picked) → the basin, picked on a world map (the nine basins; a list on a phone) with what a year of it holds in the real
   1991–2020 record and the months of its season, beside the **settings**: Mode (Simulation; Forecaster is Soon), ENSO index (Random, La Niña, Neutral, El Niño, or any value on the slider),
@@ -61,6 +61,12 @@ nothing to run by hand.
   `data/generated/menu-expect.json` (the seasons are `menu-expect-runs.jsonl`, the check against seasons that were not in the design `menu-expect-validation.json`), which the build puts into `index.html`.
   What it does not count: year-to-year variability, the day-to-day weather sliders, weather speed, seasonal swing and currents (they change how a season varies more than what it averages), and an El Niño that is left
   random. Seasons vary a lot around any mean (an Atlantic season of the normal settings has 7 to 28 named storms), which is why the range is shown.
+  **The backdrop is a surface analysis of a hurricane coming ashore**, drawn live on a canvas (`analysis()` in `src/menu.html`): the coast of the northern Gulf (`data/generated/menu-coast.json` from
+  `tools/make_menu_coast.mjs`: the high-resolution land of the Atlantic page cut to a box and simplified), lines of equal sea-level pressure 4 hPa apart (marching squares on the pressure field, smoothed;
+  a fine grid for the core), the field a Holland-profile low that deepens, crosses the coast and fills on top of a ridge, a trough, smaller highs and lows and a shallow low over the land, a few numbers on the lines,
+  wind barbs from the gradient wind, the L and the H. It runs at eight pictures a second (about 4 ms each), is one still picture under `prefers-reduced-motion`, dims behind the basin screen, and is a design,
+  not a forecast: it has no key. **What's New**: the first visit after an update opens the update log (`UPDATES` in `src/menu.html`, newest first: a green plus for what was added, a red X for what was taken
+  away, a blue dash for what was changed or fixed; the version last seen is kept in the browser), and "What's new" in the footer brings it back.
 - `src/template.html` the Atlantic simulator app: vanilla JS in one IIFE, build
   placeholders (`/*__LEAFLET_CSS__*/`, `/*__LEAFLET_JS__*/`, `/*__DATA__*/`,
   `/*__STORMS__*/`, and for the storm layer `/*__STORM_HOOKS__*/`, `/*__STORM_LATE__*/`,
@@ -86,7 +92,7 @@ nothing to run by hand.
   radar operator, the cirrus and the infrared brightness temperature, the forcing of a system from the engine, the land and environment grids): pure JS with no DOM, inlined after the engine through
   `/*__STORMS__*/` and loaded as-is by `tests/nest.mjs`. `src/storm-floater.js` is the floater's page half (its clock, the radar and the infrared picture, the coastline, the radar sites and products), inlined in front of the hooks.
 - `tools/build.mjs` the build script.
-- `tools/make_menu_season.mjs` the season the Tropical card of the menu draws; `tools/make_menu_expect.mjs` (with `tools/menu_expect_lib.mjs`) the calibration of the menu's Expected block (`run` plays the
+- `tools/make_menu_season.mjs` the season the Tropical card of the menu draws; `tools/make_menu_coast.mjs` the coast under the menu's backdrop; `tools/make_menu_expect.mjs` (with `tools/menu_expect_lib.mjs`) the calibration of the menu's Expected block (`run` plays the
   seasons, `fit` fits the models, `validate` plays seasons that were not in the design and compares them with the model); `tools/geo_repair.mjs` repairs the clip artifacts of the land data (slivers, spikes, in the land and in the world land beyond it).
 - `tests/expect.mjs` the node tests of the Expected block's file (the seasons it was made from, the models, what each setting does in every basin; run by `npm test` after the geometry's).
 - `tests/nest.mjs` the nest's node tests (physics, the radar operator, the weather on a storm's sides, the engine's forcing and look-ahead; run by `npm test` after the engine's);

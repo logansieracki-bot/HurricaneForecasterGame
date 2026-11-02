@@ -10,6 +10,9 @@ import { predict, countRange, aceRange } from '../tools/menu_expect_lib.mjs';
 
 const lyrSet = (page, id, on) => page.evaluate(([i, o]) => { const el = document.getElementById(i); if (el.checked !== o) el.click(); }, [id, on]);          // (the layer checkboxes are hidden behind the layer buttons: set them the way a button does)
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
+const MENU_FILE = process.env.MENU_HTML || join(ROOT, 'index.html'), MENU_URL = pathToFileURL(MENU_FILE).href;          // (MENU_HTML=path runs the menu checks on another copy of the page: a working aid for the mutants)
+const MENU_VERSION = /VERSION = '([^']+)'/.exec(readFileSync(join(ROOT, 'src/menu.html'), 'utf8'))[1];            // (the version the menu runs: a bump needs no edit here)
+const menuSeen = (target) => target.addInitScript((v) => { if (/-sst-simulator\.html$/.test(location.pathname)) return; try { localStorage.setItem('hf-seen-version', v); } catch (e) { /* none */ } }, MENU_VERSION);          // (only on the menu: a simulator page that opens its storage at document start can read it before another page's save has reached it)          // (the What's New dialog of a first visit would cover the page: a test that is not about it has been here before)
 const ATLANTIC_DIST = join(ROOT, 'dist/atlantic-sst-simulator.html');
 const EPAC_DIST = join(ROOT, 'dist/eastpacific-sst-simulator.html');
 const WPAC_DIST = join(ROOT, 'dist/westpacific-sst-simulator.html');
@@ -1736,7 +1739,7 @@ async function checkStormsBasin(page, label, prefix) {
   if (SITE_SPECS[prefix]) await checkFloaterSite(page, label, prefix);
   // the main menu's Continue card for a season saved here names the basin, the season and the local word (this is the last check of a basin's callback: it leaves the page)
   const sc = await ev((q) => { const S = window.SSTSIM; S.stormLabCalendar(q.sm, 1); S.applySeed(31); S.setPlaying(false); S.stormAuto(true); S.tick(24 * 40); S.advance(0); S.saveTick(); return { stats: S.stormState().stats, year: document.getElementById('se-year').textContent, meta: JSON.parse(S.saveInfo().meta) }; }, { sm: BI.seasonMonth });
-  await page.goto(pathToFileURL(join(ROOT, 'index.html')).href, { waitUntil: 'load' });
+  await menuSeen(page); await page.goto(pathToFileURL(join(ROOT, 'index.html')).href, { waitUntil: 'load' });
   const cardText = await page.evaluate(() => ({ hidden: document.getElementById('continue').hidden, text: document.getElementById('continue').innerText.replace(/\s+/g, ' ') }));
   const seasonText = sc.year.replace(BI.label + ' ', ''), hw = BI.hurricane + (sc.stats.hurr === 1 ? '' : 's');
   check(`[${label}] the main menu's Continue card for a season saved here reads "${cardText.text.slice(0, 120)}": the basin, the season (${seasonText}), the named storms and the ${hw}`,
@@ -3743,11 +3746,10 @@ await checkBasin('Mediterranean', MED_DIST, async (page, label) => {
 });
 
 // Main menu (Isobar): home -> discipline -> basin on the map and the settings -> Begin opens the built basin. Severe and Forecaster are "soon" and cannot be picked.
-const MENU_URL = pathToFileURL(join(ROOT, 'index.html')).href;
 const menuGo = async (pg, basinId) => { await pg.click('#play'); await pg.click('#d-tropical'); if (basinId) await pg.click(`.basin[data-id="${basinId}"]`); };
 async function checkMenuBasin(basinId, name, expectedDistSuffix) {
   const errors = [], browser = await chromium.launch(launchOpts), pg = await browser.newPage({ viewport: { width: 1100, height: 760 } });
-  pg.on('pageerror', (e) => errors.push(e.message));
+  pg.on('pageerror', (e) => errors.push(e.message)); await menuSeen(pg);
   await pg.goto(MENU_URL, { waitUntil: 'load' });
   await menuGo(pg);
   check(`[menu -> ${name}] Begin is disabled with no basin picked`, await pg.isDisabled('#start'));
@@ -3764,13 +3766,13 @@ async function checkMenu() {
   const errors = [], browser = await chromium.launch(launchOpts), pg = await browser.newPage({ viewport: { width: 1280, height: 800 } });
   pg.on('pageerror', (e) => errors.push(e.message)); pg.on('console', (m) => { if (m.type() === 'error' && /index\.html/.test(m.location().url)) errors.push('console: ' + m.text()); });
   await pg.route('**://**/*', (r) => (r.request().url().startsWith('file://') ? r.continue() : r.abort()));      // (the simulator pages ask for online imagery: not in a test)
-  await pg.goto(MENU_URL, { waitUntil: 'load' });
+  await menuSeen(pg); await pg.goto(MENU_URL, { waitUntil: 'load' });
   const vis = (sel) => pg.evaluate((q) => { const e = document.querySelector(q); return !!e && e.offsetParent !== null; }, sel);
   const txt = () => pg.evaluate(() => document.body.innerText);
 
   // home: the brand, the version, no sign-in, nothing about tropical cyclones in the name
   const home = await pg.evaluate(() => ({ title: document.title, word: document.getElementById('word').getAttribute('aria-label'), ver: document.getElementById('ver').textContent, foot: document.querySelector('footer').innerText, text: document.body.innerText, pw: document.querySelectorAll('input[type=password], input[type=email]').length }));
-  check(`[menu] home: the brand is "${home.title}" (not "Hurricane Forecaster", nothing tropical in the name), the version reads ${home.ver} in the top bar and "${home.foot.split('\n')[0]}" below`, home.title === 'Isobar' && home.word === 'Isobar' && home.ver === '0.01A' && /0\.01A/.test(home.foot) && !/hurricane|tropical|cyclone/i.test(home.title + home.word));
+  check(`[menu] home: the brand is "${home.title}" (not "Hurricane Forecaster", nothing tropical in the name), the version reads ${home.ver} in the top bar and "${home.foot.split('\n')[0]}" below`, home.title === 'Isobar' && home.word === 'Isobar' && home.ver === MENU_VERSION && home.foot.includes(MENU_VERSION) && !/hurricane|tropical|cyclone/i.test(home.title + home.word));
   check('[menu] home: there is no sign-in or account form (that waits for a domain of its own)', home.pw === 0 && !/sign in|log in|login|password/i.test(home.text));
   check('[menu] home: Play is there and the discipline, basin and settings screens are not shown yet', (await vis('#play')) && !(await vis('#s-disc')) && !(await vis('#s-pick')));
   check(`[menu] home: the line under the name is "Simulating and Forecasting weather around the world" (not "Weather, simulated"), and the footer says nothing about where seasons are kept ("${home.foot.replace(/\s+/g, ' ')}")`,
@@ -3937,7 +3939,7 @@ async function checkMenu() {
 // One browser context shares localStorage between the pages, as one browser does between the menu and the simulator.
 async function checkSave() {
   const browser = await chromium.launch(launchOpts);
-  const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } }); await menuSeen(ctx);
   await ctx.route('**://**/*', (r) => (r.request().url().startsWith('file://') ? r.continue() : r.abort()));
   const errors = [], MENU = pathToFileURL(join(ROOT, 'index.html')).href, SIM = pathToFileURL(ATLANTIC_DIST).href;
   const open = async (url, ready) => { const pg = await ctx.newPage(); pg.on('pageerror', (e) => errors.push(e.message)); await pg.goto(url, { waitUntil: 'load', timeout: 30000 }); if (ready) await pg.waitForFunction(() => window.__ready === true, { timeout: 30000 }); return pg; };
@@ -4099,9 +4101,105 @@ async function checkSave() {
   if (errors.length) console.log('  ' + errors.join('\n  '));
   await browser.close();
 }
+// What's New: the first visit after an update opens the update log (the entry of the running version, newest first, a green plus for what was added, a red X for what was taken away, a blue dash for what was changed or fixed),
+// it is not shown again until the version changes, and the footer brings it back. The rule that numbers the versions is not on the site.
+async function checkWhatsNew() {
+  const errors = [], browser = await chromium.launch(launchOpts), ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } }), pg = await ctx.newPage();
+  pg.on('pageerror', (e) => errors.push(e.message)); pg.on('console', (m) => { if (m.type() === 'error' && /index\.html/.test(m.location().url)) errors.push('console: ' + m.text()); });
+  await pg.goto(MENU_URL, { waitUntil: 'load' });
+  const state = () => pg.evaluate(() => { const w = document.getElementById('wn'), card = w.querySelector('.wn-card'), pl = document.getElementById('play').getBoundingClientRect(), top = document.elementFromPoint(pl.left + pl.width / 2, pl.top + pl.height / 2);
+    return { open: !w.hidden, role: card.getAttribute('role'), modal: card.getAttribute('aria-modal'), title: document.getElementById('wn-title').textContent, ver: document.getElementById('wn-ver').textContent, focus: document.activeElement && document.activeElement.id, inert: document.getElementById('main').inert && document.getElementById('top').inert && document.querySelector('footer').inert,
+      covered: !!top && !!top.closest('#wn'), seen: localStorage.getItem('hf-seen-version'), items: [...document.querySelectorAll('#wn-body > .wn-list > .wn-it')].map((li) => ({ k: li.dataset.k, text: li.innerText.replace(/\s+/g, ' ').trim(), color: li.querySelector('path').getAttribute('stroke') })), heads: [...document.querySelectorAll('#wn-body h3')].map((h) => h.textContent) }; });
+  const d1 = await state(), UP = await pg.evaluate(() => ISOBAR.updates), COL = { add: '#3ddc84', del: '#ff5d6c', chg: '#5aa9ff' };
+  check(`[news] a first visit opens "${d1.title}" for ${d1.ver} (a dialog, modal, with the keyboard on its button), and the page behind it cannot be reached (${d1.covered ? 'covered' : 'open'}, inert: ${d1.inert})`,
+    d1.open && d1.role === 'dialog' && d1.modal === 'true' && d1.title === "What's New!" && d1.ver === 'Isobar ' + MENU_VERSION && d1.focus === 'wn-ok' && d1.covered && d1.inert === true && d1.seen === null);
+  check(`[news] it lists what the running version did (${d1.items.length} things: ${d1.items.map((i) => i.k).join(' ')}), each with its own icon colour (green plus ${COL.add}, red X ${COL.del}, blue dash ${COL.chg}) and a spoken word for it`,
+    d1.items.length >= 1 && d1.items.length === UP[0].items.length && d1.items.every((i) => COL[i.k] && i.color === COL[i.k] && new RegExp('^(Added|Removed|Changed): .{16,}').test(i.text)));
+  const ic = await pg.evaluate(() => ({ add: logIcon('add'), del: logIcon('del'), chg: logIcon('chg') })), stroke = (k) => (/<path d="([^"]+)" stroke="(#[0-9a-f]{6})"/.exec(ic[k]) || []).slice(1);
+  check(`[news] the three icons are a green plus (${stroke('add').join(' ')}), a red X (${stroke('del').join(' ')}) and a blue dash (${stroke('chg').join(' ')})`,
+    stroke('add')[1] === COL.add && /v/.test(stroke('add')[0]) && /h/.test(stroke('add')[0]) && stroke('del')[1] === COL.del && (stroke('del')[0].match(/l/g) || []).length === 2 && !/[vh]/.test(stroke('del')[0]) && stroke('chg')[1] === COL.chg && /^M[\d. ]+h[\d.]+$/.test(stroke('chg')[0]));
+  const rank = (v) => { const m = /^(\d+)\.(\d)(\d)[ABR]$/.exec(v); return m ? +m[1] * 100 + +m[2] * 10 + +m[3] : NaN; };
+  check(`[news] the log is newest first and the first entry is the running version (${UP.map((u) => u.v).join(', ')}); each entry is a few plain one-line summaries with no quotation marks`,
+    UP[0].v === MENU_VERSION && UP.every((u, i) => Number.isFinite(rank(u.v)) && (i === 0 || rank(UP[i - 1].v) > rank(u.v)) && u.items.length > 0 && u.items.every(([k, t]) => COL[k] && t.length >= 20 && t.length <= 160 && !/["“”]/.test(t))));
+  const src = readFileSync(MENU_FILE, 'utf8');
+  check('[news] the rule that numbers the versions (places, letters) is nowhere on the site', !/ones place|tenths|hundredths|major update|minor addition|bug fix/i.test(src) && !/alpha, beta|beta, release/i.test(src));
+  await pg.keyboard.press('Tab'); const t1 = await pg.evaluate(() => document.activeElement.id + '|' + document.getElementById('wn').contains(document.activeElement));
+  await pg.keyboard.press('Tab'); const t2 = await pg.evaluate(() => document.getElementById('wn').contains(document.activeElement));
+  check(`[news] the keyboard stays inside the dialog (Tab from its button goes to ${t1}, then ${t2 ? 'on inside' : 'OUT'})`, t2 && t1.endsWith('true'));
+  await pg.click('#wn-ok'); const d2 = await state();
+  check(`[news] Got it closes it, the version is remembered (${d2.seen}), the page works again (inert: ${d2.inert}), and a reload does not open it again`, !d2.open && d2.seen === MENU_VERSION && d2.inert === false);
+  await pg.reload({ waitUntil: 'load' }); const d3 = await state();
+  check(`[news] ... the next visit of the same version leaves it closed (${d3.open ? 'open' : 'closed'})`, !d3.open);
+  const foot = await pg.evaluate(() => document.querySelector('footer').innerText.replace(/\s+/g, ' ').trim());
+  const stage = { A: 'Early alpha', B: 'Beta', R: '' }[MENU_VERSION.slice(-1)];
+  check(`[news] the footer reads "${foot}" (the stage follows the letter of the version) and its What's new brings the log back`, foot === ('Isobar ' + MENU_VERSION + (stage ? ' · ' + stage : '') + " · What's new"));
+  await pg.click('#wn-open'); const d4 = await state(); await pg.keyboard.press('Escape'); const d5 = await state();
+  await pg.click('#wn-open'); await pg.mouse.click(8, 8); const d6 = await state();
+  check(`[news] the footer opens it again (${d4.open}); Escape closes it (${!d5.open}), and so does a click beside the dialog (${!d6.open})`, d4.open && !d5.open && !d6.open);
+  await pg.click('#wn-open'); await pg.click('#wn-body summary'); const d7 = await state(), earlier = await pg.evaluate(() => [...document.querySelectorAll('#wn-body details .wn-it')].map((li) => li.dataset.k));
+  check(`[news] "Earlier updates" lists the older versions (${d7.heads.join(' | ')}) with their icons (${earlier.length} things)`, d7.heads.length === UP.length - 1 && d7.heads[0].startsWith(UP[1].v) && earlier.length === UP.slice(1).reduce((t, u) => t + u.items.length, 0) && earlier.every((k) => COL[k]));
+  await pg.click('#wn-ok'); await pg.evaluate(() => localStorage.setItem('hf-seen-version', '0.00A')); await pg.reload({ waitUntil: 'load' }); const d8 = await state();
+  check(`[news] a visitor who last saw another version sees it again (${d8.open ? 'open' : 'closed'}, last seen 0.00A) and the new one is remembered when it is closed`, d8.open && (await pg.click('#wn-ok'), (await state()).seen === MENU_VERSION));
+  await pg.close();
+  // storage that refuses every access: the menu still opens, shows the log (it cannot remember) and closes it
+  const blocked = await ctx.newPage(); blocked.on('pageerror', (e) => errors.push(e.message));
+  await blocked.addInitScript(() => { const refuse = () => { throw new Error('storage blocked'); }; Object.defineProperty(window, 'localStorage', { get: refuse }); });
+  await blocked.goto(MENU_URL, { waitUntil: 'load' });
+  const b1 = await blocked.evaluate(() => !document.getElementById('wn').hidden); await blocked.click('#wn-ok'); const b2 = await blocked.evaluate(() => ({ open: !document.getElementById('wn').hidden, home: !document.getElementById('s-home').hidden }));
+  check(`[news] with storage that refuses every access the log opens (${b1}), closes (${!b2.open}) and the menu works (${b2.home}) with no error (${errors.length})`, b1 && !b2.open && b2.home && errors.length === 0);
+  await browser.close();
+}
+
+// The backdrop of the menu: a surface analysis of a tropical cyclone coming ashore (lines of equal sea-level pressure on a coast), drawn on a canvas. It is a design, not a forecast: it has no key.
+async function checkBackdrop() {
+  const errors = [], browser = await chromium.launch(launchOpts), ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } }); await menuSeen(ctx);
+  const pg = await ctx.newPage(); pg.on('pageerror', (e) => errors.push(e.message)); pg.on('console', (m) => { if (m.type() === 'error' && /index\.html/.test(m.location().url)) errors.push('console: ' + m.text()); });
+  await pg.goto(MENU_URL, { waitUntil: 'load' });
+  const px = () => pg.evaluate(() => { const c = document.getElementById('iso'), d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data, n = d.length / 4; let sum = 0, mx = 0, lines = 0, h = 0; for (let i = 3; i < d.length; i += 4) { const a = d[i]; sum += a; if (a > mx) mx = a; if (a > 20) lines++; } for (let i = 0; i < d.length; i += 4) h = (h * 31 + d[i] + d[i + 1] * 3 + d[i + 2] * 7 + d[i + 3] * 13) >>> 0; return { w: c.width, h: c.height, mean: sum / n / 255, max: mx / 255, lines: lines / n, hash: h }; });
+  const el = await pg.evaluate(() => { const c = document.getElementById('iso'), s = getComputedStyle(c), m = document.getElementById('main'); return { tag: c.tagName, pe: s.pointerEvents, pos: s.position, z: +s.zIndex, mz: +getComputedStyle(m).zIndex, aria: c.getAttribute('aria-hidden'), iw: innerWidth, ih: innerHeight, r: c.getBoundingClientRect().toJSON() }; });
+  check(`[backdrop] the backdrop is a canvas that fills the screen (${el.r.width}x${el.r.height} at ${el.r.left},${el.r.top}), behind the page (z ${el.z} under ${el.mz}), hidden from a screen reader, and takes no pointer (${el.pe})`,
+    el.tag === 'CANVAS' && el.pos === 'fixed' && el.r.left === 0 && el.r.top === 0 && el.r.width === el.iw && el.r.height === el.ih && el.z < el.mz && el.aria === 'true' && el.pe === 'none');
+  await pg.evaluate(() => ISOBAR.backdrop.stop());
+  const A = await pg.evaluate(() => { const b = ISOBAR.backdrop, uL = b.info().landfall, out = {}; out.before = JSON.parse(JSON.stringify(b.draw(uL - 0.02, 1))); out.after = JSON.parse(JSON.stringify(b.draw(0.7, 1))); out.range = b.range; out.uL = uL; out.pAtLow = b.pressureAt(out.before.low.lon, out.before.low.lat, uL - 0.02); b.draw(uL - 0.02, 1); return out; });
+  const lv = A.before.levels, step = lv.every((v, i) => i === 0 || v - lv[i - 1] === 4);
+  check(`[backdrop] the field is sea-level pressure with a line every 4 hPa (${lv.length} lines from ${lv[0]} to ${lv[lv.length - 1]} hPa), and the storm is a deep low (${A.before.low.pc} hPa at its centre; the field there is ${A.pAtLow.toFixed(0)}) coming ashore on the Louisiana coast (${A.before.low.lat}N ${A.before.low.lon}E, over land: ${A.before.low.onLand}; later ${A.after.low.pc} hPa, over land: ${A.after.low.onLand})`,
+    step && lv.length >= 10 && lv[0] < A.before.low.pc + 12 && A.before.low.pc >= 930 && A.before.low.pc <= 975 && Math.abs(A.pAtLow - A.before.low.pc) < 6 && Math.abs(A.before.low.lon + 90.3) < 1 && Math.abs(A.before.low.lat - 29) < 1 && !A.before.low.onLand && A.after.low.onLand && A.after.low.pc > A.before.low.pc + 10 && A.uL > 0.3 && A.uL < 0.7);
+  const P0 = await px();
+  check(`[backdrop] there are a coast (${A.before.polygons} polygons), lines, wind barbs (${A.before.barbs}) and a few numbers on the lines (${A.before.labels.map((l) => l.text).join(', ')}: the last two figures of a pressure), and the picture stays quiet (lines on ${(100 * P0.lines).toFixed(1)} % of it, a mean opacity of ${P0.mean.toFixed(3)}, a strongest mark of ${P0.max.toFixed(2)})`,
+    A.before.polygons >= 20 && A.before.barbs >= 20 && A.before.labels.length >= 2 && A.before.labels.every((l) => /^\d\d$/.test(l.text) && (+l.text) % 4 === 0) && P0.lines > 0.004 && P0.lines < 0.2 && P0.mean < 0.1 && P0.max <= 0.95 && P0.w === 1280 && P0.h === 800);
+  const txt = await pg.evaluate(() => document.body.innerText + ' ' + [...document.querySelectorAll('[aria-label],[title],canvas')].map((e) => (e.getAttribute('aria-label') || '') + (e.getAttribute('title') || '')).join(' '));
+  check('[backdrop] it has no key: no legend, caption, title or time anywhere in the page (no hPa, MSLP, millibar, key, legend or forecast track as words; only the canvas and its numbers)', !/hPa|MSLP|millibar|\bkey\b|legend|forecast track|isobar lines/i.test(txt.replace(/Simulating and Forecasting weather around the world/g, '').replace(/Forecaster/g, '')));
+  const a = (await pg.evaluate(() => { ISOBAR.backdrop.draw(0.4, 1); return 0; }), await px()), b2 = (await pg.evaluate(() => { ISOBAR.backdrop.draw(0.46, 1); return 0; }), await px());
+  check(`[backdrop] the storm moves: two moments of its track give two pictures (${a.hash} then ${b2.hash}), each drawn in ${A.before.ms} ms or less`, a.hash !== b2.hash && A.before.ms < 60);
+  // the loop runs by itself, a few pictures a second
+  const f0 = await pg.evaluate(() => ISOBAR.backdrop.info().frames), h0 = (await px()).hash;
+  await pg.evaluate(() => location.reload()); await pg.waitForLoadState('load'); await pg.waitForTimeout(1800);
+  const live = await pg.evaluate(() => ({ frames: ISOBAR.backdrop.info().frames, still: ISOBAR.backdrop.still }));
+  check(`[backdrop] left alone the loop runs (${live.frames} pictures in about two seconds, not still: ${!live.still})`, live.frames >= 3 && live.frames <= 40 && !live.still);
+  void f0; void h0;
+  // phone: the canvas follows the screen, and the storm is on it
+  await pg.setViewportSize({ width: 390, height: 844 }); await pg.waitForTimeout(250);
+  const ph = await pg.evaluate(() => { const b = ISOBAR.backdrop; b.stop(); const i = b.draw(b.info().landfall - 0.02, 1), c = document.getElementById('iso'); return { w: c.width, h: c.height, iw: innerWidth, ih: innerHeight, low: i.low, errs: 0 }; });
+  check(`[backdrop] on a phone (${ph.iw}x${ph.ih}) the canvas is ${ph.w}x${ph.h} and the storm is on the screen at ${ph.low.x},${ph.low.y}`, ph.w === ph.iw * 1 && ph.h === ph.ih * 1 && ph.low.x > 0 && ph.low.x < ph.iw && ph.low.y > 0 && ph.low.y < ph.ih);
+  // the basin screen dims it (the settings are on it)
+  await pg.setViewportSize({ width: 1280, height: 800 }); await pg.click('#play'); const o1 = await pg.evaluate(() => getComputedStyle(document.getElementById('iso')).opacity); await pg.click('#d-tropical'); await pg.waitForTimeout(900);
+  const o2 = await pg.evaluate(() => getComputedStyle(document.getElementById('iso')).opacity);
+  check(`[backdrop] it is quieter behind the basin screen (opacity ${o1} on the way, ${o2} there)`, +o2 < 0.7 && +o2 > 0.3);
+  await pg.close();
+  // motion not wanted: one still picture, just before the centre reaches the coast
+  const rm = await browser.newContext({ viewport: { width: 1280, height: 800 }, reducedMotion: 'reduce' }); await menuSeen(rm); const rp = await rm.newPage(); rp.on('pageerror', (e) => errors.push(e.message));
+  await rp.goto(MENU_URL, { waitUntil: 'load' }); await rp.waitForTimeout(700);
+  const r1 = await rp.evaluate(() => ({ still: ISOBAR.backdrop.still, frames: ISOBAR.backdrop.info().frames, onLand: ISOBAR.backdrop.info().low.onLand, u: ISOBAR.backdrop.info().u }));
+  check(`[backdrop] when motion is not wanted it is drawn once and stays still (${r1.frames} picture, the centre at the coast: u ${r1.u.toFixed(3)}, over land: ${r1.onLand})`, r1.still && r1.frames === 1 && !r1.onLand);
+  check(`[backdrop] no page error or console error (${errors.length})`, errors.length === 0);
+  await browser.close();
+}
+
 const SKIP = (process.env.SKIP || '').split(',');                                   // SKIP='save,menu' leaves those out (a working aid; CI runs them all)
 if (!SKIP.includes('save')) await checkSave();
 if (!SKIP.includes('menu')) await checkMenu();
+if (!SKIP.includes('menu')) await checkWhatsNew();
+if (!SKIP.includes('menu')) await checkBackdrop();
 if (!SKIP.includes('menu')) await checkMenuBasin('atlantic', 'Atlantic', 'atlantic-sst-simulator.html');
 if (!SKIP.includes('menu')) await checkMenuBasin('epac', 'Eastern Pacific', 'eastpacific-sst-simulator.html');
 if (!SKIP.includes('menu')) await checkMenuBasin('wpac', 'Western Pacific', 'westpacific-sst-simulator.html');

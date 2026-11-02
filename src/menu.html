@@ -26,13 +26,9 @@ button{font:inherit;color:inherit;cursor:pointer}
 button:focus-visible,summary:focus-visible,input:focus-visible,a:focus-visible,h1:focus-visible,h2:focus-visible{outline:2px solid var(--acc);outline-offset:3px;border-radius:8px}
 [hidden]{display:none!important}
 
-/* ---- the backdrop: isobars round a low, drawn by script, turning very slowly ---- */
-#iso{position:fixed;right:-18vmin;top:50%;width:140vmin;height:140vmin;margin-top:-70vmin;pointer-events:none;z-index:0;animation:drift 420s linear infinite;opacity:.95}
-#iso path{fill:none;stroke:rgba(255,255,255,.07);stroke-width:1}
-#iso path:nth-child(4n){stroke:rgba(114,214,255,.17)}
-#iso path:nth-child(9n){stroke:rgba(160,140,255,.2)}
-@keyframes drift{to{transform:rotate(360deg)}}
-body[data-screen="pick"] #iso{right:auto;left:-40vmin;opacity:.55}
+/* ---- the backdrop: a surface analysis of a tropical cyclone coming ashore, drawn live on a canvas (a design, not a forecast: it carries no key) ---- */
+#iso{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:0;opacity:1;transition:opacity .7s ease}
+body[data-screen="pick"] #iso{opacity:.55}
 
 /* ---- the top bar ---- */
 #top{position:relative;z-index:2;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:22px var(--pad) 0}
@@ -183,6 +179,28 @@ details#adv .grp{border-top:1px solid var(--line)}
 
 footer{position:relative;z-index:1;display:flex;flex-wrap:wrap;gap:6px 18px;justify-content:space-between;padding:0 var(--pad) 22px;color:var(--faint);font-size:12px}
 footer b{color:var(--dim);font-weight:600}
+footer .link{font-size:12px;color:var(--faint);padding:0}
+footer .link:hover{color:var(--dim)}
+
+/* ---- what's new: shown the first time the site is opened after an update, and from the footer ---- */
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.wn{position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;padding:18px;background:rgba(3,6,12,.66);-webkit-backdrop-filter:blur(5px);backdrop-filter:blur(5px);animation:fadein .25s ease both}
+@keyframes fadein{from{opacity:0}to{opacity:1}}
+.wn-card{width:min(520px,100%);max-height:min(86vh,700px);display:flex;flex-direction:column;background:linear-gradient(180deg,rgba(21,31,47,.97),rgba(11,17,28,.98));border:1px solid var(--line2);border-radius:20px;box-shadow:0 30px 80px rgba(0,0,0,.55);padding:22px 22px 18px;animation:rise .35s cubic-bezier(.2,.7,.2,1) both}
+.wn-card:focus{outline:none}
+.wn-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:4px}
+.wn-head h2{font-size:23px;font-weight:600;letter-spacing:-.01em}
+.wn-ver{font-size:12px;font-weight:600;color:var(--acc);letter-spacing:.06em}
+.wn-body{overflow:auto;margin:10px -8px 0;padding:0 8px}
+.wn-date{font-size:12px;color:var(--faint);margin:0 0 12px}
+.wn-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:11px}
+.wn-it{display:flex;gap:11px;align-items:flex-start;font-size:14px;line-height:1.45;color:var(--text)}
+.wn-ic{flex:none;width:20px;height:20px;margin-top:1px}
+.wn-ic svg{display:block;width:20px;height:20px}
+.wn-older{margin-top:18px;border-top:1px solid var(--line);padding-top:12px}
+.wn-older summary{cursor:pointer;color:var(--dim);font-size:13px;font-weight:600}
+.wn-older h3{font-size:13px;font-weight:600;color:var(--dim);margin:16px 0 4px;letter-spacing:.04em}
+.wn-foot{display:flex;justify-content:flex-end;margin-top:16px}
 
 /* narrow screens: the world turns into a list, the panels stack */
 @media (max-width:980px){
@@ -207,16 +225,16 @@ footer b{color:var(--dim);font-weight:600}
   .resume{max-width:none}
   .btn{padding:13px 26px}
 }
-@media (prefers-reduced-motion:reduce){#iso,.spin{animation:none}.screen{animation:none}}
+@media (prefers-reduced-motion:reduce){.spin{animation:none}.screen{animation:none}#iso{transition:none}.wn,.wn-card{animation:none}}
 </style>
 </head>
 <body data-screen="home">
-<svg id="iso" viewBox="-500 -500 1000 1000" aria-hidden="true"></svg>
+<canvas id="iso" aria-hidden="true"></canvas>
 
 <header id="top">
   <a class="brand" href="#" id="brand" aria-label="Isobar, home">
     <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="16" cy="16" r="2.4" fill="currentColor" stroke="none"/><path d="M16 10.2a5.8 5.8 0 0 1 5.8 5.8" stroke="#72d6ff"/><path d="M16 21.8a5.8 5.8 0 0 1-5.8-5.8" stroke="#72d6ff"/><path d="M16 5.6A10.4 10.4 0 0 1 26.4 16" opacity=".8"/><path d="M16 26.4A10.4 10.4 0 0 1 5.6 16" opacity=".8"/><path d="M16 1.8A14.2 14.2 0 0 1 30.2 16" opacity=".45"/><path d="M16 30.2A14.2 14.2 0 0 1 1.8 16" opacity=".45"/></svg>
-    <b id="brand-name">Isobar</b><span class="ver" id="ver">0.01A</span>
+    <b id="brand-name">Isobar</b><span class="ver" id="ver">0.10A</span>
   </a>
   <button id="back" type="button" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>Back</button>
 </header>
@@ -292,15 +310,26 @@ footer b{color:var(--dim);font-weight:600}
   </section>
 </main>
 
-<footer><span><b id="ver2">Isobar 0.01A</b> · Early alpha</span></footer>
+<footer><span><b id="ver2">Isobar 0.10A</b><span id="stage-wrap"> · <span id="stage">Early alpha</span></span> · <button class="link" id="wn-open" type="button">What's new</button></span></footer>
+
+<div class="wn" id="wn" hidden>
+  <div class="wn-card" role="dialog" aria-modal="true" aria-labelledby="wn-title" tabindex="-1">
+    <div class="wn-head"><h2 id="wn-title">What's New!</h2><span class="wn-ver" id="wn-ver"></span></div>
+    <div class="wn-body" id="wn-body"></div>
+    <div class="wn-foot"><button class="btn" id="wn-ok" type="button">Got it</button></div>
+  </div>
+</div>
 
 <script>
 /*__MENU_ART__*/
 /*__MENU_SEASON__*/
 /*__MENU_EXPECT__*/
-const BRAND = 'Isobar', VERSION = '0.01A';
+/*__MENU_COAST__*/
+const BRAND = 'Isobar', VERSION = '0.10A';
 const $ = (id) => document.getElementById(id);
+const STAGE = { A: 'Early alpha', B: 'Beta', R: '' }[VERSION.slice(-1)] || '';
 $('brand-name').textContent = BRAND; $('ver').textContent = VERSION; $('ver2').textContent = BRAND + ' ' + VERSION; document.title = BRAND;
+$('stage').textContent = STAGE; $('stage-wrap').hidden = !STAGE;
 
 /* ---- the basins: where they are on the map (lon W, lon E, lat S, lat N), the months of their season, and what a year holds in the real record (1991-2020: named storms, hurricanes, major ones, ACE) ---- */
 const BASINS = [
@@ -444,17 +473,240 @@ function buildMap() {
   });
 }
 
-/* ---- the backdrop and the cyclone on the Tropical card: drawn, not pictures ---- */
-function isobars() {
-  let s = 20260101; const rnd = () => (s = (s * 16807) % 2147483647) / 2147483647;
-  const ph = [0, 1, 2, 3, 4].map(() => rnd() * 6.2832), am = [0.05, 0.034, 0.024, 0.016, 0.011];
-  let out = '';
-  for (let i = 0; i < 26; i++) {
-    const r = 46 + i * 17, k = 1 + i * 0.1, pts = [];
-    for (let j = 0; j < 180; j++) { const t = j / 180 * 6.2832; let m = 1; for (let h = 0; h < 5; h++) m += am[h] * k * Math.sin((h + 2) * t + ph[h] + i * 0.14); pts.push((Math.cos(t) * r * m).toFixed(1) + ' ' + (Math.sin(t) * r * m * 0.84).toFixed(1)); }
-    out += '<path d="M' + pts.join('L') + 'Z"/>';
+/* ---- the backdrop: a surface analysis of a tropical cyclone coming ashore on the northern Gulf coast, drawn live on a canvas. It is a design, not a forecast, and it carries no key:
+   lines of equal sea-level pressure 4 hPa apart (a few of them numbered, the way a chart numbers them), the coast, a field of wind barbs, the L and the H. The storm is a Holland (1980)
+   pressure profile on a field of its own (a ridge over the Atlantic, a trough to the north-west, a shallow low over the warm land); it deepens, crosses the coast and fills, and the
+   loop begins again. Drawn eight times a second (it moves a pixel or two a second), once and still under prefers-reduced-motion. ---- */
+function analysis() {
+  const cv = $('iso'); if (!cv || typeof COAST === 'undefined' || !COAST) return null;
+  const g = cv.getContext('2d'), D2R = Math.PI / 180, RE = 6371, K0 = Math.cos(30 * D2R), LON0 = -90.2, LAT0 = 29.3;
+  const smooth = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+  const mercY = (lat) => Math.log(Math.tan(Math.PI / 4 + lat * D2R / 2));
+  const PX = (lon) => RE * K0 * (lon - LON0) * D2R, PY = (lat) => RE * K0 * (mercY(lat) - mercY(LAT0));          // kilometres east and north of the place the storm comes ashore
+  const LONOF = (x) => LON0 + x / (RE * K0 * D2R), LATOF = (y) => (2 * Math.atan(Math.exp(mercY(LAT0) + y / (RE * K0))) - Math.PI / 2) / D2R;
+
+  /* the land, in kilometres, and a soft mask of it (the shallow low over warm land, and the winds that the land slows) */
+  const [bx0, bx1, by0, by1] = COAST.box, X0 = PX(bx0), X1 = PX(bx1), Y0 = PY(by0), Y1 = PY(by1);
+  const land = COAST.polys.map((flat) => {
+    const n = flat.length / 2, x = new Float64Array(n), y = new Float64Array(n), lo = new Int32Array(n), la = new Int32Array(n); let a = 0, b = 0;
+    for (let i = 0; i < n; i++) { a += flat[2 * i]; b += flat[2 * i + 1]; lo[i] = a; la[i] = b; x[i] = PX(a / 100); y[i] = PY(b / 100); }
+    return { n, x, y, lo, la };
+  });
+  const onBox = (P, i, j) => (P.lo[i] === bx0 * 100 && P.lo[j] === bx0 * 100) || (P.lo[i] === bx1 * 100 && P.lo[j] === bx1 * 100) || (P.la[i] === by0 * 100 && P.la[j] === by0 * 100) || (P.la[i] === by1 * 100 && P.la[j] === by1 * 100);
+  const MC = 14, MW = Math.ceil((X1 - X0) / MC), MH = Math.ceil((Y1 - Y0) / MC);
+  let mask = new Float32Array(MW * MH);
+  {
+    const c = document.createElement('canvas'); c.width = MW; c.height = MH; const m = c.getContext('2d'); m.fillStyle = '#fff'; m.beginPath();
+    for (const P of land) { for (let i = 0; i < P.n; i++) { const px = (P.x[i] - X0) / MC, py = (Y1 - P.y[i]) / MC; if (i) m.lineTo(px, py); else m.moveTo(px, py); } m.closePath(); }
+    m.fill(); const d = m.getImageData(0, 0, MW, MH).data; for (let i = 0; i < mask.length; i++) mask[i] = d[i * 4 + 3] / 255;
+    const blur = (a) => { const o = new Float32Array(a.length); for (let j = 0; j < MH; j++) for (let i = 0; i < MW; i++) { let s = 0, n = 0; for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) { const ii = i + di, jj = j + dj; if (ii >= 0 && ii < MW && jj >= 0 && jj < MH) { s += a[jj * MW + ii]; n++; } } o[j * MW + i] = s / n; } return o; };
+    mask = blur(blur(mask));
   }
-  $('iso').innerHTML = out;
+  const landAt = (x, y) => {
+    const fx = Math.max(0, Math.min(MW - 1.001, (x - X0) / MC - 0.5)), fy = Math.max(0, Math.min(MH - 1.001, (Y1 - y) / MC - 0.5)), i = fx | 0, j = fy | 0, a = fx - i, b = fy - j, k = j * MW + i;
+    return (mask[k] * (1 - a) + mask[k + 1] * a) * (1 - b) + (mask[k + MW] * (1 - a) + mask[k + MW + 1] * a) * b;
+  };
+
+  /* the pressure the weather would have without the storm (hPa): a ridge over the Atlantic, a trough in the north-west, a shallow low over the land, and a slow fall to the north */
+  const gau = (x, y, cx, cy, s) => Math.exp(-((x - cx) * (x - cx) + (y - cy) * (y - cy)) / (2 * s * s));
+  const HI = [PX(-77.5), PY(31.4)], TR = [PX(-101), PY(37)], SW = [PX(-101.5), PY(24.5)];
+  const BUMPS = [[-95.5, 31.5, 2.2, 280], [-86, 31, -2.4, 320], [-93, 25.8, 2, 300], [-83.5, 26.5, -2.2, 360], [-97.5, 28, -1.6, 260], [-88.5, 33.5, 1.8, 260], [-81.5, 33, 1.6, 240]].map(([lo, la, a, sg]) => [PX(lo), PY(la), a, sg]);          // (smaller highs and lows: the weather the big pattern leaves)
+  const amb = (x, y) => { let p = 1014 + 8.2 * gau(x, y, HI[0], HI[1], 1000) - 7 * gau(x, y, TR[0], TR[1], 900) - 3.2 * gau(x, y, SW[0], SW[1], 650) - 2.6 * landAt(x, y) - 0.9 * y / 1000; for (const b of BUMPS) p += b[2] * gau(x, y, b[0], b[1], b[3]); return p; };
+
+  /* the storm: its track (kilometres, smoothed through a few points), its state along the loop u in [0, 1) and the pressure it makes */
+  const WAY = [[-87.0, 24.0], [-88.2, 26.4], [-89.4, 28.1], [-90.25, 29.15], [-91.1, 30.9], [-92.2, 32.9], [-93.2, 35.0]].map(([lo, la]) => [PX(lo), PY(la)]);
+  const trackAt = (u) => {
+    const n = WAY.length - 1, s = Math.max(0, Math.min(n - 1e-9, u * n)), i = Math.floor(s), t = s - i, p0 = WAY[Math.max(0, i - 1)], p1 = WAY[i], p2 = WAY[i + 1], p3 = WAY[Math.min(n, i + 2)];
+    const cr = (k) => 0.5 * (2 * p1[k] + (-p0[k] + p2[k]) * t + (2 * p0[k] - 5 * p1[k] + 4 * p2[k] - p3[k]) * t * t + (-p0[k] + 3 * p1[k] - 3 * p2[k] + p3[k]) * t * t * t);
+    return [cr(0), cr(1)];
+  };
+  let uL = 0.5; for (let u = 0; u <= 1; u += 0.002) { const c = trackAt(u); if (landAt(c[0], c[1]) > 0.5) { uL = u; break; } }          // where the centre first stands on land
+  function stormAt(u) {
+    const [cx, cy] = trackAt(u), a = trackAt(Math.min(1, u + 0.01)), b = trackAt(Math.max(0, u - 0.01)); let mx = a[0] - b[0], my = a[1] - b[1]; const mn = Math.hypot(mx, my) || 1; mx /= mn; my /= mn;
+    const uc = uL - 0.02, deep = smooth(0, uc, u), fill = u > uc ? 1 - Math.exp(-(u - uc) / 0.16) : 0;
+    const pc = 973 - 24 * deep + 29 * fill, rm = 38 + 6 * deep + 26 * smooth(uL - 0.04, 1, u), B = 1.05 - 0.15 * smooth(uL, 1, u);
+    return { u, cx, cy, mx, my, pc, rm, B, asy: 0.14, dp: Math.max(4, amb(cx, cy) - pc), ph: u * 7 };
+  }
+  const radius = (dx, dy, st) => Math.max(3, Math.hypot((dx * st.mx + dy * st.my) / (1 + st.asy), -dx * st.my + dy * st.mx));
+  function vortex(dx, dy, st) {            // how far the storm lowers the pressure at a point dx, dy kilometres from its centre (hPa, positive)
+    if (dx > 1500 || dx < -1500 || dy > 1500 || dy < -1500) return 0;
+    const r = radius(dx, dy, st), x = Math.pow(st.rm / r, st.B);
+    return st.dp * (1 - Math.exp(-x)) - 1.1 * Math.exp(-r / 380) * Math.cos(2 * (Math.atan2(dy, dx) - 1.15 * Math.log(r / 80)) + st.ph);          // (the Holland profile, and two faint spiral bands)
+  }
+  const pressure = (x, y, st) => amb(x, y) - vortex(x - st.cx, y - st.cy, st);
+
+  /* the winds of the barbs (m/s east and north): the gradient wind of the Holland profile, a little weaker at the surface and over land, turned towards the low, and the ambient flow */
+  function wind(x, y, st) {
+    const dx = x - st.cx, dy = y - st.cy, r = Math.max(radius(dx, dy, st), 4), xx = Math.pow(st.rm / r, st.B), dpdr = st.dp * st.B * xx / r * Math.exp(-xx) * 0.1;          // Pa per metre
+    const f = 7.0e-5, rm = r * 1000, vg = -f * rm / 2 + Math.sqrt((f * rm / 2) * (f * rm / 2) + rm / 1.15 * dpdr), v = 0.8 * vg * (1 - 0.35 * landAt(x, y));
+    const d = Math.hypot(dx, dy) || 1, tx = -dy / d, ty = dx / d, ix = -dx / d, iy = -dy / d, ci = Math.cos(22 * D2R), si = Math.sin(22 * D2R);
+    const e = 25, gx = (amb(x + e, y) - amb(x - e, y)) / (2 * e) * 0.1, gy = (amb(x, y + e) - amb(x, y - e)) / (2 * e) * 0.1;          // the ambient gradient, Pa per metre
+    return [v * (tx * ci + ix * si) + 0.7 * gy / (1.15 * f), v * (ty * ci + iy * si) - 0.7 * gx / (1.15 * f)];
+  }
+
+  /* the screen: pixels per kilometre, where the landfall stands, the grids the field is contoured on (a coarse one over the whole screen and a fine one round the low) */
+  let W = 0, H = 0, dpr = 1, sc = 1, ox = 0, oy = 0, stat = null, C = null, F = null, GX = null, GY = null, AMB = null, CELL = 12;
+  const FCELL = 3, HW = 96;
+  const makeGrid = (w, h, cell) => { const nx = Math.ceil(w / cell) + 1, ny = Math.ceil(h / cell) + 1, n = nx * ny; return { nx, ny, cell, x0: 0, y0: 0, P: new Float32Array(n), l1: new Int32Array(2 * n), l2: new Int32Array(2 * n), st: new Int32Array(2 * n), vis: new Int32Array(2 * n), stamp: 0, tl: [] }; };
+  function layout() {
+    dpr = Math.min(2, window.devicePixelRatio || 1); W = window.innerWidth; H = window.innerHeight;
+    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+    sc = Math.max(W / 1700, H / 1500, 0.85);
+    const portrait = H > W * 1.1, fx = portrait ? 0.5 : 0.64, fy = portrait ? 0.76 : 0.5;
+    let kx0 = -fx * W / sc, ky1 = fy * H / sc;                                  // the kilometres at the left edge and the top edge of the screen
+    kx0 = Math.max(X0, Math.min(X1 - W / sc, kx0)); ky1 = Math.max(Y0 + H / sc, Math.min(Y1, ky1));
+    ox = -kx0 * sc; oy = ky1 * sc;                                              // screen x = ox + sc X, screen y = oy - sc Y
+    CELL = W > 1300 ? 15 : 12; C = makeGrid(W, H, CELL); F = makeGrid(2 * HW, 2 * HW, FCELL);          // (a coarser grid on a big screen: the lines are smoothed, and the fine grid does the core)
+    GX = new Float64Array(C.nx); GY = new Float64Array(C.ny); for (let i = 0; i < C.nx; i++) GX[i] = (i * CELL - ox) / sc; for (let j = 0; j < C.ny; j++) GY[j] = (oy - j * CELL) / sc;
+    AMB = new Float32Array(C.nx * C.ny); for (let j = 0; j < C.ny; j++) for (let i = 0; i < C.nx; i++) AMB[j * C.nx + i] = amb(GX[i], GY[j]);
+    stat = document.createElement('canvas'); stat.width = cv.width; stat.height = cv.height;
+    const s = stat.getContext('2d'); s.scale(dpr, dpr);                          // the land, very faint, and its coast
+    s.fillStyle = 'rgba(140,180,215,.05)'; s.beginPath();
+    for (const P of land) { for (let i = 0; i < P.n; i++) { const px = ox + sc * P.x[i], py = oy - sc * P.y[i]; if (i) s.lineTo(px, py); else s.moveTo(px, py); } s.closePath(); }
+    s.fill();
+    s.strokeStyle = 'rgba(185,212,235,.30)'; s.lineWidth = 1.15; s.lineJoin = 'round'; s.lineCap = 'round'; s.beginPath();
+    for (const P of land) { let pen = false; for (let i = 0; i < P.n; i++) { const j = (i + 1) % P.n; if (onBox(P, i, j)) { pen = false; continue; } const px = ox + sc * P.x[i], py = oy - sc * P.y[i]; if (!pen) { s.moveTo(px, py); pen = true; } s.lineTo(ox + sc * P.x[j], oy - sc * P.y[j]); } }
+    s.stroke();
+  }
+
+  /* the field on a grid: the ambient pressure (read from the coarse grid for the fine one) with the storm in it */
+  function fillGrid(G, st, fine) {
+    const { nx, ny, cell, x0, y0, P } = G;
+    for (let j = 0; j < ny; j++) {
+      const Y = (oy - (y0 + j * cell)) / sc, dy = Y - st.cy;
+      for (let i = 0; i < nx; i++) {
+        const sx = x0 + i * cell, X = (sx - ox) / sc; let a;
+        if (!fine) a = AMB[j * nx + i]; else { const fx = Math.max(0, Math.min(C.nx - 1.001, sx / CELL)), fy = Math.max(0, Math.min(C.ny - 1.001, (y0 + j * cell) / CELL)), ci = fx | 0, cj = fy | 0, u = fx - ci, v = fy - cj, k = cj * C.nx + ci; a = (AMB[k] * (1 - u) + AMB[k + 1] * u) * (1 - v) + (AMB[k + C.nx] * (1 - u) + AMB[k + C.nx + 1] * u) * v; }
+        P[j * nx + i] = a - vortex(X - st.cx, dy, st);
+      }
+    }
+  }
+
+  /* the lines of one level on a grid (marching squares, the pieces joined into lines): [{ pts: [x, y, ...] in screen pixels, closed }] */
+  function trace(G, L) {
+    const { nx, ny, cell, x0, y0, P, l1, l2, st, vis, tl } = G, stamp = ++G.stamp, out = []; tl.length = 0;
+    const touch = (e) => { if (st[e] !== stamp) { st[e] = stamp; l1[e] = -1; l2[e] = -1; tl.push(e); } };
+    const link = (a, b) => { touch(a); touch(b); if (l1[a] < 0) l1[a] = b; else l2[a] = b; if (l1[b] < 0) l1[b] = a; else l2[b] = a; };
+    for (let j = 0; j < ny - 1; j++) for (let i = 0; i < nx - 1; i++) {
+      const k = j * nx + i, a = P[k], b = P[k + 1], c = P[k + nx + 1], d = P[k + nx], cs = (a > L ? 1 : 0) | (b > L ? 2 : 0) | (c > L ? 4 : 0) | (d > L ? 8 : 0);
+      if (cs === 0 || cs === 15) continue;
+      const eT = k * 2, eR = (k + 1) * 2 + 1, eB = (k + nx) * 2, eL = k * 2 + 1;
+      switch (cs) {
+        case 1: case 14: link(eL, eT); break;
+        case 2: case 13: link(eT, eR); break;
+        case 3: case 12: link(eL, eR); break;
+        case 4: case 11: link(eR, eB); break;
+        case 6: case 9: link(eT, eB); break;
+        case 7: case 8: link(eL, eB); break;
+        case 5: if ((a + b + c + d) / 4 > L) { link(eT, eR); link(eL, eB); } else { link(eL, eT); link(eR, eB); } break;
+        default: if ((a + b + c + d) / 4 > L) { link(eL, eT); link(eR, eB); } else { link(eT, eR); link(eL, eB); }          // 10
+      }
+    }
+    const pos = (e, pts) => {
+      const k = e >> 1, i = k % nx, j = (k / nx) | 0;
+      if (e & 1) { const t = (L - P[k]) / (P[k + nx] - P[k]); pts.push(x0 + i * cell, y0 + (j + t) * cell); } else { const t = (L - P[k]) / (P[k + 1] - P[k]); pts.push(x0 + (i + t) * cell, y0 + j * cell); }
+    };
+    const walk = (start) => {
+      const pts = []; let cur = start, closed = false;
+      for (;;) {
+        vis[cur] = stamp; pos(cur, pts); const a = l1[cur], b = l2[cur]; let nx2 = -1;
+        if (a >= 0 && vis[a] !== stamp) nx2 = a; else if (b >= 0 && vis[b] !== stamp) nx2 = b;
+        if (nx2 < 0) { if (pts.length > 6 && (a === start || b === start)) closed = true; break; }
+        cur = nx2;
+      }
+      return { pts, closed };
+    };
+    for (const e of tl) if (l2[e] < 0 && vis[e] !== stamp) out.push(walk(e));            // lines that run off the grid start at an end
+    for (const e of tl) if (vis[e] !== stamp) out.push(walk(e));                          // what is left are rings
+    return out;
+  }
+  function curve(pts, closed) {          // a smooth curve through the middles of the pieces
+    const n = pts.length / 2; if (n < 2) return;
+    if (n < 4) { g.moveTo(pts[0], pts[1]); for (let i = 1; i < n; i++) g.lineTo(pts[2 * i], pts[2 * i + 1]); if (closed) g.closePath(); return; }
+    if (closed) {
+      g.moveTo((pts[2 * n - 2] + pts[0]) / 2, (pts[2 * n - 1] + pts[1]) / 2);
+      for (let i = 0; i < n; i++) { const j = (i + 1) % n; g.quadraticCurveTo(pts[2 * i], pts[2 * i + 1], (pts[2 * i] + pts[2 * j]) / 2, (pts[2 * i + 1] + pts[2 * j + 1]) / 2); }
+      g.closePath();
+    } else {
+      g.moveTo(pts[0], pts[1]);
+      for (let i = 1; i < n - 1; i++) g.quadraticCurveTo(pts[2 * i], pts[2 * i + 1], (pts[2 * i] + pts[2 * i + 2]) / 2, (pts[2 * i + 1] + pts[2 * i + 3]) / 2);
+      g.lineTo(pts[2 * n - 2], pts[2 * n - 1]);
+    }
+  }
+  function barb(path, x, y, u, v) {      // one wind barb: the staff points to where the wind comes from, 50 kt a pennant, 10 a barb, 5 half a barb (feathers to the right in the Northern Hemisphere)
+    const kt = Math.hypot(u, v) * 1.944; if (kt < 2.5) return;
+    const L = 24, dx = -u / Math.hypot(u, v), dy = v / Math.hypot(u, v), ex = x + dx * L, ey = y + dy * L, px = -dy, py = dx;          // (screen y runs down: the north component v is up)
+    path.moveTo(x, y); path.lineTo(ex, ey);
+    let n = Math.round(kt / 5) * 5, s = L;
+    while (n >= 50) { path.moveTo(x + dx * s, y + dy * s); path.lineTo(x + dx * (s - 5) , y + dy * (s - 5)); path.lineTo(x + dx * s + px * 9 + dx * 2, y + dy * s + py * 9 + dy * 2); path.closePath(); n -= 50; s -= 6; }
+    while (n >= 10) { path.moveTo(x + dx * s, y + dy * s); path.lineTo(x + dx * s + px * 9 + dx * 3, y + dy * s + py * 9 + dy * 3); n -= 10; s -= 4.2; }
+    if (n >= 5) { if (s === L) s -= 4.2; path.moveTo(x + dx * s, y + dy * s); path.lineTo(x + dx * s + px * 4.5 + dx * 1.5, y + dy * s + py * 4.5 + dy * 1.5); }
+  }
+
+  const FONT = 'ui-monospace, "SF Mono", Menlo, Consolas, monospace';
+  let info = {}, nDraw = 0;
+  function draw(u, fade) {
+    const t0 = performance.now(), st = stormAt(u), lowX = ox + sc * st.cx, lowY = oy - sc * st.cy;
+    g.setTransform(dpr, 0, 0, dpr, 0, 0); g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1; g.clearRect(0, 0, W, H);
+    C.x0 = 0; C.y0 = 0; fillGrid(C, st, false); F.x0 = lowX - HW; F.y0 = lowY - HW; fillGrid(F, st, true);
+    let lo = 1e9, hi = -1e9; for (let k = 0; k < C.P.length; k++) { const v = C.P[k]; if (v < lo) lo = v; if (v > hi) hi = v; }
+    for (let k = 0; k < F.P.length; k++) if (F.P[k] < lo) lo = F.P[k];
+    const levels = []; for (let Lv = Math.ceil(lo / 4) * 4; Lv <= hi; Lv += 4) levels.push(Lv);
+    g.lineJoin = 'round'; g.lineCap = 'round';
+    for (const Lv of levels) {
+      const k = Math.max(0, Math.min(1, (1016 - Lv) / 64)), major = Lv % 20 === 0;
+      g.strokeStyle = 'rgba(' + (major ? '120,205,245' : '125,180,215') + ',' + (0.12 + 0.2 * k + (major ? 0.1 : 0)).toFixed(3) + ')'; g.lineWidth = major ? 1.25 : 1; g.beginPath();
+      const fine = trace(F, Lv).filter((l) => l.closed && Math.min(...l.pts.filter((_, i) => !(i & 1))) > F.x0 + 2 * FCELL && Math.max(...l.pts.filter((_, i) => !(i & 1))) < F.x0 + 2 * HW - 2 * FCELL && Math.min(...l.pts.filter((_, i) => i & 1)) > F.y0 + 2 * FCELL && Math.max(...l.pts.filter((_, i) => i & 1)) < F.y0 + 2 * HW - 2 * FCELL);
+      for (const l of fine) curve(l.pts, true);
+      for (const l of trace(C, Lv)) { if (fine.length && l.closed) { let cx = 0, cy = 0; const n = l.pts.length / 2; for (let i = 0; i < n; i++) { cx += l.pts[2 * i]; cy += l.pts[2 * i + 1]; } cx /= n; cy /= n; if (Math.abs(cx - lowX) < HW && Math.abs(cy - lowY) < HW) continue; } curve(l.pts, l.closed); }
+      g.stroke();
+    }
+    /* the wind barbs, on a lattice that stays where it is while the storm goes through it: stronger round the low, none far from it and none where it is calm */
+    const BS = Math.max(86, Math.min(120, W / 12)), bn = new Path2D(), bm = new Path2D(); let nb = 0;
+    for (let r = 0, y = BS * 0.55; y < H; r++, y += BS * 0.86) for (let x = (r & 1 ? BS * 0.5 : 0) + BS * 0.3; x < W; x += BS) {
+      const d = Math.hypot(x - lowX, y - lowY); if (d < 38 || d > 620) continue;
+      const w = wind((x - ox) / sc, (oy - y) / sc, st); if (Math.hypot(w[0], w[1]) * 1.944 < 4) continue; barb(d < 340 ? bn : bm, x, y, w[0], w[1]); nb++;
+    }
+    g.lineWidth = 1; g.strokeStyle = 'rgba(150,200,232,.27)'; g.stroke(bn); g.strokeStyle = 'rgba(150,200,232,.15)'; g.stroke(bm);
+    /* the numbers on some of the lines: the last two figures of the pressure, each on a ray of its own from the low (never a ladder), with a gap in the line */
+    g.font = '500 10px ' + FONT; g.textAlign = 'center'; g.textBaseline = 'middle'; const labels = [];
+    levels.forEach((Lv, idx) => {
+      if (Lv % 8 !== 0 || Lv <= st.pc + 6) return;
+      for (const turn of [0, 55, -55]) {
+        const th = (idx * 137.508 + 25 + turn) * D2R, ca = Math.cos(th), sa = Math.sin(th); let r0 = 30, p0 = pressure(st.cx + ca * r0, st.cy + sa * r0, st), hit = -1;
+        for (let r = 38; r < 1500; r += 9) { const p1 = pressure(st.cx + ca * r, st.cy + sa * r, st); if (p0 < Lv && p1 >= Lv) { let a = r0, b = r; for (let q = 0; q < 12; q++) { const m = (a + b) / 2; if (pressure(st.cx + ca * m, st.cy + sa * m, st) < Lv) a = m; else b = m; } hit = (a + b) / 2; break; } p0 = p1; r0 = r; }
+        if (hit < 0) continue;
+        const x = ox + sc * (st.cx + ca * hit), y = oy - sc * (st.cy + sa * hit), edge = Math.min(x - 24, W - 24 - x, y - 18, H - 18 - y); if (edge <= 0 || Math.hypot(x - lowX, y - lowY) < 70) continue;
+        g.clearRect(x - 11, y - 8, 22, 16); g.fillStyle = 'rgba(190,220,240,' + (0.52 * smooth(0, 50, edge)).toFixed(3) + ')'; const t = String(Lv % 100).padStart(2, '0'); g.fillText(t, x, y); labels.push({ text: t, x: Math.round(x), y: Math.round(y) });
+        break;
+      }
+    });
+    /* the L of the storm, and the H of the ridge when it is on the screen */
+    g.font = '600 20px ' + FONT; g.fillStyle = 'rgba(255,128,118,.7)'; g.fillText('L', lowX, lowY + 1);
+    const hx = ox + sc * HI[0], hy = oy - sc * HI[1]; if (hx > 30 && hx < W - 30 && hy > 30 && hy < H - 30) { g.fillStyle = 'rgba(128,172,255,.6)'; g.fillText('H', hx, hy); }
+    g.globalCompositeOperation = 'destination-over'; g.drawImage(stat, 0, 0, W, H);          // (the land and its coast go behind what is drawn, so that the gaps of the numbers are gaps in the lines only)
+    /* the light falls off from the storm, and the whole picture fades in and out with the loop */
+    g.globalCompositeOperation = 'destination-in';
+    const gr = g.createRadialGradient(lowX, lowY, 0, lowX, lowY, Math.max(W, H) * 0.85); gr.addColorStop(0, 'rgba(0,0,0,1)'); gr.addColorStop(0.55, 'rgba(0,0,0,.8)'); gr.addColorStop(1, 'rgba(0,0,0,.3)'); g.fillStyle = gr; g.fillRect(0, 0, W, H);
+    if (fade < 1) { g.fillStyle = 'rgba(0,0,0,' + Math.max(0, fade).toFixed(3) + ')'; g.fillRect(0, 0, W, H); }
+    g.globalCompositeOperation = 'source-over';
+    info = { u, w: W, h: H, dpr, scale: sc, levels, labels, barbs: nb, low: { x: Math.round(lowX), y: Math.round(lowY), pc: Math.round(st.pc), lon: +LONOF(st.cx).toFixed(2), lat: +LATOF(st.cy).toFixed(2), onLand: landAt(st.cx, st.cy) > 0.5 }, landfall: uL, polygons: land.length, ms: +(performance.now() - t0).toFixed(1), frames: ++nDraw };
+  }
+
+  /* the loop: eight pictures a second, the storm coming in from the south and going out to the north-west of the screen (u from 0.08 to 0.82 of its track), fading in and out at the ends;
+     once and still, just before the centre reaches the coast, when motion is not wanted */
+  const LOOP = 80000, UA = 0.08, UB = 0.82, UN = 0.3, still = matchMedia('(prefers-reduced-motion: reduce)').matches, uOf = (k) => UA + (UB - UA) * (k - Math.floor(k));
+  let tStart = 0, last = 0, cur = still ? uL - 0.012 : uOf(UN), raf = 0;
+  function frame(now) {
+    raf = requestAnimationFrame(frame);
+    if (now - last < 120) return; last = now; if (!tStart) tStart = now;
+    const k = UN + (now - tStart) / LOOP; cur = uOf(k); const f = k - Math.floor(k);
+    draw(cur, smooth(0, 0.03, f) * (1 - smooth(0.97, 1, f)));
+  }
+  layout(); draw(cur, 1);
+  if (!still) raf = requestAnimationFrame(frame);
+  let rz = 0; window.addEventListener('resize', () => { cancelAnimationFrame(rz); rz = requestAnimationFrame(() => { layout(); draw(cur, 1); }); });
+  return { draw: (u, fade) => { cur = u; draw(u, fade == null ? 1 : fade); return info; }, info: () => info, still, loop: LOOP, range: [UA, UB], pressureAt: (lon, lat, u) => pressure(PX(lon), PY(lat), stormAt(u == null ? cur : u)), stop: () => cancelAnimationFrame(raf) };
 }
 
 /* ---- the Tropical card: a highly active season of the game itself (tools/make_menu_season.mjs), drawn track by track over Blue Marble as the summary's season map draws it ---- */
@@ -568,8 +820,66 @@ $('rs-del').addEventListener('click', () => {                                   
 });
 window.addEventListener('pageshow', showSave);                                       // coming back with the browser's Back button
 
-buildSettings(); buildMap(); isobars(); seasonArt(); showSave(); fromHash(); render();
-window.ISOBAR = { state: S, query, BASINS, SET, expected: () => { const b = BASINS.find((x) => x.id === S.basin); return b ? expected(b) : null; } };                                    // for the tests
+/* ---- the update log, newest first. Each entry is a summary of what an update did, in the manner of a commit message: 'add' something new, 'del' something taken away, 'chg' something
+   changed or fixed. The entry of the version that is running is shown, once, the first time the site is opened after that update (the version last seen is kept in the browser), and
+   whenever "What's new" in the footer is pressed ---- */
+const UPDATES = [
+  { v: '0.10A', date: 'Nov 2, 2026', items: [
+    ['add', 'Update log: the first visit after an update shows what changed, and the footer brings it back.'],
+    ['chg', 'Menu backdrop redrawn as a live surface analysis of a hurricane coming ashore: sea-level pressure isobars, coastline and wind barbs.'],
+    ['chg', 'Basin screen: a count that rounds to nothing reads 0 instead of 0.00.'],
+  ] },
+  { v: '0.01A', date: 'Nov 1, 2026', items: [
+    ['add', 'New main menu: home, discipline and basin screens, with the nine tropical basins and their real 1991-2020 averages.'],
+    ['add', 'Season settings chosen on the menu: ocean warmth, wind shear, mid-level moisture, storm activity and ENSO.'],
+    ['add', 'Expected block under the real averages: what a season of the game makes under those settings, with a range.'],
+    ['add', 'Tropical card plays a very active simulated season over Blue Marble.'],
+    ['add', 'Continue card for a season left in progress.'],
+    ['add', 'HYPOTHETICAL stamp on season summaries, maps and copied wikitext.'],
+    ['add', 'Extreme Wind Warning, above every other watch and warning.'],
+    ['chg', 'Map outlines and overlays stay with the satellite while panning and zooming.'],
+    ['chg', 'Storm and disturbance cards no longer cover the layer buttons.'],
+    ['chg', 'Floater coastlines no longer show a stray line across the basin.'],
+    ['chg', 'Hover readout no longer flickers near its corner.'],
+  ] },
+];
+const LOG_ICON = {
+  add: ['Added', '#3ddc84', 'M10 5.5v9M5.5 10h9'],
+  del: ['Removed', '#ff5d6c', 'M6.8 6.8l6.4 6.4M13.2 6.8l-6.4 6.4'],
+  chg: ['Changed', '#5aa9ff', 'M6 10h8'],
+};
+const logIcon = (k) => { const [, c, d] = LOG_ICON[k]; return '<svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><circle cx="10" cy="10" r="8.5" fill="' + c + '" fill-opacity=".14" stroke="' + c + '" stroke-opacity=".7"/><path d="' + d + '" stroke="' + c + '" stroke-width="1.9" stroke-linecap="round"/></svg>'; };
+const logItems = (u) => '<ul class="wn-list">' + u.items.map(([k, t]) => '<li class="wn-it" data-k="' + k + '"><i class="wn-ic">' + logIcon(k) + '</i><span><span class="sr">' + LOG_ICON[k][0] + ': </span>' + t + '</span></li>').join('') + '</ul>';
+const SEEN_KEY = 'hf-seen-version';
+const seenVersion = () => { try { return localStorage.getItem(SEEN_KEY); } catch (e) { return null; } };
+let logFrom = null;
+function openLog() {
+  const cur = UPDATES.find((u) => u.v === VERSION) || UPDATES[0], older = UPDATES.filter((u) => u !== cur);
+  $('wn-ver').textContent = BRAND + ' ' + cur.v;
+  $('wn-body').innerHTML = '<p class="wn-date">' + cur.date + '</p>' + logItems(cur)
+    + (older.length ? '<details class="wn-older"><summary>Earlier updates</summary>' + older.map((u) => '<h3>' + u.v + ' · ' + u.date + '</h3>' + logItems(u)).join('') + '</details>' : '');
+  logFrom = document.activeElement; $('wn').hidden = false;
+  for (const id of ['top', 'main']) $(id).inert = true; document.querySelector('footer').inert = true;
+  $('wn-ok').focus();
+}
+function closeLog() {
+  if ($('wn').hidden) return;
+  $('wn').hidden = true; for (const id of ['top', 'main']) $(id).inert = false; document.querySelector('footer').inert = false;
+  try { localStorage.setItem(SEEN_KEY, VERSION); } catch (e) { /* storage blocked: it comes again next time */ }
+  if (logFrom && logFrom.focus && document.contains(logFrom)) logFrom.focus({ preventScroll: true });
+}
+$('wn-open').addEventListener('click', openLog);
+$('wn-ok').addEventListener('click', closeLog);
+$('wn').addEventListener('click', (e) => { if (e.target === $('wn')) closeLog(); });
+document.addEventListener('keydown', (e) => {
+  if ($('wn').hidden) return;
+  if (e.key === 'Escape') { e.preventDefault(); closeLog(); return; }
+  if (e.key === 'Tab') { const f = [...$('wn').querySelectorAll('summary, button')].filter((x) => x.offsetParent !== null), a = document.activeElement; if (!f.length) return; if (e.shiftKey && (a === f[0] || !$('wn').contains(a))) { e.preventDefault(); f[f.length - 1].focus(); } else if (!e.shiftKey && (a === f[f.length - 1] || !$('wn').contains(a))) { e.preventDefault(); f[0].focus(); } }
+});
+
+buildSettings(); buildMap(); const BACKDROP = analysis(); seasonArt(); showSave(); fromHash(); render();
+if (seenVersion() !== VERSION) openLog();
+window.ISOBAR = { state: S, query, BASINS, SET, backdrop: BACKDROP, version: VERSION, updates: UPDATES, seenKey: SEEN_KEY, expected: () => { const b = BASINS.find((x) => x.id === S.basin); return b ? expected(b) : null; } };                                    // for the tests
 </script>
 </body>
 </html>

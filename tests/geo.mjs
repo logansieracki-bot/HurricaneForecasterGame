@@ -42,5 +42,15 @@ check(`the spike of two far vertices on an island's ring is taken out and the is
 const edge = [[30, 2], [100, 2], [100, -3], [60, -4], [30, -3], [30, 2]];
 check(`a flat edge on the box's own north side (the coast of a landmass cut by the box) is not a spike (${dropSpikes(edge, -46, 2) === edge})`, dropSpikes(edge, -46, 2) === edge);
 
+// the coast under the menu's backdrop (tools/make_menu_coast.mjs): the northern Gulf of Mexico from the high-resolution land of the Atlantic page, cut to a box and simplified
+const COASTF = join(ROOT, 'data/generated/menu-coast.json'), C = existsSync(COASTF) ? JSON.parse(readFileSync(COASTF, 'utf8')) : null;
+const cp = C ? C.polys.map(dec) : [], [cx0, cx1, cy0, cy1] = C ? C.box : [0, 0, 0, 0];
+const inPoly = (p, lon, lat) => { let c = false; for (let i = 0, j = p.length - 1; i < p.length; j = i++) if ((p[i][1] > lat) !== (p[j][1] > lat) && lon < (p[j][0] - p[i][0]) * (lat - p[i][1]) / (p[j][1] - p[i][1]) + p[i][0]) c = !c; return c; };
+const landAt = (lon, lat) => cp.some((p) => inPoly(p, lon, lat));
+check(`the backdrop's coast is there: ${cp.length} polygons and ${cp.reduce((t, p) => t + p.length, 0)} vertices (a few KB), in a box from ${cx0} to ${cx1} E and ${cy0} to ${cy1} N`, !!C && cp.length >= 20 && cp.length <= 200 && cp.reduce((t, p) => t + p.length, 0) < 6000 && JSON.stringify(C).length < 30000 && cx0 === -100 && cy0 <= 20 && cy1 >= 36);
+check('and every vertex is inside the box and every ring has at least three points', cp.every((p) => p.length >= 3 && p.every(([x, y]) => x >= cx0 - 1e-9 && x <= cx1 + 1e-9 && y >= cy0 - 1e-9 && y <= cy1 + 1e-9)));
+check(`it is the Gulf coast: Louisiana (30N 92W), Mississippi (32N 90W), Florida (28.5N 82W) and Texas (31N 98W) are land, the open Gulf (26N 90W, 25N 94W) and the Atlantic (30N 78W) are not (${[[-92, 30], [-90, 32], [-82, 28.5], [-98, 31]].map(([x, y]) => landAt(x, y)).join('/')}, ${[[-90, 26], [-94, 25], [-78, 30]].map(([x, y]) => landAt(x, y)).join('/')})`,
+  [[-92, 30], [-90, 32], [-82, 28.5], [-98, 31]].every(([x, y]) => landAt(x, y)) && [[-90, 26], [-94, 25], [-78, 30]].every(([x, y]) => !landAt(x, y)));
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed) process.exit(1);

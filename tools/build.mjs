@@ -73,7 +73,9 @@ build({ basin: 'med', templatePath: join(ROOT, 'src/template-med.html'), dataPat
   const season = existsSync(seasonPath) ? readFileSync(seasonPath, 'utf8').trim() : 'null';
   const expectPath = join(ROOT, 'data/generated/menu-expect.json');                                  // what a season of each basin holds under the settings (tools/make_menu_expect.mjs): without it the basin screen has no Expected section
   const expect = existsSync(expectPath) ? readFileSync(expectPath, 'utf8').trim() : 'null';
-  const html = readFileSync(join(ROOT, 'src/menu.html'), 'utf8').replace('/*__MENU_ART__*/', () => 'const ART = ' + art + ';').replace('/*__MENU_SEASON__*/', () => 'const SEASON = ' + season + ';').replace('/*__MENU_EXPECT__*/', () => 'const EXPECT = ' + expect + ';');
+  const coastPath = join(ROOT, 'data/generated/menu-coast.json');                                    // the coast under the backdrop's analysis (tools/make_menu_coast.mjs): without it the analysis has no coast
+  const coast = existsSync(coastPath) ? readFileSync(coastPath, 'utf8').trim() : 'null';
+  const html = readFileSync(join(ROOT, 'src/menu.html'), 'utf8').replace('/*__MENU_ART__*/', () => 'const ART = ' + art + ';').replace('/*__MENU_SEASON__*/', () => 'const SEASON = ' + season + ';').replace('/*__MENU_EXPECT__*/', () => 'const EXPECT = ' + expect + ';').replace('/*__MENU_COAST__*/', () => 'const COAST = ' + coast + ';');
   writeFileSync(join(ROOT, 'index.html'), html);
   console.log(`Built ${join(ROOT, 'index.html')} (${(html.length / 1024).toFixed(0)} KB)`);
 }
