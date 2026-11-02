@@ -6,6 +6,7 @@ import { existsSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { predict, countRange, aceRange } from '../tools/menu_expect_lib.mjs';
 
 const lyrSet = (page, id, on) => page.evaluate(([i, o]) => { const el = document.getElementById(i); if (el.checked !== o) el.click(); }, [id, on]);          // (the layer checkboxes are hidden behind the layer buttons: set them the way a button does)
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -1756,8 +1757,8 @@ async function checkCoast(page, label) {
 // matrix must carry the mark to where the map now has that point.
 async function checkOverlaySync(page, label) {
   const r = await page.evaluate(async () => {
-    const S = window.SSTSIM, M = S.map; S.setPlaying(false);
-    const settle = () => new Promise((ok) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(ok, 700))));
+    const S = window.SSTSIM, M = S.map, c0 = M.getCenter(), z0 = M.getZoom(); S.setPlaying(false);
+    const settle = () => new Promise((ok) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(ok, 1200))));
     M.setView(M.getCenter(), 6, { animate: false }); await settle();
     const cv = [...document.querySelectorAll('canvas.overlay')], tf = () => cv.map((c) => c.style.transform || ''), mat = (c) => new DOMMatrix(getComputedStyle(c).transform === 'none' ? undefined : getComputedStyle(c).transform);
     const out = { n: cv.length, rest: tf().filter((x) => x).length, errs: [], moved: [] }, ll = M.getCenter(), q = M.latLngToContainerPoint(ll), p0 = { x: q.x, y: q.y };
@@ -1767,6 +1768,7 @@ async function checkOverlaySync(page, label) {
     M.setZoom(6.5, { animate: false }); probe('zoomIn');
     M.setZoom(5.25, { animate: false }); probe('zoomOut');
     await settle(); out.after = tf().filter((x) => x).length;
+    M.setView(c0, z0, { animate: false }); await settle();                                  // (the view the page had: the checks that follow pick their points of the map from it)
     return out;
   });
   check(`[${label}] the overlay canvases follow a pan and a zoom at once, before they are redrawn: the stale canvas's matrix puts a mark where the map has it (errors ${r.errs.map((e) => e.toFixed(2)).join(', ')} px after a pan of ${r.moved[0].toFixed(0)} px, another to ${r.moved[1].toFixed(0)}, a zoom in to ${r.moved[2].toFixed(0)} and out to ${r.moved[3].toFixed(0)} px away; ${r.pan} of the ${r.n} overlay canvases carry it: the base map, sea temperature, grid, jets, steering and storms), and once drawn again none is left displaced (${r.after}; Leaflet rounds the map's origin to whole pixels, so a zoom can be a pixel off)`,
@@ -1777,6 +1779,7 @@ async function checkOverlaySync(page, label) {
 // wide screen and above the row of them on a phone, whether the Customization panel is open or folded, and it stays on the screen.
 async function checkCards(page, label, prefix) {
   const sp = prefix === 'atlantic' ? { td: [15, -45], day: 200 } : STORM_SPECS[prefix], size0 = page.viewportSize(), res = [];
+  const view0 = await page.evaluate(() => ({ c: window.SSTSIM.map.getCenter(), z: window.SSTSIM.map.getZoom() }));
   const id = await page.evaluate((q) => {
     const S = window.SSTSIM; S.setPlaying(false); S.applySeed(4242); S.setPlaying(false); S.storms(true); S.stormAuto(false); S.tick(24 * q.day);
     const id = S.stormPlace({ kind: 'td', lat: q.td[0], lon: q.td[1], v: 100 }); S.tick(30); S.stormForce(id, { th: 'tc', v: 105, vr: 105, p: 950 }); S.advance(0); return id;
@@ -1806,7 +1809,7 @@ async function checkCards(page, label, prefix) {
     await page.evaluate(() => { const b = document.getElementById('sc-close'); if (b) b.click(); });
   }
   await page.setViewportSize(size0);
-  await page.evaluate(() => { const S = window.SSTSIM; S.storms(false); S.restart(); });
+  await page.evaluate((v) => { const S = window.SSTSIM; S.storms(false); S.restart(); S.map.invalidateSize(); S.map.setView(v.c, v.z, { animate: false }); }, view0);          // (the view the page had: the checks that follow pick their points of the map from it)
   check(`[${label}] the card of a selected storm does not cover the layer buttons, open or folded panel: ${res.map((x) => x.w + '×' + x.h + (x.fold ? ' folded' : '') + ' card ' + x.c.join(',') + ' over ' + x.hit + ' of ' + x.buttons + ' buttons').join('; ')}`,
     res.every((x) => x.shown && x.buttons >= 6 && x.hit === 0 && x.inside));
 }
@@ -3813,11 +3816,53 @@ async function checkMenu() {
 
   // what a basin holds: the real averages of the basin and its season's months
   await pg.click('.basin[data-id="wpac"]');
-  const gl = await pg.evaluate(() => ({ name: document.querySelector('#binfo .g-head b').textContent, tiles: [...document.querySelectorAll('#binfo .g-tiles div')].map((d) => d.querySelector('b').textContent + ' ' + d.querySelector('span').textContent), months: [...document.querySelectorAll('#binfo .months i')].map((m, i) => m.classList.contains('on') ? i : -1).filter((i) => i >= 0).join(',') }));
+  const gl = await pg.evaluate(() => ({ name: document.querySelector('#binfo .g-head b').textContent, tiles: [...document.querySelectorAll('#binfo > .g-tiles div')].map((d) => d.querySelector('b').textContent + ' ' + d.querySelector('span').textContent), months: [...document.querySelectorAll('#binfo .months i')].map((m, i) => m.classList.contains('on') ? i : -1).filter((i) => i >= 0).join(',') }));
   check(`[menu] picking the Western Pacific shows its real averages (${gl.tiles.join(', ')}) and its season (months ${gl.months})`, gl.name === 'Western Pacific' && gl.tiles.join('|') === '25 Named storms|16 Typhoons|9.1 Major|289 ACE' && gl.months === '5,6,7,8,9,10,11');
   await pg.click('.basin[data-id="spac"]');
   const spac = await pg.evaluate(() => ({ n: document.querySelectorAll('.basin[data-id="spac"]').length, on: [...document.querySelectorAll('.basin[data-id="spac"]')].every((b) => b.getAttribute('aria-pressed') === 'true'), others: document.querySelectorAll('.basin[aria-pressed="true"]:not([data-id="spac"])').length }));
   check(`[menu] the South Pacific crosses the date line: its two parts on the map are one choice (${spac.n} parts, both lit: ${spac.on})`, spac.n === 2 && spac.on && spac.others === 0);
+
+  // Expected: below the real averages, what the game itself makes of a season of the basin under the settings (tools/make_menu_expect.mjs plays the seasons; tests/expect.mjs holds the file to the physics)
+  const EXPJ = JSON.parse(readFileSync(join(ROOT, 'data/generated/menu-expect.json'), 'utf8')), NORMAL_Q = { W: 0, S: 0, M: 0, A: 1, E: 0, I: 1, mode: 'random' };
+  const exRead = () => pg.evaluate(() => { const g = document.getElementById('binfo'), box = g.querySelector('.g-exp'), tiles = box ? [...box.querySelectorAll('.g-tiles div')].map((d) => ({ v: d.querySelector('b').textContent, l: d.querySelector('span').textContent, r: (d.querySelector('small') || {}).textContent || '' })) : [];
+    return { has: !!box, order: [...g.children].map((c) => c.className.split(' ')[0]).join(','), head: box ? box.querySelector('.g-head').innerText.replace(/\s+/g, ' ') : '', tiles, note: box && box.querySelector('.g-note') ? box.querySelector('.g-note').textContent : '', mu: window.ISOBAR.expected(), real: [...g.querySelectorAll(':scope > .g-tiles div')].map((d) => d.querySelector('span').textContent) }; });
+  const setx = (id, v) => pg.evaluate(([id, v]) => { const el = document.getElementById(id); el.value = String(v); el.dispatchEvent(new Event('input', { bubbles: true })); }, [id, v]);
+  const mu = async () => (await exRead()).mu && (await exRead()).mu.mu;
+  const same = (a, b) => a && b && ['named', 'hurr', 'major', 'ace'].every((k) => Math.abs(a[k] - b[k]) < 1e-6 * Math.max(1, b[k]));
+  await pg.click('.basin[data-id="atlantic"]');
+  const x0 = await exRead(), E_ATL = EXPJ.basins.atlantic, p0 = predict(E_ATL, NORMAL_Q), shown = x0.tiles.map((t) => parseFloat(t.v)), ranges = x0.tiles.map((t) => t.r.split('–').map(Number));
+  check(`[menu] picking the Atlantic puts an Expected block under its real averages and above its season (${x0.order}): "${x0.head}", ${x0.tiles.map((t) => t.v + ' ' + t.l + ' (' + t.r + ')').join(', ')}, with the same four labels as the averages`,
+    x0.has && x0.order === 'g-head,g-tiles,g-exp,g-season' && /^Expected ACE about normal$/.test(x0.head) && x0.tiles.map((t) => t.r).join() === [countRange(p0.named, E_ATL.phi.named.r, EXPJ.rangeScale.named.r), countRange(p0.hurr, E_ATL.phi.hurr.r, EXPJ.rangeScale.hurr.r), countRange(p0.major, E_ATL.phi.major.r, EXPJ.rangeScale.major.r), aceRange(p0.ace, E_ATL.phi.ace.r, EXPJ.rangeScale.ace.r)].map((r) => r.join('–')).join() && x0.tiles.map((t) => t.l).join() === x0.real.join() && x0.tiles.length === 4 && shown.every(Number.isFinite) && ranges.every((r, i) => r.length === 2 && r[0] <= shown[i] + 0.5 && shown[i] - 0.5 <= r[1]) && same(x0.mu.mu, p0) && /ocean warmth, shear, moisture, activity and El Niño/.test(x0.note));
+  check(`[menu] at the normal settings the game makes about what the real record holds (${shown.join(' / ')} against ${[14.4, 7.17, 3.2, 122.5].join(' / ')}), a hurricane is a named storm and a major one a hurricane (${x0.mu.mu.named.toFixed(1)} ≥ ${x0.mu.mu.hurr.toFixed(1)} ≥ ${x0.mu.mu.major.toFixed(1)})`,
+    shown[0] > 14.4 * 0.6 && shown[0] < 14.4 * 1.6 && shown[3] > 122.5 * 0.5 && shown[3] < 122.5 * 1.8 && x0.mu.mu.named >= x0.mu.mu.hurr && x0.mu.mu.hurr >= x0.mu.mu.major);
+  const ace0 = p0.ace;
+  await setx('m-warm', 3); const mw = await mu();
+  check(`[menu] a warmer ocean (+3 °C) raises the expected energy (${mw.ace.toFixed(0)} against ${ace0.toFixed(0)}) and the menu's number is the calibration file's (${same(mw, predict(E_ATL, { ...NORMAL_Q, W: 3 }))})`, mw.ace > 1.2 * ace0 && same(mw, predict(E_ATL, { ...NORMAL_Q, W: 3 })));
+  await setx('m-warm', 0); await setx('m-shear', 15); const ms = await mu();
+  check(`[menu] more wind shear (+15 kt) lowers it (${ms.ace.toFixed(0)}, ${ms.named.toFixed(1)} named storms against ${p0.named.toFixed(1)})`, ms.ace < 0.7 * ace0 && ms.named < p0.named && same(ms, predict(E_ATL, { ...NORMAL_Q, S: 15 })));
+  await setx('m-shear', 0); await setx('m-moist', 10); const mm = await mu();
+  check(`[menu] more mid-level moisture (+10 %) raises it (${mm.ace.toFixed(0)}) and less lowers it (${(await (async () => { await setx('m-moist', -10); return (await mu()).ace; })()).toFixed(0)})`, mm.ace > 1.15 * ace0 && same(mm, predict(E_ATL, { ...NORMAL_Q, M: 10 })));
+  await setx('m-moist', 0); await setx('m-act', 2); const ma = await mu();
+  check(`[menu] twice the storm activity gives about twice the named storms (${ma.named.toFixed(1)} against ${p0.named.toFixed(1)}: ${(ma.named / p0.named).toFixed(2)} times)`, ma.named / p0.named > 1.6 && ma.named / p0.named < 2.4 && same(ma, predict(E_ATL, { ...NORMAL_Q, A: 2 })));
+  await setx('m-act', 1.5); await setx('m-warm', 1.5); await setx('m-shear', -8); await setx('m-moist', 5); const mc = await mu(), xc = await exRead();
+  check(`[menu] the settings together: ${mc.ace.toFixed(0)} ACE, "${xc.head}" (the calibration file says ${predict(E_ATL, { ...NORMAL_Q, A: 1.5, W: 1.5, S: -8, M: 5 }).ace.toFixed(0)})`, same(mc, predict(E_ATL, { ...NORMAL_Q, A: 1.5, W: 1.5, S: -8, M: 5 })) && /^Expected ACE \d+ % above normal$/.test(xc.head));
+  await pg.click('#reset'); await pg.evaluate(() => { const b = document.querySelector('#enso-chips button[data-e="rand"]'); if (b) b.click(); });
+  await setx('m-enso', 2); await pg.evaluate(() => document.querySelector('#seg-drift button[data-d="lock"]').click()); const nino = await mu();
+  await setx('m-enso', -2); const nina = await mu();
+  check(`[menu] a locked El Niño (+2) gives the Atlantic less energy (${nino.ace.toFixed(0)}) and a locked La Niña (−2) more (${nina.ace.toFixed(0)}) than the normal (${ace0.toFixed(0)}), as the calibration file says (${same(nino, predict(E_ATL, { ...NORMAL_Q, E: 2, mode: 'locked' }))}, ${same(nina, predict(E_ATL, { ...NORMAL_Q, E: -2, mode: 'locked' }))})`,
+    nino.ace < 0.8 * ace0 && nina.ace > 1.1 * ace0 && same(nino, predict(E_ATL, { ...NORMAL_Q, E: 2, mode: 'locked' })) && same(nina, predict(E_ATL, { ...NORMAL_Q, E: -2, mode: 'locked' })));
+  await pg.evaluate(() => document.querySelector('#seg-drift button[data-d="drift"]').click()); await setx('m-enso', 2); const drift = await mu(); await setx('m-ensoinf', 2); const strong = await mu();
+  check(`[menu] a chosen El Niño that is left to drift still weighs on the Atlantic about as much as a locked one (${drift.ace.toFixed(0)} against ${nino.ace.toFixed(0)}, the normal is ${ace0.toFixed(0)}: the state persists through the season) and twice its influence counts more (${strong.ace.toFixed(0)})`, Math.abs(Math.log(drift.ace / nino.ace)) < 0.3 && drift.ace < 0.9 * ace0 && strong.ace < drift.ace && same(drift, predict(E_ATL, { ...NORMAL_Q, E: 2, mode: 'drift' })) && same(strong, predict(E_ATL, { ...NORMAL_Q, E: 2, I: 2, mode: 'drift' })));
+  await pg.click('#reset'); await setx('m-act', 0); const z = await exRead();
+  check(`[menu] at storm activity 0 nothing forms and the block says so ("${z.head}", ${z.tiles.map((t) => t.v).join('/')})`, /No storms form at activity 0/.test(z.head) && z.tiles.map((t) => t.v).join() === '0,0,0,0' && z.tiles.every((t) => t.r === ''));
+  await pg.click('#reset'); await pg.click('label.sw'); const off = await exRead();
+  check(`[menu] with storms not forming on their own the block says they form only where the player places them ("${off.head}", ${off.tiles.map((t) => t.v).join('/')})`, /Storms form only where you place them/.test(off.head) && off.tiles.map((t) => t.v).join() === '–,–,–,–');
+  await pg.click('#reset'); const back = await exRead();
+  check(`[menu] Reset brings the block back to the normal (${back.head}, ${back.tiles.map((t) => t.v).join('/')})`, /ACE about normal/.test(back.head) && same(back.mu.mu, p0));
+  const all = [];
+  for (const id of ['atlantic', 'epac', 'wpac', 'nio', 'swio', 'aus', 'spac', 'satl', 'med']) { await pg.click('.basin[data-id="' + id + '"]'); const r = await exRead(); all.push({ id, ok: r.has && r.tiles.length === 4 && r.tiles.every((t) => t.v !== 'NaN' && /^\d+(\.\d+)?$/.test(t.v) && /^\d+–\d+$/.test(t.r)), v: r.tiles.map((t) => t.v).join('/') }); }
+  check(`[menu] every basin has its Expected block (${all.map((a) => a.id + ' ' + a.v).join(', ')})`, all.every((a) => a.ok));
+  await pg.click('.basin[data-id="spac"]');                                                                  // (where the checks that follow found it)
 
   // the settings: the basic ones, the advanced ones behind a fold, and what they say
   const set0 = await pg.evaluate(() => ({ adv: document.getElementById('adv').open, advIds: [...document.querySelectorAll('#adv input[type=range]')].map((i) => i.id.slice(2)).join(','), basicIds: [...document.querySelectorAll('#basic input[type=range]')].map((i) => i.id.slice(2)).join(','), drift: [...document.querySelectorAll('#seg-drift button')].map((b) => b.textContent.trim() + ':' + b.getAttribute('aria-pressed')).join(' / '), auto: document.getElementById('m-auto').checked, enso: document.getElementById('m-enso-o').textContent, query: window.ISOBAR.query() }));

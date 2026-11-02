@@ -389,25 +389,29 @@ function expected(b) {                                                       // 
   const dot = (c, x) => Math.exp(c.reduce((t, v, j) => t + v * x[j], 0)), x = expFeatures(E.spec), f = S.v.act < 0.3 ? S.v.act / 0.3 : 1, mu = {}, mu0 = {};
   for (const k of EXP_KEYS) { mu[k] = f * dot(E.coef[k], x); mu0[k] = Math.exp(E.coef[k][0]); }
   mu.hurr = Math.min(mu.hurr, mu.named); mu.major = Math.min(mu.major, mu.hurr);                           // (a hurricane is a named storm, a major one a hurricane)
-  return { mu, mu0, phi: E.phi };
+  const g = S.ensoRand ? 'r' : 'c', phi = {}, kz = {}; for (const k of EXP_KEYS) { phi[k] = E.phi[k][g]; kz[k] = EXPECT.rangeScale && EXPECT.rangeScale[k] ? EXPECT.rangeScale[k][g] : 1; }          // (the variance round the mean differs when ENSO is left to chance)
+  return { mu, mu0, phi, kz };
 }
-function countRange(mu, phi) {                                               // the 10th and 90th percentile of a count with this mean and a variance of phi times it (a negative binomial)
+const expVar = (mu, v) => Math.max(1.01 * mu, v[0] * mu + v[1] * mu * mu);     // the variance round a mean: a times it plus b times its square (the fit measured a and b)
+const expErf = (x) => { const t = 1 / (1 + 0.3275911 * Math.abs(x)), y = 1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-x * x); return x >= 0 ? y : -y; };
+const expPhi = (z) => 0.5 * (1 + expErf(z / Math.SQRT2));
+function countRange(mu, v, kz) {                                             // the range that holds 8 seasons in 10 of a count with this mean and this variance (a negative binomial; kz is the scale the fit measured)
   if (mu < 0.02) return [0, 0];
-  const r = phi > 1.05 ? mu / (phi - 1) : 0; let p = r ? Math.pow(r / (r + mu), r) : Math.exp(-mu), c = p, lo = c >= 0.1 ? 0 : -1, hi = -1;
-  for (let k = 0; k < 400; k++) { if (lo < 0 && c >= 0.1) lo = k; if (c >= 0.9) { hi = k; break; } p *= r ? (k + r) / (k + 1) * mu / (r + mu) : mu / (k + 1); c += p; }
+  const r = mu * mu / (expVar(mu, v) - mu), pl = expPhi(-1.2816 * kz), ph = expPhi(1.2816 * kz); let p = Math.pow(r / (r + mu), r), c = p, lo = c >= pl ? 0 : -1, hi = -1;
+  for (let k = 0; k < 400; k++) { if (lo < 0 && c >= pl) lo = k; if (c >= ph) { hi = k; break; } p *= (k + r) / (k + 1) * mu / (r + mu); c += p; }
   return [Math.max(lo, 0), hi < 0 ? Math.ceil(mu * 2 + 5) : hi];
 }
-function aceRange(mu, phi) {                                                 // the same for the accumulated cyclone energy: a log-normal with the variance the fit measured
+function aceRange(mu, v, kz) {                                               // the same for the accumulated cyclone energy: a log-normal with that variance
   if (mu < 0.5) return [0, Math.round(mu * 3)];
-  const s2 = Math.log(1 + phi / mu), s = Math.sqrt(s2);
-  return [Math.round(mu * Math.exp(-1.2816 * s - s2 / 2)), Math.round(mu * Math.exp(1.2816 * s - s2 / 2))];
+  const s2 = Math.log(1 + Math.max(mu * mu * 0.01, v[0] * mu + v[1] * mu * mu) / (mu * mu)), s = Math.sqrt(s2), z = 1.2816 * kz;
+  return [Math.round(mu * Math.exp(-z * s - s2 / 2)), Math.round(mu * Math.exp(z * s - s2 / 2))];
 }
 function expectHtml(b) {
   const X = b ? expected(b) : null; if (!X) return '';
   const lab = ['Named storms', b.word, 'Major', 'ACE'], head = (right) => '<div class="g-exp"><div class="g-head"><b>Expected</b><span>' + right + '</span></div>';
   if (X.off || X.zero) return head(X.off ? 'Storms form only where you place them' : 'No storms form at activity 0') + '<div class="g-tiles ex">' + lab.map((l) => '<div><b>' + (X.zero ? '0' : '–') + '</b><span>' + l + '</span></div>').join('') + '</div></div>';
   const pct = Math.round((X.mu.ace / X.mu0.ace - 1) * 100), word = Math.abs(pct) < 6 ? 'ACE about normal' : 'ACE ' + Math.abs(pct) + ' % ' + (pct > 0 ? 'above' : 'below') + ' normal';
-  const tiles = EXP_KEYS.map((k, i) => { const v = X.mu[k], r = k === 'ace' ? aceRange(v, X.phi[k]) : countRange(v, X.phi[k]); return '<div><b>' + (k === 'ace' ? Math.round(v) : num(v)) + '</b><span>' + lab[i] + '</span><small>' + r[0] + '–' + r[1] + '</small></div>'; });
+  const tiles = EXP_KEYS.map((k, i) => { const v = X.mu[k], r = k === 'ace' ? aceRange(v, X.phi[k], X.kz[k]) : countRange(v, X.phi[k], X.kz[k]); return '<div><b>' + (k === 'ace' ? Math.round(v) : num(v)) + '</b><span>' + lab[i] + '</span><small>' + r[0] + '–' + r[1] + '</small></div>'; });
   return head(word) + '<div class="g-tiles ex">' + tiles.join('') + '</div><p class="g-note">What a season of this game holds under your settings: ocean warmth, shear, moisture, activity and El Niño count. The small numbers are the range of 8 seasons in 10.</p></div>';
 }
 function glance(b) {                                                         // what a year of this basin holds in the real record, and the months of its season

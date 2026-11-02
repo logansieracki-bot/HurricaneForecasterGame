@@ -37,7 +37,7 @@ body.steer-on #panel{max-height:calc(100% - 606px)}
 #storm-tip b{font-size:13px;font-weight:600;display:block}
 #storm-tip div{font-size:11.5px;color:var(--dim);margin-top:3px;line-height:1.5}
 /* the hover readout stands beside the zoom buttons with a width of its own; the keys of the layers are small and stand over them in the lower left corner (never in the middle of the map) */
-#readout{left:60px;width:262px;min-width:0;box-sizing:border-box}
+#readout{left:60px;width:262px;min-width:0;box-sizing:border-box;pointer-events:none}          /* (it only reports: the pointer goes through it to the map, so a readout that grows over the pointer's place cannot take the pointer off the map and shrink away again) */
 .leaflet-bottom.leaflet-left{margin-bottom:16px}
 #lg-stack{position:absolute;left:14px;bottom:98px;z-index:900;display:flex;flex-direction:column-reverse;align-items:flex-start;gap:6px;pointer-events:none}
 #lg-stack .card{position:static}
@@ -53,7 +53,7 @@ body.steer-on #panel{max-height:calc(100% - 606px)}
 #ol-legend i.medium{border-color:#ff9d2e;background:repeating-linear-gradient(135deg,#ff9d2e 0 1.7px,rgba(255,157,46,.1) 1.7px 4.6px)}
 #ol-legend i.high{border-color:#ff3b30;background:repeating-linear-gradient(135deg,#ff3b30 0 2px,rgba(255,59,48,.1) 2px 4.2px)}
 #ol-legend small, #ww-legend small, #wf-legend small{display:block;font-size:10px;color:var(--dim);margin-top:2px;line-height:1.25}
-#storm-card, #aoi-card{right:324px;top:50%;transform:translateY(-50%);width:262px;padding:12px 14px}
+#storm-card, #aoi-card{right:324px;top:50%;transform:translateY(-50%);width:262px;padding:12px 14px;max-height:calc(100vh - 28px);overflow-y:auto}          /* (a card taller than the screen scrolls instead of leaving it) */
 #storm-card[hidden], #aoi-card[hidden]{display:none}
 #panel.collapsed ~ #storm-card, #panel.collapsed ~ #aoi-card{right:14px}
 #sc-close, #ac-close{position:absolute;right:8px;top:8px;width:26px;height:26px;border:0;background:transparent;color:var(--dim);border-radius:6px;cursor:pointer;font-size:17px;line-height:1}
@@ -155,7 +155,7 @@ body.steer-on #panel{max-height:calc(100% - 606px)}
   #season span:first-child{grid-column:1/3;padding:0 12px 4px}
   #season button{grid-column:3;grid-row:1;justify-self:end;margin:0 8px 4px 0}
   #season span:nth-child(2),#season span:nth-child(5){border-left:0}
-  #storm-card, #aoi-card{right:14px;top:auto;bottom:130px;transform:none}
+  #storm-card, #aoi-card{right:14px;top:auto;bottom:130px;transform:none;max-height:calc(100vh - 144px)}
   #sum-card{top:14px;left:14px;right:14px;width:auto;transform:none}
   #sum-tot{grid-template-columns:repeat(3,1fr)}
   #sum-tot2{grid-template-columns:repeat(2,1fr)}
@@ -165,7 +165,7 @@ body.steer-on #panel{max-height:calc(100% - 606px)}
   #lg-stack{left:14px;bottom:112px}
   #ol-legend, #ww-legend, #wf-legend{max-width:170px}
   #season{top:192px;font-size:11.5px}
-  #storm-card, #aoi-card{left:14px;right:14px;width:auto;bottom:120px}
+  #storm-card, #aoi-card{left:14px;right:14px;width:auto;bottom:120px;max-height:calc(100vh - 134px)}
   #sum-card{left:10px;right:10px;padding:12px 12px 8px}
   #sum-tot b,#sum-tot2 b{font-size:16px}
   #sum-tot small,#sum-tot2 small{font-size:9.5px}

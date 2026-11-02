@@ -51,6 +51,16 @@ nothing to run by hand.
   script (`BRAND`, `VERSION`). There is no sign-in (that waits for a domain of its own), no seed and no climate buttons. Each screen has its own address (`#disc`, `#tropical`), so the browser's Back
   button walks through them. The settings travel to the simulator in its address, only those that differ from the normal: `enso` (−3..3.4), `lock=1`, `warm`, `shear`, `moist`, `act`, `auto=0`, `var`,
   `wx`, `wxs`, `jets`, `sea`, `feat`, `ensoinf`; see "Settings from the menu" in `src/storm-late.js`. With a season saved in the browser the home screen also has a Continue card.
+  The words are "Simulating and Forecasting weather around the world" and "Pick your weather phenomena". **The Tropical card draws a highly active season of the game itself** (a canvas, not a gif:
+  `data/generated/menu-season.json` from `tools/make_menu_season.mjs`, 20 named storms and ACE 368 of a season of the Atlantic page, its tracks drawn over Blue Marble in the colours of Wikipedia's
+  track maps, then held, faded and drawn again). **Below the real averages of a basin the basin screen has an Expected block**: the named storms, hurricanes, major ones and ACE the game itself makes of a
+  season of that basin **under the settings chosen** (ocean warmth, wind shear, mid-level moisture, storm activity, and an El Niño or La Niña with its influence, left to drift or locked), each with the range
+  of 8 seasons in 10, and "ACE 40 % above normal" against what the game makes at the normal settings. It is **not a guess from the real record**: `tools/make_menu_expect.mjs` plays whole seasons through the built pages
+  (190 of each basin: 150 at a space-filling design of settings, 40 at the normal ones, each with its own seed between 1 and 999999, which is all the page keeps; the settings sent the way Begin sends them, an ENSO state held at the start), fits one response model per basin and count
+  (a quasi-Poisson regression with a log link: what each setting multiplies the number of storms by, with the curvature that saturates it, zeros allowed; the form, from the activity alone up to cubic with cross terms, is chosen by five-fold cross-validation) and writes
+  `data/generated/menu-expect.json` (the seasons are `menu-expect-runs.jsonl`, the check against seasons that were not in the design `menu-expect-validation.json`), which the build puts into `index.html`.
+  What it does not count: year-to-year variability, the day-to-day weather sliders, weather speed, seasonal swing and currents (they change how a season varies more than what it averages), and an El Niño that is left
+  random. Seasons vary a lot around any mean (an Atlantic season of the normal settings has 7 to 28 named storms), which is why the range is shown.
 - `src/template.html` the Atlantic simulator app: vanilla JS in one IIFE, build
   placeholders (`/*__LEAFLET_CSS__*/`, `/*__LEAFLET_JS__*/`, `/*__DATA__*/`,
   `/*__STORMS__*/`, and for the storm layer `/*__STORM_HOOKS__*/`, `/*__STORM_LATE__*/`,
@@ -76,6 +86,9 @@ nothing to run by hand.
   radar operator, the cirrus and the infrared brightness temperature, the forcing of a system from the engine, the land and environment grids): pure JS with no DOM, inlined after the engine through
   `/*__STORMS__*/` and loaded as-is by `tests/nest.mjs`. `src/storm-floater.js` is the floater's page half (its clock, the radar and the infrared picture, the coastline, the radar sites and products), inlined in front of the hooks.
 - `tools/build.mjs` the build script.
+- `tools/make_menu_season.mjs` the season the Tropical card of the menu draws; `tools/make_menu_expect.mjs` (with `tools/menu_expect_lib.mjs`) the calibration of the menu's Expected block (`run` plays the
+  seasons, `fit` fits the models, `validate` plays seasons that were not in the design and compares them with the model); `tools/geo_repair.mjs` repairs the clip artifacts of the land data (slivers, spikes, in the land and in the world land beyond it).
+- `tests/expect.mjs` the node tests of the Expected block's file (the seasons it was made from, the models, what each setting does in every basin; run by `npm test` after the geometry's).
 - `tests/nest.mjs` the nest's node tests (physics, the radar operator, the weather on a storm's sides, the engine's forcing and look-ahead; run by `npm test` after the engine's);
   `tests/run.mjs` the browser test suite; `tests/storms.mjs` the node-only storm-engine tests (run first by
   `npm test`; they need no build and no browser) with synthetic environments in `tests/storms_env.mjs`.
