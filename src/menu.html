@@ -371,7 +371,7 @@ function render() {
   $('hint').textContent = !bs ? 'Pick a basin to begin.' : save ? 'Begin replaces your saved ' + save.name + ' ' + (save.season || save.year) + ' season.' : 'Ready.';
 }
 const MONTHS = 'JFMAMJJASOND';
-const num = (v) => (v < 10 ? v.toFixed(v < 0.095 && v > 0 ? 2 : 1).replace(/\.0$/, '') : String(Math.round(v)));
+const num = (v) => (v < 10 ? (v < 0.005 ? '0' : v.toFixed(v < 0.095 ? 2 : 1).replace(/\.0$/, '')) : String(Math.round(v)));          // (a number that rounds to nothing is 0, not 0.00)
 /* ---- Expected: what the game itself makes of a season of this basin under the settings. tools/make_menu_expect.mjs plays whole seasons through the simulator pages (the settings sent the way Begin sends them, an
    El Nino or La Nina held at the start, free to drift or locked) and fits one response model per basin and count: the number of storms is multiplied by what each setting does (a quasi-Poisson regression with a log
    link). Counted: ocean warmth, wind shear, mid-level moisture, storm activity, and El Nino or La Nina with its influence. The seasons that come out vary a lot around it, so the 8-in-10 range goes with each number. ---- */
