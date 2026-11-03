@@ -614,7 +614,7 @@ function fxDraw(now) {                                                          
   const c = fxCanvas, pw = Math.round(W * DPR), ph = Math.round(H * DPR);
   if (!fxMarks.length && now - fxDrawnAt < 30 && c.width === pw) return;
   if (c.width !== pw || c.height !== ph) { c.width = pw; c.height = ph; }
-  const g = c.getContext('2d'); g.setTransform(DPR, 0, 0, DPR, 0, 0); g.clearRect(0, 0, W, H);
+  ovDrawn(c); const g = c.getContext('2d'); g.setTransform(DPR, 0, 0, DPR, 0, 0); g.clearRect(0, 0, W, H);
   const dt = Math.min(0.1, Math.max(0, (now - (fxLastAt || now)) / 1000)); fxLastAt = now; fxDrawnAt = now;
   if (!fxShown()) { fxMarks.length = 0; return; }
   const toPx = (lat, lon) => map.latLngToContainerPoint([lat, lon]);
@@ -1074,7 +1074,7 @@ function drawWindFields(g, toPx, only) {
 /* ---- drawing -------------------------------------------------------------------------------------------------------- */
 function drawStorms() {
   stormsDirty = false;
-  const g = stormCanvas.getContext('2d'); g.setTransform(DPR, 0, 0, DPR, 0, 0); g.clearRect(0, 0, W, H);
+  ovDrawn(stormCanvas); const g = stormCanvas.getContext('2d'); g.setTransform(DPR, 0, 0, DPR, 0, 0); g.clearRect(0, 0, W, H);
   stormHits = []; fxHeads = [];
   if (!stormsOn || !stormMgr || (flOn && flBare)) { updateOutlookLegend(false, null); updateWWLegend(); fxDrawnAt = 0; fxWake(); return; }              // (or the floater with its overlays cleared: nothing is drawn over it)              // (storms off: no legend of the outlook either)
   const toPx = (lat, lon) => map.latLngToContainerPoint([lat, lon]);

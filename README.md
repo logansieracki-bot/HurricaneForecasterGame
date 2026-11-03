@@ -1,6 +1,6 @@
 # Isobar
 
-(The repository is still called HurricaneForecasterGame; the game's name is **Isobar**, version 0.10A.)
+(The repository is still called HurricaneForecasterGame; the game's name is **Isobar**, version 0.11A.)
 
 Weather simulation / forecasting game. From the main menu you pick a discipline
 (Tropical now; Severe is coming), a basin and your settings, then either watch
@@ -42,7 +42,7 @@ https://logansieracki-bot.github.io/HurricaneForecasterGame/ automatically —
 nothing to run by hand.
 
 ## Layout
-- `index.html` the main menu, **Isobar 0.10A**. It is made by `tools/build.mjs` from `src/menu.html` and the picture of its world map
+- `index.html` the main menu, **Isobar 0.11A**. It is made by `tools/build.mjs` from `src/menu.html` and the picture of its world map
   (`data/generated/menu-art.json`, from `tools/make_menu_art.mjs`: NASA's Blue Marble with the navy ocean), so edit `src/menu.html`. Home (the brand, the version, **Play**)
   → the discipline (**Tropical**; **Severe** is marked Soon and cannot be picked) → the basin, picked on a world map (the nine basins; a list on a phone) with what a year of it holds in the real
   1991–2020 record and the months of its season, beside the **settings**: Mode (Simulation; Forecaster is Soon), ENSO index (Random, La Niña, Neutral, El Niño, or any value on the slider),

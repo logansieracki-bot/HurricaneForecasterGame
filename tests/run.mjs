@@ -1728,7 +1728,7 @@ async function checkStormsBasin(page, label, prefix) {
   }, { sm: BI.seasonMonth, start: sp.start, day: Math.min(sp.day, 120), td: sp.td });
   check(`[${label}] a season saved at a midnight (hour ${sv.mid}) and resumed continues bit for bit like the uninterrupted one (${sv.kb} KB of storms)`, sv.same && sv.mid < sv.ha);
   await checkCoast(page, label);
-  await checkOverlaySync(page, label);
+  await checkOverlaySync(page, label, prefix);
   await checkCards(page, label, prefix);
   await checkLayout(page, label, prefix);
   await checkLook(page, label, prefix);
@@ -1754,28 +1754,52 @@ async function checkCoast(page, label) {
     r.every((x) => x.edges > 5000 && x.longest > 0 && x.longest < 0.08 * x.ws));
 }
 
-// The overlay canvases follow the map. Their full redraw (coastlines, the sea-temperature layer, the grid, the jets) takes tens of milliseconds while the satellite tiles move at once, so for a few frames the outline
-// used to stand where the map had been ("very commonly the outline for the maps get offset and don't follow with the satellite"). Every pan and zoom now moves the canvases by the CSS transform that carries the last drawn
-// view onto the current one, at once, and the next draw clears it. The probe works inside one task, so no redraw can have run: a point of the map is marked on the stale canvas, the map is moved, and the canvas's
-// matrix must carry the mark to where the map now has that point.
-async function checkOverlaySync(page, label) {
-  const r = await page.evaluate(async () => {
-    const S = window.SSTSIM, M = S.map, c0 = M.getCenter(), z0 = M.getZoom(); S.setPlaying(false);
+// The overlay canvases follow the map. Every canvas laid over it (sea temperature, base map, grid and borders, the jet line, the arrows, the storms, the icons that turn by themselves, the radar floater's picture
+// and its bold white coast) is drawn for one view of the map and drawn again a little later (the full picture takes tens of milliseconds, the floater's about twenty a second at most) while the satellite tiles move at
+// once, so for a few frames the outline stood where the map had been. The floater's coast was the one the player saw: its canvas and the icons' were not among the ones kept in place (milestone 26 moved six of the eight).
+// Now each canvas remembers the view it was drawn for (ovDrawn, where it is cleared) and every pan and zoom moves it by the CSS transform that carries that view onto the current one, at once; a draw of one canvas
+// clears that canvas's transform and no other's. The probe works inside one task, so no redraw can have run: two points of the map are marked on each stale canvas, the map is moved, and the canvas's matrix must carry
+// the marks to where the map now has those points. Then every canvas is drawn again on its own, the way the frame loop does (the jet line, the arrows, the storms, the icons, the floater, the whole picture).
+async function checkOverlaySync(page, label, prefix) {
+  const sp = prefix === 'atlantic' ? { td: [15, -45], day: 200 } : STORM_SPECS[prefix];
+  const r = await page.evaluate(async (q) => {
+    const S = window.SSTSIM, M = S.map, c0 = M.getCenter(), z0 = M.getZoom(), mb = M.options.maxBounds;
     const settle = () => new Promise((ok) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(ok, 1200))));
-    M.setView(M.getCenter(), 6, { animate: false }); await settle();
-    const cv = [...document.querySelectorAll('canvas.overlay')], tf = () => cv.map((c) => c.style.transform || ''), mat = (c) => new DOMMatrix(getComputedStyle(c).transform === 'none' ? undefined : getComputedStyle(c).transform);
-    const out = { n: cv.length, rest: tf().filter((x) => x).length, errs: [], moved: [] }, ll = M.getCenter(), q = M.latLngToContainerPoint(ll), p0 = { x: q.x, y: q.y };
-    const probe = (name) => { const m = mat(cv[0]), pr = m.transformPoint(new DOMPoint(p0.x, p0.y)), tr = M.latLngToContainerPoint(ll); out.errs.push(Math.hypot(pr.x - tr.x, pr.y - tr.y)); out.moved.push(Math.hypot(tr.x - p0.x, tr.y - p0.y)); out[name] = tf().filter((x) => x).length; };
-    M.panBy([120, 80], { animate: false }); probe('pan');
-    M.panBy([-300, 40], { animate: false }); probe('pan2');
-    M.setZoom(6.5, { animate: false }); probe('zoomIn');
-    M.setZoom(5.25, { animate: false }); probe('zoomOut');
-    await settle(); out.after = tf().filter((x) => x).length;
-    M.setView(c0, z0, { animate: false }); await settle();                                  // (the view the page had: the checks that follow pick their points of the map from it)
+    M.setMaxBounds(null);                                                               // (the pan limit would hold a small basin's map where it is: the probe moves the map freely and puts the limit back)
+    S.setPlaying(false); S.applySeed(4242); S.setPlaying(false); S.storms(true); S.stormAuto(false); S.tick(24 * q.day);
+    const id = S.stormPlace({ kind: 'td', lat: q.td[0], lon: q.td[1], v: 100 }); S.tick(30); S.stormForce(id, { th: 'tc', v: 105, vr: 105, p: 950 }); S.advance(0);
+    const open = S.floaterOpen(id); S.floaterRun(60);                                    // (the radar floater: its picture and its bold coast have a canvas of their own)
+    const st = S.stormState().systems.find((x) => x.id === id); S.fxMarkAdd(id, st.lat, st.lon, 105, 'tc');       // (and a landfall marker: the canvas of what moves by itself)
+    M.setView(M.getCenter(), 6, { animate: false }); await settle(); S.fxDrawNow();
+    const cv = [...document.querySelectorAll('canvas.overlay')], name = (c) => c.id ? c.id.replace('-canvas', '') : ({ 1: 'base', 450: 'sst', 460: 'grid' })[c.style.zIndex] || c.style.zIndex;
+    const mat = (c) => { const t = getComputedStyle(c).transform; return new DOMMatrix(t === 'none' ? undefined : t); }, cur = () => { const pb = M.getPixelBounds(); return { z: M.getZoom(), x: pb.min.x, y: pb.min.y }; };
+    const shifted = () => cv.filter((c) => c.style.transform).length;
+    const out = { n: cv.length, names: cv.map(name), open, rest: shifted(), drawn: cv.filter((c) => c.ovAt).length, steps: [], redraw: {} };
+    const ll = M.getCenter(), ll2 = M.unproject(M.project(ll).add([300, 200])), px = (p) => M.latLngToContainerPoint(p);      // (two marks of the map: its centre and a place away from it, where a wrong scale or origin would show)
+    const err = (c, pt) => { const a = c.ovAt; if (!a) return 0; const pd = M.project(pt, a.z).subtract(L.point(a.x, a.y)), pr = mat(c).transformPoint(new DOMPoint(pd.x, pd.y)), tr = px(pt); return Math.hypot(pr.x - tr.x, pr.y - tr.y); };
+    let last = px(ll);
+    const step = (nm, fn) => { fn(); let p = px(ll), d = Math.hypot(p.x - last.x, p.y - last.y); out.steps.push({ nm, moved: d, worst: Math.max(...cv.map((c) => Math.max(err(c, ll), err(c, ll2)))), shifted: shifted(), worstName: name(cv.reduce((w, c) => (Math.max(err(c, ll), err(c, ll2)) > Math.max(err(w, ll), err(w, ll2)) ? c : w), cv[0])) }); last = p; };
+    const pan = (dx, dy) => () => M.panBy([dx, dy], { animate: false });
+    step('pan', pan(120, 80)); step('pan again', pan(-300, 40)); step('zoom in', () => M.setZoom(6.5, { animate: false })); step('zoom out', () => M.setZoom(5.25, { animate: false }));
+    await settle(); out.after = shifted(); out.afterAt = cv.filter((c) => c.ovAt && (Math.abs(c.ovAt.z - cur().z) > 1e-9 || c.ovAt.x !== cur().x || c.ovAt.y !== cur().y)).map(name);
+    // each canvas drawn again on its own, as the frame loop does it: it is free of the transform and says it is drawn for the view the map has; no other canvas is touched
+    const own = { jet: () => S.jetDraw(), steer: () => S.steerArrows(), storm: () => S.stormDraw(), fx: () => S.fxDrawNow(), radar: () => S.floaterRun(0.001) }, nudge = [[53, -31], [41, -23], [67, -19], [29, -37], [59, -13]];      // (each canvas is drawn again after a pan of its own: the map never comes back to a view a canvas was drawn for)
+    for (const [i, [nm, fn]] of Object.entries(own).entries()) {
+      pan(...nudge[i])(); const before = shifted(); fn();
+      const c = cv.find((x) => name(x) === nm), a = c.ovAt, now = cur();
+      out.redraw[nm] = { before, free: !c.style.transform, atNow: !!a && Math.abs(a.z - now.z) < 1e-9 && a.x === now.x && a.y === now.y, others: cv.filter((x) => x !== c && x.style.transform).length };
+    }
+    pan(71, 43)(); const before = shifted(); S.render(); const six = cv.filter((c) => ['base', 'sst', 'grid', 'jet', 'steer', 'storm'].includes(name(c))), now = cur();
+    out.redraw.render = { before, free: six.filter((c) => !c.style.transform && c.ovAt && Math.abs(c.ovAt.z - now.z) < 1e-9 && c.ovAt.x === now.x && c.ovAt.y === now.y).length, six: six.length, others: cv.filter((x) => !six.includes(x) && x.style.transform).length };
+    S.floaterClose(); out.closed = cv.filter((c) => name(c) === 'radar').every((c) => !c.style.transform && !c.ovAt);
+    S.fxClear(); S.stormForce(id, { alive: false }); S.storms(false); S.restart(); M.invalidateSize(); M.setMaxBounds(mb); M.setView(c0, z0, { animate: false }); await settle();                  // (the view the page had: the checks that follow pick their points of the map from it)
     return out;
-  });
-  check(`[${label}] the overlay canvases follow a pan and a zoom at once, before they are redrawn: the stale canvas's matrix puts a mark where the map has it (errors ${r.errs.map((e) => e.toFixed(2)).join(', ')} px after a pan of ${r.moved[0].toFixed(0)} px, another to ${r.moved[1].toFixed(0)}, a zoom in to ${r.moved[2].toFixed(0)} and out to ${r.moved[3].toFixed(0)} px away; ${r.pan} of the ${r.n} overlay canvases carry it: the base map, sea temperature, grid, jets, steering and storms), and once drawn again none is left displaced (${r.after}; Leaflet rounds the map's origin to whole pixels, so a zoom can be a pixel off)`,
-    r.n >= 6 && r.rest === 0 && r.errs.every((e) => e < 1.25) && r.moved.every((m) => m > 20) && r.pan >= 6 && r.zoomOut >= 6 && r.after === 0);
+  }, sp);
+  const rd = r.redraw, own = ['jet', 'steer', 'storm', 'fx', 'radar'];
+  check(`[${label}] all ${r.n} overlay canvases (${r.names.join(', ')}; the floater open on a storm) follow a pan and a zoom at once, before they are redrawn: the stale canvas's matrix puts two marks where the map has them (errors ${r.steps.map((s) => s.worst.toFixed(2)).join(', ')} px after a pan of ${r.steps[0].moved.toFixed(0)} px, another of ${r.steps[1].moved.toFixed(0)}, a zoom in of ${r.steps[2].moved.toFixed(0)} and out of ${r.steps[3].moved.toFixed(0)} px; the worst is the ${r.steps.map((s) => s.worstName).join(', ')} canvas; ${r.steps.map((s) => s.shifted).join(', ')} of ${r.drawn} drawn ones carry it), and once drawn again none is left displaced (${r.after}; Leaflet rounds the map's origin to whole pixels, so a zoom can be a pixel off)`,
+    r.open === true && r.n === 8 && r.drawn === 8 && r.names.includes('radar') && r.names.includes('fx') && r.rest === 0 && r.steps.every((s) => s.worst < 1.25 && s.moved > 20 && s.shifted === 8) && r.after === 0 && r.afterAt.length === 0);
+  check(`[${label}] a canvas drawn again for the current view carries no transform and no other canvas is touched: ${own.map((k) => k + ' ' + (rd[k].free && rd[k].atNow ? 'free' : 'STALE') + ' (' + rd[k].others + ' of the ' + (rd[k].before - 1) + ' others keep theirs)').join(', ')}; the whole picture frees ${rd.render.free} of its ${rd.render.six} canvases and leaves the floater's and the icons' (${rd.render.others}); the floater closed leaves its canvas empty and unmoved (${r.closed})`,
+    own.every((k) => rd[k].before === 8 && rd[k].free && rd[k].atNow && rd[k].others === 7) && rd.render.before === 8 && rd.render.six === 6 && rd.render.free === 6 && rd.render.others === 2 && r.closed === true);
 }
 
 // The card of the selected storm (what the player clicked on the map) never covers the layer buttons ("the info for the selected TC covers the selecting for the overlays"): it stands left of the column of buttons on a
@@ -2705,7 +2729,7 @@ async function checkBasin(label, dist, extra) {
   await page.waitForFunction(() => window.__ready === true, { timeout: 15000 });
   await page.waitForTimeout(1000);
   if (process.env.ONLY_FN) {                                                          // ONLY_FN='summary,icons' runs just those check functions of the page, without the shared checks before them (a working aid; CI runs everything)
-    const prefix = BASIN_PREFIX[label], FN = { summary: () => checkSummary(page, label), icons: () => checkIcons(page, label, prefix), look: () => checkLook(page, label, prefix), steering: () => checkSteering(page, label, STEER_SPECS[prefix]), layout: () => checkLayout(page, label, prefix), coast: () => checkCoast(page, label), sync: () => checkOverlaySync(page, label), cards: () => checkCards(page, label, prefix), settings: () => checkExperiment(page, label), impacts: () => checkImpacts(page, label, prefix), basin: () => checkStormsBasin(page, label, prefix) };
+    const prefix = BASIN_PREFIX[label], FN = { summary: () => checkSummary(page, label), icons: () => checkIcons(page, label, prefix), look: () => checkLook(page, label, prefix), steering: () => checkSteering(page, label, STEER_SPECS[prefix]), layout: () => checkLayout(page, label, prefix), coast: () => checkCoast(page, label), sync: () => checkOverlaySync(page, label, prefix), cards: () => checkCards(page, label, prefix), settings: () => checkExperiment(page, label), impacts: () => checkImpacts(page, label, prefix), basin: () => checkStormsBasin(page, label, prefix) };
     for (const f of process.env.ONLY_FN.split(',')) await FN[f]();
     check(`[${label}] loads with no JS errors`, errors.length === 0); if (errors.length) console.log('  ' + errors.join('\n  '));
     await browser.close(); return;

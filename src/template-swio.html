@@ -1599,7 +1599,8 @@ syncMinZoom();
 map.fitBounds([[-33, 30], [-3, 60]], { animate: false });   // instant: an animated pan here briefly rendered a garbled frame of the embedded base image mid-transition
 const container = map.getContainer();
 
-function makeCanvas(z) { const c = document.createElement('canvas'); c.className = 'overlay'; c.style.zIndex = z; container.appendChild(c); return c; }
+var ovCanvases = [];                                                  // every canvas laid over the map: each is kept where the map is while it waits to be drawn again (src/storm-late.js, "the overlay canvases follow the map at once")
+function makeCanvas(z) { const c = document.createElement('canvas'); c.className = 'overlay'; c.style.zIndex = z; container.appendChild(c); ovCanvases.push(c); return c; }
 const baseCanvas = makeCanvas(1), sstCanvas = makeCanvas(450), gridCanvas = makeCanvas(460);
 // The jet line gets a canvas of its own, between the field (450) and the borders/cities/grid
 // (460), because it is the one thing redrawn every animation frame: re-rendering the field costs
@@ -1792,7 +1793,7 @@ function drawEmbeddedBM(ctx, minX, minY, ws) {
   ctx.drawImage(bmMerc, sx0, syT, sx1 - sx0, syB - syT, xL, dyT, xR - xL, dyB - dyT);
 }
 function drawBaseLayer(minX, minY, ws) {
-  const b = baseCanvas.getContext('2d'); b.setTransform(DPR, 0, 0, DPR, 0, 0); b.clearRect(0, 0, W, H);
+  ovDrawn(baseCanvas); const b = baseCanvas.getContext('2d'); b.setTransform(DPR, 0, 0, DPR, 0, 0); b.clearRect(0, 0, W, H);
   if (TH.kind === 'tiles') { if (themeId === 'bm') drawEmbeddedBM(b, minX, minY, ws); return; }
   b.lineJoin = 'round'; b.lineCap = 'round';
   b.fillStyle = TH.land; b.strokeStyle = TH.land; b.lineWidth = 0.8;
@@ -1848,7 +1849,7 @@ function drawJetLine() {
   // from the jet clock on EVERY call, and this is called every animation frame while playing, so
   // the line glides at the display's frame rate; the shear raster underneath is only recomputed
   // every few simulated hours (see frame()) and so trails it by at most that much.
-  const g = jetCanvas.getContext('2d'); g.setTransform(DPR, 0, 0, DPR, 0, 0); g.clearRect(0, 0, W, H);
+  ovDrawn(jetCanvas); const g = jetCanvas.getContext('2d'); g.setTransform(DPR, 0, 0, DPR, 0, 0); g.clearRect(0, 0, W, H);
   if (!jetLineOn.checked) { setJetNote(''); return; }
   jetAxisFinal(jetAxisNow);
   // If the whole axis is outside the simulated area (it is for a good part of the time in basins
@@ -1912,7 +1913,7 @@ function drawJetLine() {
   g.restore();
 }
 function drawGrid(minX, minY, ws) {
-  const g = gridCanvas.getContext('2d'); g.setTransform(DPR, 0, 0, DPR, 0, 0); g.clearRect(0, 0, W, H);
+  ovDrawn(gridCanvas); const g = gridCanvas.getContext('2d'); g.setTransform(DPR, 0, 0, DPR, 0, 0); g.clearRect(0, 0, W, H);
   if ($('borders').checked) drawBorders(g, minX, minY, ws, map.getZoom());
   drawCities(g, minX, minY, ws);
   drawEquator(g, minX, minY, ws);
@@ -2002,7 +2003,7 @@ function steerUpdateIcons() {              // match this update's maxima with th
   for (const s of steerShown) if (!s.matched) s.gone = true;
 }
 function drawSteer() {
-  const g = steerCanvas.getContext('2d'); g.setTransform(DPR, 0, 0, DPR, 0, 0); g.clearRect(0, 0, W, H);
+  ovDrawn(steerCanvas); const g = steerCanvas.getContext('2d'); g.setTransform(DPR, 0, 0, DPR, 0, 0); g.clearRect(0, 0, W, H);
   const arrowsOn = $('steerarrows').checked, highsOn = $('highs').checked;
   if (!arrowsOn && !highsOn) { steerShown = []; return; }
   steerEnsure();
@@ -2085,7 +2086,7 @@ const featState = {                                                   // the sta
 function render() {
   needRender = false; fitCanvases();
   const z = map.getZoom(), ws = 256 * Math.pow(2, z), pb = map.getPixelBounds(), minX = pb.min.x, minY = pb.min.y;
-  ovDrawn(z, minX, minY);                       // the pictures are drawn for this view of the map (they follow it from here: see "the overlay canvases follow the map at once")
+  ovDrawn(sstCanvas);                           // (a canvas is drawn for this view of the map and follows it from here, until it is drawn again: every draw below does the same for its own canvas)
   const ctx = sstCanvas.getContext('2d');
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0); ctx.clearRect(0, 0, W, H);
 

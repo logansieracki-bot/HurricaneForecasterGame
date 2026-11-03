@@ -35,24 +35,25 @@ window.addEventListener('keydown', (e) => {                                     
 });
 
 /* ---- the overlay canvases follow the map at once -----------------------------------------------------------------------------------------------
-   The canvases (the sea temperature, the base, the grid and borders, the jet line, the arrows, the storms) are each drawn for one view of the map and redrawn for the next a
-   frame later; a whole picture takes tens of milliseconds, so while the map was dragged, coasted or zoomed the satellite tiles, which the browser moves at once, ran ahead of the
-   canvases and the outlines stood offset from the satellite until the picture caught up. Now every move and zoom event puts the picture that is there where the map is (a
-   translation and a scale from the view it was drawn for: the same world pixel stays under the same place of the map), and the next whole picture, drawn for the new view, takes
-   the transform away again. (var: the first picture may be drawn before this block has run.) */
-var OV_CANVASES = null, ovDrawnFor = null;
-function ovDrawn(z, minX, minY) {
-  ovDrawnFor = { z, x: minX, y: minY };
-  if (!OV_CANVASES) return;
-  for (const c of OV_CANVASES) if (c.style.transform) c.style.transform = '';
-}
+   Every canvas laid over the map (the sea temperature, the base map, the grid and borders, the jet line, the arrows, the storms, the icons that turn by themselves, the radar floater's
+   picture with its bold coast: all of them made with makeCanvas) is drawn for one view of the map and drawn again for the next a little later: a whole picture takes tens of
+   milliseconds, the floater's is made about twenty times a second at most. The satellite tiles, which the browser moves at once, ran ahead of the canvases, and the outlines (the
+   floater's white coast most of all) stood offset from the satellite until the picture caught up. Now a canvas remembers the view it was drawn for (ovDrawn, called where the canvas
+   is cleared to be drawn again, so that the picture and its view change together: each draw in the page calls it for its own canvas), and every move and zoom event puts the picture
+   that is there where the map is, by a translation and a scale from that view (the same world pixel stays under the same place of the map). A canvas drawn for the current view
+   carries none. (The list, ovCanvases, is made by makeCanvas in the page: a var there, since the first pictures are drawn before this block has run.) */
+function ovDrawn(c) { const pb = map.getPixelBounds(); c.ovAt = { z: map.getZoom(), x: pb.min.x, y: pb.min.y }; if (c.style.transform) c.style.transform = ''; }
+function ovForget(c) { c.ovAt = null; if (c.style.transform) c.style.transform = ''; }              // (a canvas that was emptied and hidden has no picture to move)
 function ovSync() {
-  if (!ovDrawnFor || !OV_CANVASES) return;
-  const z = map.getZoom(), pb = map.getPixelBounds(), s = Math.pow(2, z - ovDrawnFor.z), tx = ovDrawnFor.x * s - pb.min.x, ty = ovDrawnFor.y * s - pb.min.y;
-  const t = Math.abs(s - 1) < 1e-9 && Math.abs(tx) < 0.005 && Math.abs(ty) < 0.005 ? '' : 'translate(' + tx.toFixed(3) + 'px,' + ty.toFixed(3) + 'px) scale(' + s + ')';
-  for (const c of OV_CANVASES) { if (t && c.style.transformOrigin !== '0px 0px') c.style.transformOrigin = '0 0'; if (c.style.transform !== t) c.style.transform = t; }
+  const z = map.getZoom(), pb = map.getPixelBounds();
+  for (const c of ovCanvases) {
+    const a = c.ovAt; if (!a) continue;
+    const s = Math.pow(2, z - a.z), tx = a.x * s - pb.min.x, ty = a.y * s - pb.min.y;
+    const t = Math.abs(s - 1) < 1e-9 && Math.abs(tx) < 0.005 && Math.abs(ty) < 0.005 ? '' : 'translate(' + tx.toFixed(3) + 'px,' + ty.toFixed(3) + 'px) scale(' + s + ')';
+    if (t && c.style.transformOrigin !== '0px 0px') c.style.transformOrigin = '0 0';
+    if (c.style.transform !== t) c.style.transform = t;
+  }
 }
-OV_CANVASES = [baseCanvas, sstCanvas, gridCanvas, jetCanvas, steerCanvas, stormCanvas];
 map.on('move zoom', ovSync);
 
 window.addEventListener('resize', () => { cardClear($('storm-card')); cardClear($('aoi-card')); });
@@ -235,7 +236,7 @@ const STORM_API = {
   stormAuto(on) { stormAuto = !!on; if (stormMgr) stormMgr.auto = stormAuto; },
   stormPx(id) { const S = stormMgr.get(id); if (!S) return null; const p = map.latLngToContainerPoint([S.lat, S.lon]); return { x: p.x, y: p.y }; },
   stormFixPx(id, i) { const S = stormMgr.get(id); const f = S && S.fixes[i < 0 ? S.fixes.length + i : i]; if (!f) return null; const p = map.latLngToContainerPoint([f.lat, f.lon]); return { x: p.x, y: p.y, h: f.h, th: f.th }; },
-  stormDraw() { drawStorms(); }, stormDrawn() { return Array.from(new Set(stormHits.filter((h) => h.S).map((h) => h.S.id))); }, stormHover, stormClick,
+  stormDraw() { drawStorms(); }, jetDraw() { drawJetLine(); }, fxDrawNow() { fxDrawnAt = 0; fxDraw(performance.now()); }, stormDrawn() { return Array.from(new Set(stormHits.filter((h) => h.S).map((h) => h.S.id))); }, stormHover, stormClick,
   stormDots(id) { return stormHits.filter((h) => h.S && h.S.id === id && !h.live).map((h) => ({ x: h.x, y: h.y, r: h.r, h: h.f.h, v: h.f.v, t: stormDate(h.f.h), th: h.f.th, st: h.f.st })); },     // the advisory dots of one system as drawn: position, hit radius (8 six-hourly, 6 in between), hour, wind, time text
   stormLowsSet(list) {                                                // the tracked lows are replaced by synthetic ones, each [lat, lon, hPa]; null puts the real ones back
     if (!stormMgr) return 0;

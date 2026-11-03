@@ -90,7 +90,7 @@ function flOpen(id) {
 function flClose() {
   if (!flOn) return;
   flOn = false; cancelAnimationFrame(flRaf); flId = null; flNest = null; flLand = null;
-  if (flCanvas) { flCanvas.style.display = 'none'; const g = flCanvas.getContext('2d'); g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, flCanvas.width, flCanvas.height); }
+  if (flCanvas) { flCanvas.style.display = 'none'; const g = flCanvas.getContext('2d'); g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, flCanvas.width, flCanvas.height); ovForget(flCanvas); }
   document.body.classList.remove('fl-on'); sstCanvas.style.opacity = flSstOpacity; $('fl-bar').hidden = true; $('fl-legend').style.display = 'none'; $('fl-legend-v').style.display = 'none';
   setPlaying(flPrevPlay); updateSpeedUI(); if (stormSel) { lastStormCardAt = 0; fillStormCard(); } if (olSel) { lastAoiCardAt = 0; fillAoiCard(); } stormsDirty = true; drawStorms();
 }
@@ -198,7 +198,7 @@ let flProf = [0, 0, 0, 0], flTmp = null, flTex = null, flTexC = null, flTexImg =
 function flRender() {
   if (!flOn || !flNest || !flNest.cur || !flCanvas) return;
   const c = flCanvas; if (c.width !== Math.round(W * DPR) || c.height !== Math.round(H * DPR)) { c.width = Math.round(W * DPR); c.height = Math.round(H * DPR); }
-  const g = c.getContext('2d'); g.setTransform(DPR, 0, 0, DPR, 0, 0); g.clearRect(0, 0, W, H);
+  ovDrawn(c); const g = c.getContext('2d'); g.setTransform(DPR, 0, 0, DPR, 0, 0); g.clearRect(0, 0, W, H);
   const nest = flNest, f = nest.cur, N = HFNest.N, NN = N * N, sg = f.sg || 1, ir = flView === 'ir', site = ir ? null : flSite, DXK = 2 * nest.m;                // (the km of a cell: 2, and more for a larger storm)
   const tp0 = performance.now(); if (flPlay) nest.displayBlend(flAcc / flStepDt(), true, ir); else nest.display(0, true, ir);
   const rc = nest.drc, rs = nest.drs, dbz = flDbz || (flDbz = new Float32Array(NN));
