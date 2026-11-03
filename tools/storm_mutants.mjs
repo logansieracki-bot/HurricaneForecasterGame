@@ -4,7 +4,7 @@
 // program does, which docs/roadmap.md names). Needs a clean tree and Chromium for the browser drivers:
 //   PLAYWRIGHT_CHROMIUM_PATH=/path/to/chromium node tools/storm_mutants.mjs [--dry] [--base] [--only X1,S4] [--drivers node,save] [--jobs 3]
 // --dry   only checks that every edit anchor occurs exactly once and that the mutated file still parses; --base runs every driver on the unmodified tree (all must pass first);
-// --only  a comma list of mutant ids; --drivers  restricts the drivers to run (node, nest, storms, summary, place, save, gate, env, look, alerts, impacts, floater, floaterS, sat); --jobs  how many mutants run at once (default 3; each builds into its own directory under $MUT_DIR or the
+// --only  a comma list of mutant ids; --drivers  restricts the drivers to run (node, nest, radar, storms, summary, place, save, gate, env, look, alerts, impacts, floater, floaterS, sat); --jobs  how many mutants run at once (default 3; each builds into its own directory under $MUT_DIR or the
 //         temp directory). It changes src/storms.js, src/template.html or index.html for the few seconds a build takes and puts them back itself;
 //         if it is killed in between, `git checkout -- src index.html` restores them. The drivers are the check functions cut out of tests/run.mjs
 //         by their opening comments (`// The storm layer on the Atlantic page`, `// Save / resume`, `async function checkEnsoHold`): keep them.
@@ -345,7 +345,7 @@ const mutants = [
   M('N27', NS, [E("(1 + Math.min(P.pcx, p / pcS))", "1")], ['nest'], 'the heavier cells rain no more per unit of condensation (no convective cores)'),
   M('N28', NS, [E("rs[k] = ey > 0 ? (rs[k] * aS + bS * sSrc * (1 - 0.95 * ey)) * (1 - 0.25 * ey) : rs[k] * aS + bS * sSrc;", "rs[k] = rs[k] * aS + bS * sSrc;")], ['nest'], 'the eye is cleared of convective rain but not of stratiform rain'),
   M('N29', NS, [E("const eR = eyeR * (1 + P.eyeRag * (0.8 * cl[k] + 0.15 * qn[k]));", "const eR = eyeR;")], ['nest'], 'the edge of the eye is a perfect circle'),
-  M('N30', NS, [E("if (drs[k] > 0.005) drs[k] *= Math.exp(c0 + a * q + b * c);", "")], ['nest'], 'the stratiform rain of the picture has no texture'),
+  M('N30', NS, [E("if (!ir) this.radarOp(qn, cl, cl2In || this.cl2);", "")], ['nest', 'radar'], 'the radar\'s picture is the model\'s rain as it is (no eye, no share, no gaps)'),
   M('N31', NS, [E("outU[k] = mm * U[k] + amp * n1[k] + ox; outV[k] = mm * V[k] + amp * n2[k] + oy;", "outU[k] = mm * U[k] + ox; outV[k] = mm * V[k] + oy;")], ['nest'], 'the radar\'s wind has no turbulence (smooth)'),
   M('N32', NS, [E("const ox = -clamp(vO * (rc[o + ip] - rc[o + im]), -9, 9), oy = -clamp(vO * (rc[jp + i] - rc[jm + i]), -9, 9);", "const ox = 0, oy = 0;")], ['nest'], 'the heavy cells\' downdraughts do not blow outward'),
   M('N33', NS, [E("outU[k] = mm * U[k] + amp * n1[k] + ox;", "outU[k] = U[k] + amp * n1[k] + ox;")], ['nest'], 'the radar\'s wind is in nest units, not true speed, at a larger scale'),
@@ -431,7 +431,7 @@ const mutants = [
   M('K20', NS, [E("* sm01(ringC, P.eyeRing[4], P.eyeRing[5]);", ";")], ['nest'], 'the eye does not need a ring of rain: a broken ring does not fill it'),
   M('K21', NS, [E("eyeV: [40, 47],", "eyeV: [22, 36],")], ['nest'], 'the eye forms by category 1 as it did before milestone 22'),
   M('K22', NS, [E("eyeV: [40, 47],", "eyeV: [50, 57],")], ['nest'], 'the eye waits for category 4'),
-  M('K23', NS, [E("sm01(vN - P.eyeU * unfavOf(f, mm), P.eyeV[0]", "sm01(vN, P.eyeV[0]")], ['nest'], 'hostile air does not erode the eye of a category 3'),
+  M('K23', NS, [E("sm01(vN - P.eyeU * unf, P.eyeV[0]", "sm01(vN, P.eyeV[0]")], ['nest'], 'hostile air does not erode the eye of a category 3'),
   M('K24', NS, [E("eyeTau: [5400, 3600]", "eyeTau: [60, 3600]")], ['nest'], 'the eye forms at once, not over an hour or two'),
   M('K25', NS, [E("eyeTau: [5400, 3600]", "eyeTau: [5400, 360000]")], ['nest'], 'the eye never fills again'),
   M('K26', NS, [E("eyeRing: [1.0, 2.2,", "eyeRing: [0.2, 0.6,")], ['nest'], 'the ring is looked for inside the eye, where there is no rain'),
@@ -449,7 +449,7 @@ const mutants = [
   M('K38', NS, [E("this.ciAcc = 0; this.spreadCirrus();", "this.ciAcc = 0;")], ['nest'], 'the nest never spreads the anvil'),
   M('K39', NS, [E("dst[k] = (1 - phi) * va + phi * vb;", "dst[k] = phi * va + (1 - phi) * vb;")], ['nest'], 'the picture between steps runs backwards in time: it leaps at the next step'),
   M('K40', NS, [E("y = j + (w ? v * hB : -v * hF)", "y = j + (w ? v * hB : v * hF)")], ['nest'], 'the old state is carried against the flow'),
-  M('K41', NS, [E("this.texture(ir, qb, cb);", "this.texture(ir);")], ['nest'], 'the texture\'s noise jumps at each step'),
+  M('K41', NS, [E("this.texture(ir, qb, cb, c2b); this.rdPar = null;", "this.texture(ir); this.rdPar = null;")], ['nest'], 'the texture\'s noise jumps at each step'),
   M('K42', NS, [E("if (this.keepPrev) this.savePrev();\n", "")], ['nest'], 'the state a step began from is not kept: the picture between steps leaps'),
   M('K43', NS, [E("ciR: 1, ciW: 0.7,", "ciR: 1, ciW: 0,")], ['nest'], 'every cell makes its own anvil: strings of cells and thin streaks stand out as cold dots and spines'),
   M('K44', NS, [E("irSm: 0.75, irN: 2,", "irSm: 0, irN: 2,")], ['nest'], 'the top of a pixel follows its own cell\'s rain only: strings of moderate cells are rows of dots'),
@@ -465,6 +465,33 @@ const mutants = [
   M('F16', FL, [E("site = ir ? null : flSite, DXK = 2 * nest.m;", "site = ir ? null : flSite, DXK = 2;")], ['floater'], 'the picture takes every cell for 2 km at any scale'),
   M('F17', FL, [E("dl = 1.12 * 256 * (f.m || 1) / flKmDeg,", "dl = 1.12 * 256 / flKmDeg,")], ['floater'], 'the frame of the map stays 512 km at any scale'),
   M('F12', FL, [E("lut[i * 4 + 3] = 226;", "lut[i * 4 + 3] = 226; if (i % 2) lut[i * 4] = 255 - lut[i * 4];")], ['floater'], 'every other half dBZ is a colour of its own: a gradient of noise, not steps'),
+  // ---- milestone 29: the radar's picture (radarOp) and the radar's eye
+  M('R1', NS, [E("rdEye: [20, 27],", "rdEye: [40, 47],")], ['radar'], 'the radar\'s eye waits for the wind of the cloud tops\' eye (category 3)'),
+  M('R2', NS, [E("      if (E > 0) { a *= 1 - E; b *= 1 - E; }\n", "")], ['radar'], 'the picture has no eye: the rain of the middle is drawn'),
+  M('R3', NS, [E("const eyeE = sc[0] * (1 - 0.9 * sc[5])", "const eyeE = this.eyeS * (1 - 0.9 * sc[5])")], ['radar'], 'the radar\'s eye is the cloud tops\' eye (it clears when they do)'),
+  M('R4', NS, [E("const rdT = sm01(vN - P.rdEyeU * unf, P.rdEye[0], P.rdEye[1])", "const rdT = sm01(vN, P.rdEye[0], P.rdEye[1])")], ['radar'], 'hostile air does not hold back the radar\'s eye'),
+  M('R5', NS, [E("(0.35 + 0.65 * sm01(ringC, P.rdEyeRing[0], P.rdEyeRing[1]))", "1")], ['radar'], 'the radar\'s eye does not need any ring: it stays when the eyewall has no rain at all'),
+  M('R6', NS, [E("rdEyeRing: [0.15, 0.55],", "rdEyeRing: [0.7, 0.95],")], ['radar'], 'the radar\'s eye needs a whole ring: half an eyewall empties it'),
+  M('R7', NS, [E("rdEyeTau: [3600, 2700],", "rdEyeTau: [60, 2700],")], ['radar'], 'the radar\'s eye clears at once, not over an hour or two'),
+  M('R8', NS, [E("this.eyeRd = sm01(f.vmax * (f.m || 1) - PAR.rdEyeU * unfavOf(f, f.m || 1), PAR.rdEye[0], PAR.rdEye[1]);", "this.eyeRd = 0;")], ['radar'], 'a new strong vortex has no radar eye until it has formed one'),
+  M('R9', NS, [E("const eyeE = sc[0] * (1 - 0.9 * sc[5])", "const eyeE = sc[0]")], ['radar'], 'an extratropical transition keeps the radar\'s eye'),
+  M('R10', NS, [E("rE0 = rmax * (ey[0] + (ey[1] - ey[0]) * sm01(vN, ey[2], ey[3]))", "rE0 = rmax * ey[0]")], ['radar'], 'the radar\'s eye does not grow with the wind'),
+  M('R11', NS, [E("const rE = rE0 * (1 + eg[0] * zc + eg[1] * zq)", "const rE = rE0")], ['radar'], 'the edge of the radar\'s eye is a perfect circle'),
+  M('R12', NS, [E("rdCut: [1.2, 3.5],", "rdCut: [0, 0.001],")], ['radar'], 'no light rain falls short of an echo: the picture has no gaps between the bands (and a faint echo is everywhere)'),
+  M('R13', NS, [E("{ const h = 1 / (1 + (a + b) / cap); a *= h; b *= h; }", "")], ['radar'], 'an echo has no saturation: the heaviest cells are magenta and white'),
+  M('R14', NS, [E("effK = eV[0] + (1 - eV[0]) * sm01(vN, eV[1], eV[2])", "effK = 1")], ['radar'], 'a weak storm\'s rain reaches the ground as fully as a hurricane\'s'),
+  M('R15', NS, [E("sigK = P.rdSigW + (1 - P.rdSigW) * sm01(vN, 21, 33)", "sigK = 1")], ['radar'], 'a weak vortex\'s rain, log-normal already, gets the variability of a hurricane\'s on top'),
+  M('R16', NS, [E("A = (ax * ct[k] + ay * st[k]) * tb[4][i] + 1;", "A = 1;")], ['radar'], 'the eyewall has no wave number 1: it is as strong on every side'),
+  M('R17', NS, [E("s1 = f.shdir + Math.PI / 4, s2", "s1 = f.shdir + Math.PI / 4 + Math.PI, s2")], ['radar'], 'the eyewall leans upshear instead of downshear and left'),
+  M('R18', NS, [E("rdAsym: [0.5, 14400, 0.07, 0.05,", "rdAsym: [0.5, 14400, 0, 0.05,")], ['radar'], 'shear does not ask anything of the eyewall\'s wave number 1'),
+  M('R19', NS, [E("b = as[0] * Math.sqrt(1 - a * a), rg = this.rng2", "b = 0 * Math.sqrt(1 - a * a), rg = this.rng2")], ['radar'], 'the eyewall\'s wave number 1 does not wander: it is what the environment asks and the same in every storm'),
+  M('R20', NS, [E("this.rdPar = a.map((v, i) => (1 - phi) * v + phi * b[i]);", "this.rdPar = null;")], ['radar'], 'the eye and the eyewall\'s lean jump at each step (the picture between steps does not blend them)'),
+  M('R21', NS, [E("if (!ir) c2b[k] = (1 - phi) * d0[k] + phi * d1[k];", "if (!ir) c2b[k] = d1[k];")], ['radar'], 'the large clusters of the picture jump at each step'),
+  M('R22', NS, [E("if (P.rdBlur > 0) {", "if (false) {")], ['radar'], 'the cell-to-cell noise of the supply is not smoothed before the rain curve: the echo is speckle'),
+  M('R23', NS, [E("const P = PAR, drc = this.drc, drs = this.drs, rr = this.rr, rb = this.rbin, sc = this.rdPar", "const P = PAR, drc = this.rc, drs = this.rs, rr = this.rr, rb = this.rbin, sc = this.rdPar")], ['radar'], 'the radar\'s picture is made in the model\'s own rain (the infrared and the next steps see it)'),
+  M('R24', NS, [E("rdSig: [1.1, 1.55, 2, 6],", "rdSig: [0, 0, 2, 6],")], ['radar'], 'the echo has no variability of its own (only what the model\'s rain has)'),
+  M('R25', NS, [E("rdCap: 400,", "rdCap: 1e9,")], ['radar'], 'the echo\'s saturation is far too high to matter'),
+  M('R26', NS, [E("rdEff: [0.2, 0.4, 90, 1.7],", "rdEff: [0.8, 0.9, 90, 1.7],")], ['radar'], 'most of the rain reaches the ground and shows (the picture is the old blob again)'),
 ];
 
 /* the page's storm code lives in several files now (the template and the shared src/storm-*.js / storm-ui.* that the build inlines into every basin's page): a mutant written against the
@@ -575,7 +602,7 @@ function snapshot(id, mutatedIndexHtml) {
   if (!existsSync(join(dir, 'data'))) symlinkSync(join(REPO, 'data'), join(dir, 'data'));
   writeFileSync(join(dir, 'index.html'), mutatedIndexHtml);
   copyFileSync(join(REPO, 'package.json'), join(dir, 'package.json'));
-  for (const f of ['tests/storms.mjs', 'tests/nest.mjs', 'tests/storms_env.mjs', 'src/storm-cities.js']) copyFileSync(join(REPO, f), join(dir, f));
+  for (const f of ['tests/storms.mjs', 'tests/nest.mjs', 'tests/nest_radar.mjs', 'tests/storms_env.mjs', 'src/storm-cities.js']) copyFileSync(join(REPO, f), join(dir, f));
   for (const f of ['template.html', 'template-eastpacific.html', 'template-wpac.html', 'template-nio.html', 'template-aus.html', 'template-swio.html', 'template-spac.html', 'template-satl.html', 'template-med.html']) if (!existsSync(join(dir, 'src', f))) copyFileSync(join(REPO, 'src', f), join(dir, 'src', f));      // (the node tests read the city lists of the nine pages)
   if (!existsSync(join(dir, 'node_modules'))) symlinkSync(join(REPO, 'node_modules'), join(dir, 'node_modules'));
   return dir;
@@ -585,6 +612,7 @@ function runDriver(dir, name) {            // resolves {name, code, fails[], tai
   return new Promise((resolve) => {
     let file, argv;
     if (name === 'nest') { file = join(dir, 'tests/nest.mjs'); argv = [file]; copyFileSync(join(dir, 'storms.js.mut'), join(dir, 'src/storms.js')); copyFileSync(join(dir, 'storm-nest.js.mut'), join(dir, 'src/storm-nest.js')); }
+    else if (name === 'radar') { file = join(dir, 'tests/nest_radar.mjs'); argv = [file]; copyFileSync(join(dir, 'storms.js.mut'), join(dir, 'src/storms.js')); copyFileSync(join(dir, 'storm-nest.js.mut'), join(dir, 'src/storm-nest.js')); }
     else if (name === 'node') { file = join(dir, 'tests/storms.mjs'); argv = [file]; copyFileSync(join(dir, 'storms.js.mut'), join(dir, 'src/storms.js')); }
     else { file = join(dir, `tests/_drv_${name}.mjs`); writeFileSync(file, makeDriver(name)); argv = [file]; if (name === 'gate' || name === 'env' || name === 'look' || name === 'alerts') copyFileSync(join(dir, 'storms.js.mut'), join(dir, 'src/storms.js')); }
     const p = spawn('node', argv, { cwd: dir, env: process.env });
@@ -608,7 +636,7 @@ async function runMutant(m, results) {
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------------
-let list = base ? [M('base', S, [], ['node', 'nest', 'storms', 'summary', 'place', 'save', 'gate', 'env', 'look', 'alerts', 'impacts', 'floater', 'floaterS', 'sat'], 'unmutated')] : (only ? mutants.filter((m) => only.includes(m.id)) : mutants);
+let list = base ? [M('base', S, [], ['node', 'nest', 'radar', 'storms', 'summary', 'place', 'save', 'gate', 'env', 'look', 'alerts', 'impacts', 'floater', 'floaterS', 'sat'], 'unmutated')] : (only ? mutants.filter((m) => only.includes(m.id)) : mutants);
 if (drivers) list = list.map((m) => ({ ...m, drivers: m.drivers.filter((d) => drivers.includes(d)) })).filter((m) => m.drivers.length);
 if (dry) { let bad = 0; for (const m of mutants) { try { parses(m.file, applyEdits(readFileSync(join(REPO, m.file), 'utf8'), m.edits, m.id)); } catch (e) { bad++; console.log(m.id + ': ' + e.message); } } console.log(bad ? bad + ' of ' + mutants.length + ' mutants broken (an anchor that is not found exactly once, or a mutated file that does not parse)' : 'all ' + mutants.length + ' anchors found exactly once and every mutated file parses'); process.exit(bad ? 1 : 0); }
 mkdirSync(OUT, { recursive: true });

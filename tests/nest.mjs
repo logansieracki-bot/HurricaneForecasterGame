@@ -207,9 +207,10 @@ const wet = (nest) => { const d = dbzField(nest); return (k) => (d[k] >= 20 ? 1 
   const meanVar = radii.reduce((a, b) => a + b, 0) / radii.length;
   check('the edge of the eye is ragged, not a circle: the radius of the first echo of 25 dBZ varies by ' + (100 * meanVar).toFixed(0) + ' % round the eye on average (over 6 %)', meanVar > 0.06);
   const base = run({ v: 70, rmax: 35 }, 3), tx = base;
-  tx.display(0, false); const a0 = Float64Array.from(tx.drs); tx.display(0, true); const a1 = tx.drs;
-  let sa = 0, sb = 0, n = 0, sl = 0, sl2 = 0; for (let k = 0; k < NN; k++) if (a0[k] > 0.1) { sa += a0[k]; sb += a1[k]; n++; const l = Math.log(a1[k] / a0[k]); sl += l; sl2 += l * l; }
-  check('the picture has a texture the 2-km cells cannot hold: the stratiform rain varies by ' + Math.sqrt(sl2 / n - (sl / n) * (sl / n)).toFixed(2) + ' (log) from place to place, over 0.2, and keeps the mean within 20 % (' + (sb / sa).toFixed(2) + ' of it)', Math.sqrt(sl2 / n - (sl / n) * (sl / n)) > 0.2 && Math.abs(sb / sa - 1) < 0.2);
+  tx.display(0, false); const a0 = Float64Array.from(tx.drs), c0 = Float64Array.from(tx.drc); tx.display(0, true); const a1 = tx.drs, c1 = tx.drc;
+  let sa = 0, sb = 0, ca = 0, cb = 0, n = 0, sl = 0, sl2 = 0, wet = 0, dry = 0; for (let k = 0; k < NN; k++) { sa += a0[k]; sb += a1[k]; ca += c0[k]; cb += c1[k]; if (c0[k] > 0.1 && c1[k] > 0.001) { n++; const l = Math.log(c1[k] / c0[k]); sl += l; sl2 += l * l; } if (c0[k] + a0[k] > 0.1) { wet++; if (c1[k] + a1[k] < 0.03) dry++; } }
+  const spr = Math.sqrt(sl2 / n - (sl / n) * (sl / n));
+  check('the picture is the rain as a radar sees it, not the model\'s rain: of the convective rain ' + (100 * cb / ca).toFixed(0) + ' % and of the stratiform ' + (100 * sb / sa).toFixed(0) + ' % reaches the echo (each between 8 and 70 %), it varies by ' + spr.toFixed(2) + ' (log) from place to place (over 0.5), and ' + (100 * dry / wet).toFixed(0) + ' % of the cells the model rains in show nothing (over 20 %); the radar\'s own checks are in tests/nest_radar.mjs', cb / ca > 0.08 && cb / ca < 0.7 && sb / sa > 0.08 && sb / sa < 0.7 && spr > 0.5 && dry / wet > 0.2);
   const hu = run({ v: 90, rmax: 30 }, 3), u = new Float32Array(NN), v = new Float32Array(NN);
   hu.velocity(u, v); hu.step(120); hu.velocity(u, v);
   let sq = 0, m = 0, gate = 0, gate0 = 0, ng = 0;
