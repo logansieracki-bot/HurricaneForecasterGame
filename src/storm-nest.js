@@ -49,9 +49,10 @@ const PAR = {
   tauUp: 300, tauC2: 1200, sigS: 0.05, tauS: 1800, gs: 0.4,    // radar rain: rise time of convective rain (s), its fall time; the share of it stratiform rain receives (per tauC2), its life (s), the rain of broad ascent (mm/h)
   top: [8.2, 2.4, 15.2, 2.0],      // the top (km) of a convective cell raining r mm/h: top[0] + top[1] ln(1 + r/3), soft-capped (above top[2] it levels off toward top[2] + top[3]); fitted so that a category 1 and 2 hurricane's core has the cold tops of the real ones (Nolo 25-26 Sep 2026, GOES: within 100 km about 17 thousand km2 colder than -60 C and 8 thousand colder than -70 C, the coldest top within 60 km about -78 C)
   memS: 1.2, memN: 0.4, memUp: 10800, memDn: 43200, memA: [1, 5], memR: 10,      // the moisture memory: the gain of the supply on it (and the level of it that leaves the supply as it was), the time it builds over where it rains and the time it lasts in moist air (s), the rain (mm/h, over memR cells) that builds it
-  irSm: 0.75, irN: 2, ciSp: 2, ciR: 1, ciW: 0.7,      // the anvil mixes sideways (passes of a 3 x 3 mean per cirrus step: about 7 km an hour) and is made of the rain of a cell's neighbourhood, not of one cell's (the radius in cells of the mean and its share: isolated cells and thin streaks make small anvils, a mass of rain a large one); the top of a pixel's rain cloud follows the rain of its neighbourhood too (the share of a mean over irN passes of a 3 x 3 mean), so a string of moderate cells is a band, not a row of dots
-  eyeV: [40, 47], eyeU: 6, eyeRing: [1.0, 2.2, 2, 10, 0.45, 0.85], eyeTau: [5400, 3600],      // the eye: the wind (m/s) over which it can form (it begins in category 2 and is there by category 3), how much higher that wind is in the most hostile air (shear, dry air, cool water: the eye erodes at category 3), the ring it needs (inner and outer radius in radii of maximum wind, the rain a sector needs to count: from and to in mm/h, the share of the sectors that makes the ring: from and to) and the time it forms and fills in (s)
-  tauCi: 9000, dzCi: 0.4, ciOut: 8, ciTex: [0.2, 0.25], ciDt: 300,      // infrared: the life of the cirrus the convection spreads (s), its top's fall (km an hour), the upper outflow that spreads it (m/s), the texture on its thickness (cell and cluster scale), how often it is advected (s)
+  irSm: 0.75, irN: 2, ciSp: 2, ciR: [1, 3, 24, 40], ciW: [0.7, 0.9], ciG: [1, 2.5], ciNz: [0.2, 0.15], irCap: [0.4, 11.5, 1, 1], irNz: 0.2,      // the anvil mixes sideways (passes of a 3 x 3 mean per cirrus step: about 7 km an hour) and is made of the rain of a cell's neighbourhood, not of one cell's: the radius in cells of the mean for a weak and for a strong storm and the winds (m/s) between which it grows, the share of the neighbourhood's rain, the most the tallest cells near a point raise it above the neighbourhood's mean rain for a weak and for a strong storm, how much that varies with the clusters of the supply (30 km and 60 km: the canopy of a real hurricane is never a perfect disc); and in the picture how much higher than the canopy over it a rain cloud's own top can be and how high it can be where there is no canopy (km: a cell does not stand a long way out of its anvil), the further rise the few cells of the strongest tail of the cell noise are allowed (km for a unit of the noise over the threshold, and the threshold: overshooting tops are rare, scattered and of every size) and how much the tops of the cells differ (km for a unit of the cell noise); the top of a pixel's rain cloud follows the rain of its neighbourhood too (the share of a mean over irN passes of a 3 x 3 mean), so a string of moderate cells is a band, not a row of dots
+  twN: 3000, twWet: [0.4, 0.06, 0.45, 8], twRain: [3, 30], twOver: 1.8, twR: [16, 44], twRs: 0.3, twLife: [2400, 5400], twRise: 720, twSw: 0.6, twG: [1.3, 0.9], twZn: 0.5, twSc: 0.6, twDz: 8.5, twP: 3.0, twNz: 0.22, twSink: 1.6, twBase: 12.4, twCdo: [2.2, 4.5], twEl: 0.35, twLobe: 0.3, twOs: [1.1, 16.0, 2400], twMem: [2.8, 3.6, 2.2], twMw: [22, 36], twDeep: 0.4,      // the towers of the infrared picture (the clouds of single towers and clusters of towers, objects that move as wholes, grow and fade): the most there can be, the rain (mm/h) under which a place makes none and over which it makes as many as it can, how many times over the wet area their cores cover, the radius range of a skirt (km: a cluster of towers, 15 to 55 km across) and its log-normal spread, their life (s), the time they take to rise (s), the part of the swirl they move with beyond the upper flow, the rain-to-top gain and its spread (log: no two towers are equally strong), how far below the core the rim of the skirt is (km) and how flat the core is, how far a top sinks as the tower ages (km), the highest top the cirrus tracer makes by itself away from the core of a strong storm (km: the colder tops are the towers') and the radii of maximum wind between which the core's smooth dense overcast gives way to the towers, how much the air aloft stretches a tower, how lobed it is, the overshoot above the core of the strongest (km for a unit of the noise over the threshold, and the threshold)
+  eyeV: [41, 45], eyeU: 2.5, eyeSh: [0.3, 0.6, 0.85], eyeRing: [1.0, 2.2, 2, 10, 0.45, 0.85], eyeTau: [2700, 5400], eyeCi: 0.97,      // the eye: the wind (m/s) over which it can form (it begins in category 2 and is there around category 3), how much higher that wind is in the driest or coolest air (a little: hostile air delays an eye, it does not forbid it), the shear that takes it away (as a share of the storm's wind: from, to, and the most of the eye it takes: only a shear that is strong for this storm, a category 3 in 20 m/s, erases an eye), the ring it needs (inner and outer radius in radii of maximum wind, the rain a sector needs to count: from and to in mm/h, the share of the sectors that makes the ring: from and to) and the time it forms (45 minutes: an eye clears quickly) and fills in (an hour and a half) (s), and the share of the cirrus that the sinking air of the eye takes at every spreading of the anvil
+  tauCi: 9000, dzCi: 0.4, ciOut: 8, ciTex: [0.2, 0.25], ciHt: [0.08, 0.15, 0.7], ocAsym: [0.35, 18000], ciDt: 300,      // infrared: the life of the cirrus the convection spreads (s), its top's fall (km an hour), the upper outflow that spreads it (m/s), the texture on its thickness (cell and cluster scale) and on the height of an opaque canopy (km per unit of the noise, the same two scales), the spread of the part of the upper outflow that is not the same in every direction (a wave number 1: its channel wanders) and its time (s), how often the cirrus is advected (s)
   outflow: 4, gsW: 1.6,                                 // the upper-level outflow (m/s) that carries stratiform rain outward from the core; the stratiform rain of an extratropical transition's warm sector (mm/h)
   tauN: [1200, 900], tauG: 3 * 3600, zmax: 0.05, nu: 0, meanStretch: 0, zCap: 3e-3, eye: 0.8, tauA: [1500, 7200],     // relaxation of the mean vorticity to the engine's (inner and outer, s); the time the efficiency adapts over; the cap on |zeta| (1/s); the smoothing of zeta per step; the damping time of the departures from the circle mean in the core and outside it (s: what the third dimension and the convective heating do to the two-dimensional instabilities of a ring); the share of the circle-mean stretching that is kept (the rest is the engine's to say), the vorticity above which stretching stops growing with it (1/s), the eye's share of the radius of maximum wind
   // what a radar makes of the rain (the observation operator of the radar picture; the model's rain, the infrared and every step stay as they were): a rain-free eye long before the cloud tops clear, the share of the condensation that reaches the ground, and how intermittent the echo is
@@ -90,11 +91,11 @@ function Nest(o) {
   this.seed = (o.seed >>> 0) || 1; this.rng = new Rng(this.seed ^ 0x9e3779b9);
   this.t = 0; this.steps = 0; this.ciAcc = 0; this.g = 1; this.gI = 0; this.m = o.m > 0 ? o.m : 1;                                                   // seconds since the nest started, steps taken, the heating efficiency (adapts) and its integral
   const mk = () => new Float32Array(NN);
-  this.zeta = mk(); this.Q = mk(); this.qn = mk(); this.eyeS = 0; this.eyeRd = 0; this.ringC = 0; this.asX = 0; this.asY = 0; this.rng2 = new Rng(this.seed ^ 0x51ed270b); this.eyeG = 0; this.eyeSum = new Float32Array(16); this.eyeCnt = new Float32Array(16); this.rcN = mk(); this.cl = mk(); this.cl2 = mk(); this.mem = mk(); this.memA = mk(); this.rcB = mk(); this.wS = mk(); this.cir = mk(); this.cih = mk(); this.uc = mk(); this.vc = mk(); this.tn1 = null; this.tn2 = null; this.vu = null; this.vv = null; this.turbOn = false; this.rc = mk(); this.rs = mk(); this.P = mk();         // vorticity, column water, supply noise, convective and stratiform rain (mm/h), condensation (mm/s)
+  this.zeta = mk(); this.Q = mk(); this.qn = mk(); this.eyeS = 0; this.eyeRd = 0; this.ringC = 0; this.asX = 0; this.asY = 0; this.rng2 = new Rng(this.seed ^ 0x51ed270b); this.ocX = 0; this.ocY = 0; this.rng3 = new Rng(this.seed ^ 0x2545f491); this.rng4 = new Rng(this.seed ^ 0x6c8e9cf5); this.tw = null; this.twT = 0; this.irT = 0; this.eyeG = 0; this.eyeSum = new Float32Array(16); this.eyeCnt = new Float32Array(16); this.rcN = mk(); this.cl = mk(); this.cl2 = mk(); this.mem = mk(); this.memA = mk(); this.rcB = mk(); this.wS = mk(); this.cir = mk(); this.cih = mk(); this.uc = mk(); this.vc = mk(); this.tn1 = null; this.tn2 = null; this.vu = null; this.vv = null; this.turbOn = false; this.rc = mk(); this.rs = mk(); this.P = mk();         // vorticity, column water, supply noise, convective and stratiform rain (mm/h), condensation (mm/s)
   this.wb = mk(); this.Wc = mk(); this.dv = mk(); this.U = mk(); this.V = mk(); this.us = mk(); this.vs = mk();     // boundary-layer ascent, convective mass flux, divergence, the swirl, the stratiform flow
   this.lf = mk(); this.lfD = mk(); this.lfM = mk(); this.pv = null; this.keepPrev = false; this.t1 = mk(); this.t2 = mk(); this.t3 = mk(); this.sc = [mk(), mk(), mk(), mk(), mk(), mk(), mk()];
   this.dep = { ix: new Int32Array(NN), iy: new Int32Array(NN), fx: mk(), fy: mk() };
-  this.rr = mk(); this.cth = mk(); this.sth = mk(); this.gout = mk(); this.edge = mk(); this.edgeS = mk(); this.rbin = new Int16Array(NN);
+  this.eyM = mk(); this.rr = mk(); this.cth = mk(); this.sth = mk(); this.gout = mk(); this.edge = mk(); this.edgeS = mk(); this.rbin = new Int16Array(NN);
   for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
     const x = (i - (N - 1) / 2) * DX / 1000, y = (j - (N - 1) / 2) * DX / 1000, k = j * N + i, r = Math.hypot(x, y);
     this.rr[k] = r; this.cth[k] = r > 0 ? x / r : 1; this.sth[k] = r > 0 ? y / r : 0; this.rbin[k] = Math.min(NR - 1, Math.round(r));
@@ -133,6 +134,7 @@ Nest.prototype.rescale = function (mNew) {
         tmp[j * N + i] = (a[k0] * (1 - fx) + a[k0 + 1] * fx) * (1 - fy) + (a[k0 + N] * (1 - fx) + a[k0 + N + 1] * fx) * fy; } }
     a.set(tmp);
   }
+  if (this.tw) { const T = this.tw, d = T.d; for (let i = 0; i < T.n; i++) { const o = i * TS; d[o + TX] = c + (d[o + TX] - c) / q; d[o + TY] = c + (d[o + TY] - c) / q; d[o + TVX] /= q; d[o + TVY] /= q; d[o + TR] /= q; } }
   this.m = mNew; this.setGeom(); this.tabAt = -1; this.sz = 0; this.drc = null; this.drs = null; this.pv = null;
 };
 Nest.prototype.setForcing = function (f0, f1) { this.f0 = f0; this.f1 = f1 || f0; this.tF0 = this.t; this.tabAt = -1; };
@@ -155,9 +157,10 @@ Nest.prototype.init = function (f) {                                           /
   this.setForcing(f, f); this.zT.set(vorticityOf(f.vt)); this.tabAt = 0; this.setEnv(null, f);
   const z = this.zeta, Q = this.Q, rr = this.rr, P = PAR;
   for (let k = 0; k < NN; k++) { const r = rr[k], a = Math.min(NR - 1, Math.floor(r)), t = r - a; z[k] = this.zT[a] * (1 - t) + this.zT[a + 1] * t; Q[k] = P.Qc * (P.Qenv + P.QenvV * sm01(f.vmax, 10, 30) + 0.12 * Math.exp(-r / 120)); }
-  this.mem.fill(0); this.memA.fill(0); this.eyeS = sm01(f.vmax * (f.m || 1) - PAR.eyeU * unfavOf(f, f.m || 1), PAR.eyeV[0], PAR.eyeV[1]); this.eyeG = 2400;
+  this.tw = null; this.mem.fill(0); this.memA.fill(0); this.eyeS = eyeWindOf(f, f.m || 1, f.vmax * (f.m || 1)); this.eyeG = 2400;
   this.eyeRd = sm01(f.vmax * (f.m || 1) - PAR.rdEyeU * unfavOf(f, f.m || 1), PAR.rdEye[0], PAR.rdEye[1]);
   { const e = asymOf(f, f.m || 1), rg = this.rng2, g1 = Math.sqrt(-2 * Math.log(rg.next() + 1e-9)), g2 = 2 * Math.PI * rg.next(); this.asX = e[0] + PAR.rdAsym[0] * g1 * Math.cos(g2); this.asY = e[1] + PAR.rdAsym[0] * g1 * Math.sin(g2); }
+  { const rg = this.rng3, g1 = Math.sqrt(-2 * Math.log(rg.next() + 1e-9)), g2 = 2 * Math.PI * rg.next(); this.ocX = PAR.ocAsym[0] * g1 * Math.cos(g2); this.ocY = PAR.ocAsym[0] * g1 * Math.sin(g2); }
   this.clMix(0); this.clMix2(0); for (let k = 0; k < NN; k++) Q[k] += 4 * this.cl[k] * (1 + 0.5 * Math.exp(-rr[k] / 150));
   const qn = this.qn; for (let k = 0; k < NN; k++) qn[k] = (this.rng.next() + this.rng.next() - 1) * 2.449;
   this.blur(qn, this.t1); this.blur(qn, this.t1);
@@ -177,6 +180,45 @@ function boxBlur(a, out, tmp, m) {
     for (let i = 0; i < N; i++) { let s = 0; for (let d = -m; d <= m; d++) s += tmp[((d + 256) & 255) * N + i]; for (let j = 0; j < N; j++) { out[j * N + i] = s * w; s += tmp[((j + m + 1) & 255) * N + i] - tmp[((j - m + 256) & 255) * N + i]; } }
   }
 }
+/* the towers of the infrared picture: the cloud of a tower or of a cluster of towers is an object, not a stretch of a field. It is born where it rains (a place is as likely as its rain, at a random point of it, so they stand in clumps and not
+   at even spacings), is as cold as its own updraught was strong (the strength is log-normal: no two are the same) and as big as the rain under it was heavy, has a cold core in a skirt of thinning anvil (a cell of a real storm is a red core in an
+   orange, yellow, green and blue halo), is stretched the way the air aloft blows over it and is lobed, not round, moves as a whole (the upper flow, the outflow, and a part of the swirl: it is carried round the storm but not drawn out by the
+   differential rotation), grows as its anvil spreads, sinks and fades. A rain-filled band is a string of towers of every size and coolness with the gaps between them, a burst is a heap of them */
+const TS = 16, TX = 0, TY = 1, TVX = 2, TVY = 3, TAGE = 4, TLIFE = 5, TZ = 6, TR = 7, TAR = 8, TTH = 9, TC3 = 10, TS3 = 11, TC4 = 12, TS4 = 13, TOZ = 14, TLB = 15;          // (what a tower is: its place, its drift in cells a second, its age and life, the top of its core (km), the radius of its skirt (cells), its stretch and direction, the phases of its lobes, the overshoot above its core (km) and the size of its lobes)
+Nest.prototype.towerStep = function (dt) {
+  const P = PAR, M = P.twN, T = this.tw || (this.tw = { n: 0, d: new Float32Array(M * TS), cum: new Float32Array(NN), wi: new Float32Array(NN), wf: new Float32Array(NN), wt: new Float32Array(NN) });
+  const d = T.d, U = this.U, V = this.V, uc = this.uc, vc = this.vc, rc = this.rc, eM = this.eyM, sw = P.twSw, rg = this.rng4, cellKm = 2 * this.m, lo = P.twRain[0], hi = P.twRain[1], cum = T.cum, f = this.cur || this.f0;
+  let n = T.n; const cS = sm01(this.vNest * this.m, P.ciR[2], P.ciR[3]), wkB = 1 - sm01(this.vNest * this.m, P.twMw[0], P.twMw[1]);                                  // (how strong the storm is: its towers are weaker updraughts than a burst's)
+  for (let i = 0; i < n; i++) {                                                                                      // (the towers move and age)
+    const o = i * TS; d[o + TAGE] += dt; const x = d[o + TX] + d[o + TVX] * dt, y = d[o + TY] + d[o + TVY] * dt;
+    if (d[o + TAGE] >= d[o + TLIFE] || x < 1 || y < 1 || x > N - 2 || y > N - 2) { n--; if (i < n) d.copyWithin(o, n * TS, n * TS + TS); i--; continue; }
+    d[o + TX] = x; d[o + TY] = y; const k = Math.round(y) * N + Math.round(x); d[o + TVX] = (uc[k] + sw * U[k]) / DX; d[o + TVY] = (vc[k] + sw * V[k]) / DX;
+  }
+  const wI = T.wi, wF = T.wf, ww = P.twWet; for (let k = 0; k < NN; k++) wI[k] = rc[k] > lo && eM[k] < 0.3 ? 1 : 0; boxBlur(wI, wF, T.wt, ww[3]);          // (the share of the cells round a place that are wet: a small rain area makes small cells, a large one large)
+  let tot = 0, W = 0, f2s = 0;
+  for (let k = 0; k < NN; k++) { const r = rc[k]; if (r > lo && eM[k] < 0.3) { const w = r < hi ? r : hi, fs = ww[0] + (1 - ww[0]) * sm01(wF[k], ww[1], ww[2]); tot += w; W += w / hi; f2s += w * fs * fs; } cum[k] = tot; }
+  f2s = tot > 0 ? f2s / tot : 1;
+  const rMean = 0.5 * 0.5 * (P.twR[0] + P.twR[1]) / cellKm, life0 = 0.5 * (P.twLife[0] + P.twLife[1]);                // (what a tower covers of the wet area is its core, about half the radius of its skirt)
+  let want = tot > 0 ? W * P.twOver * (dt / life0) / (Math.PI * rMean * rMean * f2s) : 0; if (want > 160) want = 160;
+  let nb = Math.floor(want + rg.next()); const gauss = () => Math.sqrt(-2 * Math.log(rg.next() + 1e-9)) * Math.cos(2 * Math.PI * rg.next());
+  while (nb-- > 0 && n < M) {
+    const u = rg.next() * tot; let a = 0, b = NN - 1; while (a < b) { const m = (a + b) >> 1; if (cum[m] < u) a = m + 1; else b = m; }
+    const k = a, r = rc[k], o = n++ * TS, ft = Math.min(1, Math.max(0, Math.log(Math.max(r, lo) / lo) / Math.log(hi / lo)));
+    d[o + TX] = (k % N) + rg.next() - 0.5; d[o + TY] = Math.floor(k / N) + rg.next() - 0.5; d[o + TAGE] = 0; d[o + TLIFE] = P.twLife[0] + (P.twLife[1] - P.twLife[0]) * rg.next();
+    const g = gauss(); d[o + TZ] = capZ(topZ((P.twG[0] + (P.twG[1] - P.twG[0]) * cS) * r * Math.exp(P.twZn * g)) + P.twMem[1] * this.mem[k] * wkB) - P.twSc * Math.abs(gauss()); d[o + TR] = (P.twR[0] + (P.twR[1] - P.twR[0]) * ft) * (ww[0] + (1 - ww[0]) * sm01(wF[k], ww[1], ww[2])) * Math.exp(P.twRs * gauss()) / cellKm;        // (the strongest towers do not all stop at the tropopause: they stop a little under it, by a different amount each)
+    const ux = uc[k] - f.ued, vy = vc[k] - f.ved, spd = Math.hypot(ux, vy);                                           // (the air aloft that blows over it, without the environment's steering: the shear, the outflow and the swirl's residue)
+    d[o + TTH] = spd > 0.5 ? Math.atan2(vy, ux) + 0.7 * gauss() : 6.2832 * rg.next(); d[o + TAR] = 1 + P.twEl * Math.min(1, spd / 8) * (0.5 + rg.next());
+    let ph = 6.2832 * rg.next(); d[o + TC3] = Math.cos(ph); d[o + TS3] = Math.sin(ph); ph = 6.2832 * rg.next(); d[o + TC4] = Math.cos(ph); d[o + TS4] = Math.sin(ph); d[o + TLB] = P.twLobe * (0.5 + rg.next());
+    d[o + TOZ] = Math.min(1.3, Math.max(0, P.twOs[0] * (d[o + TZ] - P.twOs[1])) * (0.3 + 0.7 * rg.next()));
+    d[o + TVX] = (uc[k] + sw * U[k]) / DX; d[o + TVY] = (vc[k] + sw * V[k]) / DX;
+  }
+  T.n = n; this.twT = this.t;
+};
+Nest.prototype.towers = function () {                                          // the towers as a list (for the tests and the lab): place and drift in cells, age and life (s), top of the core (km), radius of the skirt (cells), stretch and direction, the overshoot above the core (km)
+  const T = this.tw, d = T ? T.d : null, o = [];
+  if (T) for (let i = 0; i < T.n; i++) { const b = i * TS; o.push({ x: d[b + TX], y: d[b + TY], vx: d[b + TVX], vy: d[b + TVY], age: d[b + TAGE], life: d[b + TLIFE], z: d[b + TZ], R: d[b + TR], ar: d[b + TAR], th: d[b + TTH], oz: d[b + TOZ], lobe: d[b + TLB] }); }
+  return o;
+};
 Nest.prototype.clMix2 = function (a) {                                         // the mesoscale clusters: the same on an 8 x 8 grid (cells 64 km): the rain areas of a few tens to a hundred km that a weak system is made of
   if (!this.clc2) this.clc2 = new Float32Array(64);
   const c = this.clc2, cl = this.cl2, b = Math.sqrt(Math.max(0, 1 - a * a));
@@ -227,7 +269,7 @@ function envGridOf(env, lat0, lon0, sg, fb, out, m) {
   for (let j = 0; j < NE; j++) for (let i = 0; i < NE; i++) {
     const lat = lat0 + (j - (NE - 1) / 2) * 16 * m / KM_DEG, lon = lon0 + (i - (NE - 1) / 2) * 16 * m / kx, jj = sg < 0 ? NE - 1 - j : j, k = jj * NE + i;
     const a = env.sst(lat, lon), b = env.rh(lat, lon), c = env.shear(lat, lon);
-    out.sst[k] = a === a ? a : fb.sst; out.rh[k] = b === b ? clamp(b / 100, 0.05, 1) : fb.rh; out.sh[k] = c === c ? c * KT : fb.shear * (fb.m || 1);
+    out.sst[k] = a === a ? a : fb.sst; out.rh[k] = b === b ? clamp(b / 100, 0.05, 1) : fb.rh; out.sh[k] = c === c ? c * KT / (fb.shK || 1) : fb.shear * (fb.m || 1);
   }
   return out;
 }
@@ -362,8 +404,11 @@ Nest.prototype.step = function (dt) {
   this.ciAcc += dt;
   if (this.ciAcc >= P.ciDt) {                                                      // the cirrus is slow and passive: its flow and its advection are done every few minutes, with the time waited (a third of the cost of doing it at every step)
   // the upper flow that carries the cirrus: the environment's flow aloft and the shear (the plumes go downshear), a weak anticyclonic residue of the swirl and the outflow (an anvil spreads out, curving the way an upper high turns)
-    { const oc = P.ciOut / this.m, shx = 0.8 * f.shear * Math.cos(f.shdir), shy = 0.8 * f.shear * Math.sin(f.shdir), go = this.gout, uc = this.uc, vc = this.vc; for (let k = 0; k < NN; k++) { const g = oc * go[k]; uc[k] = -0.2 * U[k] + f.ued + shx + g * ct[k]; vc[k] = -0.2 * V[k] + f.ved + shy + g * st[k]; } }
-    this.departure(this.uc, this.vc, this.ciAcc); this.gatherOpen([this.cir, this.cih], [sc[0], sc[1]], [true, true]); this.cir.set(sc[0]); this.cih.set(sc[1]); this.ciAcc = 0; this.spreadCirrus();
+    { const oc = P.ciOut / this.m, shx = 0.8 * f.shear * Math.cos(f.shdir), shy = 0.8 * f.shear * Math.sin(f.shdir), go = this.gout, uc = this.uc, vc = this.vc;
+      const oa = P.ocAsym, ca = Math.exp(-this.ciAcc / oa[1]), cb = oa[0] * Math.sqrt(1 - ca * ca), rg = this.rng3, g1 = Math.sqrt(-2 * Math.log(rg.next() + 1e-9)), g2 = 2 * Math.PI * rg.next();
+      this.ocX = this.ocX * ca + cb * g1 * Math.cos(g2); this.ocY = this.ocY * ca + cb * g1 * Math.sin(g2); const ox = this.ocX, oy = this.ocY;                    // (the outflow is not the same in every direction: it has a channel or two, which wander over hours)
+      for (let k = 0; k < NN; k++) { const g = oc * go[k] * Math.max(0.25, 1 + ox * ct[k] + oy * st[k]); uc[k] = -0.2 * U[k] + f.ued + shx + g * ct[k]; vc[k] = -0.2 * V[k] + f.ved + shy + g * st[k]; } }
+    this.departure(this.uc, this.vc, this.ciAcc); this.gatherOpen([this.cir, this.cih], [sc[0], sc[1]], [true, true]); this.cir.set(sc[0]); this.cih.set(sc[1]); this.towerStep(this.ciAcc); this.ciAcc = 0; this.spreadCirrus();
   }
   // noise: the variability of the supply, refreshed a little at every step (a cell's supply lasts about a quarter of an hour: no jumps between pictures)
   {
@@ -380,7 +425,7 @@ Nest.prototype.step = function (dt) {
       const zz = z[k], eta = fcor + (zz > 0 ? zz : 0); const wi = zz > 0 ? P.kv * zz / (1 + zz / P.zs) : 0, we = kw * ((t2[o + ip] - t2[o + im]) - (t1[op + i] - t1[om + i])) / (eta > wMin ? eta : wMin) + wi; wb[k] = we > P.wFloor * wi ? we : P.wFloor * wi; } } }
   boxBlur(rc, this.rcB, this.t3, P.sBlur); boxBlur(wb, this.wS, this.t3, P.wBlur);
   if (this.steps % 3 === 0) { const a = this.t1, rcB = this.rcB, rs = this.rs; for (let k = 0; k < NN; k++) a[k] = rcB[k] + rs[k]; boxBlur(a, this.memA, this.t3, P.memR); }
-  boxBlur(rc, this.rcN, this.t3, P.ciR);                                    // (the rain of a cell's neighbourhood: what an anvil is made of)
+  { const cr = P.ciR, cm = 1 - sm01(f.eta || 0, 0.05, 0.4); boxBlur(rc, this.rcN, this.t3, Math.round(1 + cm * (cr[0] - 1 + (cr[1] - cr[0]) * sm01(this.vNest * this.m, cr[2], cr[3])))); }                                    // (the rain of a cell's neighbourhood: what an anvil is made of)
   this.convect(f, dt, fcor);
   // the engine's mean vorticity: the mean of every circle relaxes toward it (slowly in the core, faster outside)
   { const bz = this.bz, bn = this.bn, zT = this.zT, rm = Math.max(f.rmax, 5), g = this.gz;                    // (the circle means of the start of the step: bz is already a mean)
@@ -423,7 +468,7 @@ Nest.prototype.convect = function (f, dt, fcor) {
   const mm = this.m, vN = this.vNest * mm, fV = f.vmax * mm, sdc = Math.cos(f.shdir), sds = Math.sin(f.shdir), rfd = f.head - Math.PI / 4, crf = Math.cos(rfd), srf = Math.sin(rfd);
   const trA = clamp(f.spd * mm / 8, 0, 1) * 0.45, ventK = 1 - 0.4 * sm01(fV, 45, 70), eQs = this.eQs, eQb = this.eQb, eQc = this.eQc, eBg = this.eBg, eVent = this.eVent, qeV = P.QenvV * sm01(fV, 10, 30);
   const shA = P.shAmp * sm01(f.shear * mm, 3, 13) * (1 - 0.45 * sm01(vN, 22, 38)), cdl = Math.cos(f.shdir + Math.PI / 4), sdl = Math.sin(f.shdir + Math.PI / 4), eDry = this.eDry;
-  const Qc = P.Qc, sz = this.sz || 100, exT = Math.max(eta, sm01(sz, 170, 300)), cl2 = this.cl2, rcN = this.rcN, cW = P.ciW, mem = this.mem, memA = this.memA, memK = 1 / (1 + P.memS * P.memN), rcB = this.rcB, wS = this.wS, cir = this.cir, cih = this.cih, aCi = Math.exp(-dt / P.tauCi), dzCi = dt * P.dzCi / 3600;
+  const Qc = P.Qc, sz = this.sz || 100, exT = Math.max(eta, sm01(sz, 170, 300)), cl2 = this.cl2, rcN = this.rcN, ciS = sm01(vN, P.ciR[2], P.ciR[3]), ciM = 1 - sm01(eta, 0.05, 0.4), twB = P.twBase, twMc = P.twMem[0], twMb = P.twMem[2], twDp = P.twDeep, wkB = 1 - sm01(vN, P.twMw[0], P.twMw[1]), twC = P.twCdo, rmx = Math.max(rmax, 5), cW = 1 + ciM * (P.ciW[0] - 1 + (P.ciW[1] - P.ciW[0]) * ciS), cG = 1 + ciM * (P.ciG[0] - 1 + (P.ciG[1] - P.ciG[0]) * ciS), cn0 = P.ciNz[0] * ciM * (0.5 + 0.5 * ciS), cn1 = P.ciNz[1] * ciM * (0.5 + 0.5 * ciS), mem = this.mem, memA = this.memA, memK = 1 / (1 + P.memS * P.memN), rcB = this.rcB, wS = this.wS, cir = this.cir, cih = this.cih, aCi = Math.exp(-dt / P.tauCi), dzCi = dt * P.dzCi / 3600;
   const favC = sm01(f.rh, 0.25, 0.55) * sm01(f.sst, 25.5, 28), Rsup = Math.min(330, Math.max(P.bgR[0] + (P.bgR[1] - P.bgR[0]) * favC, 0.85 * sz + 40)) * (1 - 0.3 * sm01(vN, 30, 50)), bgS = 1 - P.bgOrg * sm01(vN, 28, 45) * 1.13, Lsc = clamp(sz * (1 + 0.6 * eta), 150, 420), etdW = 14 + 0.03 * Lsc, sg1 = P.bgSig[0], sg2 = P.bgSig[1], sg3 = P.bgSig[2], sg0 = -0.5 * (sg1 * sg1 + sg2 * sg2 + sg3 * sg3);
   const aEnv = dt / P.tauEnv, pm = P.Pmax * this.g * f.conv, aW = P.aW * clamp(this.g, 0.5, 1.8), aUp = 1 - Math.exp(-dt / P.tauUp), aDn = Math.exp(-dt / P.tauC2), aS = Math.exp(-dt / P.tauS), bS = 1 - aS;
   const kr = P.kr[0] + (P.kr[1] - P.kr[0]) * sm01(vN, 22, 50), orgS = sm01(vN, 30, 50), orgV = sm01(vN, 21, 33), vEff = sm01(fV, P.vOn[0], P.vOn[1]), iH = 1 / P.H, ventR = 150 + 3 * rmax, edgeS = this.edgeS, bdm = this.bd, rb = this.rbin, msk = 1 - P.meanStretch, zc = P.zCap;
@@ -435,7 +480,7 @@ Nest.prototype.convect = function (f, dt, fcor) {
     ringC /= 16; }
   if (this.eyeG > 0) { ringC = 1; this.eyeG -= dt; }                            // (a new strong vortex has the ring it is made of until its own rain has formed)
   this.ringC = ringC;
-  const unf = unfavOf(f, mm), eyeT = sm01(vN - P.eyeU * unf, P.eyeV[0], P.eyeV[1]) * sm01(ringC, P.eyeRing[4], P.eyeRing[5]);
+  const unf = unfavOf(f, mm), eyeT = eyeWindOf(f, mm, Math.max(vN, 0.93 * fV)) * sm01(ringC, P.eyeRing[4], P.eyeRing[5]);                           // (the eye follows the wind the game says, or the nest's if that is more: the nest's winds lag the engine's while a storm intensifies)
   this.eyeS += (eyeT - this.eyeS) * (1 - Math.exp(-dt / (eyeT > this.eyeS ? P.eyeTau[0] : P.eyeTau[1])));      // the eye forms in an hour or two once the ring is there and fills again when it breaks
   // the radar's eye: the low levels clear of rain long before the cloud tops do (the eyewall leans out over a calm centre whose air sinks and dries the falling rain; the canopy stays over it for hours), from about 60 mph on, and a part of an eyewall is enough
   const rdT = sm01(vN - P.rdEyeU * unf, P.rdEye[0], P.rdEye[1]) * (0.35 + 0.65 * sm01(ringC, P.rdEyeRing[0], P.rdEyeRing[1]));
@@ -444,7 +489,7 @@ Nest.prototype.convect = function (f, dt, fcor) {
   // and the motion (ahead and right) ask for; the radar's picture is where it shows (radarOp)
   { const as = P.rdAsym, a = Math.exp(-dt / as[1]), b = as[0] * Math.sqrt(1 - a * a), rg = this.rng2, e = asymOf(f, mm), g1 = Math.sqrt(-2 * Math.log(rg.next() + 1e-9)), g2 = 2 * Math.PI * rg.next();
     this.asX = e[0] + (this.asX - e[0]) * a + b * g1 * Math.cos(g2); this.asY = e[1] + (this.asY - e[1]) * a + b * g1 * Math.sin(g2); }
-  const eyeA = this.eyeS * (1 - 0.9 * eta);                                            // the eye: inside the nest's own radius of maximum wind, once the vortex is strong enough to have one
+  const eyM = this.eyM, eyeA = this.eyeS * (1 - 0.9 * eta);                                            // the eye: inside the nest's own radius of maximum wind, once the vortex is strong enough to have one
   for (let k = 0; k < NN; k++) {
     const eS = 1 - (1 - edgeS[k]) * (1 - exT), r = rr[k], l = lfOn ? lfM[k] : 0, c = ct[k], s = st[k];
     const sp = Math.sqrt(mm * mm * (U[k] * U[k] + V[k] * V[k]) + P.u0 * P.u0), nz = Math.max(0, 1 + P.sq * qn[k] + P.sc * cl[k] * (1 - (1 - sm01(r, 1.2 * rmax, 3 * rmax)) * orgS)) * eS;
@@ -474,6 +519,7 @@ Nest.prototype.convect = function (f, dt, fcor) {
     relax += dt * P.dryR * (1 - eDry[k]) / 3600;
     { const h0 = mem[k], h1 = h0 + (1 - h0) * sm01(memA[k], P.memA[0], P.memA[1]) * dt / P.memUp - h0 * (dt * (1 + P.landK * l) / (P.memDn * (0.3 + 0.7 * eBg[k])) + vt); mem[k] = h1 < 0 ? 0 : h1 > 1 ? 1 : h1; }     // the moisture memory builds where it rains, dies away in time (faster in dry air, over land and in the shear's dry air)
     let ey = 0; if (eyeA > 0) { const eR = eyeR * (1 + P.eyeRag * (0.8 * cl[k] + 0.15 * qn[k])); if (r < 1.15 * eR) ey = eyeA * sm01(eR - r, -0.12 * eR, 0.4 * eR + 2); }
+    eyM[k] = ey;
     const p0 = q > Qck ? (q - Qck) / P.tauC : 0, p = p0 > 0 ? pm * (1 - Math.exp(-p0 / pm)) * (1 - ey) : 0;
     q = q + dt * (E + Sq - p); q += relax * (Qe - q); if (ey > 0) q += ey * (1 - Math.exp(-dt / 600)) * (0.7 * Qe - q);
     Q[k] = q < 0 ? 0 : q > 2 * Qc ? 2 * Qc : q; Pr[k] = p;
@@ -484,7 +530,7 @@ Nest.prototype.convect = function (f, dt, fcor) {
     const R = p * 3600 * kr * (1 + Math.min(P.pcx, p / pcS)), rcn = rc[k] + (R - rc[k]) * (R > rc[k] ? aUp : 1 - aDn);
     rc[k] = ey > 0 ? rcn * (1 - P.eyeClr * ey) : rcn;
     { const e0 = cir[k] * aCi, z0 = cih[k] - dzCi;                                                                    // the cirrus: a cell's top (km) and how opaque it is; the old cirrus thins and sinks, the highest top stays
-      if (rcn > 0.05) { const rcc = (1 - cW) * rcn + cW * rcN[k], zc = topZ(rcc), es = 1 - Math.exp(-rcc / 2.5); if (es > e0) { cir[k] = es; cih[k] = e0 > 0.15 && z0 > zc ? z0 : zc; } else { cir[k] = e0; cih[k] = z0 < 6 ? 6 : z0; } } else { cir[k] = e0; cih[k] = z0 < 6 ? 6 : z0; }
+      if (rcn > 0.05) { const rcc = (1 - cW) * rcn + cW * cG * (cn0 > 0 ? Math.exp(cn0 * cl[k] + cn1 * cl2[k]) : 1) * rcN[k], zc = Math.min(topZ(rcc) + twMb * mem[k] * wkB - twDp * ciS, twB + twMc * mem[k] + 30 * ciS * (1 - sm01(r, twC[0] * rmx, twC[1] * rmx))), es = 1 - Math.exp(-rcc / 2.5); if (es > e0) { cir[k] = es; cih[k] = e0 > 0.15 && z0 > zc ? z0 : zc; } else { cir[k] = e0; cih[k] = z0 < 6 ? 6 : z0; } } else { cir[k] = e0; cih[k] = z0 < 6 ? 6 : z0; }
       if (ey > 0) cir[k] *= 1 - 0.8 * P.eyeClr * ey; }
     const sSrc = P.sigS * (P.tauS / P.tauC2) * rcn + P.gsC * rcB[k] + P.gs * Math.min(1, Math.max(0, w * vEff) / 0.4) * (1 - 0.7 * eta * dry) + strat;
     rs[k] = ey > 0 ? (rs[k] * aS + bS * sSrc * (1 - 0.95 * ey)) * (1 - 0.25 * ey) : rs[k] * aS + bS * sSrc;
@@ -496,6 +542,10 @@ const KT = 0.514444, NMI = 1.852;
 function asymOf(f, m) {                                                       // the wave number 1 the environment asks of the eyewall's rain (x, y): toward downshear and left of the shear, toward ahead and right of the motion
   const as = PAR.rdAsym, sh = Math.min(f.shear * m, 10), sp = Math.min(f.spd * m, 8), s1 = f.shdir + Math.PI / 4, s2 = f.head - Math.PI / 4;
   return [as[2] * sh * Math.cos(s1) + as[3] * sp * Math.cos(s2), as[2] * sh * Math.sin(s1) + as[3] * sp * Math.sin(s2)];
+}
+function eyeWindOf(f, m, v) {                                                 // the share of an eye the wind v (m/s) and the air allow (0 to 1): dry or cool air asks a little more wind and only a shear that is strong for this storm takes the eye away (the vortex of a major hurricane resists a shear that ends a weak one)
+  const P = PAR, unf = Math.max(1 - sm01(f.rh, 0.38, 0.62), sm01(26.5 - f.sst, 0, 3)), se = P.eyeSh[2] * sm01(f.shear * m / Math.max(v, 25), P.eyeSh[0], P.eyeSh[1]);
+  return sm01(v - P.eyeU * unf, P.eyeV[0], P.eyeV[1]) * (1 - se);
 }
 function unfavOf(f, m) { return Math.max(sm01(f.shear * m, 5, 14), 1 - sm01(f.rh, 0.38, 0.62), sm01(26.5 - f.sst, 0, 3)); }          // how hostile the air is to an eye (0 to 1): strong shear, dry air or cool water
 function ringInto(vt, rp, Vp, nIn, tail) {                                    // a ring of peak wind Vp (m/s) at radius rp (km) merged into the wind table by the stronger; `tail(r)` is its wind beyond rp
@@ -543,10 +593,10 @@ function forcingOf(S, par, env, h, m) {
       rmax = wIn > 0.5 ? rIn : rOut; Vs = Math.max(wIn * Vb, Vo);
     } else ringInto(vt, rmax, Vs, nIn, tailOf(P));
   }
-  const sh = S.lastShear * KT, sdx = st[4] - st[0], sdy = sg * (st[5] - st[1]);
+  const shK = ((par && par.shearK) || 1) * (S.th === 'wv' ? ((par && par.shearKW) || 1) : 1), sh = S.lastShear * KT / shK, sdx = st[4] - st[0], sdy = sg * (st[5] - st[1]);          // (the shear the map shows is a point value of the page's field, several times what a storm feels: the engine divides it by shearK for every gate, and the nest must feel what the engine's storm feels)
   const subT = S.th === 'sc' || (S.th === 'wv' && S.sub), eta = S.th === 'ex' ? sm01(h - Math.max(S.etAt, 0), 0, W.ex ? W.ex.T : 60) : S.th === 'nl' ? 0.35 : subT ? 0.4 : 0;
   const F = {
-    clat: S.lat, clon: S.lon, lat: Math.abs(S.lat), vmax: Vs, rmax, vt, shear: sh, shdir: Math.atan2(sdy, sdx), uem: (st[2] - cx) * KT, vem: sg * (st[3] - cy) * KT, ued: (st[4] - cx) * KT, ved: sg * (st[5] - cy) * KT,
+    clat: S.lat, clon: S.lon, lat: Math.abs(S.lat), vmax: Vs, rmax, vt, shear: sh, shK, shdir: Math.atan2(sdy, sdx), uem: (st[2] - cx) * KT, vem: sg * (st[3] - cy) * KT, ued: (st[4] - cx) * KT, ved: sg * (st[5] - cy) * KT,
     head: Math.atan2(sg * cy, cx), spd: Math.hypot(cx, cy) * KT, rh: clamp(S.lastRh / 100, 0.1, 1), sst: S.lastSst, eta, etdir: Math.atan2(sg * cy, cx), conv: S.th === 'nl' ? 0.8 : 1, org: 0, sg, cold: subT ? 1 : 0,
   };
   F.m = 1; F.szT = sizeOf(F); F.rmaxT = F.rmax;
@@ -564,6 +614,7 @@ function landGrid(lat0, lon0, isLand, out, m) {
 
 /* the rain `frac` of a step after the last one, for a picture that glides between steps: each tracer is carried back along its own flow for that fraction of the step (nothing of the model changes) */
 Nest.prototype.display = function (frac, tex, ir) {
+  this.irT = this.t + (frac > 0.02 && this.cur ? frac * this.lastDt : 0);                                           // (the instant of this picture, for the towers)
   if (!this.drc) { this.drc = new Float32Array(NN); this.drs = new Float32Array(NN); }
   if (ir && !this.dcr) { this.dcr = new Float32Array(NN); this.dch = new Float32Array(NN); this.dQ = new Float32Array(NN); }
   const rc = this.rc, rs = this.rs, drc = this.drc, drs = this.drs;
@@ -604,7 +655,7 @@ Nest.prototype.displayBlend = function (phi, tex, ir) {
   if (!this.keepPrev) this.keepPrev = true;
   if (!this.pv) this.savePrev();
   if (!this.cur) return this.display(0, tex, ir);
-  phi = phi < 0 ? 0 : phi > 1 ? 1 : phi;
+  phi = phi < 0 ? 0 : phi > 1 ? 1 : phi; this.irT = this.t - (1 - phi) * this.lastDt;
   if (!this.drc) { this.drc = new Float32Array(NN); this.drs = new Float32Array(NN); }
   if (ir && !this.dcr) { this.dcr = new Float32Array(NN); this.dch = new Float32Array(NN); this.dQ = new Float32Array(NN); }
   const dt = this.lastDt, hF = phi * dt / DX, hB = (1 - phi) * dt / DX, pv = this.pv;
@@ -632,6 +683,7 @@ Nest.prototype.spreadCirrus = function () {
   for (let k = 0; k < NN; k++) { a[k] = e[k]; b[k] = e[k] * h[k]; }
   for (let p = 0; p < PAR.ciSp; p++) { this.blurOpen(a, tmp); this.blurOpen(b, tmp); }
   for (let k = 0; k < NN; k++) { const w = a[k]; if (w > 1e-4) { const hm = b[k] / w; if (!(e[k] > 0.3 && h[k] > hm)) h[k] = hm; e[k] = w > 1 ? 1 : w; } else e[k] = 0; }          // (a gap takes the canopy's level, a cloud keeps its own top where it is higher: the domes stay)
+  { const em = this.eyM, c = PAR.eyeCi; for (let k = 0; k < NN; k++) if (em[k] > 0.02) e[k] *= 1 - c * em[k]; }                                    // (the air of the eye sinks and dries: the spreading anvil does not fill it)
 };
 /* what a radar makes of the nest's rain, cell by cell (the nest's own rain, the infrared and every step are left as they are; this is only the picture, docs/radar-research.md): the nest's rain is the water its
    boundary layer's convergence condenses (the cloud tops follow it), and a radar sees the part that falls out of the cloud low down, which is not the same thing:
@@ -673,7 +725,9 @@ Nest.prototype.radarOp = function (qn, cl, cl2) {
 Nest.prototype.texture = function (ir, qnIn, clIn, cl2In) {                                          // (the cirrus' texture is in its transparency: thick cirrus stays opaque, thin cirrus is streaky)
   const P = PAR, qn = qnIn || this.qn, cl = clIn || this.cl;
   if (!ir) this.radarOp(qn, cl, cl2In || this.cl2);
-  if (ir && this.dcr) { const dcr = this.dcr, t0 = P.ciTex[0], t1 = P.ciTex[1]; for (let k = 0; k < NN; k++) { const e = dcr[k]; if (e > 0.01) { const v = 1 - (1 - e) * Math.exp(t0 * qn[k] + t1 * cl[k] - 0.5 * (t0 * t0 + 0.7 * t1 * t1)); dcr[k] = v < 0 ? 0 : v > 1 ? 1 : v; } } }
+  if (ir && this.dcr) { const dcr = this.dcr, dch = this.dch, t0 = P.ciTex[0], t1 = P.ciTex[1], h0 = P.ciHt[0], h1 = P.ciHt[1], h2 = P.ciHt[2], cl2 = cl2In || this.cl2; if (!this.dqn) this.dqn = new Float32Array(NN); this.dqn.set(qn);          // (the cell noise of this picture, for the tops of the rain clouds in irTb)
+    for (let k = 0; k < NN; k++) { const e = dcr[k]; if (e > 0.01) { const v = 1 - (1 - e) * Math.exp(t0 * qn[k] + t1 * cl[k] - 0.5 * (t0 * t0 + 0.7 * t1 * t1)); dcr[k] = v < 0 ? 0 : v > 1 ? 1 : v;
+      if (e > 0.5) dch[k] = capZ(dch[k] + (h0 * qn[k] + h1 * cl[k] + h2 * cl2[k]) * (e < 0.9 ? (e - 0.5) * 2.5 : 1)); } } }          // (an opaque canopy's top is not flat: it is a few tenths of a km up and down, in cells and in clusters)
 };
 
 /* ---- the infrared picture: the brightness temperature (C) of every cell: the sea (or the land) seen through what is above it, layer by layer: scattered low clouds from the water of the column, the tops of the
@@ -692,15 +746,38 @@ Nest.prototype.irTb = function (out, ts0) {
   if (!this.dcr) this.display(0, true, true);
   const P = PAR, Qc = P.Qc, rc = this.drc, rs = this.drs, ci = this.dcr, cz = this.dch, Q = this.dQ, lfM = this.lfM, lfOn = this.lfOn, f = this.cur || this.f0, lat = f.lat;
   const ztp = clamp(16.5 - 0.12 * Math.max(0, lat - 20), 9, 16.5), ttp = -75 + 0.7 * Math.max(0, lat - 18), zk = ztp / 16.5;       // (the clouds' heights are tropical ones: poleward they are scaled by the lower tropopause, so a deep cloud at 50 N tops out near -45 C, not -80 C)
-  const rb = this.t1, wS = P.irSm; rb.set(rc); for (let p = 0; p < P.irN; p++) this.blur(rb, this.t2);
+  const rb = this.t1, wS = P.irSm, nzq = this.dqn || this.qn, icap = P.irCap, inz = P.irNz; rb.set(rc); for (let p = 0; p < P.irN; p++) this.blur(rb, this.t2);
   for (let k = 0; k < NN; k++) {
     const ts = ts0 + (lfOn ? 3 * lfM[k] : 0), qr = Q[k] / Qc, aL = sm01(qr, 0.93, 1.0);
     let tb = ts;
     if (aL > 0) tb += 0.9 * aL * (irTz(ts, zk * (1 + 4.5 * sm01(qr, 0.94, 1.02)), ztp, ttp) - ts);                    // scattered low cloud
     const r1 = rc[k], r2 = rs[k];
-    if (r1 > 0.05 || r2 > 0.05) { const zt = Math.max(r1 > 0.05 || rb[k] > 0.05 ? topZ((1 - wS) * r1 + wS * rb[k]) : 0, capZ(7 + 2.4 * Math.log(1 + r2 / 0.5))); tb += (1 - Math.exp(-(r1 / 3 + r2 / 0.7))) * (irTz(ts, zk * zt, ztp, ttp) - tb); }     // the rain clouds
+    if (r1 > 0.05 || r2 > 0.05) { let zc = 0; if (r1 > 0.05 || rb[k] > 0.05) { zc = capZ(topZ((1 - wS) * r1 + wS * rb[k]) + inz * nzq[k]); const e0 = ci[k], lim = e0 > 0.3 ? cz[k] + icap[0] + icap[2] * (nzq[k] > icap[3] ? nzq[k] - icap[3] : 0) : icap[1]; if (zc > lim) zc = lim; }
+      const zt = Math.max(zc, capZ(7 + 2.4 * Math.log(1 + r2 / 0.5))); tb += (1 - Math.exp(-(r1 / 3 + r2 / 0.7))) * (irTz(ts, zk * zt, ztp, ttp) - tb); }     // the rain clouds: the top of a cell does not stand far out of its anvil and the cells' tops differ
     const e = ci[k]; if (e > 0.01) { const m = tb + e * (irTz(ts, zk * cz[k], ztp, ttp) - tb); if (m < tb) tb = m; }                                           // the cirrus over them
     out[k] = tb;
+  }
+  const T = this.tw;
+  if (T && T.n) {                                                                                                   // the towers: each a core in a skirt, stretched and lobed, over what is below it, the coldest winning
+    const eM = this.eyM, dtd = this.irT - this.twT, rise = P.twRise, dz = P.twDz, pw = P.twP, sink = P.twSink, d = T.d, tnz = P.twNz, LZ = 1024, zs = LZ / 24, lut = this.tzl || (this.tzl = new Float32Array(LZ + 2));
+    for (let i = 0; i <= LZ + 1; i++) lut[i] = irTz(ts0, zk * i / zs, ztp, ttp);                                    // (the temperature at a height, once for this picture: the towers read it a hundred thousand times)
+    for (let q = 0; q < T.n; q++) {
+      const o = q * TS, age = d[o + TAGE] + dtd, life = d[o + TLIFE]; if (age >= life || age < 0) continue;
+      const al = Math.min(1, age / rise) * (age < 0.55 * life ? 1 : 1 - (age - 0.55 * life) / (0.45 * life)); if (al <= 0.02) continue;
+      const R = d[o + TR] * (0.4 + 0.6 * Math.sqrt(Math.min(1, age / (0.5 * life)))), cx = d[o + TX] + d[o + TVX] * dtd, cy = d[o + TY] + d[o + TVY] * dtd, zq = d[o + TZ] - sink * Math.min(1, age / life), oz = d[o + TOZ] * Math.sin(Math.PI * Math.min(1, age / P.twOs[2]));
+      const ar = d[o + TAR], sa = Math.sqrt(ar), Ra = R * sa, Rb = R / sa, lb = d[o + TLB], th = d[o + TTH], ct = Math.cos(th), st = Math.sin(th), c3 = d[o + TC3], s3 = d[o + TS3], c4 = d[o + TC4], s4 = d[o + TS4], iRa = 1 / Ra, iRb = 1 / Rb;
+      const lim2 = (1 + lb) * (1 + lb), hb = Math.max(Ra, Rb) * (1 + lb) + 1, i0 = Math.max(0, Math.floor(cx - hb)), i1 = Math.min(N - 1, Math.ceil(cx + hb)), j0 = Math.max(0, Math.floor(cy - hb)), j1 = Math.min(N - 1, Math.ceil(cy + hb));
+      for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+        const dx = i - cx, dy = j - cy, xi = (dx * ct + dy * st) * iRa, et = (dy * ct - dx * st) * iRb, u2 = xi * xi + et * et; if (u2 >= lim2) continue;
+        let u = Math.sqrt(u2);
+        if (u > 0.05) { const x2 = xi * xi, y2 = et * et, iu3 = 1 / (u2 * u), iu4 = 1 / (u2 * u2);             // (the lobes: the rim stands further out in three and four places, the way each cell has put it)
+          const l3 = ((xi * (x2 - 3 * y2)) * c3 - (et * (3 * x2 - y2)) * s3) * iu3, l4 = ((x2 * x2 - 6 * x2 * y2 + y2 * y2) * c4 - (4 * xi * et * (x2 - y2)) * s4) * iu4;
+          u /= 1 + lb * (0.6 * l3 + 0.4 * l4); }
+        if (u >= 1) continue;
+        const k = j * N + i, e = eM[k], rim = (1 - u) * 7.142857, a = al * (rim >= 1 ? 1 : rim * rim * (3 - 2 * rim)) * (e >= 0.5 ? 0 : 1 - 2 * e); if (a <= 0.02) continue;
+        const zz = zq - dz * (pw === 3 ? u * u * u : Math.pow(u, pw)) + (oz > 0 ? oz * Math.exp(-u2 / 0.05) : 0) + tnz * nzq[k], zf = zz * zs, iz = zf < 0 ? 0 : zf > LZ ? LZ : zf | 0, tt = lut[iz] + (lut[iz + 1] - lut[iz]) * (zf - iz), ok = out[k], m = ok + a * (tt - ok); if (m < ok) out[k] = m;
+      }
+    }
   }
   return out;
 };
