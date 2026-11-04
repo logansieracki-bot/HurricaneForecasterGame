@@ -1750,8 +1750,14 @@ async function checkStormsBasin(page, label, prefix) {
   if (SITE_SPECS[prefix]) await checkFloaterSite(page, label, prefix);
   // the main menu's Continue card for a season saved here names the basin, the season and the local word (this is the last check of a basin's callback: it leaves the page)
   const sc = await ev((q) => { const S = window.SSTSIM; S.stormLabCalendar(q.sm, 1); S.applySeed(31); S.setPlaying(false); S.stormAuto(true); S.tick(24 * 40); S.advance(0); S.saveTick(); return { stats: S.stormState().stats, year: document.getElementById('se-year').textContent, meta: JSON.parse(S.saveInfo().meta) }; }, { sm: BI.seasonMonth });
-  await menuSeen(page); await page.goto(pathToFileURL(join(ROOT, 'index.html')).href, { waitUntil: 'load' });
-  const cardText = await page.evaluate(() => ({ hidden: document.getElementById('continue').hidden, text: document.getElementById('continue').innerText.replace(/\s+/g, ' ') }));
+  await menuSeen(page); await page.waitForTimeout(300);                              // (a write to localStorage reaches another document asynchronously and the menu reads it once, at load: CI run 145 read an empty slot in the South-West Indian Ocean 0.3 s after the save; a card still hidden after the wait is read again, a save that was never written stays hidden every time)
+  let cardText = null;
+  for (let tries = 0; tries < 4; tries++) {
+    await page.goto(pathToFileURL(join(ROOT, 'index.html')).href, { waitUntil: 'load' });
+    cardText = await page.evaluate(() => ({ hidden: document.getElementById('continue').hidden, text: document.getElementById('continue').innerText.replace(/\s+/g, ' ') }));
+    if (!cardText.hidden) break;
+    await page.waitForTimeout(600);
+  }
   const seasonText = sc.year.replace(BI.label + ' ', ''), hw = BI.hurricane + (sc.stats.hurr === 1 ? '' : 's');
   check(`[${label}] the main menu's Continue card for a season saved here reads "${cardText.text.slice(0, 120)}": the basin, the season (${seasonText}), the named storms and the ${hw}`,
     !cardText.hidden && sc.meta.basin === BI.menu && cardText.text.includes(BI.label + ' ' + seasonText) && cardText.text.includes(sc.stats.named + ' named') && cardText.text.includes(sc.stats.hurr + ' ' + hw));
