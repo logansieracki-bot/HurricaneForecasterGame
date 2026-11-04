@@ -234,7 +234,7 @@ footer .link:hover{color:var(--dim)}
 <header id="top">
   <a class="brand" href="#" id="brand" aria-label="Isobar, home">
     <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="16" cy="16" r="2.4" fill="currentColor" stroke="none"/><path d="M16 10.2a5.8 5.8 0 0 1 5.8 5.8" stroke="#72d6ff"/><path d="M16 21.8a5.8 5.8 0 0 1-5.8-5.8" stroke="#72d6ff"/><path d="M16 5.6A10.4 10.4 0 0 1 26.4 16" opacity=".8"/><path d="M16 26.4A10.4 10.4 0 0 1 5.6 16" opacity=".8"/><path d="M16 1.8A14.2 14.2 0 0 1 30.2 16" opacity=".45"/><path d="M16 30.2A14.2 14.2 0 0 1 1.8 16" opacity=".45"/></svg>
-    <b id="brand-name">Isobar</b><span class="ver" id="ver">0.30A</span>
+    <b id="brand-name">Isobar</b><span class="ver" id="ver">0.40A</span>
   </a>
   <button id="back" type="button" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>Back</button>
 </header>
@@ -310,7 +310,7 @@ footer .link:hover{color:var(--dim)}
   </section>
 </main>
 
-<footer><span><b id="ver2">Isobar 0.30A</b><span id="stage-wrap"> · <span id="stage">Early alpha</span></span> · <button class="link" id="wn-open" type="button">What's new</button></span></footer>
+<footer><span><b id="ver2">Isobar 0.40A</b><span id="stage-wrap"> · <span id="stage">Early alpha</span></span> · <button class="link" id="wn-open" type="button">What's new</button></span></footer>
 
 <div class="wn" id="wn" hidden>
   <div class="wn-card" role="dialog" aria-modal="true" aria-labelledby="wn-title" tabindex="-1">
@@ -325,7 +325,7 @@ footer .link:hover{color:var(--dim)}
 /*__MENU_SEASON__*/
 /*__MENU_EXPECT__*/
 /*__MENU_COAST__*/
-const BRAND = 'Isobar', VERSION = '0.30A';
+const BRAND = 'Isobar', VERSION = '0.40A';
 const $ = (id) => document.getElementById(id);
 const STAGE = { A: 'Early alpha', B: 'Beta', R: '' }[VERSION.slice(-1)] || '';
 $('brand-name').textContent = BRAND; $('ver').textContent = VERSION; $('ver2').textContent = BRAND + ' ' + VERSION; document.title = BRAND;
@@ -824,6 +824,12 @@ window.addEventListener('pageshow', showSave);                                  
    changed or fixed. The entry of the version that is running is shown, once, the first time the site is opened after that update (the version last seen is kept in the browser), and
    whenever "What's new" in the footer is pressed ---- */
 const UPDATES = [
+  { v: '0.40A', date: 'Nov 4, 2026', items: [
+    ['add', 'Radar floater: hurricanes now have an inflow side, a broad shield of steady moderate to strong rain in spiral arms, facing the strongest part of the eyewall.'],
+    ['chg', 'Radar floater: the shield is as strong and as large as the storm. A bigger, stronger storm in good air has more of it, a weak, small or sheared one has little.'],
+    ['chg', 'Radar floater: Category 1 to 4 storms no longer sit in bare sea. The rain beyond the core is wider and steadier on the inflow side and thins out on the other.'],
+    ['chg', 'Radar floater: the shield turns round with the eyewall as the shear and the storm motion change which side is strong. Transitions keep their own look.'],
+  ] },
   { v: '0.30A', date: 'Nov 4, 2026', items: [
     ['chg', 'Satellite floater: sheared hurricanes keep their eye. Only a shear that is strong for the storm fills it, and the cold cloud lies downshear in lumps, not a U.'],
     ['chg', 'Satellite floater: eyes now form quickly around Category 3, even in dry or cooler air, and the cloud over the eye clears with them.'],

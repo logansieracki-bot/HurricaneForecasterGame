@@ -37,7 +37,7 @@ export function measureRadar(n, rmaxKm) {
   // the mean rain rate (mm/h, convective and stratiform, zeros included) the picture holds in each band
   const meanR = BANDS.map(([a, b]) => { let sum = 0, tot = 0; for (let k = 0; k < NN; k++) { const r = n.rr[k] * m; if (r < a || r >= b) continue; tot++; sum += n.drc[k] + n.drs[k]; } return +(sum / Math.max(1, tot)).toFixed(2); });
   let mx = -99; for (let k = 0; k < NN; k++) if (dbz[k] > mx) mx = dbz[k];
-  return { dbz, st: { meanR, cls2: cls(0, 2, rm), cls5: cls(2, 5, rm), clsE: EB.map(([a, b]) => cls(a, b, rE)), rE: +rE.toFixed(1), cov, eyeClear: +(clear / Math.max(1, nIn)).toFixed(2), eyeR, peakMean: +pk.toFixed(1), peakR: pkR, ringMax: +ringMax.toFixed(1), ringMin: +ringMin.toFixed(1), ringCover: +ringCover.toFixed(2), ringMean: +ringMean.toFixed(1), A40: Math.round(a40 * cell), A45: Math.round(a45 * cell), max: +mx.toFixed(0), eyeS: +(n.eyeS || 0).toFixed(2), vNest: +(n.vNest * m / 0.514444).toFixed(0) } };
+  return { dbz, st: { meanR, cls2: cls(0, 2, rm), cls5: cls(2, 5, rm), clsE: EB.map(([a, b]) => cls(a, b, rE)), rE: +rE.toFixed(1), cov, eyeClear: +(clear / Math.max(1, nIn)).toFixed(2), eyeR, peakMean: +pk.toFixed(1), peakR: pkR, ringMax: +ringMax.toFixed(1), ringMin: +ringMin.toFixed(1), ringCover: +ringCover.toFixed(2), ringMean: +ringMean.toFixed(1), A40: Math.round(a40 * cell), A45: Math.round(a45 * cell), max: +mx.toFixed(0), eyeS: +(n.eyeS || 0).toFixed(2), vNest: +(n.vNest * m / 0.514444).toFixed(0), lean: +(Math.atan2(n.asY, n.asX) * 180 / Math.PI).toFixed(0), am: +Math.hypot(n.asX, n.asY).toFixed(2) } };
 }
 const PAR0 = JSON.parse(JSON.stringify(N.PAR));
 export function runRadar(c, outp) {
@@ -62,6 +62,6 @@ if (process.argv[1] && process.argv[1].endsWith('radar_lab.mjs')) {
   else for (const [label, rows] of Object.entries(res)) {
     console.log(`== ${label}`);
     console.log('  h   v rmax | eyeClear eyeR | peakMean@R ringMin..Max cover | A40 A45 max | coverage ≥20 dBZ by band (0-15 15-30 30-50 50-75 75-100 100-150 150-250) | ≥40 (same)');
-    for (const r of rows) console.log(`${String(r.h).padStart(3)} ${String(r.v).padStart(3)} ${String(r.rmax).padStart(4)} | ${String(r.eyeClear).padStart(5)} ${String(r.eyeR).padStart(4)} | ${String(r.peakMean).padStart(5)}@${String(r.peakR).padStart(3)} ${String(r.ringMin).padStart(5)}..${String(r.ringMax).padEnd(5)} ${String(r.ringCover).padStart(4)} | ${String(r.A40).padStart(5)} ${String(r.A45).padStart(4)} ${String(r.max).padStart(3)} | ${r.cov.map((c) => c[1].toFixed(2)).join(' ')} | ${r.cov.map((c) => c[3].toFixed(2)).join(' ')}   eyeS ${r.eyeS} vN ${r.vNest}`);
+    for (const r of rows) console.log(`${String(r.h).padStart(3)} ${String(r.v).padStart(3)} ${String(r.rmax).padStart(4)} | ${String(r.eyeClear).padStart(5)} ${String(r.eyeR).padStart(4)} | ${String(r.peakMean).padStart(5)}@${String(r.peakR).padStart(3)} ${String(r.ringMin).padStart(5)}..${String(r.ringMax).padEnd(5)} ${String(r.ringCover).padStart(4)} | ${String(r.A40).padStart(5)} ${String(r.A45).padStart(4)} ${String(r.max).padStart(3)} | ${r.cov.map((c) => c[1].toFixed(2)).join(' ')} | ${r.cov.map((c) => c[3].toFixed(2)).join(' ')}   eyeS ${r.eyeS} vN ${r.vNest} lean ${r.lean} deg (${r.am})`);
   }
 }

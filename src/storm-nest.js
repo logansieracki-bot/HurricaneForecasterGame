@@ -58,6 +58,8 @@ const PAR = {
   // what a radar makes of the rain (the observation operator of the radar picture; the model's rain, the infrared and every step stay as they were): a rain-free eye long before the cloud tops clear, the share of the condensation that reaches the ground, and how intermittent the echo is
   rdEye: [20, 27], rdEyeU: 4, rdEyeTau: [3600, 2700], rdEyeRing: [0.15, 0.55], rdEyeR: [0.42, 0.52, 24, 52], rdEyeW: [1.5, 0.3], rdEyeRag: [0.16, 0.06],        // the wind (m/s) over which the radar's eye clears (about 60 mph clear), how much higher it needs to be in hostile air, the time it clears and fills (s), the ring that is enough for it (a part of the eyewall: from and to), the eye's radius in radii of maximum wind (weak, strong, and the winds between which it grows), the half width of its edge (km, and its share of the radius) and how ragged it is (clusters, cells)
   rdBlur: 2, rdCut: [1.2, 3.5], rdEff: [0.2, 0.4, 90, 1.7], rdEffV: [0.25, 22, 50], rdCap: 400, rdSig: [1.1, 1.55, 2, 6], rdSigW: 0.3, rdNz: [0.25, 0.6, 0.75, 0.2, 0.7, 0.68],        // passes of the smoothing of the rain's cell-to-cell noise; the rain (mm/h of the nest) under which nothing reaches a radar and over which all of it does; the share that reaches the ground: least and most, the rain (mm/h) half way between and the steepness, the part of it a weak storm's shallower convection keeps (from the wind that is a weak storm, to the wind that is not), the rain (mm/h) at which a radar's echo saturates; the spread (log) of the rain's variability in the core and outside it, the radii of maximum wind between which it passes from one to the other, the share of it a weak vortex keeps (its supply is log-normal already: the same noise fields would be counted twice); the weights of the cell, cluster and large-cluster noise in the core and outside it
+  rdIn: [26, 0.785, 0.2, 1.25, -0.3, 2.4, 5, 0.5, 1.2, 0.2, 0.5, 0.3, 0.3, 16, 46, 150, 1.5, 3, 0.05],        // the inflow side's rainband complex (see radarOp): the radar's rain at its peak (mm/h), where it lies clockwise of the strongest sector (rad), its twist with radius (rad per e-fold), its half width (rad: of a storm with no inflow, and what the inflow takes off: a weak one is not defined), the radii it begins over (eye radii), where it begins to fade and where it is gone (in radii of 34 kt wind: least, and what the inflow adds to both ends), the spread of its variability (log), the convective share of it, how it thins with radius, the wind (m/s) over which a storm gets it, the size (km) of a storm that has all of it, the rain (mm/h) under which it is not seen and over which all of it is, and the share of it a depression has
+  rdArm: [9, 0.47, 0.55, 1.3, 0.9, 0.2],        // the spiral arms in it: how many, the tangent of their pitch (log spirals, clockwise outward in the northern hemisphere's frame), how deep the gaps between them are, how sharp the arms are, how far the cluster noise bends them (rad) and how fast the pattern moves outward (rad an hour)
   rdAsym: [0.5, 14400, 0.07, 0.05, 0.95, 0.3, 0.7, 2.5, 5],        // the eyewall's wave number 1: the spread of the part that wanders (each component) and its time (s), what each m/s of shear and of motion asks for, the most it can be, the share the strongest winds take off it (from 45 to 65 m/s: more symmetric), and the radii of maximum wind between which it begins outside the eye and fades out
 };
 
@@ -91,14 +93,14 @@ function Nest(o) {
   this.seed = (o.seed >>> 0) || 1; this.rng = new Rng(this.seed ^ 0x9e3779b9);
   this.t = 0; this.steps = 0; this.ciAcc = 0; this.g = 1; this.gI = 0; this.m = o.m > 0 ? o.m : 1;                                                   // seconds since the nest started, steps taken, the heating efficiency (adapts) and its integral
   const mk = () => new Float32Array(NN);
-  this.zeta = mk(); this.Q = mk(); this.qn = mk(); this.eyeS = 0; this.eyeRd = 0; this.ringC = 0; this.asX = 0; this.asY = 0; this.rng2 = new Rng(this.seed ^ 0x51ed270b); this.ocX = 0; this.ocY = 0; this.rng3 = new Rng(this.seed ^ 0x2545f491); this.rng4 = new Rng(this.seed ^ 0x6c8e9cf5); this.tw = null; this.twT = 0; this.irT = 0; this.eyeG = 0; this.eyeSum = new Float32Array(16); this.eyeCnt = new Float32Array(16); this.rcN = mk(); this.cl = mk(); this.cl2 = mk(); this.mem = mk(); this.memA = mk(); this.rcB = mk(); this.wS = mk(); this.cir = mk(); this.cih = mk(); this.uc = mk(); this.vc = mk(); this.tn1 = null; this.tn2 = null; this.vu = null; this.vv = null; this.turbOn = false; this.rc = mk(); this.rs = mk(); this.P = mk();         // vorticity, column water, supply noise, convective and stratiform rain (mm/h), condensation (mm/s)
+  this.zeta = mk(); this.Q = mk(); this.qn = mk(); this.eyeS = 0; this.eyeRd = 0; this.ringC = 0; this.unf = 0; this.asX = 0; this.asY = 0; this.rng2 = new Rng(this.seed ^ 0x51ed270b); this.ocX = 0; this.ocY = 0; this.rng3 = new Rng(this.seed ^ 0x2545f491); this.rng4 = new Rng(this.seed ^ 0x6c8e9cf5); this.tw = null; this.twT = 0; this.irT = 0; this.eyeG = 0; this.eyeSum = new Float32Array(16); this.eyeCnt = new Float32Array(16); this.rcN = mk(); this.cl = mk(); this.cl2 = mk(); this.mem = mk(); this.memA = mk(); this.rcB = mk(); this.wS = mk(); this.cir = mk(); this.cih = mk(); this.uc = mk(); this.vc = mk(); this.tn1 = null; this.tn2 = null; this.vu = null; this.vv = null; this.turbOn = false; this.rc = mk(); this.rs = mk(); this.P = mk();         // vorticity, column water, supply noise, convective and stratiform rain (mm/h), condensation (mm/s)
   this.wb = mk(); this.Wc = mk(); this.dv = mk(); this.U = mk(); this.V = mk(); this.us = mk(); this.vs = mk();     // boundary-layer ascent, convective mass flux, divergence, the swirl, the stratiform flow
   this.lf = mk(); this.lfD = mk(); this.lfM = mk(); this.pv = null; this.keepPrev = false; this.t1 = mk(); this.t2 = mk(); this.t3 = mk(); this.sc = [mk(), mk(), mk(), mk(), mk(), mk(), mk()];
   this.dep = { ix: new Int32Array(NN), iy: new Int32Array(NN), fx: mk(), fy: mk() };
-  this.eyM = mk(); this.rr = mk(); this.cth = mk(); this.sth = mk(); this.gout = mk(); this.edge = mk(); this.edgeS = mk(); this.rbin = new Int16Array(NN);
+  this.eyM = mk(); this.rr = mk(); this.cth = mk(); this.sth = mk(); this.ang = mk(); this.gout = mk(); this.edge = mk(); this.edgeS = mk(); this.rbin = new Int16Array(NN);
   for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
     const x = (i - (N - 1) / 2) * DX / 1000, y = (j - (N - 1) / 2) * DX / 1000, k = j * N + i, r = Math.hypot(x, y);
-    this.rr[k] = r; this.cth[k] = r > 0 ? x / r : 1; this.sth[k] = r > 0 ? y / r : 0; this.rbin[k] = Math.min(NR - 1, Math.round(r));
+    this.rr[k] = r; this.ang[k] = Math.atan2(y, x); this.cth[k] = r > 0 ? x / r : 1; this.sth[k] = r > 0 ? y / r : 0; this.rbin[k] = Math.min(NR - 1, Math.round(r));
     this.edge[k] = 1 - sm01(Math.max(Math.abs(x), Math.abs(y)), 170, 250); this.edgeS[k] = 1 - sm01(Math.max(Math.abs(x), Math.abs(y)), PAR.edgeS[0], PAR.edgeS[1]);                                     // the vortex's winds fade toward the box's edges so the periodic domain has no seam
   }
   this.setGeom();
@@ -480,7 +482,7 @@ Nest.prototype.convect = function (f, dt, fcor) {
     ringC /= 16; }
   if (this.eyeG > 0) { ringC = 1; this.eyeG -= dt; }                            // (a new strong vortex has the ring it is made of until its own rain has formed)
   this.ringC = ringC;
-  const unf = unfavOf(f, mm), eyeT = eyeWindOf(f, mm, Math.max(vN, 0.93 * fV)) * sm01(ringC, P.eyeRing[4], P.eyeRing[5]);                           // (the eye follows the wind the game says, or the nest's if that is more: the nest's winds lag the engine's while a storm intensifies)
+  const unf = unfavOf(f, mm); this.unf = unf; const eyeT = eyeWindOf(f, mm, Math.max(vN, 0.93 * fV)) * sm01(ringC, P.eyeRing[4], P.eyeRing[5]);                           // (the eye follows the wind the game says, or the nest's if that is more: the nest's winds lag the engine's while a storm intensifies)
   this.eyeS += (eyeT - this.eyeS) * (1 - Math.exp(-dt / (eyeT > this.eyeS ? P.eyeTau[0] : P.eyeTau[1])));      // the eye forms in an hour or two once the ring is there and fills again when it breaks
   // the radar's eye: the low levels clear of rain long before the cloud tops do (the eyewall leans out over a calm centre whose air sinks and dries the falling rain; the canopy stays over it for hours), from about 60 mph on, and a part of an eyewall is enough
   const rdT = sm01(vN - P.rdEyeU * unf, P.rdEye[0], P.rdEye[1]) * (0.35 + 0.65 * sm01(ringC, P.rdEyeRing[0], P.rdEyeRing[1]));
@@ -649,7 +651,7 @@ Nest.prototype.savePrev = function () {
   pv.sc = this.rdScalars();
 };
 Nest.prototype.rdScalars = function () {                                       // the few numbers the radar's picture takes from the state besides the fields: the eye, the eyewall's lean, the radius and wind of the vortex, the transition
-  const f = this.cur || this.f0; return [this.eyeRd, this.asX, this.asY, this.rmaxN, this.vNest, f ? f.eta || 0 : 0];
+  const f = this.cur || this.f0; return [this.eyeRd, this.asX, this.asY, this.rmaxN, this.vNest, f ? f.eta || 0 : 0, this.sz, this.unf, this.ringC];
 };
 Nest.prototype.displayBlend = function (phi, tex, ir) {
   if (!this.keepPrev) this.keepPrev = true;
@@ -693,6 +695,9 @@ Nest.prototype.spreadCirrus = function () {
      supply is log-normal already, rdSigW), and the rain too light to reach a radar is left out (rdCut), so the bands have edges and the gaps between them are empty;
    - an echo saturates (rdCap);
    - a wave number 1 of the eyewall leans where the shear and the motion ask and wanders (asX, asY), so that the ring has a weak side;
+   - the inflow side (rdIn, rdArm): the principal rainband complex that the moist inflow feeds and the nest's one layer cannot form, as a rain of its own added to the nest's: a broad shield clockwise of the strongest eyewall sector
+     (the side the cyclonic flow comes from), made of log-spiral arms that the swirl-carried noise bends and winds, as strong as the storm (its wind), as large as its wind field and as organised as its air and ring allow,
+     nothing in a transition and little in a depression (docs/radar-research.md part 2);
    - a rain-free eye (eyeRd: from about 60 mph on, a radius that grows with the wind, a ragged edge, clearing in patches before it is whole), long before the cloud tops' eye (eyeS). */
 Nest.prototype.radarOp = function (qn, cl, cl2) {
   const P = PAR, drc = this.drc, drs = this.drs, rr = this.rr, rb = this.rbin, sc = this.rdPar || this.rdScalars(), rmax = Math.max(sc[3], 5), vN = sc[4] * this.m;
@@ -706,15 +711,35 @@ Nest.prototype.radarOp = function (qn, cl, cl2) {
     tb[0][i] = (sg[1] + (sg[0] - sg[1]) * wc) * sigK; tb[1][i] = nz[3] + (nz[0] - nz[3]) * wc; tb[2][i] = nz[4] + (nz[1] - nz[4]) * wc; tb[3][i] = nz[5] + (nz[2] - nz[5]) * wc; tb[4][i] = sm01(rn, as[6], as[6] + 0.45) * (1 - sm01(rn, as[7], as[8]));
   }
   const am = Math.hypot(sc[1], sc[2]), aK = Math.min(am, as[4]) / (am || 1) * (1 - as[5] * sm01(vN, 45, 65)), ax = sc[1] * aK, ay = sc[2] * aK;
+  // the inflow side: the rain of the band complex the moist inflow feeds (the nest's reduced dynamics cannot form it): a broad sector clockwise of the strongest eyewall sector, thinning outward, as large and as strong as the storm's inflow is
+  const ni = P.rdIn, fV = ni[18] + (1 - ni[18]) * sm01(vN, ni[13], ni[14]), fS = clamp(sc[6] * this.m / ni[15], 0.55, 1.4), fO = (1 - 0.5 * sc[7]) * (0.6 + 0.4 * sm01(sc[8], 0.2, 0.7)), Ish = fV * Math.pow(fS, 0.6) * fO * (1 - sm01(sc[5], 0.1, 0.5));
+  const arm = P.rdArm, iTa = 1 / arm[1], om = arm[5] * (this.irT || this.t) / 3600, ang = this.ang, shOn = Ish > 0.03 && am > 0.02, thC = Math.atan2(sc[2], sc[1]) - ni[1], cC = Math.cos(thC), sC = Math.sin(thC), sgA = ni[3] + ni[4] * Ish, kA = 1 / (sgA * sgA), iE = 1 / Math.max(rE0, 1), szK = clamp(sc[6], 20, 300), ro0 = szK * (ni[7] + ni[9] * Ish), ro1 = szK * (ni[8] + ni[9] * Ish), orgA = sm01(vN, 22, 42), rP = Math.pow(Ish, 0.7) * ni[0], sgm = ni[10], fcv = ni[11];
   for (let k = 0; k < NN; k++) {
-    const a0 = drc[k], b0 = drs[k]; if (a0 + b0 < 0.03) { drc[k] = 0; drs[k] = 0; continue; }
-    const i = rb[k], zq = qn[k] * 1.075, zc = cl[k] * 1.39, zl = cl2[k] * 1.39;                // (unit variance each)
-    const sig = tb[0][i], z = tb[1][i] * zq + tb[2][i] * zc + tb[3][i] * zl, A = (ax * ct[k] + ay * st[k]) * tb[4][i] + 1;
-    const chi = Math.exp(sig * z - 0.5 * sig * sig) * (A > 0.03 ? A : 0.03), Rt = (a0 + b0) * chi;
-    if (Rt <= cu0) { drc[k] = 0; drs[k] = 0; continue; }
-    const T = Math.pow(Rt * iRh, en); let S = chi * (e0 + e1 * T / (1 + T)); if (Rt < cu1) S *= sm01(Rt, cu0, cu1);
-    let a = a0 * S, b = b0 * S; { const h = 1 / (1 + (a + b) / cap); a *= h; b *= h; }                // (no drop spectrum reflects more than about 55 dBZ: the rain a radar can see saturates)
-    const r = rr[k];
+    const a0 = drc[k], b0 = drs[k], r = rr[k], i = rb[k], zq = qn[k] * 1.075, zc = cl[k] * 1.39, zl = cl2[k] * 1.39;                // (unit variance each)
+    const z = tb[1][i] * zq + tb[2][i] * zc + tb[3][i] * zl;
+    let a = 0, b = 0;
+    if (a0 + b0 >= 0.03) {
+      const sig = tb[0][i], A = (ax * ct[k] + ay * st[k]) * tb[4][i] + 1;
+      const chi = Math.exp(sig * z - 0.5 * sig * sig) * (A > 0.03 ? A : 0.03), Rt = (a0 + b0) * chi;
+      if (Rt > cu0) { const T = Math.pow(Rt * iRh, en); let S = chi * (e0 + e1 * T / (1 + T)); if (Rt < cu1) S *= sm01(Rt, cu0, cu1); a = a0 * S; b = b0 * S; }
+    }
+    if (shOn) {
+      const u = r * iE;
+      if (u > ni[5] && r < ro1) {
+        const sr = sm01(u, ni[5], ni[6]) * (1 - sm01(r, ro0, ro1));
+        if (sr > 0.002) {
+          const lu = Math.log(u * 0.3333); let d = ang[k] - thC - ni[2] * lu; d -= 6.2831853 * Math.round(d / 6.2831853);
+          const sa = Math.exp(-0.5 * d * d * kA);
+          if (sa > 0.01) {
+            const zs = 0.45 * zq + 0.65 * zc + 0.35 * zl, ps = arm[0] * (ang[k] + iTa * lu) - om + arm[4] * zc, cs = 0.5 + 0.5 * Math.cos(ps), af = 1 - arm[2] * orgA + arm[2] * orgA * Math.pow(cs, arm[3]);
+            let R = rP * sr * sa * Math.pow(u * 0.3333, -ni[12]) * af * Math.exp(sgm * zs - 0.5 * sgm * sgm * 0.74); R *= sm01(R, ni[16], ni[17]);
+            a += R * fcv; b += R * (1 - fcv);
+          }
+        }
+      }
+    }
+    if (a + b <= 0) { drc[k] = 0; drs[k] = 0; continue; }
+    { const h = 1 / (1 + (a + b) / cap); a *= h; b *= h; }                // (no drop spectrum reflects more than about 55 dBZ: the rain a radar can see saturates)
     if (eyeOn && r < 1.6 * rE0) {
       const rE = rE0 * (1 + eg[0] * zc + eg[1] * zq), w = ew[0] + ew[1] * rE, E = sm01(rE - r, -w, w) * sm01(zeq - (0.6 * zq + 0.8 * zc), -0.35, 0.35);
       if (E > 0) { a *= 1 - E; b *= 1 - E; }
