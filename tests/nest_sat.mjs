@@ -179,6 +179,20 @@ function NE_MID(g) { return (g.sh.length >> 1) + (Math.sqrt(g.sh.length) >> 1); 
   check('no cell pops in or out between two pictures 10 minutes apart: ' + big + ' of the ' + NN + ' cells change by more than 30 C (at most 1 %)', big < 0.01 * NN);
 }
 
+/* ---- the picture a playing clock makes (displayBlend: the state one step ago and the state now, mixed over the step) is the paused picture's weather and not another one ------------------------------- */
+{
+  reset();
+  const tbBlend = (n, phi, sst = 28.8) => { n.displayBlend(phi, true, true); return n.irTb(new Float32Array(NN), sst); };
+  const rows = [{ v: 110, rmax: 22, r34: 150 }, { v: 125, rmax: 20, r34: 150 }, { v: 50, rmax: 40, r34: 130 }, { v: 70, rmax: 35, r34: 140 }].map((o) => {
+    const n = run(o, 8); n.keepPrev = true; for (let s = 0; s < 3; s++) n.step(120);                       // (the floater keeps the state one step ago from the first picture of a playing clock, in steps of 2 minutes)
+    const p = Float32Array.from(tbOf(n)), e = tbBlend(n, 1), m = tbBlend(n, 0.5); let dmax = 0; for (let k = 0; k < NN; k++) dmax = Math.max(dmax, Math.abs(p[k] - e[k]));
+    return { dmax, a: area(p, -70), b: area(m, -70), t0: tmin(p), t1: tmin(m) };
+  });
+  check('the playing clock draws the paused picture at the end of a step: a 110 kt, a 125 kt, a 50 kt and a 70 kt storm differ by at most ' + rows.map((r) => f2(r.dmax, 3)).join(', ') + ' C from it in any cell (under 0.01)', rows.every((r) => r.dmax < 0.01));
+  check('and half way through a step it is the same weather, not a colder one: the area colder than -70 C is ' + rows.map((r) => f2(r.b, 1) + ' against ' + f2(r.a, 1)).join(', ') + ' thousand km2 (within 25 % and 0.5 of it), the coldest top ' + rows.map((r) => f2(r.t1, 1) + ' against ' + f2(r.t0, 1)).join(', ') + ' C (within 2 C)',
+    rows.every((r) => Math.abs(r.b - r.a) < 0.25 * r.a + 0.5 && Math.abs(r.t1 - r.t0) < 2));
+}
+
 /* ---- what it costs ---------------------------------------------------------------------------------------------------------------------------------------------------------- */
 {
   reset();

@@ -504,6 +504,7 @@ const mutants = [
   M('R35', NS, [E("Ish = fV * Math.pow(fS, 0.6) * fO * (1 - sm01(sc[5], 0.1, 0.5));", "Ish = fV * Math.pow(fS, 0.6) * fO;")], ['radar'], 'an extratropical transition keeps the inflow side of the tropical storm it was'),
   M('R36', NS, [E("thC = Math.atan2(sc[2], sc[1]) - ni[1],", "thC = -ni[1],")], ['radar'], 'the shield ignores the eyewall\'s lean: it is always on the same side'),
   M('R37', NS, [E("om = arm[5] * (this.irT || this.t) / 3600,", "om = 0,")], ['radar'], 'the arms stand still: the pattern does not move outward'),
+  M('R38', NS, [E("cb[k] = (1 - phi) * c0[k] + phi * c1[k]; c2b[k] = (1 - phi) * d0[k] + phi * d1[k]; } if (!ir) {", "cb[k] = (1 - phi) * c0[k] + phi * c1[k]; if (ir) c2b[k] = (1 - phi) * d0[k] + phi * d1[k]; } if (!ir) {")], ['radar'], 'the playing clock hands the radar a scratch buffer for the 64 km clusters (the radar of a playing clock is another weather)'),
 
   // ---- M30: the satellite's picture: the eye, the storm's own shear, the cells (tests/nest_sat.mjs)
   M('T1', NS, [E("f.shear * m / Math.max(v, 25)", "f.shear * m / 25")], ['irnest'], 'a strong vortex does not resist a shear more than a weak one'),
@@ -536,6 +537,10 @@ const mutants = [
   M('T28', NS, [E("twG: [1.3, 0.9],", "twG: [0.5, 0.5],")], ['irnest'], 'the cells of a burst are as shallow as a hurricane\'s'),
   M('T29', NS, [E("eyeSh: [0.3, 0.6, 0.85],", "eyeSh: [0.1, 0.2, 0.85],")], ['irnest', 'nest'], 'a moderate shear takes the eye'),
   M('T30', NS, [E("eyeV: [41, 45],", "eyeV: [47, 52],")], ['irnest'], 'the eye waits for category 4'),
+  // ---- the picture a playing clock makes (milestone 31a): the state one step ago and the state now, mixed over the step
+  M('V1', NS, [E("cb[k] = (1 - phi) * c0[k] + phi * c1[k]; c2b[k] = (1 - phi) * d0[k] + phi * d1[k]; } if (!ir) {", "cb[k] = (1 - phi) * c0[k] + phi * c1[k]; if (!ir) c2b[k] = (1 - phi) * d0[k] + phi * d1[k]; } if (!ir) {")], ['irnest', 'sat'], 'the playing clock hands the infrared texture a scratch buffer for the 64 km clusters (far too cold, pink canopy)'),
+  M('V2', NS, [E("qb[k] = (1 - phi) * q0[k] + phi * q1[k];", "qb[k] = q0[k];")], ['irnest'], 'the playing clock draws the cell noise of the step before'),
+  M('V3', NS, [E("phi = phi < 0 ? 0 : phi > 1 ? 1 : phi; this.irT = this.t - (1 - phi) * this.lastDt;", "phi = phi < 0 ? 0 : phi > 1 ? 1 : phi; this.irT = this.t - phi * this.lastDt;")], ['irnest'], 'the playing clock places the towers at the wrong instant (the start of the step when the step is over)'),
 ];
 
 /* the page's storm code lives in several files now (the template and the shared src/storm-*.js / storm-ui.* that the build inlines into every basin's page): a mutant written against the
@@ -641,11 +646,11 @@ await browser.close();
 
 function snapshot(id, mutatedIndexHtml) {
   const dir = join(OUT, id); rmSync(dir, { recursive: true, force: true });
-  for (const d of ['dist', 'tests', 'src']) mkdirSync(join(dir, d), { recursive: true });
+  for (const d of ['dist', 'tests', 'src', 'tools']) mkdirSync(join(dir, d), { recursive: true });
   for (const f of new Set(['atlantic', GATE_BASIN, 'westpacific', 'aus'])) copyFileSync(join(REPO, `dist/${f}-sst-simulator.html`), join(dir, `dist/${f}-sst-simulator.html`));
   if (!existsSync(join(dir, 'data'))) symlinkSync(join(REPO, 'data'), join(dir, 'data'));
   writeFileSync(join(dir, 'index.html'), mutatedIndexHtml);
-  copyFileSync(join(REPO, 'package.json'), join(dir, 'package.json'));
+  copyFileSync(join(REPO, 'package.json'), join(dir, 'package.json')); copyFileSync(join(REPO, 'tools/menu_expect_lib.mjs'), join(dir, 'tools/menu_expect_lib.mjs')); copyFileSync(join(REPO, 'src/menu.html'), join(dir, 'src/menu.html'));          // (tests/run.mjs, which the browser drivers are cut from, imports the menu's expected-season model and reads the menu's version)
   for (const f of ['tests/storms.mjs', 'tests/nest.mjs', 'tests/nest_radar.mjs', 'tests/nest_sat.mjs', 'tests/storms_env.mjs', 'src/storm-cities.js']) copyFileSync(join(REPO, f), join(dir, f));
   for (const f of ['template.html', 'template-eastpacific.html', 'template-wpac.html', 'template-nio.html', 'template-aus.html', 'template-swio.html', 'template-spac.html', 'template-satl.html', 'template-med.html']) if (!existsSync(join(dir, 'src', f))) copyFileSync(join(REPO, 'src', f), join(dir, 'src', f));      // (the node tests read the city lists of the nine pages)
   if (!existsSync(join(dir, 'node_modules'))) symlinkSync(join(REPO, 'node_modules'), join(dir, 'node_modules'));

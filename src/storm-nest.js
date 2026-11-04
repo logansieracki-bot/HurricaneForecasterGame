@@ -673,7 +673,7 @@ Nest.prototype.displayBlend = function (phi, tex, ir) {
   };
   mix(pv.rc, this.rc, this.drc, this.U, this.V); mix(pv.rs, this.rs, this.drs, this.us, this.vs);
   if (ir) { mix(pv.cir, this.cir, this.dcr, this.uc, this.vc); mix(pv.cih, this.cih, this.dch, this.uc, this.vc); mix(pv.Q, this.Q, this.dQ, this.U, this.V); }
-  if (tex) { const qb = this.t1, cb = this.t2, c2b = this.t3, q0 = pv.qn, c0 = pv.cl, d0 = pv.cl2, q1 = this.qn, c1 = this.cl, d1 = this.cl2; for (let k = 0; k < NN; k++) { qb[k] = (1 - phi) * q0[k] + phi * q1[k]; cb[k] = (1 - phi) * c0[k] + phi * c1[k]; if (!ir) c2b[k] = (1 - phi) * d0[k] + phi * d1[k]; } if (!ir) { const a = pv.sc, b = this.rdScalars(); this.rdPar = a.map((v, i) => (1 - phi) * v + phi * b[i]); } this.texture(ir, qb, cb, c2b); this.rdPar = null; }
+  if (tex) { const qb = this.t1, cb = this.t2, c2b = this.t3, q0 = pv.qn, c0 = pv.cl, d0 = pv.cl2, q1 = this.qn, c1 = this.cl, d1 = this.cl2; for (let k = 0; k < NN; k++) { qb[k] = (1 - phi) * q0[k] + phi * q1[k]; cb[k] = (1 - phi) * c0[k] + phi * c1[k]; c2b[k] = (1 - phi) * d0[k] + phi * d1[k]; } if (!ir) { const a = pv.sc, b = this.rdScalars(); this.rdPar = a.map((v, i) => (1 - phi) * v + phi * b[i]); } this.texture(ir, qb, cb, c2b); this.rdPar = null; }
 };
 /* the anvil spreads sideways: the cloud's opacity and its top (weighted by the opacity) are mixed over a few km, so the gaps between the cells of a canopy fill in and its edges soften */
 Nest.prototype.blurOpen = function (a, tmp) {                                  // [1 2 1]/4 in x then y, the box's edge value standing beyond the edge (an open boundary: nothing wraps round), in place

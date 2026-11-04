@@ -224,9 +224,10 @@ const STORM_API = {
   floaterRun(sec) { if (!flOn) return 0; while (flSpinN < FL_SPIN) flSpin(1e9); const n = flWork(sec, 1e9); flRender(); stormsDirty = true; return n; },                      // synchronous: run the floater's clock `sec` seconds (the frame loop does the same a little at a time)
   floaterProfile() { if (!flOn || !flNest) return null; while (flSpinN < FL_SPIN) flSpin(1e9); const m = (fn, k) => { const t0 = performance.now(); for (let i = 0; i < k; i++) fn(); return (performance.now() - t0) / k; }; return { step: m(() => flNest.step(FL_DT), 6), land: m(flLandUpdate, 3), env: m(flEnvUpdate, 3), render: (m(flRender, 2), m(flRender, 10)), prof: flProf.map((x) => Math.round(x * 10) / 10), display: m(() => flNest.display(0.5), 4) }; },
   floaterGrid() { return flNest ? { dbz: Array.from(flDbz || []), n: HFNest.N } : null; },
-  floaterTb() {                                                         // tests and tools: the infrared picture as the floater makes it (256 x 256 brightness temperatures in C, row 0 south, base64 of the float32s) and what the nest is told of the air
+  floaterTb(o) {                                                        // tests and tools: the infrared picture as the floater makes it (256 x 256 brightness temperatures in C, row 0 south, base64 of the float32s) and what the nest is told of the air; {rendered: true}: the picture the canvas was last drawn from
     if (!flOn || !flNest) return null; while (flSpinN < FL_SPIN) flSpin(1e9);
-    const n = flNest, f = n.cur || n.f0, N = HFNest.N, tb = new Float32Array(N * N), KT = 0.514444; n.display(0, true, true); n.irTb(tb, f.sst);
+    const n = flNest, f = n.cur || n.f0, N = HFNest.N, KT = 0.514444; let tb = new Float32Array(N * N);
+    if (o && o.rendered && flTb) tb = flTb; else { if (flPlay) n.displayBlend(flAcc / flStepDt(), true, true); else n.display(0, true, true); n.irTb(tb, f.sst); }          // (the same call the canvas is made from: a playing clock draws the state one step ago and the state now mixed over the step)
     let s = ''; const u8 = new Uint8Array(tb.buffer); for (let i = 0; i < u8.length; i += 8192) s += String.fromCharCode.apply(null, u8.subarray(i, i + 8192));
     return { n: N, m: n.m, b64: btoa(s), f: { shearPage: f.shear * n.m / KT, rh: f.rh, sst: f.sst, eta: f.eta || 0, lat: f.lat, v: n.vNest * n.m / KT, vTarget: f.vmax * n.m / KT, rmax: f.rmax * n.m, size: (n.sz || 0) * n.m, hour: simHour, erc: f.erc || 0, th: (flSystem() || {}).th } };
   },

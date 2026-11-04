@@ -159,5 +159,19 @@ const corr = (a, b) => { const n = a.length; let sa = 0, sb = 0; for (let k = 0;
   check('the radar\'s picture costs ' + ms.toFixed(1) + ' ms (under 25 ms on this machine)', ms < 25);
 }
 
+/* ---- the picture a playing clock makes (displayBlend: the state one step ago and the state now, mixed over the step) is the paused picture's weather and not another one ---------------------------------------- */
+{
+  reset();
+  const rain = (q) => Float32Array.from(q.drc, (v, k) => v + q.drs[k]);
+  const rows = [{ v: 110, rmax: 22, r34: 150 }, { v: 50, rmax: 40, r34: 130 }].map((o) => {
+    const q = run(o, 8); q.keepPrev = true; for (let s = 0; s < 3; s++) q.step(120);                       // (the floater keeps the state one step ago from the first picture of a playing clock, in steps of 2 minutes)
+    q.display(0, true, false); const p = rain(q); q.displayBlend(1, true, false); const e = rain(q); q.displayBlend(0.5, true, false); const m = rain(q);
+    let dmax = 0, sp = 0, sm = 0; for (let k = 0; k < NN; k++) { dmax = Math.max(dmax, Math.abs(p[k] - e[k])); sp += p[k]; sm += m[k]; }
+    return { dmax, ratio: sm / sp };
+  });
+  check('the playing clock draws the paused picture at the end of a step and the same weather half way through: the rain of a 110 kt and a 50 kt storm differs by at most ' + rows.map((r) => r.dmax.toExponential(1)).join(' and ') + ' mm/h from the paused picture at the end of a step (under 0.001), and half way through it holds ' + rows.map((r) => f2(r.ratio, 3)).join(' and ') + ' of the paused picture\'s rain (0.95 to 1.05)',
+    rows.every((r) => r.dmax < 1e-3 && r.ratio > 0.95 && r.ratio < 1.05));
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
