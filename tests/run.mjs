@@ -1386,6 +1386,9 @@ async function checkIcons(page, label, prefix) {
 // the storm layers on top of it, a radar site with its beam, crisp colours in the National Weather Service's steps, and everything back as it was when it is closed
 async function checkFloater(page, label, prefix) {
   const ev = (fn, arg) => page.evaluate(fn, arg);
+  // the radar's eye gets as whole as the air of the basin lets it (a cool sea or a weak ring leaves it patchy by design, tests/nest_radar.mjs); the check of the picture below is about the canvas showing a clear eye, so for the length of
+  // this function the eye is asked for by the wind alone
+  const par0 = await ev(() => { const P = window.HFNest.PAR, o = { rdEyeRing: P.rdEyeRing.slice(), rdEyeU: P.rdEyeU }; P.rdEyeRing = [0, 0.001]; P.rdEyeU = 0; return o; });
   const sp = prefix === 'atlantic' ? { td: [15, -45], day: 200 } : STORM_SPECS[prefix];
   const PAL = ['04e9e7', '019ff4', '0300f4', '02fd02', '01c501', '008e00', 'fdf802', 'e5bc00', 'fd9500', 'fd0000', 'd40000', 'bc0000', 'f800fd', '9854c6', 'ffffff'];
   const r = await ev((q) => { const S = window.SSTSIM; S.setPlaying(false); S.applySeed(4242); S.setPlaying(false); S.storms(true); S.stormAuto(false); S.summary(false); S.tick(24 * q.day);
@@ -1412,6 +1415,7 @@ async function checkFloater(page, label, prefix) {
     let hole = 0, nh = 0, ring = 0, nr = 0; for (let k = 0; k < 12; k++) { const a = k * Math.PI / 6; hole += alpha(c.x + 0.35 * R * Math.cos(a), c.y + 0.35 * R * Math.sin(a)) === 0 ? 1 : 0; nh++; for (const m of [1.5, 2.1, 2.9]) { ring += alpha(c.x + m * R * Math.cos(a), c.y + m * R * Math.sin(a)) > 200 ? 1 : 0; nr++; } }
     return { km: f.eyeKm, R, eyeRd: f.eyeRd, eyeS: f.eyeS, centre: alpha(c.x, c.y), hole: hole / nh, ring: ring / nr, vN: f.vNest / 0.514444 }; });
   check(`[${label}] the radar's eye is clear: the picture of a ${Math.round(eye.vN)} kt storm has no echo at the storm's place (${eye.centre}) and ${(100 * eye.hole).toFixed(0)} % of the points 0.35 eye radii round it (${(0.35 * eye.km).toFixed(0)} km) are clear too (over 70 %), with echo round it (${(100 * eye.ring).toFixed(0)} % of the points 1.5 to 2.9 eye radii out, over 25 %); the eye is ${eye.eyeRd.toFixed(2)} of its size`, eye.km > 3 && eye.R > 4 && eye.centre === 0 && eye.hole > 0.7 && eye.ring > 0.25 && eye.eyeRd > 0.7);
+  await ev((o) => { const P = window.HFNest.PAR; P.rdEyeRing = o.rdEyeRing; P.rdEyeU = o.rdEyeU; }, par0);
   // the playback buttons are the floater's now: faster / slower / pause change its speed, not the main clock's
   const sp0 = await ev(() => window.SSTSIM.floaterState().speed);
   await page.click('#b-faster'); await page.click('#b-faster'); await page.waitForTimeout(100);
