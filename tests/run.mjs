@@ -1258,11 +1258,11 @@ async function checkLook(page, label, prefix) {
   const r = await ev((q) => { const S = window.SSTSIM; S.setPlaying(false); S.applySeed(4242); S.setPlaying(false); S.storms(true); S.stormAuto(false); S.tick(24 * q.day);
     const id = S.stormPlace({ kind: 'td', lat: q.td[0], lon: q.td[1], v: 60 }); S.tick(12); S.advance(0); const st = S.stormState().systems.find((x) => x.id === id);
     S.map.setView([st.lat, st.lon], 4, { animate: false }); S.stormForce(id, { th: 'tc', v: 105, vr: 105, p: 946 }); S.stormDraw(); window.__lookId = id; return { id, px: S.stormPx(id) }; }, sp);
-  await page.mouse.click(r.px.x, r.px.y); await page.waitForTimeout(300);
+  for (let t = 0, sel = null; t < 4 && sel !== r.id; t++) { await page.mouse.click(r.px.x, r.px.y); await page.waitForTimeout(300 * (t + 1)); sel = await ev(() => window.SSTSIM.aoiState().tc); }          // (the storm is picked; a click that did not pick it, the page being busy at that moment on a loaded machine, is made again, and one that did is not repeated: a second click would put it down)
   const lk = await ev(({ x, y }) => { const S = window.SSTSIM; S.stormDraw(); S.fxRender(); const c = document.getElementById('fx-canvas'), d = c.width / c.clientWidth, a = c.getContext('2d').getImageData(Math.round(x * d), Math.round((y + 0.8 * S.lookState().R) * d), 1, 1).data, hex = '#' + [a[0], a[1], a[2]].map((v) => v.toString(16).padStart(2, '0')).join(''), t = document.getElementById('sc-tag'), rgb = getComputedStyle(t).backgroundColor.match(/\d+/g).map(Number), thex = '#' + rgb.slice(0, 3).map((v) => v.toString(16).padStart(2, '0')).join('');
     const me = S.stormState().systems.find((x) => x.id === window.__lookId), now = me ? S.stormPx(me.id) : null;
     return { head: hex, a: a[3], tag: t.textContent, tagBg: thex, shown: t.offsetParent !== null, d, icons: S.lookState().heads.length, now: now && [Math.round(now.x), Math.round(now.y)], size: [innerWidth, innerHeight, S.map.getSize().x, S.map.getSize().y], z: S.map.getZoom(), fl: S.floaterState().on }; }, r.px);
-  await lyrSet(page, 'stcone', true); await page.waitForFunction(() => window.SSTSIM.coneState() !== null, null, { timeout: 15000 }); await page.waitForTimeout(200);
+  await lyrSet(page, 'stcone', true); await page.waitForFunction(() => window.SSTSIM.coneState() !== null, null, { polling: 100, timeout: 30000 }); await page.waitForTimeout(200);          // (polled by the clock, not by the frame loop, which a busy machine can starve; CI run 149 timed out here once on 15 s)
   const lc = await ev(() => { const cs = window.SSTSIM.coneState(); return cs ? cs.pts.map((q) => [q.v, q.letter, q.post]) : null; });
   await lyrSet(page, 'stcone', false); await page.keyboard.press('Escape'); await page.waitForTimeout(100);
   check(`[${label}] the 105-kt storm is drawn in this region's colour (${lk.head}${lk.a === 255 ? '' : ' with alpha ' + lk.a + ': nothing drawn there; looked at ' + Math.round(r.px.x) + ',' + Math.round(r.px.y) + ' of a canvas scaled ' + lk.d.toFixed(3) + ', the storm is now at ' + lk.now + ', the screen ' + lk.size.join('x') + ' at zoom ' + lk.z + ', ' + lk.icons + ' icons, floater ' + lk.fl}, expected ${LOOK105[0]}), its card shows the class ${lk.tag} on ${lk.tagBg} (expected ${LOOK105[1]} on ${LOOK105[0]}) and the cone's letters are the region's (${lc ? lc.map((q) => q[1]).join(' ') : 'no cone'})`,
@@ -4089,10 +4089,11 @@ async function checkSave() {
 
   await p1.evaluate(() => { window.SSTSIM.setPlaying(false); window.SSTSIM.deleteSave(); });        // this page is done: paused, nothing of it left on disk (two tabs would take turns at one save)
   // leaving without the Menu link (a closed tab, a typed address): the page saves as it goes away
-  const q = await open(SIM, true);
+  let q = await open(SIM, true);
+  for (let t = 0; t < 4 && await q.evaluate(() => document.body.dataset.resume === 'beside'); t++) { await q.close(); await p1.waitForTimeout(400 * (t + 1)); q = await open(SIM, true); }          // (a page that opens while the removal of the last season has not reached it yet opens beside a season and saves nothing: it is opened again; CI run 149 had this once)
   const qHour = await q.evaluate(() => { const S = window.SSTSIM; S.setPlaying(false); S.deleteSave(); S.applySeed(8); S.setPlaying(false); S.stormAuto(true); S.tick(24 * 12 + 7); S.saveNow(); S.tick(5); S.set('moisture', 6); return S.state().simHour; });   // saved at 12 d 7 h; the five hours and the slider since are not (the saver waits 1.2 s between writes)
   await q.goto(MENU, { waitUntil: 'load' });
-  const qMeta = await meta(q);
+  let qMeta = await meta(q); for (let t = 0; t < 12 && !(qMeta && qMeta.hour === qHour); t++) { await q.waitForTimeout(250); qMeta = await meta(q); }          // (the save a page makes as it goes away reaches the menu a moment later)
   check(`[save] a page that is left any other way saves as it goes (hour ${qHour}, saved ${qMeta && qMeta.hour})`, !!qMeta && qMeta.hour === qHour);
   await q.close();
 
