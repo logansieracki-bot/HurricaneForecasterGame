@@ -70,8 +70,8 @@ const corr = (a, b) => { const n = a.length; let sa = 0, sb = 0; for (let k = 0;
   const runs = [7, 8, 9].map((seed) => run({ v: 95, rmax: 24, r34: 150 }, 8, { seed })), pics = runs.map(pic), rawd = runs.map(raw);
   const bands = [[15, 30], [30, 50], [50, 100], [100, 150], [150, 250]], avg = (fn) => bands.map((b) => runs.reduce((s, n, i) => s + fn(n, i, b), 0) / runs.length);
   const cr = avg((n, i, b) => cover(n, pics[i], b[0], b[1])), cm = avg((n, i, b) => cover(n, rawd[i], b[0], b[1]));
-  check('the echo thins with distance: a 95 kt storm\'s radar picture has echo of 20 dBZ or more over ' + cr.map((v) => (100 * v).toFixed(0)).join(', ') + ' % of the cells at 15-30, 30-50, 50-100, 100-150 and 150-250 km (over 70 at 15-30, under 80 at 50-100, under 35 at 150-250 and 0.25 under the model\'s own there, falling outward), where the model\'s own rain covers ' + cm.map((v) => (100 * v).toFixed(0)).join(', ') + ' %',
-    cr[0] > 0.7 && cr[2] < 0.8 && cr[4] < 0.35 && cr[0] > cr[2] && cr[2] > cr[3] && cr[3] > cr[4] && cr[2] < cm[2] - 0.15 && cr[4] < cm[4] - 0.25);
+  check('the echo thins with distance: a 95 kt storm\'s radar picture has echo of 20 dBZ or more over ' + cr.map((v) => (100 * v).toFixed(0)).join(', ') + ' % of the cells at 15-30, 30-50, 50-100, 100-150 and 150-250 km (over 70 at 15-30, under 85 at 50-100 (the shield of the inflow side lies there), under 35 at 150-250 and 0.25 under the model\'s own there, falling outward), where the model\'s own rain covers ' + cm.map((v) => (100 * v).toFixed(0)).join(', ') + ' %',
+    cr[0] > 0.7 && cr[2] < 0.85 && cr[4] < 0.35 && cr[0] > cr[2] && cr[2] > cr[3] && cr[3] > cr[4] && cr[2] < cm[2] - 0.15 && cr[4] < cm[4] - 0.25);
   const shares = pics.map((d, i) => { let y = 0, t = 0; for (let k = 0; k < NN; k++) if (runs[i].rr[k] < 2 * runs[i].rmaxN) { t++; if (d[k] >= 35) y++; } return y / t; }), mx = pics.map((d) => Math.max(...d));
   check('strong echo is rare and capped: within two radii of maximum wind ' + shares.map((v) => (100 * v).toFixed(0)).join(', ') + ' % of the cells are 35 dBZ or more (under 60 in each and under 45 on average, the reference\'s 34: the inflow side begins there), the strongest echoes are ' + mx.map((v) => v.toFixed(0)).join(', ') + ' dBZ (45 or more in one, none over 55.3, where an echo saturates)', shares.every((v) => v < 0.6) && shares.reduce((a, b) => a + b, 0) / shares.length < 0.45 && Math.max(...mx) >= 45 && Math.max(...mx) <= 55.3);
   { const q = N.create({ seed: 7 }); q.init(forcing({ v: 95, rmax: 24, r34: 150 })); for (let i = 0; i < 20; i++) q.step(240); for (let j = 0; j < NG; j++) for (let i = 0; i < NG; i++) { const x = (i - 127.5) * 2 - 120, y = (j - 127.5) * 2; if (x * x + y * y < 30 * 30) { q.rc[j * NG + i] = 3000; q.rs[j * NG + i] = 100; } }
@@ -110,7 +110,7 @@ const corr = (a, b) => { const n = a.length; let sa = 0, sb = 0; for (let k = 0;
 /* ---- the inflow side: a shield of echo clockwise of the strongest eyewall sector, spiral arms in it, as large and as strong as the storm's inflow ------------------------------ */
 {
   reset();
-  const leanTo = (q, d, mag) => { q.asX = mag * Math.cos(d * Math.PI / 180); q.asY = mag * Math.sin(d * Math.PI / 180); };
+  const leanTo = (q, d, mag) => { q.asX = mag * Math.cos(d * Math.PI / 180); q.asY = mag * Math.sin(d * Math.PI / 180); q.shX = q.asX; q.shY = q.asY; };
   const wrap = (a) => ((a + 540) % 360) - 180, az = (q, k) => Math.atan2(q.sth[k], q.cth[k]) * 180 / Math.PI;
   const share = (q, d, c, half, lo, hi, thr) => { let n = 0, s = 0; const eye = Math.max(q.rdRE, 1); for (let k = 0; k < NN; k++) { const u = q.rr[k] / eye; if (u < lo || u >= hi || Math.abs(wrap(az(q, k) - c)) > half) continue; n++; if (d[k] >= thr) s++; } return s / Math.max(n, 1); };
   const centroid = (q, d, lo, hi, thr) => { let sx = 0, sy = 0; const eye = Math.max(q.rdRE, 1); for (let k = 0; k < NN; k++) { const u = q.rr[k] / eye; if (u < lo || u >= hi || d[k] < thr) continue; sx += q.cth[k]; sy += q.sth[k]; } return Math.atan2(sy, sx) * 180 / Math.PI; };
@@ -124,6 +124,9 @@ const corr = (a, b) => { const n = a.length; let sa = 0, sb = 0; for (let k = 0;
   const fol = [7, 8].map((seed) => { const q = storm(cat3, seed), c30 = centroid(q, pic(q), 4, 9, 35); leanTo(q, 210, 0.6); const c210 = centroid(q, pic(q), 4, 9, 35); leanTo(q, 120, 0.6); const c120 = centroid(q, pic(q), 4, 9, 35); return [c30, c210, c120]; });
   check('the shield follows the lean: with the lean turned from 30 to 210 degrees the centre of the strong echo at 4 to 9 eye radii turns by ' + fol.map((c) => f2(wrap(c[1] - c[0]), 0)).join(' and ') + ' degrees (180, within 70) and by ' + fol.map((c) => f2(wrap(c[2] - c[0]), 0)).join(' and ') + ' to 120 (90, within 60)',
     fol.every((c) => Math.abs(wrap(wrap(c[1] - c[0]) - 180)) < 70 && Math.abs(wrap(c[2] - c[0]) - 90) < 60));
+  // and it turns very slowly and little: the shield's own direction (the lean filtered over two days) moves a few degrees in six hours while the lean of the eyewall wanders
+  { const q = storm(cat3, 7), ang = () => Math.atan2(q.shY, q.shX) * 180 / Math.PI, l0 = Math.atan2(q.asY, q.asX) * 180 / Math.PI, a0 = ang(); let wl = 0; for (let i = 0; i < 90; i++) { q.step(240); wl = Math.max(wl, Math.abs(wrap(Math.atan2(q.asY, q.asX) * 180 / Math.PI - l0))); } const d6 = Math.abs(wrap(ang() - a0));
+    check('the shield turns very slowly and little: in six hours its direction moves ' + f2(d6, 1) + ' degrees (under 20) while the eyewall\'s lean wandered by up to ' + f2(wl, 0) + ' degrees', d6 < 20); }
   // as strong and as large as the inflow is
   const mean = (o, ex) => { const a = [7, 8].map((seed) => { const q = storm(o, seed, ex); return area(q, pic(q), 35); }); return (a[0] + a[1]) / 2; };
   const aT = mean({ v: 50, rmax: 42, r34: 120 }), a1 = mean({ v: 75, rmax: 32, r34: 130 }), a3 = (runs.slice(0, 2).map((r) => area(r.q, r.d, 35)).reduce((x, y) => x + y)) / 2;

@@ -494,7 +494,7 @@ const mutants = [
   M('R26', NS, [E("rdEff: [0.2, 0.4, 90, 1.7],", "rdEff: [0.8, 0.9, 90, 1.7],")], ['radar'], 'most of the rain reaches the ground and shows (the picture is the old blob again)'),
   // ---- the inflow side (milestone 31)
   M('R27', NS, [E("rdIn: [26, 0.785,", "rdIn: [0, 0.785,")], ['radar'], 'no inflow side: no shield of echo beyond the eyewall'),
-  M('R28', NS, [E("thC = Math.atan2(sc[2], sc[1]) - ni[1],", "thC = Math.atan2(sc[2], sc[1]) + ni[1],")], ['radar'], 'the shield lies counter-clockwise of the strongest eyewall sector, the side the flow goes to'),
+  M('R28', NS, [E("thC = Math.atan2(sc[10], sc[9]) - ni[1],", "thC = Math.atan2(sc[10], sc[9]) + ni[1],")], ['radar'], 'the shield lies counter-clockwise of the strongest eyewall sector, the side the flow goes to'),
   M('R29', NS, [E("rdArm: [9, 0.47, 0.55,", "rdArm: [9, 0.47, 0,")], ['radar'], 'the shield has no arms: one smooth blob'),
   M('R30', NS, [E("ang[k] + iTa * lu) - om", "ang[k] - iTa * lu) - om")], ['radar'], 'the arms wind the wrong way (counter-clockwise outward)'),
   M('R31', NS, [E("fV = ni[18] + (1 - ni[18]) * sm01(vN, ni[13], ni[14]),", "fV = 1,")], ['radar'], 'a depression has as much inflow side as a hurricane'),
@@ -502,7 +502,7 @@ const mutants = [
   M('R33', NS, [E("szK = clamp(sc[6], 20, 300),", "szK = 150,")], ['radar'], 'the shield reaches as far in a compact storm as in a large one'),
   M('R34', NS, [E("fO = (1 - 0.5 * sc[7]) * (0.6 + 0.4 * sm01(sc[8], 0.2, 0.7)),", "fO = 1,")], ['radar'], 'shear, dry air, cool water and a broken ring leave the inflow side as it is'),
   M('R35', NS, [E("Ish = fV * Math.pow(fS, 0.6) * fO * (1 - sm01(sc[5], 0.1, 0.5));", "Ish = fV * Math.pow(fS, 0.6) * fO;")], ['radar'], 'an extratropical transition keeps the inflow side of the tropical storm it was'),
-  M('R36', NS, [E("thC = Math.atan2(sc[2], sc[1]) - ni[1],", "thC = -ni[1],")], ['radar'], 'the shield ignores the eyewall\'s lean: it is always on the same side'),
+  M('R36', NS, [E("thC = Math.atan2(sc[10], sc[9]) - ni[1],", "thC = -ni[1],")], ['radar'], 'the shield ignores the eyewall\'s lean: it is always on the same side'),
   M('R37', NS, [E("om = arm[5] * (this.irT || this.t) / 3600,", "om = 0,")], ['radar'], 'the arms stand still: the pattern does not move outward'),
   M('R38', NS, [E("cb[k] = (1 - phi) * c0[k] + phi * c1[k]; c2b[k] = (1 - phi) * d0[k] + phi * d1[k]; } if (!ir) {", "cb[k] = (1 - phi) * c0[k] + phi * c1[k]; if (ir) c2b[k] = (1 - phi) * d0[k] + phi * d1[k]; } if (!ir) {")], ['radar'], 'the playing clock hands the radar a scratch buffer for the 64 km clusters (the radar of a playing clock is another weather)'),
 
