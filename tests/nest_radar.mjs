@@ -141,12 +141,40 @@ const corr = (a, b) => { const n = a.length; let sa = 0, sb = 0; for (let k = 0;
   const added = (o, ex) => { Object.assign(N.PAR, JSON.parse(JSON.stringify(defaults))); const q = storm(o, 7, ex), a = area(q, pic(q), 35); N.PAR.rdIn[0] = 0; const b = area(q, pic(q), 35); reset(); return a - b; };
   const dTd = added({ v: 30, rmax: 70, r34: 90 }), dTc = added(cat3), dEt = added({ v: 90, rmax: 30, r34: 150 }, { eta: 1 });
   check('the shield adds ' + f2(dTc / 1000, 1) + ' thousand km2 of 35 dBZ or more to a hurricane\'s picture (over 5), ' + f2(dTd / 1000, 1) + ' to a depression\'s (under 2: it is not defined before the core is) and ' + f2(dEt / 1000, 2) + ' in an extratropical transition (none: the transition has its own rain)', dTc > 5000 && dTd < 2000 && Math.abs(dEt) < 100);
-  // the arms: the shield with and without the gaps between them, against a log spiral that winds clockwise outward (the cyclonic side of the northern hemisphere's frame)
-  const armCorr = (seed, sgn) => { const q = storm(cat3, seed); q.rc.fill(0); q.rs.fill(0); const A = N.PAR.rdArm, d1 = pic(q), t = q.irT; N.PAR.rdArm = [A[0], A[1], 0, A[3], A[4], A[5]]; const d0 = pic(q); reset(); const eye = Math.max(q.rdRE, 1), x = [], y = [];
-    for (let k = 0; k < NN; k++) { const u = q.rr[k] / eye; if (u < 4 || u >= 9 || d0[k] < 25 || d1[k] < 5 || Math.abs(wrap(az(q, k) + 15)) > 50) continue; x.push(Math.cos(A[0] * (az(q, k) * Math.PI / 180 + sgn * Math.log(u / 3) / A[1]) - A[5] * t / 3600)); y.push(d1[k] - d0[k]); }
-    const n = x.length, mx = x.reduce((a, b) => a + b) / n, my = y.reduce((a, b) => a + b) / n; let sxy = 0, sxx = 0, syy = 0; for (let i = 0; i < n; i++) { sxy += (x[i] - mx) * (y[i] - my); sxx += (x[i] - mx) ** 2; syy += (y[i] - my) ** 2; } return sxy / Math.sqrt(sxx * syy); };
-  const arm1 = [7, 8].map((seed) => armCorr(seed, 1)), arm2 = [7, 8].map((seed) => armCorr(seed, -1));
-  check('the shield is made of spiral arms with gaps between them: the echo the gaps take away follows a log spiral that winds ' + 'clockwise outward (correlation ' + arm1.map((v) => f2(v)).join(' and ') + ', each over 0.5) and not one that winds the other way (' + arm2.map((v) => f2(v)).join(' and ') + ', each between -0.3 and 0.3)', arm1.every((v) => v > 0.5) && arm2.every((v) => Math.abs(v) < 0.3));
+  // the bands: seen in the angle and the log of the radius, the echo of the shield lies along spirals that wind clockwise outward (the cyclonic side of the northern hemisphere's frame): the power of its waves that wind that way against the power of the waves that wind the other way
+  const winding = (seed) => {
+    const q = storm(cat3, seed); q.rc.fill(0); q.rs.fill(0); const d = pic(q), eye = Math.max(q.rdRE, 1), NT = 72, NS = 24, s0 = Math.log(4), s1 = Math.log(10), a = new Float64Array(NT * NS);
+    for (let js = 0; js < NS; js++) { const u = Math.exp(s0 + (s1 - s0) * js / (NS - 1)); for (let jt = 0; jt < NT; jt++) { const th = 2 * Math.PI * jt / NT - Math.PI, x = 127.5 + u * eye * Math.cos(th) / 2, y = 127.5 + u * eye * Math.sin(th) / 2; a[js * NT + jt] = Math.max(0, d[Math.round(y) * NG + Math.round(x)]) / 40; } }
+    let pos = 0, neg = 0;
+    for (let m = 3; m <= 12; m++) for (let kk = -6; kk <= 6; kk++) {
+      if (kk === 0) continue; const ks = 2 * Math.PI * kk / (s1 - s0); let re = 0, im = 0;
+      for (let js = 0; js < NS; js++) { const s = s0 + (s1 - s0) * js / (NS - 1), w = 0.5 - 0.5 * Math.cos(2 * Math.PI * (js + 0.5) / NS); for (let jt = 0; jt < NT; jt++) { const ph = m * (2 * Math.PI * jt / NT - Math.PI) + ks * (s - s0), v = a[js * NT + jt] * w; re += v * Math.cos(ph); im += v * Math.sin(ph); } }
+      if (kk > 0) pos += re * re + im * im; else neg += re * re + im * im;
+    }
+    return pos / neg;
+  };
+  const wnd = [7, 8, 9].map(winding);
+  check('the shield is made of spiral bands that wind clockwise outward (the cyclonic side of the northern hemisphere\'s frame): in the angle and the log of the radius the power of the waves of 3 to 12 bands that wind that way is ' + wnd.map((v) => f2(v, 1)).join(', ') + ' times the power of the waves that wind the other way (each over 2.5)', wnd.every((v) => v > 2.5));
+  // and the area does not swell and shrink within the half hour: the area of strong echo changes by a few percent in 30 minutes, not by a third
+  { const q = storm(cat3, 7), ser = []; for (let i = 0; i < 13; i++) { ser.push(area(q, pic(q), 35)); for (let j = 0; j < 3; j++) q.step(200); }
+    const mean = ser.reduce((x, y) => x + y) / ser.length, ch = []; for (let i = 0; i + 3 < ser.length; i++) ch.push(Math.abs(ser[i + 3] - ser[i]) / mean); ch.sort((x, y) => x - y);
+    check('the large convection area keeps its size within the half hour: the area of 35 dBZ or more beyond 40 km (' + f2(mean / 1000, 1) + ' thousand km2 on average) changes by ' + f2(100 * ch[Math.floor(ch.length / 2)], 0) + ' percent in the middle of the 30 minute changes and by at most ' + f2(100 * ch[ch.length - 1], 0) + ' (under 12 and under 30)', ch[Math.floor(ch.length / 2)] < 0.12 && ch[ch.length - 1] < 0.3); }
+  // the edges of the area are not drawn with a compass: the farthest echo of 20 dBZ round the storm differs from sector to sector (a wedge ends on an arc), and the area does not follow the storm's air in an hour but in a day
+  const edgeIrr = (seed) => {
+    const q = storm(cat3, seed); q.rc.fill(0); q.rs.fill(0); const d = pic(q), eye = Math.max(q.rdRE, 5), NS = 36, outer = new Float64Array(NS), cnt = new Float64Array(NS);
+    for (let k = 0; k < NN; k++) { if (d[k] < 20) continue; const sct = Math.min(NS - 1, Math.floor((Math.atan2(q.sth[k], q.cth[k]) + Math.PI) / (2 * Math.PI) * NS)), u = q.rr[k] / eye; if (u > outer[sct]) outer[sct] = u; cnt[sct]++; }
+    const sec = []; for (let i = 0; i < NS; i++) { const a = (i + 0.5) * 360 / NS - 180; if (Math.abs(wrap(a + 15)) < 70 && cnt[i] > 20) sec.push(outer[i]); }
+    const m = sec.reduce((x, y) => x + y, 0) / sec.length; return Math.sqrt(sec.reduce((x, y) => x + (y - m) * (y - m), 0) / sec.length) / m;
+  };
+  const edg = [7, 8, 9].map(edgeIrr);
+  check('the outer edge of the shield is not an arc: the farthest echo of 20 dBZ in the sectors it spans differs by ' + edg.map((v) => f2(100 * v, 0)).join(', ') + ' percent of its mean (standard deviation; each over 10)', edg.every((v) => v > 0.1));
+  // the bands move and change over hours and hardly in ten minutes (the same cells, the instant of the pattern changed)
+  { const mv = (seed) => { const q = storm(cat3, seed); q.rc.fill(0); q.rs.fill(0); const at = (dt) => { q.t += dt; q.display(0, true, false); const r = Float32Array.from(q.shR); q.t -= dt; return r; }, a = at(0); return [corr(a, at(600)), corr(a, at(10800))]; };
+    const m = [7, 8, 9].map(mv);
+    check('the bands move and change over hours, not minutes: the inflow side\'s rain keeps a correlation of ' + m.map((c) => f2(c[0])).join(', ') + ' after ten minutes (each over 0.97) and of ' + m.map((c) => f2(c[1])).join(', ') + ' after three hours (each under 0.9 and at least 0.1 under the first), the cells being the same', m.every((c) => c[0] > 0.97 && c[1] < 0.9 && c[0] - c[1] > 0.1)); }
+  { const q = storm(cat3, 7), only = () => { q.rc.fill(0); q.rs.fill(0); return area(q, pic(q), 35); }, a0 = only(), hostile = forcing(Object.assign({}, cat3, { extra: { shear: 16, rh: 0.35 } })); q.setForcing(hostile, hostile); q.setEnv(null, hostile);
+    for (let i = 0; i < 15; i++) q.step(240); const a1 = only(); for (let i = 0; i < 195; i++) q.step(240); const a2 = only();
+    check('the large convection area follows the storm\'s air over hours and not in one: after the air turns hostile (shear 16 m/s, dry) the area of 35 dBZ or more beyond 40 km is ' + f2(a1 / a0, 2) + ' of what it was after one hour (over 0.85) and ' + f2(a2 / a0, 2) + ' after fourteen (under 0.7)', a1 > 0.85 * a0 && a2 < 0.7 * a0); }
 }
 
 /* ---- no leaps: the picture changes a little from one step to the next --------------------------------------------------------------------------------------------------- */

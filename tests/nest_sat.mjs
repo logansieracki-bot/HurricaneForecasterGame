@@ -98,8 +98,8 @@ function NE_MID(g) { return (g.sh.length >> 1) + (Math.sqrt(g.sh.length) >> 1); 
   { const mx = Math.max(...zs), crowd = zs.filter((z) => z > mx - 0.15).length;
     check('the strongest cells do not all stop at the cap: ' + crowd + ' of the ' + zs.length + ' cells (' + f2(100 * crowd / zs.length, 0) + ' %) are within 0.15 km of the highest top, ' + f2(mx) + ' km (at most 10 %)', crowd <= 0.10 * zs.length); }
   const tb = tbOf(ts), mask = new Uint8Array(NN); for (let k = 0; k < NN; k++) mask[k] = tb[k] < -62 && ts.rr[k] > 12 ? 1 : 0;
-  const bl = blobs(mask).filter((b) => b.n * 4 > 100 && b.n * 4 < 6000).sort((a, b) => a.ecc - b.ecc), med = bl.length ? bl[bl.length >> 1].ecc : 0;
-  check('the cold clouds are not round: the ' + bl.length + ' cold blobs of 100 to 6000 km2 (colder than -62 C) have a median eccentricity of ' + f2(med) + ' (over 1.25; a disc is 1)', bl.length >= 3 && med > 1.25);
+  const bl = blobs(mask).filter((b) => b.n * 4 > 60).sort((a, b) => a.ecc - b.ecc), med = bl.length ? bl[bl.length >> 1].ecc : 0;
+  check('the cold clouds are not round: the ' + bl.length + ' cold blobs of 60 km2 or more (colder than -62 C) have a median eccentricity of ' + f2(med) + ' (over 1.25; a disc is 1)', bl.length >= 3 && med > 1.25);
   // a cell moves as a whole: its place changes with the flow, its strength and shape do not
   { const a = ts.towers(), key = (t) => t.z.toFixed(4) + '/' + t.R.toFixed(4) + '/' + t.th.toFixed(4); const before = new Map(a.map((t) => [key(t), t]));
     for (let i = 0; i < 4; i++) ts.step(240); const b = ts.towers(); let same = 0, moved = 0, drift = 0;
@@ -125,9 +125,9 @@ function NE_MID(g) { return (g.sh.length >> 1) + (Math.sqrt(g.sh.length) >> 1); 
       const fill = () => { for (let k = 0; k < NN; k++) { const x = (k % NG - 127.5) * 2, y = (Math.floor(k / NG) - 127.5) * 2, px = ((x % 40) + 40) % 40 - 20, py = ((y % 40) + 40) % 40 - 20;
         q.rc[k] = patchKm ? (Math.hypot(px, py) < patchKm ? 25 : 0) : (Math.hypot(x, y) < radiusKm ? 25 : 0); } };
       for (let i = 0; i < 60; i++) { fill(); q.towerStep(300); }
-      const R = q.towers().map((t) => t.R * 2); return { n: R.length, med: quant(R, 0.5) }; };
+      const R = q.towers().filter((t) => !t.gen).map((t) => t.R * 2); return { n: R.length, med: quant(R, 0.5) }; };
     const small = wet(0, 6), large = wet(160, 0);
-    check('cells are small where the rain is in scattered small patches: in patches 12 km across 40 km apart (2 % of the box is raining) the cells have a median skirt of ' + f2(small.med, 0) + ' km (' + small.n + ' of them), in a solid rain area 320 km across ' + f2(large.med, 0) + ' km (' + large.n + '): the scattered one under 0.7 of the solid', small.n > 20 && large.n > 20 && small.med < 0.7 * large.med); }
+    check('cells are small where the rain is in scattered small patches: in patches 12 km across 40 km apart (2 % of the box is raining) the cells born alone have a median skirt of ' + f2(small.med, 0) + ' km (' + small.n + ' of them), in a solid rain area 320 km across ' + f2(large.med, 0) + ' km (' + large.n + '): the scattered one under 0.7 of the solid', small.n > 20 && large.n > 20 && small.med < 0.7 * large.med); }
   { const big = run({ v: 105, rmax: 24, r34: 140 }, 8); big.display(0, true, true); const sectors = new Float64Array(16), cnt = new Float64Array(16);
     for (let k = 0; k < NN; k++) { const r = big.rr[k]; if (r < 25 || r > 70 || big.dcr[k] < 0.9) continue; const q = Math.min(15, Math.floor((Math.atan2(big.sth[k], big.cth[k]) + Math.PI) * 2.5465)); sectors[q] += big.dch[k]; cnt[q]++; }
     const means = []; for (let q = 0; q < 16; q++) if (cnt[q] > 20) means.push(sectors[q] / cnt[q]);
@@ -143,16 +143,16 @@ function NE_MID(g) { return (g.sh.length >> 1) + (Math.sqrt(g.sh.length) >> 1); 
   const [a, b, c] = [td, ts, hur].map((n) => { const t = tbOf(n); return { A60: area(t, -60), A70: area(t, -70), A75: area(t, -75), tmin: tmin(t) }; });
   check('a depression\'s burst has cold areas of real size: ' + f2(a.A60, 0) + ' thousand km2 colder than -60 C (real bursts 43, here 20 to 90), ' + f2(a.A70, 1) + ' colder than -70 (real 13, here 2.5 to 25) and tops down to ' + f2(a.tmin, 0) + ' C (real -82, here -88 to -76)',
     a.A60 > 20 && a.A60 < 90 && a.A70 > 2.5 && a.A70 < 25 && a.tmin < -76 && a.tmin > -88);
-  check('a tropical storm\'s cold mass is of real size too: ' + f2(b.A60, 0) + ' thousand km2 colder than -60 C (real 54, here 30 to 100), ' + f2(b.A70, 1) + ' colder than -70 (real 24, here 4 to 30), coldest ' + f2(b.tmin, 0) + ' C (real -83, here -90 to -77)',
-    b.A60 > 30 && b.A60 < 100 && b.A70 > 4 && b.A70 < 30 && b.tmin < -77 && b.tmin > -90);
+  check('a tropical storm\'s cold mass is of real size too: ' + f2(b.A60, 0) + ' thousand km2 colder than -60 C (real 54, here 30 to 100), ' + f2(b.A70, 1) + ' colder than -70 (real 24, here 4 to 30), coldest ' + f2(b.tmin, 0) + ' C (real -83, here -90 to -75)',
+    b.A60 > 30 && b.A60 < 100 && b.A70 > 4 && b.A70 < 30 && b.tmin < -75 && b.tmin > -90);
   check('a hurricane\'s are those of a hurricane: ' + f2(c.A60, 0) + ' thousand km2 colder than -60 C (real 63, here 35 to 90), ' + f2(c.A70, 1) + ' colder than -70 (real 11, here 4 to 25), ' + f2(c.A75, 2) + ' colder than -75 (real 0.08, under 3) and coldest ' + f2(c.tmin, 0) + ' C (real -77, here -82 to -72)',
     c.A60 > 35 && c.A60 < 90 && c.A70 > 4 && c.A70 < 25 && c.A75 < 3 && c.tmin < -72 && c.tmin > -82);
   { const keep = td.tw, withT = tbOf(td); td.tw = null; const without = tbOf(td); td.tw = keep;
     check('the cells make the burst: taking them away leaves a depression ' + f2(area(withT, -60) - area(without, -60), 1) + ' thousand km2 less colder than -60 C (over 5), ' + f2(area(withT, -70) - area(without, -70), 1) + ' less colder than -70 C (over 1.5) and a coldest top ' + f2(tmin(without) - tmin(withT), 1) + ' C warmer (over 0)',
       area(withT, -60) - area(without, -60) > 5 && area(withT, -70) - area(without, -70) > 1.5 && tmin(without) - tmin(withT) > 0); }
   const tw = td.towers(), tt = hur.towers(), top = (l) => quant(l.map((t) => t.z), 0.9);
-  { const osT = tw.filter((t) => t.oz > 0.1).length, osH = tt.filter((t) => t.oz > 0.1).length;
-    check('the strongest cells of a burst have overshooting tops: ' + osT + ' of its ' + tw.length + ' cells stand 0.1 km or more over their own top (over 15 %), a mature hurricane\'s ' + osH + ' of ' + tt.length + ' (at most 2)', osT > 0.15 * tw.length && osH <= 2); }
+  { const g0 = (l) => l.filter((t) => !t.gen), osT = g0(tw).filter((t) => t.oz > 0.1).length, osH = g0(tt).filter((t) => t.oz > 0.1).length;
+    check('the strongest cells of a burst have overshooting tops: ' + osT + ' of its ' + g0(tw).length + ' cells born alone stand 0.1 km or more over their own top (over 15 %), a mature hurricane\'s ' + osH + ' of ' + g0(tt).length + ' (at most 2)', osT > 0.15 * g0(tw).length && osH <= 2); }
   check('the cells of a burst are stronger than those of a mature hurricane: the 90th percentile of their tops is ' + f2(top(tw)) + ' km against ' + f2(top(tt)) + ' km (over 1 km higher)', top(tw) > top(tt) + 1);
 }
 
@@ -191,6 +191,44 @@ function NE_MID(g) { return (g.sh.length >> 1) + (Math.sqrt(g.sh.length) >> 1); 
   check('the playing clock draws the paused picture at the end of a step: a 110 kt, a 125 kt, a 50 kt and a 70 kt storm differ by at most ' + rows.map((r) => f2(r.dmax, 3)).join(', ') + ' C from it in any cell (under 0.01)', rows.every((r) => r.dmax < 0.01));
   check('and half way through a step it is the same weather, not a colder one: the area colder than -70 C is ' + rows.map((r) => f2(r.b, 1) + ' against ' + f2(r.a, 1)).join(', ') + ' thousand km2 (within 25 % and 0.5 of it), the coldest top ' + rows.map((r) => f2(r.t1, 1) + ' against ' + f2(r.t0, 1)).join(', ') + ' C (within 2 C)',
     rows.every((r) => Math.abs(r.b - r.a) < 0.25 * r.a + 0.5 && Math.abs(r.t1 - r.t0) < 2));
+}
+
+/* ---- the large convection area: the radar's inflow side and the infrared picture are one area; towers make towers on part of a ring and their cores warm ----------------------------------- */
+{
+  reset();
+  // the cirrus and the towers are made of the inflow side's convection too: the cold cloud beyond six eye radii lies on the side of the strong echo
+  const align = (o, seed, ir) => {
+    N.PAR.rdIr = ir; const q = run(o, 8, { seed }), tb = tbOf(q); q.display(0, true, false); const rE = Math.max(q.rdRE, 5); let ix = 0, iy = 0, rx = 0, ry = 0;
+    for (let k = 0; k < NN; k++) { const u = q.rr[k] / rE; if (u < 6 || u >= 20) continue; const d = q.drc[k] + q.drs[k] < 0.01 ? -20 : N.dbzOf(q.drc[k], q.drs[k]); if (tb[k] < -55) { ix += q.cth[k]; iy += q.sth[k]; } if (d >= 30) { rx += q.cth[k]; ry += q.sth[k]; } }
+    let dd = Math.abs(Math.atan2(iy, ix) - Math.atan2(ry, rx)) * 180 / Math.PI; if (dd > 180) dd = 360 - dd; N.PAR.rdIr = defaults.rdIr.slice(); return { dd, a60: area(tb, -60) };
+  };
+  const mean = (a) => a.reduce((x, y) => x + y, 0) / a.length;
+  for (const [name, o, seeds] of [['a 105 kt hurricane', { v: 105, rmax: 24, r34: 150 }, [7, 8, 9]], ['a 50 kt storm', { v: 50, rmax: 42, r34: 120 }, [7, 8, 9]]]) {
+    const on = seeds.map((sd) => align(o, sd, defaults.rdIr.slice())), off = seeds.map((sd) => align(o, sd, [0, 0, 0])), dOn = mean(on.map((r) => r.dd)), dOff = mean(off.map((r) => r.dd)), aOn = mean(on.map((r) => r.a60)), aOff = mean(off.map((r) => r.a60));
+    check('the cold cloud and the rain of the large convection area are one area: for ' + name + ' the direction of the cloud colder than -55 C beyond six eye radii is ' + f2(dOn, 0) + ' degrees off that of the echo of 30 dBZ or more (' + on.map((r) => f2(r.dd, 0)).join(', ') + ') with the inflow side in the infrared picture, ' + f2(dOff, 0) + ' without it (under 60 and at least 20 degrees better), and the cold area is ' + f2(aOn, 1) + ' thousand km2 against ' + f2(aOff, 1) + ' (within 20 %)',
+      dOn < 60 && dOn < dOff - 20 && aOn > 0.8 * aOff && aOn < 1.2 * aOff);
+  }
+  // towers make towers: on part of a ring round the old one, smaller, lower, shorter-lived, where it rains and never in the eye
+  { const q = run({ v: 50, rmax: 42, r34: 120 }, 9), T = q.tw, d = T.d; let kBest = 0; for (let k = 0; k < NN; k++) if (q.rr[k] > 60 && q.rc[k] > q.rc[kBest] && q.eyM[k] < 0.3) kBest = k;
+    const px = kBest % NG, py = Math.floor(kBest / NG), RP = 22; let nd = 0, trials = 0, ok = 0, arcs = 0, groups = 0, rho = [], smaller = 0, lower = 0, shorter = 0, inEye = 0, dry = 0;
+    for (let t = 0; t < 80; t++) {
+      T.n = 1; d.fill(0, 0, 18 * 40); d[0] = px; d[1] = py; d[4] = 1000; d[5] = 3600; d[6] = 15; d[7] = RP; d[8] = 1; d[9] = 0; d[10] = 1; d[12] = 1; d[15] = 0.2; d[16] = 1000; d[17] = 0; q.towerStep(1); trials++;
+      const ds = []; for (let i = 1; i < T.n; i++) { const o = i * 18; if (d[o + 17] !== 1) continue; ds.push(o); }
+      nd += ds.length; if (ds.length === 0) continue; ok++;
+      for (const o of ds) { const dx = d[o] - px, dy = d[o + 1] - py; rho.push(Math.hypot(dx, dy) / RP); if (d[o + 7] < 0.75 * RP) smaller++; if (d[o + 6] < 15) lower++; if (d[o + 5] < 0.86 * 5400) shorter++; const k = Math.round(d[o + 1]) * NG + Math.round(d[o]); if (q.eyM[k] >= 0.3) inEye++; if (T.rw[k] < 0.7 * N.PAR.twRain[0]) dry++; }
+      if (ds.length >= 3) { groups++; const an = ds.map((o) => Math.atan2(d[o + 1] - py, d[o] - px)).sort((x, y) => x - y); let gap = an[0] + 2 * Math.PI - an[an.length - 1]; for (let i = 1; i < an.length; i++) gap = Math.max(gap, an[i] - an[i - 1]); if (gap > 210 * Math.PI / 180) arcs++; }
+    }
+    const nTot = rho.length, rhoMed = rho.sort((x, y) => x - y)[Math.floor(nTot / 2)];
+    check('a grown cell makes cells round it: ' + f2(nd / trials, 1) + ' a time on average (between 1 and 4), at ' + f2(rhoMed, 2) + ' of its radius from it in the middle (1.0 to 1.55), ' + smaller + ' of ' + nTot + ' smaller, ' + lower + ' lower, ' + shorter + ' shorter-lived, ' + inEye + ' in the eye (none) and ' + dry + ' where it does not rain (none)',
+      nd / trials > 1 && nd / trials < 4 && rhoMed > 1 && rhoMed < 1.55 && smaller > 0.9 * nTot && lower === nTot && shorter === nTot && inEye === 0 && dry === 0);
+    check('and on part of a ring, not all the way round: of ' + groups + ' groups of three or more ' + arcs + ' stand within 150 degrees of arc (over 90 %)', groups >= 10 && arcs > 0.9 * groups); }
+  // the core of an old cell warms as the new ones rise: the picture of a lone cell has its core colder than its ring when young and warmer than it when old
+  { const q = run({ v: 40, rmax: 60, r34: 100 }, 1), T = q.tw, d = T.d, out = new Float32Array(NN);
+    const lone = (fa) => { N.PAR.twNz = 0; q.display(0, true, true); q.drc.fill(0); q.drs.fill(0); q.dcr.fill(0); q.dch.fill(0); q.dQ.fill(0); q.eyM.fill(0); T.n = 1; d.fill(0, 0, 18 * 4); d[0] = 128; d[1] = 128; d[4] = fa * 3600; d[5] = 3600; d[6] = 15.5; d[7] = 14; d[8] = 1; d[10] = 1; d[12] = 1; d[16] = -1; q.twT = 0; q.irT = 0;
+      const tb = q.irTb(out, 28.8); let ring = 0, nr = 0; for (let a = 0; a < 16; a++) { const x = 128 + 0.42 * 14 * Math.cos(a * Math.PI / 8), y = 128 + 0.42 * 14 * Math.sin(a * Math.PI / 8); ring += tb[Math.round(y) * NG + Math.round(x)]; nr++; } return ring / nr - tb[128 * NG + 128]; };
+    const young = lone(0.2), old = lone(0.8);
+    check('the core of an old cell warms: the ring at 0.42 of its radius is ' + f2(young, 1) + ' C warmer than its core when it is young (over 0.5: the core is the coldest) and ' + f2(old, 1) + ' C when it is old (under -0.5: the core is the warmer, the cold is a ring)', young > 0.5 && old < -0.5); }
+  reset();
 }
 
 /* ---- what it costs ---------------------------------------------------------------------------------------------------------------------------------------------------------- */
