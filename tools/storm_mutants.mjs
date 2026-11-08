@@ -514,7 +514,7 @@ const mutants = [
   M('R44', NS, [E("(1 - B[15] + B[15] * Math.cos(o.nu[q] * t + o.ps[q]))", "1")], ['radar'], 'the waves never wax and wane: the bands keep their strength'),
 
   // ---- M32: the infrared picture of the large convection area and the cells that make cells (tests/nest_sat.mjs)
-  M('W2', NS, [E("gSh = P.rdIr[0], shOn = gSh > 0 &&", "gSh = P.rdIr[0], shOn = false &&")], ['irnest'], 'the cirrus is not made of the inflow side\'s convection'),
+  M('W2', NS, [E("this.shOnC = gSh > 0 &&", "this.shOnC = false &&")], ['irnest'], 'the cirrus is not made of the inflow side\'s convection'),
   M('W3', NS, [E("const g = P.rdIr[1], F = this.shC, D = this.shCd; if (g > 0 && F && this.shInit)", "const g = P.rdIr[1], F = this.shC, D = this.shCd; if (false)")], ['irnest'], 'cells are not born in the inflow side\'s rain, nor fewer elsewhere'),
   M('W4', NS, [E("kRed = red ? P.rdIr[2] * Ish : 0,", "kRed = 0,")], ['irnest'], 'the nest\'s convection round the inflow side is not given up to it: the cold cloud lies on every side alike'),
   M('W5', NS, [E("if (!(sp > 0) || d[o + TAGE] < sp) continue; d[o + TSP] = -1;", "continue;")], ['irnest'], 'cells never make cells'),

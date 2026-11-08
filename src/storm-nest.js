@@ -98,7 +98,7 @@ function Nest(o) {
   this.seed = (o.seed >>> 0) || 1; this.rng = new Rng(this.seed ^ 0x9e3779b9);
   this.t = 0; this.steps = 0; this.ciAcc = 0; this.g = 1; this.gI = 0; this.m = o.m > 0 ? o.m : 1;                                                   // seconds since the nest started, steps taken, the heating efficiency (adapts) and its integral
   const mk = () => new Float32Array(NN);
-  this.zeta = mk(); this.Q = mk(); this.qn = mk(); this.eyeS = 0; this.eyeRd = 0; this.ringC = 0; this.unf = 0; this.asX = 0; this.asY = 0; this.shX = 0; this.shY = 0; this.shV = 0; this.shSz = 0; this.shUnf = 0; this.shRing = 0; this.shEta = 0; this.shInit = false; this.shR = null; this.bpTab = null; this.bpT = -1; this.bpModes = bandModes(new Rng(this.seed ^ 0x3c6ef372)); this.rng2 = new Rng(this.seed ^ 0x51ed270b); this.ocX = 0; this.ocY = 0; this.rng3 = new Rng(this.seed ^ 0x2545f491); this.rng4 = new Rng(this.seed ^ 0x6c8e9cf5); this.tw = null; this.twT = 0; this.irT = 0; this.eyeG = 0; this.eyeSum = new Float32Array(16); this.eyeCnt = new Float32Array(16); this.rcN = mk(); this.cl = mk(); this.cl2 = mk(); this.mem = mk(); this.memA = mk(); this.rcB = mk(); this.wS = mk(); this.cir = mk(); this.cih = mk(); this.uc = mk(); this.vc = mk(); this.tn1 = null; this.tn2 = null; this.vu = null; this.vv = null; this.turbOn = false; this.rc = mk(); this.rs = mk(); this.P = mk();         // vorticity, column water, supply noise, convective and stratiform rain (mm/h), condensation (mm/s)
+  this.zeta = mk(); this.Q = mk(); this.qn = mk(); this.eyeS = 0; this.eyeRd = 0; this.ringC = 0; this.unf = 0; this.asX = 0; this.asY = 0; this.shX = 0; this.shY = 0; this.shV = 0; this.shSz = 0; this.shUnf = 0; this.shRing = 0; this.shEta = 0; this.shInit = false; this.shCt = -1e9; this.shOnC = false; this.shR = null; this.bpTab = null; this.bpT = -1; this.bpModes = bandModes(new Rng(this.seed ^ 0x3c6ef372)); this.rng2 = new Rng(this.seed ^ 0x51ed270b); this.ocX = 0; this.ocY = 0; this.rng3 = new Rng(this.seed ^ 0x2545f491); this.rng4 = new Rng(this.seed ^ 0x6c8e9cf5); this.tw = null; this.twT = 0; this.irT = 0; this.eyeG = 0; this.eyeSum = new Float32Array(16); this.eyeCnt = new Float32Array(16); this.rcN = mk(); this.cl = mk(); this.cl2 = mk(); this.mem = mk(); this.memA = mk(); this.rcB = mk(); this.wS = mk(); this.cir = mk(); this.cih = mk(); this.uc = mk(); this.vc = mk(); this.tn1 = null; this.tn2 = null; this.vu = null; this.vv = null; this.turbOn = false; this.rc = mk(); this.rs = mk(); this.P = mk();         // vorticity, column water, supply noise, convective and stratiform rain (mm/h), condensation (mm/s)
   this.wb = mk(); this.Wc = mk(); this.dv = mk(); this.U = mk(); this.V = mk(); this.us = mk(); this.vs = mk();     // boundary-layer ascent, convective mass flux, divergence, the swirl, the stratiform flow
   this.lf = mk(); this.lfD = mk(); this.lfM = mk(); this.pv = null; this.keepPrev = false; this.t1 = mk(); this.t2 = mk(); this.t3 = mk(); this.sc = [mk(), mk(), mk(), mk(), mk(), mk(), mk()];
   this.dep = { ix: new Int32Array(NN), iy: new Int32Array(NN), fx: mk(), fy: mk() };
@@ -142,7 +142,7 @@ Nest.prototype.rescale = function (mNew) {
     a.set(tmp);
   }
   if (this.tw) { const T = this.tw, d = T.d; for (let i = 0; i < T.n; i++) { const o = i * TS; d[o + TX] = c + (d[o + TX] - c) / q; d[o + TY] = c + (d[o + TY] - c) / q; d[o + TVX] /= q; d[o + TVY] /= q; d[o + TR] /= q; } }
-  this.shSz /= q; this.shV /= q; this.m = mNew; this.setGeom(); this.tabAt = -1; this.sz = 0; this.drc = null; this.drs = null; this.pv = null;
+  this.shSz /= q; this.shV /= q; this.shCt = -1e9; this.m = mNew; this.setGeom(); this.tabAt = -1; this.sz = 0; this.drc = null; this.drs = null; this.pv = null;
 };
 Nest.prototype.setForcing = function (f0, f1) { this.f0 = f0; this.f1 = f1 || f0; this.tF0 = this.t; this.tabAt = -1; };
 Nest.prototype.forcingAt = function (t) { return lerpForcing(this.f0, this.f1, clamp((t - this.tF0) / 3600, 0, 1)); };
@@ -164,7 +164,7 @@ Nest.prototype.init = function (f) {                                           /
   this.setForcing(f, f); this.zT.set(vorticityOf(f.vt)); this.tabAt = 0; this.setEnv(null, f);
   const z = this.zeta, Q = this.Q, rr = this.rr, P = PAR;
   for (let k = 0; k < NN; k++) { const r = rr[k], a = Math.min(NR - 1, Math.floor(r)), t = r - a; z[k] = this.zT[a] * (1 - t) + this.zT[a + 1] * t; Q[k] = P.Qc * (P.Qenv + P.QenvV * sm01(f.vmax, 10, 30) + 0.12 * Math.exp(-r / 120)); }
-  this.tw = null; this.shInit = false; this.mem.fill(0); this.memA.fill(0); this.eyeS = eyeWindOf(f, f.m || 1, f.vmax * (f.m || 1)); this.eyeG = 2400;
+  this.tw = null; this.shInit = false; this.shCt = -1e9; this.mem.fill(0); this.memA.fill(0); this.eyeS = eyeWindOf(f, f.m || 1, f.vmax * (f.m || 1)); this.eyeG = 2400;
   this.eyeRd = sm01(f.vmax * (f.m || 1) - PAR.rdEyeU * unfavOf(f, f.m || 1), PAR.rdEye[0], PAR.rdEye[1]);
   { const e = asymOf(f, f.m || 1), rg = this.rng2, g1 = Math.sqrt(-2 * Math.log(rg.next() + 1e-9)), g2 = 2 * Math.PI * rg.next(); this.asX = e[0] + PAR.rdAsym[0] * g1 * Math.cos(g2); this.asY = e[1] + PAR.rdAsym[0] * g1 * Math.sin(g2); this.shX = this.asX; this.shY = this.asY; }
   { const rg = this.rng3, g1 = Math.sqrt(-2 * Math.log(rg.next() + 1e-9)), g2 = 2 * Math.PI * rg.next(); this.ocX = PAR.ocAsym[0] * g1 * Math.cos(g2); this.ocY = PAR.ocAsym[0] * g1 * Math.sin(g2); }
@@ -521,7 +521,9 @@ Nest.prototype.convect = function (f, dt, fcor) {
   { const as = P.rdAsym, a = Math.exp(-dt / as[1]), b = as[0] * Math.sqrt(1 - a * a), rg = this.rng2, e = asymOf(f, mm), g1 = Math.sqrt(-2 * Math.log(rg.next() + 1e-9)), g2 = 2 * Math.PI * rg.next();
     this.asX = e[0] + (this.asX - e[0]) * a + b * g1 * Math.cos(g2); this.asY = e[1] + (this.asY - e[1]) * a + b * g1 * Math.sin(g2); }
   { const ks = 1 - Math.exp(-dt / P.rdShT); this.shX += (this.asX - this.shX) * ks; this.shY += (this.asY - this.shY) * ks; }          // (the inflow side's direction: the lean, filtered over two days)
-  const shC = this.shC || (this.shC = new Float32Array(NN)), shD = this.shCd || (this.shCd = new Float32Array(NN)), gSh = P.rdIr[0], shOn = gSh > 0 && this.shieldField(shC, P.rdIr[2] > 0 ? shD : null, qn, cl, cl2, this.rdScalars(), this.t) > 0, shRd = shOn && P.rdIr[2] > 0;          // (the inflow side's convection: the radar shows its rain, the cirrus and the towers are made of it too)
+  const shC = this.shC || (this.shC = new Float32Array(NN)), shD = this.shCd || (this.shCd = new Float32Array(NN)), gSh = P.rdIr[0];
+  if (this.t - this.shCt >= 0.9 * P.ciDt || this.t < this.shCt) { this.shOnC = gSh > 0 && this.shieldField(shC, P.rdIr[2] > 0 ? shD : null, qn, cl, cl2, this.rdScalars(), this.t) > 0; this.shCt = this.t; }          // (the inflow side's convection: the radar shows its rain, the cirrus and the towers are made of it too; it changes over hours, so it is made every five minutes and not at every step)
+  const shOn = this.shOnC, shRd = shOn && P.rdIr[2] > 0;
   const eyM = this.eyM, eyeA = this.eyeS * (1 - 0.9 * eta);                                            // the eye: inside the nest's own radius of maximum wind, once the vortex is strong enough to have one
   for (let k = 0; k < NN; k++) {
     const eS = 1 - (1 - edgeS[k]) * (1 - exT), r = rr[k], l = lfOn ? lfM[k] : 0, c = ct[k], s = st[k];

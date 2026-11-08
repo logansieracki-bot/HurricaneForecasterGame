@@ -208,6 +208,14 @@ function NE_MID(g) { return (g.sh.length >> 1) + (Math.sqrt(g.sh.length) >> 1); 
     check('the cold cloud and the rain of the large convection area are one area: for ' + name + ' the direction of the cloud colder than -55 C beyond six eye radii is ' + f2(dOn, 0) + ' degrees off that of the echo of 30 dBZ or more (' + on.map((r) => f2(r.dd, 0)).join(', ') + ') with the inflow side in the infrared picture, ' + f2(dOff, 0) + ' without it (under 60 and at least 20 degrees better), and the cold area is ' + f2(aOn, 1) + ' thousand km2 against ' + f2(aOff, 1) + ' (within 20 %)',
       dOn < 60 && dOn < dOff - 20 && aOn > 0.8 * aOff && aOn < 1.2 * aOff);
   }
+  // cells are born in the rain of the inflow side: more of the cells born alone stand in it with the coupling than without it
+  { const share = (ir) => { let a = 0, b = 0; for (const sd of [7, 8, 9]) { N.PAR.rdIr = ir.slice(); const q = run({ v: 105, rmax: 24, r34: 150 }, 8, { seed: sd }), F = new Float32Array(NN); q.shieldField(F, null, q.qn, q.cl, q.cl2, q.rdScalars(), q.t); for (const t of q.towers()) { if (t.gen) continue; b++; if (F[Math.round(t.y) * NG + Math.round(t.x)] > 3) a++; } } N.PAR.rdIr = defaults.rdIr.slice(); return a / b; };
+    const on = share(defaults.rdIr), off = share([defaults.rdIr[0], 0, 0]);
+    check('cells are born in the rain of the inflow side: ' + f2(on, 2) + ' of the cells born alone stand in more than 3 mm/h of it (three hurricanes of 105 kt), against ' + f2(off, 2) + ' without the coupling of the cells (over 0.12 more, and over 0.5)', on > off + 0.12 && on > 0.5); }
+  // and a third fewer are born alone, so that the cold area stays what it was
+  { const both = (twD) => { let g0 = 0, a60 = 0; for (const sd of [7, 8]) { N.PAR.twD = twD.slice(); const q = run({ v: 105, rmax: 24, r34: 150 }, 8, { seed: sd }); g0 += q.towers().filter((t) => !t.gen).length; a60 += area(tbOf(q), -60); } N.PAR.twD = defaults.twD.slice(); return { g0, a60 }; };
+    const on = both(defaults.twD), off = both([0].concat(defaults.twD.slice(1))), rg = on.g0 / off.g0, ra = on.a60 / off.a60;
+    check('a third fewer cells are born alone and the cold area stays what it was: the cells born alone are ' + f2(rg, 2) + ' of what they are without the cells that make cells (0.45 to 0.8) and the area colder than -60 C ' + f2(ra, 2) + ' of it (0.85 to 1.15)', rg > 0.45 && rg < 0.8 && ra > 0.85 && ra < 1.15); }
   // towers make towers: on part of a ring round the old one, smaller, lower, shorter-lived, where it rains and never in the eye
   { const q = run({ v: 50, rmax: 42, r34: 120 }, 9), T = q.tw, d = T.d; let kBest = 0; for (let k = 0; k < NN; k++) if (q.rr[k] > 60 && q.rc[k] > q.rc[kBest] && q.eyM[k] < 0.3) kBest = k;
     const px = kBest % NG, py = Math.floor(kBest / NG), RP = 22; let nd = 0, trials = 0, ok = 0, arcs = 0, groups = 0, rho = [], smaller = 0, lower = 0, shorter = 0, inEye = 0, dry = 0;
@@ -218,7 +226,7 @@ function NE_MID(g) { return (g.sh.length >> 1) + (Math.sqrt(g.sh.length) >> 1); 
       for (const o of ds) { const dx = d[o] - px, dy = d[o + 1] - py; rho.push(Math.hypot(dx, dy) / RP); if (d[o + 7] < 0.75 * RP) smaller++; if (d[o + 6] < 15) lower++; if (d[o + 5] < 0.86 * 5400) shorter++; const k = Math.round(d[o + 1]) * NG + Math.round(d[o]); if (q.eyM[k] >= 0.3) inEye++; if (T.rw[k] < 0.7 * N.PAR.twRain[0]) dry++; }
       if (ds.length >= 3) { groups++; const an = ds.map((o) => Math.atan2(d[o + 1] - py, d[o] - px)).sort((x, y) => x - y); let gap = an[0] + 2 * Math.PI - an[an.length - 1]; for (let i = 1; i < an.length; i++) gap = Math.max(gap, an[i] - an[i - 1]); if (gap > 210 * Math.PI / 180) arcs++; }
     }
-    const nTot = rho.length, rhoMed = rho.sort((x, y) => x - y)[Math.floor(nTot / 2)];
+    const nTot = rho.length, rhoMed = rho.sort((x, y) => x - y)[Math.floor(nTot / 2)] || 0;
     check('a grown cell makes cells round it: ' + f2(nd / trials, 1) + ' a time on average (between 1 and 4), at ' + f2(rhoMed, 2) + ' of its radius from it in the middle (1.0 to 1.55), ' + smaller + ' of ' + nTot + ' smaller, ' + lower + ' lower, ' + shorter + ' shorter-lived, ' + inEye + ' in the eye (none) and ' + dry + ' where it does not rain (none)',
       nd / trials > 1 && nd / trials < 4 && rhoMed > 1 && rhoMed < 1.55 && smaller > 0.9 * nTot && lower === nTot && shorter === nTot && inEye === 0 && dry === 0);
     check('and on part of a ring, not all the way round: of ' + groups + ' groups of three or more ' + arcs + ' stand within 150 degrees of arc (over 90 %)', groups >= 10 && arcs > 0.9 * groups); }
