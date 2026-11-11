@@ -103,7 +103,7 @@ written from the equations.
 
 The set-up is WRF's `test/em_quarter_ss`: an 84 km square, 20 km deep, a 2 km grid with 500 m levels, the Weisman-Klemp (1982) sounding with its quarter-circle hodograph (the winds already
 shifted so that the storm stays in the box; the file is `tools/severe_research/wk82_sounding.txt`), a +3 K bubble 10 km wide and 1.5 km deep centred at 1.5 km, no ice, a constant viscosity of
-500 m² s⁻¹, periodic sides with a 10 km sponge. `tools/severe_research/wk82_run.mjs 2000 120 10 out.json` runs it: **two hours of storm time in two minutes** (0.17 s per 10 s step on 70,560 cells: about
+500 m² s⁻¹, periodic sides with a 10 km sponge. `tools/severe_research/wk82_run.mjs 2000 120 10 out.json 5 0` runs it (the last 0 turns ice off; since part 3 ice is the default): **two hours of storm time in two minutes** (0.17 s per 10 s step on 70,560 cells: about
 2.4 µs per cell and step in 3-D with moisture). The picture is `docs/severe-research/wk82-2km.png`.
 
 | Minute | Updraft (m/s) | Coldest air at the ground (K) | Rain water (g/kg) | Echo top (dBZ) | Vorticity 1 km / 3-5 km (10⁻³ s⁻¹) | Updraft helicity (m² s⁻²) | Updraft cores at 5 km |
@@ -133,7 +133,7 @@ splitting at 40 to 60 minutes and the 40 to 45 m/s updraft are in the range of p
 
 ### The same storm at 1 km
 
-`wk82_run.mjs 1000 120 6 out.json`: the same set-up on 282,240 cells (84 km square, 1 km grid, viscosity 250 m² s⁻¹), 767 s of CPU for the two hours (0.64 s per 6 s step: 2.3 µs per cell and step).
+`wk82_run.mjs 1000 120 6 out.json 5 0`: the same set-up on 282,240 cells (84 km square, 1 km grid, viscosity 250 m² s⁻¹), 767 s of CPU for the two hours (0.64 s per 6 s step: 2.3 µs per cell and step).
 The picture is `docs/severe-research/wk82-1km.png`. The story is the same and sharper:
 
 | Minute | Updraft (m/s) | Coldest air (K) | Vorticity 1 km / 3-5 km (10⁻³ s⁻¹) | Updraft helicity (m² s⁻²) | Updraft cores at 5 km (m/s at x, y km) |
@@ -150,3 +150,169 @@ The picture is `docs/severe-research/wk82-1km.png`. The story is the same and sh
 The updraft is stronger (56 m/s at 35 minutes), the split happens a little earlier (at about 45 minutes), the mid-level vorticity of the right mover is 0.017 to 0.022 s⁻¹ and its low-level vorticity 0.007 to
 0.010 s⁻¹ (a strong low-level mesocyclone), the updraft helicity 380 to 890 m² s⁻², and the right mover is followed for 60 minutes as it moves south-east from (50, 42) to (75, 39) km. The echo is notched on its
 south-west side at 45 and 60 minutes, the first sign of the rear-flank structure of a supercell; **a hook echo proper needs 500 m and ice**, and the rain is still capped at 59 dBZ.
+
+## Part 3. Ice, and the first comparison with real radar (milestone S4, 11 Nov 2026)
+
+### What was added to the core
+
+A single-moment ice scheme of the Lin et al. (1983) / Rutledge & Hobbs (1984) / WSM6 class with five species: cloud water, rain, **cloud ice, snow and graupel** (`ice: true` in `create`; the sizes of the
+precipitating species are exponential distributions, N(D) = N₀ e^(−λD), and the mixing ratio fixes λ).
+
+| Species | N₀ (m⁻⁴) | Density (kg/m³) | Fall speed a D^b √(ρ₀/ρ) |
+| --- | --- | --- | --- |
+| rain | 8·10⁶ | 1000 | 842 D^0.8 (Liu & Orville) |
+| snow | 2·10⁶ exp(0.12 (T₀ − T)), at most 2·10⁸ | 100 | 11.72 D^0.41 (Locatelli & Hobbs) |
+| graupel (the default) | 4·10⁶ | 400 | a drag law, C_D = 0.6, b = 0.5 |
+| graupel as "hail" (`iceParams: { n0g: 4e4, rhog: 900 }`) | 4·10⁴ | 900 | the same law, denser |
+| cloud ice | one size from n_i = 5.38·10⁷ (ρ q_i)^0.75 | 500 | 3.29 (ρ q_i)^0.16 |
+
+The processes, in the order they are applied to a cell once per step (each limited by what it can take): sedimentation of rain, ice, snow and graupel (upwind, Courant number 0.75, the flux at the ground is
+precipitation and is counted by species); melting (cloud ice at once; snow and graupel by the heat the air conducts and the vapour it carries to them, Q = K_a (T − T₀) + L_v D_v ρ (q_v − q_s(T₀)), with the
+ventilation factor of Hall & Pruppacher; limited by the heat in the air, so a long step never cools the air below freezing); homogeneous freezing at −40 °C (cloud water to ice, rain to graupel); freezing of rain
+(Bigg 1953, in the form of Lin et al.: 20π² B′ N₀ᵣ (ρ_w/ρ) (e^(A′ ΔT) − 1) / λ⁷ with B′ = 100 m⁻³ and A′ = 0.66 K⁻¹); riming (snow and graupel sweep up cloud water, which freezes onto them); graupel
+collecting rain and snow; snow and graupel collecting cloud ice; ice to snow above 0.5 g/kg and snow to graupel above 0.6 g/kg; Kessler's autoconversion and accretion of cloud water to rain as before; ice
+nucleation (Cooper 1986, 5 e^(0.304 ΔT) crystals per m³ below −5 °C); deposition and sublimation on ice, snow and graupel by diffusion theory with ventilation (the Bergeron process is not coded: it comes out of
+ice drying the air below water saturation, after which the saturation adjustment of cloud water evaporates the cloud); rain evaporation. **Every process moves mass with its latent heat** (condensation L_v, freezing and
+melting L_f, deposition and sublimation L_s = L_v + L_f), so water and the moist enthalpy c_p T + L_v q_v − L_f (q_i + q_s + q_g) are conserved by construction. The heat of every process also enters the pressure
+equation as the expansion of a gas, as in part 2. `ice: false` (the default) is the warm-rain core of part 2, untouched.
+
+**One thing in the textbook scheme was wrong enough to change.** The collection of one species by another (graupel collecting rain or snow) is an integral of the collision kernel
+(π/4) (D_x + D_y)² |V_x − V_y| over both size distributions. Lin et al. expand (D_x + D_y)² into three terms and take **one mean fall speed for each distribution** for the whole integral, the difference of two numbers
+that are close when graupel and rain fall at about the same speed. For 1 g/kg of graupel and 1 g/kg of rain at −10 °C the mean speeds are 5.2 and 6.1 m/s, but the collisions are carried by the large drops (the
+integral weights a drop by D⁵) at about 8 m/s and the small graupel (most of the number) at about 2 m/s: **the double integral over both distributions with the fall speed of every size is 5.5 times the closed form**
+(a scratch check, then the test below). Each of the three terms now uses the speed each distribution has under that term's own weight, V(p) = a Γ(1 + p + b) / Γ(1 + p) / λ^b: the closed form is then
+**0.98 times the double integral for rain and 0.84 for snow**. (WRF's `module_mp_lin.F` uses `abs(vtr − vtg)` of the mass-weighted mean speeds, as Lin et al. wrote it.) It changed the storm very little: in the Weisman-Klemp storm the rain is frozen by Bigg's process
+before the graupel can collect much of it.
+
+### What the tests check (`tests/severe_ice.mjs`, 31 checks, 8 s)
+
+| Check | Result |
+| --- | --- |
+| 300 random states from −48 to +9 °C, every species present or not, dry to supersaturated: one step of every process | water conserved to 7·10⁻¹⁸ kg/kg, the moist enthalpy to 1.2·10⁻¹⁰ J/kg of 3·10⁵, nothing negative |
+| snow in air 3 K above freezing | 2.0 g/kg of snow melts to 1.6 g/kg of rain in a minute and cools the air by 0.6 K, never below freezing, water and enthalpy conserved; the melt rate equals the **quadrature of the size distribution** (38.85 mg/kg in 1 s against 38.85); a 600 s step in air 0.05 K above freezing melts only what the air can pay for |
+| snow at −2 °C in ice-saturated air | does not melt |
+| riming of 1 g/kg of cloud water by 1 g/kg of snow at −10 °C | 60.5 mg/kg in 10 s against 52.8 by hand (the Bergeron growth takes a little more); the water freezes and warms the air |
+| the Bergeron process at −15 °C | snow grows from 0.20 to 0.53 g/kg and cloud water falls from 0.50 to 0.16 g/kg in 5 minutes, water conserved to 10⁻¹⁸ |
+| deposition on 0.1 g/kg of snow, 15 % over ice at −15 °C | 0.146 mg/kg in 1 s, **equal to the quadrature of the size distribution with diffusion theory** (the excess would be used up in 33 minutes); 1 g/kg of snow brings the air to ice saturation in 40 minutes without overshooting; a 600 s step stops at saturation |
+| Bigg freezing | 43.25 mg/kg in 0.1 s against 43.20 by hand (0.30 per second of the rain at −20 °C); rain at −20 °C is graupel within 10 s; rain at −3 °C mostly stays rain |
+| homogeneous freezing | cloud water freezes at −45 °C (and warms the air by 0.33 K) and survives at −35 °C; rain at −45 °C becomes graupel (not snow) and warms the air by L_f/c_p per kg |
+| snow collecting cloud ice | 4.14 mg/kg in 10 s against 4.14 by hand; heavy snow (2 g/kg) turns to graupel, light snow (0.5 g/kg) does not |
+| graupel collecting rain and snow | 0.98 and 0.84 times the double integral over both size distributions |
+| ice nucleation | 3.12·10⁻⁹ kg/kg at −20 °C, **equal to Cooper's rate by hand**, 20 times more at −30 °C, none at −3 °C |
+| the heat of freezing in the pressure equation | the pressure perturbation after freezing 1 g/kg of cloud water is C_c ρ Δθ: 4.189·10⁻⁴ against 4.188·10⁻⁴ by hand |
+| fall | graupel 5.1, snow 1.2 and cloud ice 0.66 m/s (3.29 (ρq)^0.16 gives 0.69); the hail setting 11.7 m/s; a 60 s step (Courant number 1.4) is split into stable sub-steps |
+| the water budget of three columns for 2.5 hours (air, vapour included, plus what reached the ground, against the start) | closes to 5·10⁻¹⁴ of the water put in; 93 % reaches the ground (the cloud ice melts to cloud water, which stays up); a column below freezing all the way delivers its graupel to the ground as graupel, none as snow |
+| a 2-D warm bubble in the Weisman-Klemp sounding, 40 minutes | stable; updraft 36.7 m/s, graupel up to 14 g/kg, cloud ice 1.1 g/kg, ice up to 13.75 km, 12 mm of rain, water budget 2.4·10⁻³, nothing clipped to speak of (8·10⁻¹¹ of the water) |
+
+**Mutation testing** (`tools/severe_mutants.mjs`, 38 one-expression changes of the scheme, each run against `severe_ice.mjs` and `severe_moist.mjs`): the first run killed 25 and **12 survived** (the melt
+limit and rate, rain freezing to snow instead of graupel, graupel collecting rain, snow collecting ice, the snow-to-graupel threshold, the limit on deposition, Cooper's rate and its switch, the fall speed of
+cloud ice, the hail accounting, the pressure term): each was a place the tests did not look. The tests above that quadrature, hand or budget checks were written for them; now **all 38 are killed**.
+
+### The storm with ice
+
+`wk82_run.mjs 2000 120 10 out.json` (ice on by default; `... 1 4e4 900` is the hail setting, `... 0` the warm rain of part 2) writes the maps, two vertical slices through the strongest updraft and the whole 3-D
+reflectivity of every frame. **The reflectivity is the Rayleigh value at 10 cm as WRF's `refl10cm_lin` computes it**: rain 720 N₀/λ⁷, snow and graupel as ice spheres of their density with the dielectric factor
+0.176/0.93 against water, rising to 1 as the ice gets wet (a water coat on a quarter of the mass reflects like rain) in the way down from the freezing level; cloud ice is ignored. Ice costs **about 1.5 times the
+warm-rain core**: 4.8 against 3.2 µs per cell and step on one core (2 hours of the 2 km storm in 3 minutes 40 seconds). The picture is `docs/severe-research/wk82-ice-2km.png`.
+
+| Minute | Updraft (m/s) | Coldest air (K) | Rain / cloud ice / snow / graupel (g/kg) | Strongest echo (dBZ) | 10 dBZ top (km) | Ice water path (kg/m²) | Vorticity 1 km / 3-5 km (10⁻³ s⁻¹) | Updraft helicity (m² s⁻²) | Updraft cores at 5 km |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 15 | 19.9 | −0.4 | 3.6 / 0.0 / 0.00 / 3.9 | 51 | 7.0 | 4 | 1.8 / 4.9 | 114 | 1 |
+| 25 | 45.3 | −3.2 | 8.5 / 0.9 / 0.05 / 14.8 | 57 | 13.5 | 39 | 1.9 / 7.9 | 276 | 1 |
+| 35 | 50.9 | −4.3 | 8.6 / 0.9 / 0.11 / 16.5 | 58 | 15.5 | 59 | 1.1 / 8.7 | 288 | 1 |
+| 45 | 46.2 | −7.3 | 6.5 / 1.0 / 0.14 / 14.9 | 59 | 15.5 | 59 | 3.0 / 7.7 | 256 | 1 |
+| 60 | 45.6 | −9.6 | 6.6 / 1.0 / 0.30 / 14.5 | 56 | 15.0 | 59 | 4.6 / 8.1 | 218 | **4** (26 at 53, 53 and 22 at 57, 41) |
+| 75 | 51.4 | −10.4 | 7.4 / 1.1 / 0.18 / 16.2 | 57 | 15.5 | 61 | 4.6 / 9.0 | 284 | 4 (27.8 at 69, 37) |
+| 90 | 39.0 | −9.3 | 7.5 / 0.8 / 0.17 / 14.0 | 58 | 15.0 | 61 | 5.6 / 9.8 | 177 | 4 (24.6 at 75, 33) |
+| 105 | 31.3 | −9.4 | 6.3 / 0.8 / 0.07 / 11.8 | 56 | 14.5 | 45 | 3.0 / 6.4 | 125 | 3 |
+
+Against the warm-rain storm of part 2 (same grid, same sounding): **the updraft is stronger** (45 to 51 m/s against 37 to 45: freezing releases 3.3·10⁵ J/kg, about 13 % of the heat of condensation per kilogram, above
+the freezing level), **there is an anvil and a deep echo** (the 10 dBZ top reaches 15 to 15.5 km, the tropopause being at 12; the vertical slices show a core of 55 dBZ and more from 1 to 10 km under an anvil
+spreading downwind between 10 and 14 km, an overshooting top, and the 0 °C and −40 °C isotherms at 3.8 and 9.7 km), the storm splits at the same time and the right mover keeps its rotation (vorticity at 3 to 5 km
+of 0.008 to 0.010 s⁻¹, helicity 180 to 290), and the cold pool at maturity is about the same (−9 to −10.5 K against −8.5 to −10).
+
+**How much the one free choice of the scheme matters** (the same storm, 2 km, minutes 40 to 100 unless said):
+
+| Graupel / hail setting | Updraft (m/s) | Strongest echo (dBZ) | Coldest air (K) | Graupel / snow (g/kg) | Most precipitation at the ground (mm) |
+| --- | --- | --- | --- | --- | --- |
+| warm rain only (part 2) | 45 | 59 | −10.1 | | 66 |
+| **graupel, N₀ 4·10⁶, 400 kg/m³ (the default)** | 53 | 59 | −10.6 | 17 / 0.3 | 41 |
+| N₀ 4·10⁵, 700 kg/m³ | 50 | 65 | −12.0 | 18 / 0.6 | 68 |
+| hail, N₀ 4·10⁴, 900 kg/m³ | 51 | 74 | −14.7 | 24 / 2.5 | 112 (26 as hail) |
+
+The dynamics are about the same; the **reflectivity differs by 15 dBZ** (Z ∝ N₀^(−3/4) q^(7/4) for a given mass, so a hundredfold N₀ is 15 dB), the cold pool by 4 K, and the precipitation at the ground by a factor 2.7
+(small graupel melt and evaporate more on the way down and big hail does not), which no radar comparison can constrain and a rain-gauge one could. The next section chooses between them.
+
+### The same storm at 1 km
+
+`wk82_run.mjs 1000 120 5 out.json`: 282,240 cells (viscosity 250 m² s⁻¹), 26 minutes of CPU for the two hours with another run on the machine (about 4 µs per cell and step). The picture is
+`docs/severe-research/wk82-ice-1km.png`.
+
+| Minute | Updraft (m/s) | Coldest air (K) | Rain / cloud ice / snow / graupel (g/kg) | Strongest echo (dBZ) | 10 dBZ top (km) | Vorticity 1 km / 3-5 km (10⁻³ s⁻¹) | Updraft helicity (m² s⁻²) | Updraft cores at 5 km |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 15 | 22.1 | −0.4 | 5.9 / 0.0 / 0.00 / 6.2 | 55 | 7.5 | 3.3 / 11.2 | 486 | 1 |
+| 25 | 44.9 | −4.1 | 9.7 / 0.9 / 0.10 / 14.5 | 58 | 13.5 | 2.2 / 18.3 | 904 | 1 |
+| 35 | 61.8 | −4.7 | 9.0 / 1.2 / 0.12 / 17.0 | 58 | 15.5 | 3.2 / 16.2 | 638 | 1 |
+| 45 | 58.9 | −8.5 | 7.9 / 1.0 / 0.21 / 18.5 | 58 | 16.0 | 9.5 / 19.2 | 705 | **3** (34.6 at 49, 42 and 31.5 at 44, 51) |
+| 55 | 57.0 | −9.1 | 8.4 / 1.1 / 0.17 / 15.4 | 59 | 15.5 | 8.4 / 19.8 | 615 | 3 (31.4 at 54, 42 and 28.4 at 52, 54) |
+| 65 | 57.3 | −9.5 | 7.7 / 1.4 / 0.17 / 15.0 | 57 | 15.5 | 8.2 / 21.6 | 660 | 4 (34.8 at 59, 40 and 31.8 at 55, 57) |
+| 85 | 56.1 | −10.3 | 6.4 / 1.1 / 0.22 / 14.6 | 56 | 14.5 | 7.8 / 19.5 | 491 | 4 (34.3 at 68, 37) |
+| 105 | 39.0 | −9.3 | 7.5 / 0.8 / 0.21 / 12.3 | 56 | 14.0 | 7.0 / 14.4 | 167 | 4 |
+
+Against the warm-rain storm at 1 km (part 2): the updraft peaks at **63.8 m/s** (55.8), the updraft helicity at **1356** (1005), the mid-level vorticity at 0.027 s⁻¹ (0.024) and the low-level vorticity is the same
+(0.011 s⁻¹); the cold pool is −10.7 K (−10.25), the echo top 16 km and the strongest echo 60 dBZ. The plan view at 45 minutes has the notched, asymmetric shape of a supercell with the core on the west flank, where the
+updraft is, and at 75 minutes several cores. **The comparison with real radar does not change with the grid:** the 1 km run, averaged to 2 km columns, is within 1 dB of the 2 km run in the 90th and
+99th percentiles below 10 km and within 2.2 dB above it, in both storms (table below).
+
+### The first comparison with real radar
+
+`tools/severe_research/nexrad_cfad.py` (Py-ART, which is not a dependency of the project and was installed in a scratch directory) reads **real NEXRAD Level II volumes** from the Unidata archive
+(`s3://unidata-nexrad-level2`, public) and compares their reflectivity by height with the model's. The comparison is made the way the radar sees: a volume cuts a storm 120 km away at 13 or 14 heights only, with a
+beam 2 km thick, so the **model is sampled by a virtual radar at the same range** (at every elevation of the real volume the model's linear Z is averaged over the beam's vertical extent, centre r sin e + r²/(2·4/3·R_E)),
+and the real gates are averaged (in linear Z, a gate with no echo counting as none) into 2 km columns, the model's own size. A column is part of the storm when any beam sees 20 dBZ or more in it; the box is the
+model's 84 km square, centred on the strongest cluster of 55 dBZ. Two real storms, four volumes each:
+
+- **KOAX (Omaha), 16 June 2014, 22:16 to 22:43 UTC:** the storms 113 to 124 km north of the radar (42.3 to 42.4°N, 96.5 to 96.7°W), one of them with a cyclonic velocity couplet of 28 m/s across 2 km in the dealiased lowest sweep of 22:37.
+- **KSGF (Springfield, Missouri), 22 May 2011, 21:41 to 22:15 UTC:** **the Joplin supercell**, at 112 to 131 km (its EF5 tornado began at about 22:34, from memory).
+
+The model is the 13 frames from minute 40 to 100 of the three settings above and of the 1 km run (averaged to 2 km columns). The picture of each storm is `docs/severe-research/cfad-koax-2014.png` and `cfad-ksgf-2011.png`: the median, 90th and 99th percentile of
+the reflectivity of the storm columns by height, thin lines the volumes, thick lines the model (a band for the 10 to 90 % of its frames), the share of the columns with 20 dBZ or more (the echo depth), and the pooled
+frequency by height of the real storm and of each setting.
+
+| Model minus real (dB), mean over the beam heights of the layer | Storm | median 2-10 km | 90th | 99th | median 10-15 km | 90th | 99th |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| hail, N₀ 4·10⁴, 900 | KOAX | +14.0 | +16.8 | **+14.6** | +10.1 | +15.6 | +11.5 |
+| | KSGF | +6.1 | +12.6 | **+10.8** | +10.3 | +21.4 | +15.5 |
+| N₀ 4·10⁵, 700 | KOAX | +14.9 | +11.6 | +6.2 | +12.5 | +13.9 | +6.4 |
+| | KSGF | +8.0 | +7.7 | +2.7 | +12.1 | +17.8 | +10.1 |
+| **graupel, N₀ 4·10⁶, 400 (the default)** | KOAX | +13.3 | **+5.5** | **−1.4** | +10.5 | +7.2 | −1.4 |
+| | KSGF | +6.8 | **+0.9** | **−5.4** | +10.6 | +11.4 | +2.2 |
+| graupel at 1 km (the default) | KOAX | +14.3 | +4.7 | −2.3 | +7.4 | +5.0 | −2.0 |
+| | KSGF | +7.3 | +0.1 | −6.4 | +10.0 | +10.1 | +1.4 |
+
+What it says:
+- **The hail setting is 11 to 17 dB too reflective at the top of the distribution in both storms**, from different radars, years and environments (the model's 99th percentile is 67 to 70 dBZ from 2 to 10 km
+  where the real storms' is 51 to 61). **The graupel of Lin et al. is within about 5 dB of the 99th percentile everywhere and of the 90th below 10 km**, and that is why it is the default.
+- **The weak echo is not right with any setting.** The median of the storm columns is 6 to 15 dB too high and the share of columns with 20 dBZ or more at 10 to 12 km is 18 to 30 points too high (34 % real against 63 % at 11.4 km for KOAX, 54 against 72 and 31 against 52 for KSGF at 10 and 12 km): **the real
+  storms have far more weak echo around the strong cores** (the real frequency peaks at 15 to 25 dBZ at every height, the model's is flat), and **the model's anvil is too deep and too reflective at 10 to 14 km**.
+  The anvil is graupel carried up by the updraft and rain frozen at −40 °C (in the vertical slices 99 % of the cells of 20 dBZ or more at 10 to 14 km hold more graupel than ice and snow, 6 g/kg against
+  0.45); in a real anvil the crystals aggregate into snow, which the scheme turns into graupel as soon as there is graupel to collect it (snow reaches 0.3 g/kg at most, against 1 to 2.5 g/kg with the hail setting). The extremes are compressed too: the model's maximum is 1 dB over its 99th
+  percentile, the real storms' 1 to 4 dB.
+- **Gate C (a CFAD in range) is met in part:** for the strong echo (90th and 99th percentile, 2 to 10 km) of two real supercells, with the graupel setting; **it is not met for the weak echo and the anvil
+  (10 to 15 km), nor for the median**. Two storms, one idealised environment and a hail-or-graupel choice that is a tuning of a single-moment scheme are not a validation; the plan's two-moment hail (S8) is the
+  principled answer, and real days with their own soundings (S10) the proper test.
+
+### Said plainly
+- *No bright band in these storms.* The wet-ice rule is in the reflectivity diagnostic, but a bright band belongs to stratiform rain, which a supercell does not have; it will be tested on a squall line's trailing
+  region (S10) and in a column test of the radar operator (S0).
+- *A single-moment scheme has no sizes.* The mixing ratio fixes the size of the stones; **there is no hail size and no hail swath** until the two-moment scheme (S8), and the 41 to 112 mm of precipitation at the
+  ground depend on the setting.
+- *The cold pool is probably too strong* (−9 to −10.5 K at the ground, against the few kelvin that supercell outflows measure, from memory and not checked here): the usual fault of single-moment rain.
+- *Reflectivity is Rayleigh at 10 cm* with no attenuation, no beam smoothing in the maps, no melting-snow bright band, cloud ice ignored.
+- *The real storms are two,* from the days I could name (a supercell day in Nebraska and Joplin); the environments differ from the idealised Weisman-Klemp one (CAPE 2134 J/kg), no sounding of those days was used, and
+  the real volumes sample the storm only from 1.8 to 2.2 km up (nothing below).
+- *The velocity at tilts with the fall speed* and the CFAD of the radar operator belong to S0 (the operator), not to the core.
+
+### Next
+The recorded storms are the input of the radar app (S0: the operator, which adds the beam, the gates and the speckle of part 2's list of things a radar does); the GPU port (S2b) makes them live; two-moment
+rain, graupel and hail (S8) answer the hail size and the anvil.

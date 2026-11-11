@@ -1,7 +1,9 @@
 # Severe (tornadoes, hail, derechos): the plan
 
-> **Planning only. Nothing of this is built.** First written on 11 Nov 2026 from the brief and four reference clips, and revised the same day with the answers to the first
-> round of questions. *Measured* means measured in the sandbox that day (the scripts are in `tools/severe_research/`); *estimated* means arithmetic that the first benchmark page
+> **Status (11 Nov 2026): the physics core is built; the rest is a plan.** The compressible core (S2a), its moisture and the first real storm (S3) and the ice microphysics with a first
+> comparison against real radar (S4) exist as code, tests and recorded runs (`src/severe-core.js`, `tests/severe_core.mjs`, `severe_moist.mjs`, `severe_ice.mjs`, `docs/severe-research.md`);
+> nothing is on the site yet (the menu's Severe card stays off until S5). Everything else here is still a plan. First written on 11 Nov 2026 from the brief and four reference clips, and
+> revised the same day with the answers to the first round of questions. *Measured* means measured in the sandbox that day (the scripts are in `tools/severe_research/`); *estimated* means arithmetic that the first benchmark page
 > has to confirm on real devices. Figures from the meteorology literature are typical values from memory: where a number is going to be a test target, it is taken from the paper
 > when that piece is built (marked *check*).
 
@@ -310,7 +312,7 @@ moved over a quiet area; the step ratio is varied.
 6. **Regimes of a drawn day:** the storm *mode* follows the environment as it does in the literature (discrete supercells with a dryline and a shear vector across it; a line with a front and
    the shear along it), and the CAPE, shear and SRH of the presets fall inside the ranges of published proximity soundings (*check*).
 
-**Against real storms** (the sandbox can fetch them): real NEXRAD volumes from the Unidata archive read with Py-ART, and the HRRR analysis for the same hour for the environment; compare
+**Against real storms** (the sandbox can fetch them; `tools/severe_research/nexrad_cfad.py` makes the first of these comparisons, part 3 of the research notes): real NEXRAD volumes from the Unidata archive read with Py-ART, and the HRRR analysis for the same hour for the environment; compare
 **CFADs** (reflectivity against height, the standard microphysics diagnostic), echo-top heights, hook scale, rotational velocity, hail-core extent. HRRR's own forecast of the event is a
 second yardstick. The aim is *statistically realistic storms in matched environments*, not forecast skill.
 
@@ -327,7 +329,7 @@ Sizes are guesses relative to a tropical milestone such as 32: M about 2-3 of th
 | S2a | **The real core, as a double-precision CPU reference:** compressible split-explicit dynamics in 3-D (and 2-D), with tests for rest, advection order, acoustic and gravity-wave speeds, and the Straka density current | the first real physics results (gate A1) | L |
 | S2b | **The WGSL port and the benchmark page.** The same algorithm on the GPU, tested against the reference in CI (SwiftShader); the page prints milliseconds per step on the device and which grids it can afford | **real timings from your devices** (gate A2) | L |
 | S3 | **Moist convection, warm rain (M1)**, as a Lab run: the Weisman-Klemp day first, run on the CPU reference at 1 km and **recorded**; the radar app plays the recording until the GPU port runs it live | **the first real storm on the radar** (gate B: met in the first 2 km run, which splits at about 50 minutes and keeps a rotating right mover; `docs/severe-research.md` part 2) | M |
-| S4 | **Ice microphysics, single-moment (M2).** Bright band, anvil, hail core, 60-70 dBZ; velocity at tilts including fall speed; first CFAD comparison with real radar | storms with real structure (gate C: CFAD in range) | L |
+| S4 | **Ice microphysics, single-moment (M2).** Bright band, anvil, hail core, 60-70 dBZ; velocity at tilts including fall speed; first CFAD comparison with real radar | storms with real structure (gate C: CFAD in range). **Built (milestone 35):** five species, 31 checks and 38 mutants killed, an anvil to 15 km, a graupel core of 55-59 dBZ (the "hail" setting makes 70+ and is 11-17 dB too reflective against two real supercells); **gate C met in part:** the strong echo (90th and 99th percentile, 2-10 km) is within about 5 dB of the Joplin and Nebraska supercells, the weak echo and the anvil above 10 km are not (`docs/severe-research.md` part 3). The bright band and the velocity at tilts wait for the radar operator (S0) and stratiform cases (S10) | L |
 | S5 | **Simulation mode, first release:** the editor and presets, Lab runs from a tapped spot, the frame slider and speeds, summary and stamped export. **The Severe card turns on.** | **draw or pick a day, tap a spot, press Start, watch a supercell** | L |
 | S6 | **The Day:** the 2.5-3 km driver with surface fluxes, boundary layer and the diurnal cycle, nudged towards the drawing, storms initiated along the drawn boundaries, updraft-helicity tracks, the Day view | **draw fronts and lows and watch storms break out along them** (gate D: the regimes of section 10) | XL |
 | S7 | **Zoom:** the 500 m Storm run from a Day frame (one-way nest, checkpoints, one timeline) | pick a storm in the Day and get its radar look | L |
