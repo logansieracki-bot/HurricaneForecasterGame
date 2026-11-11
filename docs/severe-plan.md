@@ -23,8 +23,14 @@
 | "Satellite" | the **basemap only**. No satellite imagery product, so there is no satellite or lightning milestone |
 | GPU | the full simulation requires **WebGPU**; only a slow, coarse CPU fallback exists without it |
 | First phenomenon | supercells and tornadoes first; then squall lines and derechos; hail inside both |
-| Time | the model runs faster than real time; the **playback speed is selectable**; a **frame slider** covers everything since the first frame; frames every **1, 3, 5 or 10** model minutes. The model still steps every few seconds inside (it is unstable otherwise); only frames are kept |
+| Time | the model runs faster than real time; the **playback speed is selectable**; a **frame slider** covers everything since the first frame; frames every **1, 3, 5 or 10** minutes **of game time**, chosen at any moment (it applies to the frames saved from then on); the speed (game minutes per real second) is independent of the interval. The model still steps every few seconds inside (it is unstable otherwise); only frames are kept |
+| Real physics only | everything that appears on screen as weather comes out of the physics model. **No painted or analytic storms, ever:** analytic fields exist only inside tests (a rain shaft, a vortex) where the right answer is known exactly |
 | Weather input | **lows, highs, fronts and the rest are placed by hand, each with an arrow** (section 6.2) |
+| Drawing details | the feature list of section 6.2 is confirmed (lows, highs, the four fronts, dryline, troughs, outflow boundaries, upper trough and jet, low-level jet, moisture axis, wind arrows); every object has a motion arrow, and a separate wind-arrow tool makes wind |
+| How the day follows the drawing | it should **look much like the drawing and still work meteorologically**: the large-scale pattern is held (several hours by default; a slider from "only the start" to "the whole run") and the model's physics does the rest |
+| Satellite basemap | baked offline first (a "satellite-style" shaded relief from open data); NASA's free tiles later as an optional sharper layer |
+| First release | the editor plus Lab runs from a tapped spot (end of S5); the Day (S6) and Zoom (S7) after it |
+| Time of day and season | controls on the drawing screen (they set the sun and the heating) |
 | Resolution | not the whole outbreak region at high resolution: a coarse *Day* for the region and a fine *Storm* nest that follows one storm |
 | "Nudger" labels | the yellow `missed / merged / storm gone` labels of clips 3 and 4 come from another server's examples and are **not wanted now**, perhaps much later or never; "missed" is read as "no storm could form in that environment", which the model gives for free |
 | Page, stamp, card | a separate Severe page; stamp "HYPOTHETICAL from Isobar Severe Simulator"; the menu card turns on at the end of S5. (My defaults, not yet confirmed: change any.) |
@@ -217,8 +223,8 @@ The instinct to run the whole region coarsely and one storm finely is how resear
 - **Reflectivity:** the sixth moment of each species' size distribution through scattering tables (Rayleigh for rain and small ice; Mie or T-matrix tables for large wet hail,
   built by a Python tool and baked to a small file); melting layers and wet hail look like water; attenuation negligible at S band.
 - **Velocity:** the reflectivity-weighted radial wind **plus the fall speed** of the hydrometeors (it matters at high tilts), spectrum width from the shear and turbulence inside the beam.
-- **Noise and speckle from physics, not from a texture:** power from a random scatterer population is exponentially distributed; averaging N independent samples gives a spread of
-  about 5.6/√N dB. That *is* the gate-to-gate speckle of clip 2, and it gives us a closed-form test. The random numbers are seeded by (frame, radial, gate), so a frame always looks the same.
+- **Noise and speckle from physics, not from a texture:** power from a random scatterer population is exponentially distributed; averaging the power of N independent samples gives a spread of
+  about 4.3/√N dB (5.6 dB for a single sample; exactly 4.34·√ψ′(N) dB, ψ′ being the trigamma function). That *is* the gate-to-gate speckle of clip 2, and it gives us a closed-form test. The random numbers are seeded by (frame, radial, gate), so a frame always looks the same.
 - **Artefacts, added one at a time:** ground clutter near the radar with a filter, velocity **aliasing** at the Nyquist velocity (with a dealiasing switch), range folding, a
   three-body scatter spike behind hail, sun spikes. Each is a switch.
 - **Scanning:** VCP 12 and 212 style volumes (14 tilts from 0.5° to 19.5°, a volume in about 4-6 minutes); the radar placed anywhere, **also after the run**, because the operator
@@ -248,7 +254,7 @@ The tropical floater already has the NWS reflectivity colours (`FL_BANDS`) and t
 - **A frame** is the run's state *as the operators need it*: for the Storm and the Lab, reflectivity, the three wind components and (from M3) the dual-pol terms on the model grid,
   quantised to 8 bits and stored sparsely (most cells are empty): about 10 MB raw and 1-2 MB stored per frame at 500 m, so two hours at 5-minute frames is about 25 frames (some tens of MB),
   at 1-minute frames 120. A Day frame is a set of 2-D products (composite reflectivity, echo tops, updraft helicity, surface wind and gusts, temperature, dew point, pressure): under a megabyte.
-- **Frame interval:** 1, 3, 5 or 10 model minutes (5 is a radar volume; 1 is for rotation and tornado studies; 10 for Days). Frames are kept from the first minute and the slider spans
+- **Frame interval:** 1, 3, 5 or 10 minutes of game time (5 is a radar volume; 1 is for rotation and tornado studies; 10 for Days), selectable at any moment and applying to the frames saved from then on (the slider works on the stored time of each frame, so the spacing may differ between parts of a run). Frames are kept from the first minute and the slider spans
   all of them; frames not yet computed are greyed and the run keeps computing ahead of the playhead as fast as the device allows (it can be paused to save the battery).
 - **Playback speed** is selectable (model minutes per second) and independent of how fast the run computes; scrubbing backwards is instant.
 - **Checkpoints and branches:** a full-state checkpoint every ~30 model minutes allows resuming, **zooming** (6.7) and, later, "what if" restarts (change the shear or add a trigger at a
@@ -287,7 +293,7 @@ stationary front and weak flow); *derecho set-up* (a stationary front, a strong 
 ## 10. How we know it is "real" (validation)
 
 **Tests that need no literature:** hydrostatic rest stays at rest; advection of a translated Gaussian and a solid-body rotation converge at the scheme's order; a gravity wave has
-its dispersion relation; mass, total water and moist enthalpy close; positivity; the speckle spread equals 5.6/√N dB; beam height equals the 4/3-earth formula; a solid-body or Rankine
+its dispersion relation; mass, total water and moist enthalpy close; positivity; the speckle spread equals 4.34·√ψ′(N) dB; beam height equals the 4/3-earth formula; a solid-body or Rankine
 vortex gives the analytic velocity couplet; aliasing arithmetic; the sounding calculator equals MetPy. **For the builder:** the 3-D state is hydrostatic to rounding error; its winds are
 geostrophic away from the ground; the noise after the adjustment run (maximum vertical velocity and pressure tendency) is small against the storms' own; a drawn front moves at its arrow's
 speed when nothing else acts; contradictions in a drawing are caught. **For nesting:** the child's large scales follow the parent's at its edges; results do not change when the box is
@@ -315,10 +321,11 @@ Sizes are guesses relative to a tropical milestone such as 32: M about 2-3 of th
 
 | # | Milestone | What you can see | Size |
 | --- | --- | --- | --- |
-| S0 | **The radar app, the operator and the frame system, on analytic volumes** (a rain shaft, a rotating column, a hook-shaped analytic supercell that moves: test fixtures, not a simulator). Dark, light and satellite themes, two panes, colour bars, site pills, speckle, clutter, aliasing, a draggable radar; **the frame slider, the 1/3/5/10-minute intervals and the speeds**. A preview page the menu does not link | the look of all three clips on your phone or computer, and a slider that works | L |
+| S0 | **The radar app, the operator and the frame system, on recorded runs of the real model** (from S3; analytic fields such as a rain shaft or a vortex exist only inside the operator's tests). Dark, light and satellite themes, two panes, colour bars, site pills, speckle, clutter, aliasing, a draggable radar; **the frame slider, the 1/3/5/10-minute intervals and the speeds**. A preview page the menu does not link | the look of all three clips, on a real simulated storm, with a slider that works | L |
 | S1 | **The analysis editor and builder, with no cloud model.** Lows, highs, the four fronts, dryline, troughs, jets, arrows; isobars and barbs; the mesoanalysis maps; skew-T and hodograph at a tap; warnings; the presets as drawings. Preview page | **draw a day, see where the CAPE and the shear are** | XL |
-| S2 | **The core and the benchmark page.** Dry compressible core in WGSL plus the f64 reference; rest, advection, gravity wave, warm bubble, Straka. The page prints milliseconds per step on the device and which grids it can afford | a cold pool in a slice; **real timings from your devices** (gate A) | L |
-| S3 | **Moist convection, warm rain (M1)**, as a Lab run: Weisman-Klemp day or the drawing at a tapped spot; the radar app plays it | **the first real storm on the radar** (gate B: it splits and rotates as published) | M |
+| S2a | **The real core, as a double-precision CPU reference:** compressible split-explicit dynamics in 3-D (and 2-D), with tests for rest, advection order, acoustic and gravity-wave speeds, and the Straka density current | the first real physics results (gate A1) | L |
+| S2b | **The WGSL port and the benchmark page.** The same algorithm on the GPU, tested against the reference in CI (SwiftShader); the page prints milliseconds per step on the device and which grids it can afford | **real timings from your devices** (gate A2) | L |
+| S3 | **Moist convection, warm rain (M1)**, as a Lab run: the Weisman-Klemp day first, run on the CPU reference at 1 km and **recorded**; the radar app plays the recording until the GPU port runs it live | **the first real storm on the radar** (gate B: it splits and rotates as published) | M |
 | S4 | **Ice microphysics, single-moment (M2).** Bright band, anvil, hail core, 60-70 dBZ; velocity at tilts including fall speed; first CFAD comparison with real radar | storms with real structure (gate C: CFAD in range) | L |
 | S5 | **Simulation mode, first release:** the editor and presets, Lab runs from a tapped spot, the frame slider and speeds, summary and stamped export. **The Severe card turns on.** | **draw or pick a day, tap a spot, press Start, watch a supercell** | L |
 | S6 | **The Day:** the 2.5-3 km driver with surface fluxes, boundary layer and the diurnal cycle, nudged towards the drawing, storms initiated along the drawn boundaries, updraft-helicity tracks, the Day view | **draw fronts and lows and watch storms break out along them** (gate D: the regimes of section 10) | XL |
@@ -327,8 +334,8 @@ Sizes are guesses relative to a tropical milestone such as 32: M about 2-3 of th
 | S9 | **Tornadoes:** rotation tracks, tornado potential, the embedded vortex, then the on-demand nested LES; a stamped damage swath | a tornadic signature on velocity | XL |
 | S10 | **Squall lines and derechos** in the MCS box and in Days; **real days** (HRRR initial conditions, comparison with real radar) and the **groundwork for Forecaster** (hidden truth, warning polygons, scoring; the drawing tool reused to draw a forecast) | a bow echo; replay a real event; guess before you see | XL |
 
-**Order:** S0 and S1 first and in either order (both are visible and neither needs the cloud model); the S2 benchmark decides the grid sizes. S3 and S4 in series. S6 and S7 come before S8
-because they make the drawn fronts matter (S8 deepens what already works); they can swap if you want the microphysics first. Four go/no-go gates (A to D): if one fails, the next piece does not
+**Order (revised: the real physics first, the riskiest part first):** S2a, then S3 (the real core and the first real storm), then S0 (the radar app, on that recording) and S2b (the GPU port, which makes it live and decides the grid sizes) in either order; S1 (the drawing tool, which needs no cloud model) whenever you want to see it. S4 after S3. S6 and S7 come before S8
+because they make the drawn fronts matter (S8 deepens what already works); they can swap if you want the microphysics first. Go/no-go gates (A1, A2, B, C, D): if one fails, the next piece does not
 start until it is understood.
 
 ## 12. What carries over from the tropical side, and what does not
@@ -353,10 +360,4 @@ start until it is understood.
 
 ## 14. Open questions
 
-1. **The satellite basemap:** bake an offline "satellite-style" one first (shaded relief and a land tint from open data; works anywhere, testable) and add NASA's free run-time tiles later as an optional sharper layer? (7.3)
-2. **The list of features to draw:** lows, highs, cold, warm, stationary and occluded fronts, a dryline, surface troughs, outflow boundaries, an upper trough and jet, a low-level jet, a moisture axis and
-   plain wind arrows (6.2). Is that "all of those", or is something missing? Should arrows set only the *direction and speed of motion*, or also *wind* (a flow arrow that makes a wind)?
-3. **How strictly should the day hold to the drawing?** My recommendation: the large-scale pattern is held for several hours (fronts keep moving the way the arrows say) while storms are free,
-   with a slider from "only the starting state" to "holds the whole run".
-4. **First release:** editor plus Lab runs from a tapped spot (end of S5), with the whole-region Day (S6) and Zoom (S7) after it. Or do you want the Day before the first release?
-5. **Time of day and season:** a start time and a date control (they set the heating and the sun) in the drawing screen: yes?
+None at the moment: the first round of five is answered and recorded in section 2. New ones are added here as they come up.
