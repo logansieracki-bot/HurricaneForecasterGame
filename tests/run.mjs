@@ -24,9 +24,10 @@ const SATL_DIST = join(ROOT, 'dist/satl-sst-simulator.html');
 const MED_DIST = join(ROOT, 'dist/med-sst-simulator.html');
 
 let failed = 0;
+const failedNames = [];                                                              // listed again at the very end, so that the last lines of a long log say which checks failed
 function check(name, cond) {
   console.log((cond ? 'ok   ' : 'FAIL ') + name);
-  if (!cond) failed++;
+  if (!cond) { failed++; failedNames.push(name); }
 }
 
 // City markers: pin(s) on the map for real coastal cities that show a hover tooltip with the
@@ -4260,7 +4261,8 @@ if (!SKIP.includes('menu')) await checkMenuBasin('satl', 'South Atlantic', 'satl
 if (!SKIP.includes('menu')) await checkMenuBasin('med', 'Mediterranean', 'med-sst-simulator.html');
 
 if (failed) {
-  console.error(`\n${failed} check(s) failed.`);
+  console.error(`\n${failed} check(s) failed:`);
+  for (const n of failedNames) console.error('FAIL ' + n);
   process.exit(1);
 }
 console.log('\nAll checks passed.');
