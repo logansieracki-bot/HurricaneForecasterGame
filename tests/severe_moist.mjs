@@ -99,5 +99,25 @@ check('the Weisman-Klemp sounding has about 2000-3000 J/kg of CAPE, its condensa
   check('the water budget of the bubble run closes to 0.3 % (' + rel.toExponential(1) + '; the vapour is advected in advective form, which is not exactly conservative)', Math.abs(rel) < 3e-3);
 }
 
+/* 7. The moister soundings of the larger-end scenarios (loadSounding with a qvScale): the vapour is scaled up below 3 km but held to 95 % of saturation. Without the cap the first extreme storms
+    started in air that was 100-127 % saturated and rained over the whole box. */
+{
+  let worst = 0, drier = 0, atSurf = 0, wettest = 0;
+  for (const scale of [1.15, 1.25, 1.35]) {
+    const sn = loadSounding(undefined, scale), core = C.create({ nx: 4, ny: 1, nz: 60, dx: 1000, dz: 500, moist: true, theta: sn.theta, qv: sn.qv, bc: { x: 'periodic' } }), b = core.base;
+    for (let z = 0; z <= 14000; z += 250) {
+      const raw = snd.qv(z), rh = sn.qv(z) / qvsOf(sn.theta(z), b.piBar(z));
+      if (sn.qv(z) < raw - 1e-12) drier++;
+      if (sn.qv(z) > raw * (1 + 1e-9)) worst = Math.max(worst, rh);                              // where the scaling made it moister
+      wettest = Math.max(wettest, rh);
+    }
+    atSurf = Math.max(atSurf, sn.qv(0) / snd.qv(0));
+  }
+  check('the moister soundings (x1.15, x1.25, x1.35) are held to 95 % saturation wherever the scaling made them moister (worst ' + f2(100 * worst, 1) + ' %, between the table\'s levels 1 % over is allowed), are never drier than the original, and the surface vapour is x' + f2(atSurf, 2) + ' at most',
+        worst < 0.96 && worst > 0.9 && drier === 0 && Math.abs(atSurf - 1.35) < 1e-9 && wettest < 1);
+  const one = loadSounding(undefined, 1);
+  check('a scale of 1 is the sounding as it is (vapour at 0, 1, 2, 4 km: ' + [0, 1000, 2000, 4000].map((z) => f2(1000 * one.qv(z), 2)).join(', ') + ' g/kg)', [0, 1000, 2000, 4000].every((z) => one.qv(z) === snd.qv(z)));
+}
+
 console.log(`\n${passed} passed, ${failed} failed (${lap()})`);
 process.exit(failed ? 1 : 0);

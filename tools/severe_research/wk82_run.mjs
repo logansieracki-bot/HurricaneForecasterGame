@@ -1,6 +1,6 @@
 // The first real storm: the Weisman-Klemp (1982) supercell on WRF's test/em_quarter_ss geometry, run with the Severe core (src/severe-core.js, moist), with the
 // warm-rain scheme of Kessler (ice = 0) or with ice: cloud water, rain, cloud ice, snow and graupel/hail (ice = 1, the default).
-//   node tools/severe_research/wk82_run.mjs <dx m> <minutes> <dt s> <out.json> [frameMinutes=5] [ice=1] [n0g=4e6 m-4] [rhog=400 kg/m3]
+//   [QV_SCALE=1.25] node tools/severe_research/wk82_run.mjs <dx m> <minutes> <dt s> <out.json> [frameMinutes=5] [ice=1] [n0g=4e6 m-4] [rhog=400 kg/m3]
 // 2 km: 42 x 42 x 40 cells (84 km square, 20 km deep, 500 m levels), the sounding's winds already shifted so that the storm stays in the box, periodic sides with a
 // 10 km sponge, a 5 km Rayleigh layer under the lid, a constant viscosity of 500 m2/s (WRF's khdif/kvdif for this case at 2 km), a +3 K bubble 10 km x 10 km x 1.5 km.
 // It prints, every five minutes: the strongest updraft and where it is, the coldest air at the ground, cloud, rain and ice water, the strongest reflectivity, low-level and
@@ -16,7 +16,8 @@ import { writeFileSync } from 'node:fs';
 const C = globalThis.HFSevereCore;
 const dx = +process.argv[2] || 2000, minutes = +process.argv[3] || 60, dt = +process.argv[4] || 10, out = process.argv[5] || 'wk82.json', frameMin = +process.argv[6] || 5;
 const ice = (process.argv[7] === undefined ? 1 : +process.argv[7]) !== 0, n0g = +process.argv[8] || 4e6, rhog = +process.argv[9] || 400;     // graupel/hail intercept and density
-const L = 84000, nx = Math.round(L / dx), ny = nx, nz = 40, dz = 500, snd = loadSounding();
+const qvScale = +process.env.QV_SCALE || 1;                                                                // QV_SCALE=1.25: moister low levels, a larger CAPE (the larger-end scenarios)
+const L = 84000, nx = Math.round(L / dx), ny = nx, nz = 40, dz = 500, snd = loadSounding(undefined, qvScale);
 const core = C.create({ nx, ny, nz, dx, dy: dx, dz, moist: true, ice, iceParams: { n0g, rhog }, theta: snd.theta, qv: snd.qv, wind: { u: snd.u, v: snd.v }, bc: { x: 'periodic', y: 'periodic' },
                         visc: { kh: 500 * dx / 2000, kv: 500 * dx / 2000 }, damp: { top: { depth: 5000, rate: 0.003 }, lateral: { width: 10000, rate: 0.02 } } });
 const S = core.S, idx = core.idx, b = core.base, xc = L / 2, yc = L / 2, T0 = 273.15;

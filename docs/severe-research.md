@@ -316,3 +316,92 @@ What it says:
 ### Next
 The recorded storms are the input of the radar app (S0: the operator, which adds the beam, the gates and the speckle of part 2's list of things a radar does); the GPU port (S2b) makes them live; two-moment
 rain, graupel and hail (S8) answer the hail size and the anvil.
+
+## Part 4. The radar's view, your colour table and the large end (milestone 36, 11 Nov 2026)
+
+You asked for four things: a radar picture of a higher quality (gates as small as on a real radar, matched to image examples), your colour table (`Apocs_BR_Expert.pal`) as the palette, the
+colours interpolated, and the large-end scenarios tested first. The pictures are `docs/severe-research/radar-extremes.png`, `radar-real-vs-model.png`, `radar-palette.png` and `radar-ramp.png`.
+
+### What was added
+- `src/severe-palette.js`: reads a GRLevelX colour table (`Color:` with one or two colours, `SolidColor`, `Color4`, comments) and builds a look-up table (every 0.05 dBZ). Your file is kept as
+  `data/severe/Apocs_BR_Expert.pal`.
+- `src/severe-radar.js`: the **operator** (`scan`: a model volume of reflectivity becomes one tilt of gates, 250 m by 0.5°, the first gate at 2125 m, 920 gates (230 km) or up to 1840 (460 km)) and the
+  **renderer** (`render`: every pixel asks which gate it is in and takes that gate's colour; the gates are blocks, nothing is smoothed, zooming makes them bigger). No browser, no page yet.
+- `tests/severe_radar.mjs`: **35 checks** (27 s, in `npm test`); and two more checks in `tests/severe_moist.mjs` (14 in all) for the moister soundings.
+- `tools/severe_radar_mutants.mjs`: **45 mutants** (all killed), each one expression of the operator, the renderer or the colour-table reader changed, run against that test. The first run let 11 through and each was a
+  real gap: the tests now count the empty sky and the clutter beyond 50 km exactly, look at an echo edge half a beam-sigma beside the ray (0.726 and 0.274 of the power for the three-point rule, 0.667 and
+  0.333 if its weights were equal), compare the ground range with the standard formula, look at a beam along the ground (the part of the beam under the ground sees nothing: a uniform 40 dBZ field reads 38.9 dBZ), check that pixels are opaque, that a table given out of order is sorted and that the look-up table has the
+  right size and takes the nearest entry. Three lines that did nothing (a second ground check, two redundant tests in the colour look-up) were removed from the code instead.
+- In `tools/severe_research/`: `radar_render.mjs` (a recorded storm to a PNG), `radar_real_render.mjs` and `nexrad_sweep.py` (a real NEXRAD sweep drawn with the same renderer and palette),
+  `radar_testcard.mjs` (a test card of the table, and a ramp up to 105 dBZ through the whole operator), `wk82_cape.mjs` (the CAPE of a sounding), `png.mjs`.
+
+### The colour table and its interpolation
+27 entries from -35 to 100 dBZ. A line with two colours (only the one at -2 dBZ has them) is a segment that starts with the first and ends, at the next entry's value, with the second; a line with one
+colour runs to the next entry's colour. Between entries the colour is a **straight line in red, green and blue**; where the file has two colours at a place there is a jump, and the only one in your
+file is at 12 dBZ (31,154,180 to 0,166,169). The look-up table has 2901 entries; the largest step between neighbours is 6 of 255 in any channel and there is that one jump. Below -35 nothing is
+drawn (the background shows), a value that is not a number draws nothing, and above 100 the last colour stays. `radar-palette.png` shows the bar as drawn, the same entries held flat for comparison, and
+the three colour channels; `radar-ramp.png` is a storm whose reflectivity rises from 0 to 105 dBZ along 120 km, seen through the whole operator: teal, green, yellow, orange, red, magenta, then black at
+69, white at 75, cyan at 80, blue at 90 and 95 and black at 100, with the speckle on top.
+
+### The operator, and what real radars say about it
+Geometry (a 0.5° beam is 1.46 km up at 100 km and 4.10 km at 200 km), the Gaussian beam of 0.9° (nine points up it, three across, in power, the ground cutting off what is under it), the speckle of N = 2
+independent samples (a spread of 3.49 dB, a mean 1.25 dB under the true value), 0.5 dBZ steps, random numbers seeded by (frame, radial, gate). All of that has a closed-form check (part of the 35).
+What a model does not make, a radar sees: **the noise floor, the receiver's threshold, ground clutter, the clear-air return of insects and the odd isolated target.** Those were first set by eye and the
+first pictures were wrong in a way a real radar settles: a wash of light-grey noise at 100 to 200 km and a clear air of sparse blocks. So they were measured. The lowest tilt of **14 real volumes**
+(KOAX 16 June 2014, KSGF 22 May 2011, KTLX 20 May 2013; Level II from the Unidata archive, Py-ART, `nexrad_sweep.py`) says:
+
+| range (km) | 40-60 | 80-100 | 140-160 | 240-260 | 340-360 | 420-440 |
+| --- | --- | --- | --- | --- | --- | --- |
+| lowest value of the bin, 14 real volumes (dBZ) | -9.0 | -2.5 | 3.0 | 9.0 | 13.0 | 17.0 |
+| the same, the simulated receiver (a uniform -22 dBZ echo) | -10.0 | -3.0 | 3.0 | 9.5 | 14.5 | 17.5 |
+
+The floor follows **-41.8 dBZ at 1 km + 20 log r + 0.019 dB per km** (the last term is the correction for the air's attenuation that the radar applies, and it is what makes the floor rise faster than the
+square of the range: 7 dB between 50 and 430 km); the guess made first (-59 dBZ at 1 km, no range term) was 17 dB too sensitive. The **clear air** is a continuous return in the boundary layer, not
+sparse targets: the real radars report 99 % of the gates out to 45 km (KOAX). It is set to +2 dBZ at the antenna (it varies from a dull day, -4.7 dBZ at KSGF, to a day of insects, +4 at KOAX), a spread
+of 5 dB (two sizes of patches, 9 and 2.8 km, and the speckle), a layer 1.3 km deep with a soft top (so it ends where the beam leaves it, 80 to 100 km away at 0.5°), 1.5 dB lower per kilometre of height.
+
+| clear air, 0.5° tilt (gates with no 18 dBZ echo near them) | 5-15 km | 25-35 km | 55-65 km | 85-95 km |
+| --- | --- | --- | --- | --- |
+| share of the gates that report, KOAX / KSGF / simulated | 99 / 99 / 100 % | 99 / 90 / 99 % | 87 / 31 / 89 % | 37 / 10 / 40 % |
+| spread of the reported values, KOAX / KSGF / simulated (dB) | 5.2 / 5.7 / 5.0 | 4.2 / 5.2 / 4.6 | 3.4 / 3.0 / 4.1 | 2.4 / 2.3 / 2.3 |
+| neighbouring gates differ by (÷ √2), KOAX / KSGF / simulated (dB) | 3.5 / 3.6 / 4.1 | 3.2 / 3.7 / 3.5 | 2.7 / 2.5 / 2.9 | 2.1 / 1.9 / 2.1 |
+
+`tests/severe_radar.mjs` holds the simulated numbers between the two real radars (with a little slack), the floor within 2 dB of the real one at six ranges, and the clear air gone beyond 140 km.
+`radar-real-vs-model.png` is the same renderer and the same colour table on a real sweep (KTLX, the Moore supercell; KOAX clear air) and on the simulated one, at the same scale.
+
+### The large end
+**Found by the first extreme storms, and it was not the core:** the pictures of a storm with a CAPE of 5557 J/kg showed a frame of strong echo along the edge of the box and rain over the whole box from the
+first minutes. The cause was the script that makes the moister soundings: it multiplied the vapour by 1.15 or 1.35 below 3 km with no limit, which makes the air **102-108 % saturated between 1 and 3 km
+(scale 1.15) and 100-127 % (1.35)**; the model condensed all of it at once and the box rained (22-26 dBZ at the ground, everywhere, at minute 10). `loadSounding` now never goes beyond 95 % relative humidity
+at any level (or beyond what the profile had); the CAPE is the surface parcel's and hardly changes. Three storms were run again at 2 km (84 km box, 90 minutes):
+
+| storm | CAPE (J/kg) | strongest updraft (m/s) | 10 dBZ echo top (km) | strongest echo (dBZ) | updraft helicity max | coldest air at the ground (K) | rain at 90 min (mm) |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| the Weisman-Klemp storm (part 3) | 2134 | 45-51 | 15-15.5 | 55-59 | | | |
+| moister, graupel | 3603 | 51.5 | 16.0 | 59 | 380 | -9.2 | 50 |
+| moister still, graupel | 5640 | 64.9 | 17.0 | 60 | 559 | -10.6 | 64 |
+| moister still, "hail" setting | 5640 | 60.3 | 16.5 | 77 (70 at 1 km) | 551 | -14.3 | 157 |
+
+The far field is now empty and the edge frame is gone (the model's composite reflectivity at 10 to 75 minutes: one storm that moves east and has split into several cells by 75 minutes). The updrafts
+reach about 60 % of the parcel speed, sqrt(2 CAPE) = 85 and 106 m/s. A larger CAPE hardly changes the graupel storm's reflectivity (59 and 60 dBZ), it makes it taller and stronger; the 70s dBZ come from the hail setting
+(11-17 dB too reflective against real storms, part 3): **a stress test of the palette's top end, not a calibrated hail.** `radar-extremes.png` shows both at 0.5°, the storm complex at 75 minutes
+(77 dBZ gates: black pixels at 69, white at 75), a 3.1° tilt (the beam 4 km up over the core), a storm 195 km away (the beam 4.4 km up and 1.7 km wide: the gates are tall bars) and a radar 25 km from
+the core.
+
+What the operator does at the large end, as checks: a 100 dBZ echo is seen as 99.3 dBZ on average with nothing lost to overflow and a colour in the table; a volume of NaN, +∞ and -∞ gives gates that are
+numbers or no data and does not stop the scan; out to 460 km the scan runs (a shower 3 km deep is seen from 60 km and not from 400 km, where the 0.5° beam is 12.9 km up: far storms lose their lowest
+kilometres); a full sweep (720 radials by 920 gates, the nine-point beam) takes 0.5 to 1.5 s on this machine and a 1920 by 1080 picture 0.05 to 0.2 s, so a frame can be drawn and its radar re-sampled
+while the slider moves; a picture of three gates has exactly their three colours.
+
+### Said plainly
+- *The model storms are smooth.* At 2 km a storm has no hook, no debris, no sharp edge: the real supercell in `radar-real-vs-model.png` has all three. The pixel texture matches; the structure is the model's.
+- *The clear-air level is one setting.* Real radars run from -5 to +5 dBZ with the day and the season (night, winter and a dry day are different); the default is a summer afternoon between the two radars measured.
+- *Ground clutter is by eye* (30 % of the gates at the radar, falling off over 12 km, -10 to +20 dBZ): the real radars were measured for their clear air and their floor, not for their clutter,
+  and there is no beam blockage, no anomalous propagation, no sidelobe, no range weighting along the pulse.
+- *The floor and the clear air rest on 14 volumes at three sites* (three afternoons of severe weather; the clear air is the part of each sweep with no weather in it); a site's own sensitivity differs by a few dB.
+- *The velocity product is not built.* It needs the three wind components recorded with the reflectivity (the recorder writes reflectivity only), and then the fall speed and the aliasing.
+- *The radar sees only the box.* The storms are an 84 km box; the far-range pictures show the part of the sky the box holds and nothing beyond.
+
+### Next
+The recorder writes u, v and w, the operator gets velocity (with aliasing), and the radar page (panes, the three themes, colour bars, the site pill, the frame slider with 1, 3, 5 and 10 game minutes)
+is built on them; the GPU port makes the runs live.
