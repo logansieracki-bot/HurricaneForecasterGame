@@ -229,6 +229,23 @@ const P = pK();
   check('graupel falling through a column below freezing reaches the ground as graupel (' + f2(1e3 * core.precipG[1], 1) + ' g/m2 of ' + f2(1e3 * put, 1) + ', all of it counted as precipitation, none as snow)', Math.abs(core.precipG[1] / put - 1) < 0.02 && Math.abs(core.precip[1] - core.precipG[1]) < 1e-12 && core.precipS[1] === 0);
 }
 
+/* 6c. The reflectivity-weighted fall speed (what a Doppler radar adds to the vertical wind: it sees the motion of the particles weighted by their echo, which goes as D^6): the closed form of the core
+   against the quadrature of the size distribution for rain, snow, graupel and the hail setting, at a level where the air is thin (the density correction is 1.34), and faster than the mass-weighted speed. */
+{
+  const core = mk(), k = K, rho = core.base.rhoc[k], rho0 = core.base.rhoc[0], T = T0 - 15, sz = Math.sqrt(rho0 / rho), q = 1e-3;
+  const quad = (n0, lam, V, p) => { let num = 0, den = 0; const nD = 60000, dD = 50 / lam / nD; for (let n = 0; n < nD; n++) { const D = (n + 0.5) * dD, w = n0 * Math.exp(-lam * D) * Math.pow(D, p); num += w * V(D); den += w; } return num / den; };
+  const o = setCell(core, 1, { T, qv: qsi(T, P) * 0.9, qr: q, qs: q, qg: q }), lam = (n0, rx) => Math.pow(Math.PI * rx * n0 / (rho * q), 0.25), n0s = Math.min(2e8, 2e6 * Math.exp(0.12 * 15));
+  const vR = (D) => 842 * Math.pow(D, 0.8) * sz, vS = (D) => 11.72 * Math.pow(D, 0.41) * sz, vG = (r) => { const a = Math.sqrt(4 * G * r / (3 * 0.6 * rho0)); return (D) => a * Math.sqrt(D) * sz; };
+  const want = { r: quad(8e6, lam(8e6, 1000), vR, 6), s: quad(n0s, lam(n0s, 100), vS, 6), g: quad(4e6, lam(4e6, 400), vG(400), 6) }, got = { r: core.zFall.rain(q, k), s: core.zFall.snow(q, k, o), g: core.zFall.graupel(q, k) };
+  const hail = C.create({ nx: 4, ny: 1, nz: 24, dx: 1000, dz: 500, ice: true, theta: snd.theta, qv: snd.qv, bc: { x: 'periodic' }, iceParams: { n0g: 4e4, rhog: 900 } }), wantH = quad(4e4, lam(4e4, 900), vG(900), 6), gotH = hail.zFall.graupel(q, k);
+  const massR = quad(8e6, lam(8e6, 1000), vR, 3);
+  const rel = (a, b) => Math.abs(a / b - 1);
+  check('the reflectivity-weighted fall speed of 1 g/kg at 5.25 km is ' + f2(got.r, 2) + ' m/s for rain, ' + f2(got.s, 2) + ' for snow, ' + f2(got.g, 2) + ' for graupel and ' + f2(gotH, 2) + ' for hail, against ' + f2(want.r, 2) + ', ' + f2(want.s, 2) + ', ' + f2(want.g, 2) + ' and ' + f2(wantH, 2) + ' by quadrature of the size distribution',
+        rel(got.r, want.r) < 0.003 && rel(got.s, want.s) < 0.003 && rel(got.g, want.g) < 0.003 && rel(gotH, wantH) < 0.003);
+  check('it is faster than the mass-weighted speed that sediments the water (rain: ' + f2(got.r, 2) + ' against ' + f2(massR, 2) + ' m/s: the large drops carry the echo), hail falls faster than graupel (' + f2(gotH, 2) + ' against ' + f2(got.g, 2) + '), and nothing falls where there is no water (' + core.zFall.rain(0, k) + ')',
+        got.r > 1.2 * massR && got.r < 1.7 * massR && gotH > got.g && core.zFall.rain(0, k) === 0 && core.zFall.snow(0, k, o) === 0 && core.zFall.graupel(0, k) === 0);
+}
+
 /* 7. A warm bubble in a 2-D slice of the Weisman-Klemp sounding with ice, 40 minutes: ice above the freezing level, an anvil, graupel/hail, rain below, stable, water budget within 0.3 %. */
 {
   const nx = 100, nz = 40, core = C.create({ nx, ny: 1, nz, dx: 1000, dz: 500, ice: true, theta: snd.theta, qv: snd.qv, bc: { x: 'periodic' }, visc: { kh: 300, kv: 300 }, damp: { top: { depth: 5000, rate: 0.003 } } });

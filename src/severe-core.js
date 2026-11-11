@@ -480,6 +480,14 @@
                    base: { thc, thvc, thvw, Mc, Mw, Cc, dthc, rhoc, qvbc, pibc, ubc, vbc, piBar } };
     core.fill = () => { fillAll(S); };
     core.micro = (dt) => { fillAll(S); (ice ? microIce : micro)(dt); fillAll(S); };           // the microphysics alone (for tests and diagnostics)
+    // The reflectivity-weighted fall speed of each precipitating species, m/s downward: what a Doppler radar adds to the vertical wind (it sees the power-weighted mean motion of the particles, and the power
+    // of Rayleigh scatterers goes as D^6). Over the exponential distribution N0 exp(-lambda D) with the fall speed a sqrt(rho0/rho) D^b it is a sqrt(rho0/rho) Gamma(7 + b) / Gamma(7) / lambda^b,
+    // faster than the mass-weighted speed that sediments the water (the large drops carry the echo). q is the mixing ratio (kg/kg), k the level, o the cell (snow's N0 follows its temperature).
+    const vZ = (a, b, rho, l) => a * Math.sqrt(RHO0 / rho) * gammaF(7 + b) / 720 / Math.pow(l, b);
+    core.zFall = {
+      rain: (q, k) => q < 1e-12 ? 0 : vZ(VRa, VRb, rhoc[k], lamOf(N0R, RHOW, rhoc[k], q)),
+      snow: (q, k, o) => q < 1e-12 ? 0 : vZ(VSa, VSb, rhoc[k], lamOf(n0sOf(temp(o, k)), RHOS, rhoc[k], q)),
+      graupel: (q, k) => q < 1e-12 ? 0 : vZ(VGa, VGb, rhoc[k], lamOf(IPAR.n0g, IPAR.rhog, rhoc[k], q)) };
     core.step = function (dt) {
       for (const n of names) S0[n].set(S[n]);
       for (const f of [1 / 3, 0.5, 1]) {

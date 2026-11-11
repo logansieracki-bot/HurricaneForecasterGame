@@ -32,7 +32,9 @@ export function loadSounding(path = new URL('./wk82_sounding.txt', import.meta.u
     while (hi - lo > 1) { const m = (lo + hi) >> 1; if (z[m] <= zz) lo = m; else hi = m; }
     return arr[lo] + (arr[hi] - arr[lo]) * (zz - z[lo]) / (z[hi] - z[lo]);
   };
-  return { theta: lin(th), qv: lin(qv), u: lin(u), v: lin(v), zmax: z[z.length - 1] };
+  // The winds are in the frame that moves with the storm. The hodograph of the sounding starts from a calm ground in the frame of the ground (the quarter circle of Weisman and Klemp), so the frame moves over the
+  // ground at minus the surface wind of the table: that is what a radar standing on the ground adds to the model's winds (about 8.1 m/s to the east and 4.9 to the north).
+  return { theta: lin(th), qv: lin(qv), u: lin(u), v: lin(v), zmax: z[z.length - 1], motion: { u: -u[0], v: -v[0] } };
 }
 
 export function bubble(x, y, z, xc, yc, delt = 3) {

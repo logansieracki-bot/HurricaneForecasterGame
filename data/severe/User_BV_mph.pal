@@ -1,0 +1,36 @@
+Product: BV
+Units: MPH
+Step: 10
+Scale: 1
+Offset: 0
+
+; Your velocity colour table, rebuilt from the picture of its colour bar: 25 swatches under 19 different numbers. Every swatch is a colour stop at its number and between two neighbouring
+; swatches the colour runs in a straight line (in red, green and blue) from one to the other, so the table interpolates everywhere, whatever the bar looks like. Where a number has two swatches
+; (-60, -10, 0, 10, 40, 80) the colour steps at that number: the first swatch's colour is the one just below it and the second swatch's the one from it upwards.
+; Every colour is the swatch's own pixel value. Units: the numbers are taken as miles per hour (the three outermost, 224, 190 and 157, are 100, 85 and 70 m/s). Towards the radar is negative.
+; Replace this file with the original .pal if you have it: the format is the same.
+Color: -224 239 230 255
+Color: -190 213 107 255
+Color: -157 255 62 200
+Color: -120 255 0 132
+Color: -80 22 2 153
+Color: -60 40 204 220
+Color: -60 48 224 227
+Color: -50 182 238 241
+Color: -40 3 250 3
+Color: -10 5 102 3
+Color: -10 78 121 76
+Color: 0 110 132 108
+Color: 0 138 118 118
+Color: 10 132 56 65
+Color: 10 110 0 0
+Color: 40 243 0 7
+Color: 40 250 55 81
+Color: 50 255 140 213
+Color: 60 255 232 163
+Color: 80 255 149 83
+Color: 80 255 138 79
+Color: 120 103 6 2
+Color: 157 255 36 20
+Color: 190 255 176 0
+Color: 224 255 241 194

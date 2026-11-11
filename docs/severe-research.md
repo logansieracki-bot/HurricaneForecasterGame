@@ -399,9 +399,120 @@ while the slider moves; a picture of three gates has exactly their three colours
 - *Ground clutter is by eye* (30 % of the gates at the radar, falling off over 12 km, -10 to +20 dBZ): the real radars were measured for their clear air and their floor, not for their clutter,
   and there is no beam blockage, no anomalous propagation, no sidelobe, no range weighting along the pulse.
 - *The floor and the clear air rest on 14 volumes at three sites* (three afternoons of severe weather; the clear air is the part of each sweep with no weather in it); a site's own sensitivity differs by a few dB.
-- *The velocity product is not built.* It needs the three wind components recorded with the reflectivity (the recorder writes reflectivity only), and then the fall speed and the aliasing.
+- *The velocity product is not built.* It needs the three wind components recorded with the reflectivity (the recorder writes reflectivity only), and then the fall speed and the aliasing. (Built in milestone 37: part 5.)
 - *The radar sees only the box.* The storms are an 84 km box; the far-range pictures show the part of the sky the box holds and nothing beyond.
 
 ### Next
-The recorder writes u, v and w, the operator gets velocity (with aliasing), and the radar page (panes, the three themes, colour bars, the site pill, the frame slider with 1, 3, 5 and 10 game minutes)
+The recorder writes u, v and w, the operator gets velocity (with aliasing: both done in part 5), and the radar page (panes, the three themes, colour bars, the site pill, the frame slider with 1, 3, 5 and 10 game minutes)
 is built on them; the GPU port makes the runs live.
+
+## Part 5. u, v and w, and the Doppler velocity (milestone 37, 11 Nov 2026)
+
+You asked to work on u, v and w now, with velocity. The model always had the winds; what was missing was keeping them (the recorder wrote reflectivity only), the fall speed of the rain, and a radar that measures
+them. The pictures are `docs/severe-research/radar-velocity-winds.png`, `radar-velocity-storm.png`, `radar-velocity-real-vs-model.png`, `radar-velocity-clearair.png` and `radar-velocity-statistics.png`.
+
+### What was added
+- **The recorder** (`tools/severe_research/wk82_run.mjs`) writes for every frame the three winds at the cell centres (the C grid's face values averaged, 0.01 m/s in an Int16 file, `<run>.wind3d.i16`), and the
+  **reflectivity-weighted fall speed** of the precipitation (0.25 m/s, `<run>.vz3d.u8`); the run's JSON has the **motion of the box over the ground** (8.10 m/s east, 4.94 north) and the **base-state winds** (for the air
+  outside the box). The Weisman-Klemp hodograph starts calm at the ground, so the frame in which the storm stays in the box moves at minus its surface wind: the radar, standing on the ground, sees the
+  model's winds *plus* that motion, and over a 90-minute run it drifts 44 km west and 27 km south through the box (`radar0=` in `radar_render.mjs` puts it there). A 1 km, 90-minute run has 32 MB of winds,
+  a 2 km, 120-minute run 11 MB. `tools/severe_research/frames.mjs` reads a frame back as a volume in the ground's frame.
+- **The fall speed** (`core.zFall` in `src/severe-core.js`): a radar sees the fall of the drops that reflect, the sixth moment of the size distribution, not the mass-weighted fall the model uses to move water.
+  For the model's exponential distributions with a fall speed a D^b it is a Gamma(7 + b) / Gamma(7) / lambda^b: for 1 g/kg at 5.25 km **9.75 m/s for rain against 6.18 m/s by mass**, 1.61 for snow, 7.17 for
+  graupel, 17.28 for hail, nothing where there is no water. `tests/severe_ice.mjs` compares each species with a numerical integral of its size distribution (33 checks, two new).
+- **The operator** (`scan(volume, { velocity: true })` in `src/severe-radar.js`) adds a radial velocity and a spectrum width to every gate that has an echo; **`render(sweep, lut, { field: 'vel' | 'sw', scale })`**
+  draws them as blocks with **your velocity table** (`data/severe/User_BV_mph.pal`, below) and a placeholder table for the width (`Isobar_SW_placeholder.pal`); a velocity in m/s is multiplied by
+  the table's unit first (`HFSeverePalette.unitScale`: 2.237 for miles per hour, 1.944 for knots, 3.6 for kilometres per hour).
+- In `tools/severe_research/`: `radar_render.mjs` and `radar_real_render.mjs` take `product=vel|sw` (and `nyq=`, `dealias=1`, `vnoise=0`); `nexrad_sweep.py --doppler` writes the Doppler cut of a real volume;
+  `radar_vrot.mjs` measures the rotation a radar sees in a storm; `nexrad_velocity_stats.py` and `radar_velocity_stats.mjs` are the real and the model's side of the table below; `frames.mjs`.
+- `tests/severe_radar.mjs`: **69 checks** (about 40 s, in `npm test`; 34 are new), and `tools/severe_radar_mutants.mjs` **117 mutants** (72 are new).
+
+### How a gate's velocity is made
+1. **What the beam holds.** The nine points up the beam and the three across it that already give the reflectivity each carry the model's wind. A node's radial velocity is
+   `u cos(e) sin(az) + v cos(e) cos(az) + (w - fall speed) sin(e)`, **positive away from the radar** (az clockwise from north, e the tilt): at 0.5° a wind to the east is +u for a gate due east; at 19.5° a rain
+   falling at 8 m/s adds -2.7 m/s (it comes towards a radar looking up) and a 20 m/s updraft +6.7.
+2. **Power, not dBZ.** The gate's velocity is the mean of its nodes **weighted by their power** (Z = 10^(dBZ/10) times the beam's weight), which is what a radar does: half a beam in 50 dBZ rain blowing away at
+   10 m/s and half in 30 dBZ rain coming at 10 reads +9.9 (100 times the power); a mean of the halves would read 0 and one by dBZ +4.5.
+3. **Spectrum width** is the spread of the velocity in the beam (power-weighted, the vertical and the lateral parts each corrected from the nine and three points to the Gaussian they stand for: 0.857 and 0.548 of
+   its variance), plus what the model does not resolve: an intrinsic 0.6 m/s in rain, and a shear **0.0029 s^-1** in the beam (so the width of rain grows with the width of the beam, from 0.5 m/s at 10 km to
+   2.4 m/s at 120 km), 2 m/s in clear air, 0.8 for clutter. The reported width is biased up and scattered where the signal is weak, as a real estimate is.
+4. **What is not the storm.** Insects and birds in the clear air drift with the wind: the model's inside its box, the **base state's outside it** (a velocity azimuth display, the sine of the radial velocity round
+   the radar); ground clutter stands still (velocity 0 in a 20 m/s wind); an isolated target moves at random up to 12 m/s. A gate with two kinds of echo reads their power-weighted mean and the spread of both.
+5. **The measurement.** A radar estimates the velocity from M pulses (the pulse pair, Zrnic 1977) and the error is `sd = Vn / pi * sqrt(((1 + 1/SNR)^2 - rho^2) / (2 M rho^2))`, with `rho = exp(-pi^2 sw^2 / (2 Vn^2))`
+   the correlation of successive pulses: it grows as the signal gets weak and as the spectrum widens. A white fluctuation of the wind in the gate (0.7 m/s in rain, 0.8 in clear air, 0.3 for clutter) is added.
+   M = 40 with the signal-to-noise ratio of a real receiver's 4.5 dB under the ideal one (a fit: only the product matters at the weak end).
+6. **Folding.** The velocity is only known to within 2 Vn, the Nyquist velocity: `v -> ((v + Vn) mod 2 Vn) - Vn`. Real sites run from 26 to 36 m/s (KTLX 26.1, KSGF 33.6, KOAX 35.5 in the volumes); the default
+   is 28, and `dealias: true` gives the unfolded velocity (what a dealiasing algorithm would recover). Steps of 0.5 m/s, as in the data.
+7. **Which gates get one.** A gate has a velocity if its total power is 4 dB over the noise (the reflectivity needs 2.5 dB: a real radar needs more signal for a velocity). The velocity is never there without a
+   reflectivity.
+
+### Your velocity table
+You sent the colour bar as a picture: 25 swatches, each under a number. It became `data/severe/User_BV_mph.pal` in the same GRLevelX format as your reflectivity table: **every colour is the swatch's own pixel value** and
+**every swatch is a colour stop at its number** (-224, -190, -157, -120, -80, -60, -50, -40, -10, 0, 10, 40, 50, 60, 80, 120, 157, 190, 224: 19 numbers, six of them, -60, -10, 0, 10, 40 and 80, over two swatches).
+**The table interpolates everywhere**, however different its bar looks from the reflectivity one: between two neighbouring swatches the colour runs in a straight line in red, green and blue from one to the other, as for
+reflectivity (dark green to bright green from -10 to -40 mph, dark red to bright red from 10 to 40, pink to pale yellow from 50 to 60, and so on), and the picture is made of the colours of that line, not of 25 flat
+blocks. Only where your bar has two swatches under one number can the colour step, because there is no distance between them: the first swatch's colour is the one just below the number and the second's the one from
+it upwards (the steps are 21, 73, 28, 66, 74 and 11 of 255 at -60, -10, 0, 10, 40 and 80 mph); everywhere else the colour changes by 3 of 255 or less in 0.1 mph. `tests/severe_radar.mjs` checks it three ways: the table
+is the 25 swatches (colour and number), every number shows its colour and between neighbouring numbers 90 places lie on the straight line between the swatches (the largest difference is 0.5 of 255, the rounding),
+the look-up table of every 0.1 mph has no step larger than 3 except at the six numbers with two swatches, and a ramp of velocities from -30 to +30 m/s in steps of 0.5 drawn through the renderer has 121 gates in 121 different
+colours, each the colour of its own speed, with no neighbouring pair differing by more than 30 of 255 except across the table's own steps (it is 27 at the steepest run, -50 to -40 mph).
+
+*A choice to confirm.* A GRLevelX line `Color: v c1 c2` can also mean a run from c1 at v to c2 at the next number (your reflectivity table's -2 dBZ entry is one). Read that way, the velocity table would jump between the
+second swatch of a pair and the next number (at -50, 0, 10, 40, 50 and 120 mph), be nearly flat between 80 and 120 (orange to orange), and no longer run from every swatch to the next: the opposite of what you asked for. The
+reading used is also the one in which the table is symmetric: the green-grey of the weak inbound velocities is the first swatch at 0 (just below it) and the pink-grey of the weak outbound ones the second (from it
+upwards), and dark green brightens to green from -10 to -40 as dark red brightens to red from 10 to 40. If your program reads a pair the other way, the original `.pal` settles it and is a file swap. The GRLevelX
+documentation could not be reached from this session (the host is not in its allowed network), so this rests on the picture and on that symmetry.
+
+**The unit is my reading:** the three outermost numbers, 224, 190 and 157, are 100, 85 and 70 m/s in miles per hour (223.7, 190.1, 156.6), so the table is in mph; the model's velocity is in m/s and the renderer multiplies
+it by 2.237 before looking up the colour (a 28 m/s Nyquist velocity is 62.6 mph, where the table is pale yellow outbound and cyan inbound, so a fold shows as yellow beside cyan). Towards the radar is negative: bright
+green to dark green from -40 to -10 mph, cyan at -60, blue and violet beyond; away is rose and dark red to bright red from 10 to 40, pink and pale yellow at 50 to 60, orange at 80, maroon at 120. The pictures below use it, with
+its own colour bar (-100 to 100 mph).
+
+### Measured on real data, and what it fixed
+The Doppler cut (the second 0.5° sweep of a volume, `nexrad_sweep.py --doppler`) of the same **14 volumes** (KOAX, KSGF, KTLX) gave every number above that is not physics. `radar-velocity-statistics.png` is
+this table as curves.
+
+| | real (14 volumes) | model |
+| --- | --- | --- |
+| share of the gates with a reflectivity that also have a velocity, 0-20 / 20-40 / 40-60 / 60-80 / 80-100 km | 94 / 95 / 88 / 69 / 54 % | 100 / 98 / 90 / 74 / 52 % |
+| lowest reflectivity with a velocity, 0-20 / 20-40 / 40-60 / 60-80 / 80-100 km (dBZ) | -26 / -13.5 / -7.5 / -4 / -1 | -22.5 / -13.5 / -7 / -3.5 / -0.5 |
+| clear air, neighbouring radials differ by 1 m/s or less, reflectivity 0-5 / 5-10 dBZ | 53 / 59 % | 52 / 58 % |
+| the same by 4 m/s or less | 92 / 94 % | 94 / 94 % |
+| rain (35-45 dBZ, 5-90 km), neighbouring radials differ by 0 / 0.5 / 1 / 2 / 4 m/s or less | 22 / 55 / 76 / 93 / 99 % | 19 / 52 / 76 / 96 / 100 % |
+| rain spectrum width, median (10-90 %), 5-20 / 20-40 / 40-60 km (m/s) | 0.5 (0-1.5) / 1.0 (0-2.5) / 1.0 (0.5-3) | 0.5 (0-2) / 1.0 (0-2.5) / 1.5 (0-3.5) |
+| clear-air spectrum width, median at 0-5 dBZ (m/s) | 2.5 | 2.5 |
+
+The first guesses were off in the way a real radar settles: the noise of the clear-air velocity was too small where the signal is weak and too large where it is strong, so the estimator got its 4.5 dB loss and the
+white fluctuation went from 0.95 to 0.8 m/s; the first censoring (3.2 dB) kept 97 % of the gates at 40-60 km where the real radar keeps 88 %; the width of rain (a constant 1.5 m/s) was 1.5 to 3 times too wide at 10 to
+40 km and right at 75, which is what a shear in the beam does. `tests/severe_radar.mjs` holds the clear-air noise between the real values (53 / 59 and 92 / 94 % with slack), the closed forms below it, and the
+censoring at 4 dB.
+
+### What the storm shows
+`radar-velocity-winds.png` first: the model's own winds in the 1 km supercell at 75 minutes (the updraft of w at 5 km, the wind at 1.25 km in the ground's frame, the vertical vorticity of the
+mesocyclone at 3.75 km), and the radar's velocity of the 5.1° tilt **against the true radial wind of the model at the centre of each gate** (12,831 gates): they lie on the line of equality with a spread of 1.3 m/s
+rms (the noise of the estimate, the beam's smoothing and the fall of the rain and the hail, up to -1.5 m/s at that tilt), and the folded gates lie on *true minus 56*, where they should.
+
+`radar-velocity-storm.png`: the 1 km Weisman-Klemp supercell at 75 minutes at a 5.1° tilt (41 km from the radar, the beam 3.9 km up, where the storm turns most). The winds are the model's: a broad flow away from
+the radar (the sounding's westerlies and southerlies, 21 m/s at 4 km) with the storm's own rotation on it; a **fold** inside it (the cyan and green core inside the red, pink and yellow is the +28 to +38 m/s core of the flow, reported as -28 to -18 m/s: the unfolded
+picture below it shows the true values, and a real site with a 26 m/s Nyquist velocity would fold more); the spectrum width is high where the shear in the beam is.
+*How strong is the rotation?* `radar_vrot.mjs` (half the velocity difference across 2.5 km, scans with no measurement error): **5-7 m/s at 0.5°** (low-level rotation, 1 km above the ground) and
+**13-16 m/s at 5.1°** (the mid-level mesocyclone, ζ = 21 x 10^-3 s^-1 at 3.75 km), strongest from the south or north of the storm at 40 km. That is a weak to moderate mesocyclone; the real Moore supercell is stronger and
+sharper (`radar-velocity-real-vs-model.png`). The tilt matters as it does for a real radar: at 0.5° the beam is below the storm's rotation.
+
+### Said plainly
+- *The model's structure is the model's.* At 1 km a storm has a mesocyclone of 5 to 16 m/s and no hook, no tornadic vortex, no gate-sized shear: the velocity of the model is smooth where the real one has
+  detail (compare the two rows of `radar-velocity-real-vs-model.png`); the texture of the noise is real, the structure is not. Real storms' rain has heavier tails of neighbouring-radial differences (gate-sized
+  shear: `radar-velocity-statistics.png`, lower left).
+- *The clear air's wind outside the box is the base state*, the same everywhere at a height. A real boundary layer has eddies of 2 to 3 m/s over 1 to 10 km: the real velocity azimuth display fits with a residual of
+  2.2 to 2.8 m/s rms at 30 to 60 km and 3.5 to 4.4 within 16 km, against 1.7 to 2.2 for the model's at every range, and `radar-velocity-clearair.png` has the model's clear air a little too regular.
+- *Not made:* range folding (second-trip echoes, the purple "RF" of a real display), a dealiasing algorithm (a real site's own would unfold part of it), sun spikes, three-body scatter, anomalous propagation, beam blockage, the
+  clutter filter's notch (the real radars keep about 6 % of their gates without a velocity at close range, the model 0.1 %), the link between the Nyquist velocity and the range, dual polarisation.
+- *The velocity table was rebuilt from a picture* (see above): its colours are exact and its numbers are the labels you can read; the miles per hour and the reading of a number with two swatches as a step are mine.
+  The original `.pal`, if you have it, replaces `data/severe/User_BV_mph.pal` and nothing else changes.
+- *The storms are the model's two or three:* the Weisman-Klemp supercell at 2 and 1 km, and an extreme-CAPE storm (up to 100 m/s updrafts). Winds above the Nyquist velocity fold, as they should; the large end (winds of
+  100 m/s, NaN and infinite winds) is tested.
+
+### Next
+The radar page (panes, the three themes, colour bars, the site pill, the frame slider with 1, 3, 5 and 10 game minutes) on these two products; storm-relative velocity as a second view (subtract the storm's motion: it
+makes a couplet readable); a finer grid inside the box for the storm of interest (a 250-500 m nest would give the hook and a tornadic vortex signature a place to live); a boundary-layer eddy field for the
+clear air.

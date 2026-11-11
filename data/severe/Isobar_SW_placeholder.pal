@@ -1,0 +1,13 @@
+Product: SW
+Units: M/S
+Step: 5
+Scale: 1
+Offset: 0
+
+; A placeholder spectrum-width table (Isobar's own, in m/s): narrow dark, wide bright.
+Color:  0   20  24  48
+Color:  2   30  90 140
+Color:  4   40 170 150
+Color:  7  230 210  60
+Color: 12  240 120  40
+Color: 20  230  40  60

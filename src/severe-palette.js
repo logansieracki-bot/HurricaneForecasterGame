@@ -9,6 +9,7 @@
  *
  * `lut(pal, { vmin, vmax, step })` makes the table of the colour of every `step` dBZ (RGBA bytes) that the renderer indexes by value, so that a picture is made of
  * the table's colours and nothing else: the colours of the data run smoothly, they are not binned.
+ * `unitScale(pal.units)` is how many of the table's units make one m/s: a velocity kept in m/s is drawn with a table in miles per hour or knots by multiplying it by this first.
  */
 (function () {
   function parse(text) {
@@ -58,5 +59,12 @@
     return { vmin, vmax, step, n, rgba, index: (v) => { const i = Math.round((v - vmin) * inv); return i < 0 ? 0 : i >= n ? n - 1 : i; } };
   }
 
-  globalThis.HFSeverePalette = { parse, colorAt, lut };
+  // how many of a table's units make one metre per second (the radar operator's velocity and width are in m/s): 2.23694 for miles per hour, 1.94384 for knots, 3.6 for kilometres per hour; 1 for
+  // m/s and for units that are not speeds (dBZ)
+  function unitScale(units) {
+    const u = String(units || '').trim().toLowerCase();
+    return u === 'mph' || u === 'mi/h' ? 2.2369362920544 : u === 'kts' || u === 'kt' || u === 'kn' ? 1.9438444924406 : u === 'kph' || u === 'km/h' || u === 'kmh' ? 3.6 : 1;
+  }
+
+  globalThis.HFSeverePalette = { parse, colorAt, lut, unitScale };
 })();

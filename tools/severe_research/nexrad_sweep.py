@@ -3,12 +3,15 @@
 for measuring the receiver's floor and the clear-air return (docs/severe-research.md, part 4).
 
   nexrad_sweep.py --pylib DIR VOLUME.gz OUT      writes OUT.f32 (float32, 720 radials x gates, dBZ, NaN where the gate has no data) and OUT.json (n, gates, gate0, dr, elev, site)
+  nexrad_sweep.py --doppler ...                  also the Doppler cut of the same tilt (the 0.5 degree sweep that carries velocity, the second cut of the volume): OUT.vel.f32 (radial velocity, m/s, positive
+                                                 away from the radar, as the radar reports it, folded at the Nyquist velocity) and OUT.sw.f32 (spectrum width, m/s), the same grid, and in OUT.json
+                                                 the Nyquist velocity (nyquist) and the tilt (vel_elev)
 The volume comes from the Unidata archive (s3://unidata-nexrad-level2) and is read with Py-ART (not a dependency of the project: pip install arm_pyart into a scratch directory and pass
 it with --pylib). The rays (about 0.5 degrees apart, not exactly) are put on a regular 0.5 degree grid by the nearest ray; the gates (250 m, the first at 2125 m) are kept as they are.
 """
 import argparse, json, sys, warnings
 warnings.filterwarnings('ignore')
-ap = argparse.ArgumentParser(); ap.add_argument('--pylib', default=None); ap.add_argument('volume'); ap.add_argument('out')
+ap = argparse.ArgumentParser(); ap.add_argument('--pylib', default=None); ap.add_argument('--doppler', action='store_true'); ap.add_argument('volume'); ap.add_argument('out')
 a = ap.parse_args()
 if a.pylib: sys.path.insert(0, a.pylib)
 import numpy as np, pyart
@@ -21,5 +24,13 @@ idx = np.argmin(np.abs(((az[None, :] - grid[:, None]) + 180) % 360 - 180), axis=
 ref[idx, :].astype(np.float32).tofile(a.out + '.f32')
 meta = {'n': n, 'gates': int(ref.shape[1]), 'gate0': float(rng[0]), 'dr': float(rng[1] - rng[0]), 'elev': float(np.mean(radar.elevation['data'][sl])), 'file': a.out.split('/')[-1] + '.f32',
         'site': a.volume.split('/')[-1][:4]}
+if a.doppler:
+    d = next((i for i in range(radar.nsweeps) if float(np.mean(radar.elevation['data'][radar.get_slice(i)])) < 1.0 and 'velocity' in radar.fields and np.ma.count(radar.fields['velocity']['data'][radar.get_slice(i)]) > 0), None)
+    if d is None: raise SystemExit('no Doppler cut below 1 degree in ' + a.volume)
+    dl = radar.get_slice(d); daz = radar.azimuth['data'][dl]; didx = np.argmin(np.abs(((daz[None, :] - grid[:, None]) + 180) % 360 - 180), axis=1)
+    vel = radar.fields['velocity']['data'][dl].astype(float).filled(np.nan); wid = radar.fields['spectrum_width']['data'][dl].astype(float).filled(np.nan)
+    vel[didx, :].astype(np.float32).tofile(a.out + '.vel.f32'); wid[didx, :].astype(np.float32).tofile(a.out + '.sw.f32')
+    meta.update({'vel_file': a.out.split('/')[-1] + '.vel.f32', 'sw_file': a.out.split('/')[-1] + '.sw.f32', 'vel_gates': int(vel.shape[1]), 'vel_elev': float(np.mean(radar.elevation['data'][dl])),
+                 'nyquist': float(np.mean(radar.instrument_parameters['nyquist_velocity']['data'][dl]))})
 json.dump(meta, open(a.out + '.json', 'w'))
 print(meta)

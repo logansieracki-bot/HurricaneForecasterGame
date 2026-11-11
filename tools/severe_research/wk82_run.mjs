@@ -7,6 +7,9 @@
 // mid-level vertical vorticity, the updraft helicity (2-5 km), the updraft cores at 5 km (a count above 1 is a split), the 10 dBZ echo top and the ice water path.
 // Frames (2-D maps and two vertical slices through the strongest updraft) go to the JSON; the whole 3-D reflectivity of every frame goes to <out>.dbz3d.i8 (signed bytes,
 // dBZ rounded, -30 for none, in the order frame, level, y, x) for the comparison with real radar (nexrad_cfad.py).
+// The winds go to <out>.wind3d.i16 (signed 16-bit, 0.01 m/s, at the cell centres, in the order frame, component (u, v, w), level, y, x) and the reflectivity-weighted fall speed of the
+// precipitation (what a Doppler radar adds to the vertical wind) to <out>.vz3d.u8 (0.25 m/s, 0 for none, downward, the order frame, level, y, x); the JSON has the frame's motion over the ground
+// ("motion": a radar on the ground sees the model's winds plus this) and the base-state winds in the ground's frame ("base": the wind a clear-air return follows outside the box).
 // Reflectivity is the Rayleigh value at 10 cm as WRF's refl10cm_lin computes it: rain 720 N0 / lambda^7; snow and graupel/hail as ice spheres of their density, with the
 // dielectric factor 0.176/0.93 against water, rising to 1 as the ice gets wet below the melting level (the bright band).
 import '../../src/severe-core.js';
@@ -32,25 +35,27 @@ const lamOf = (n0, rhox, rho, q) => Math.pow(Math.PI * rhox * n0 / (rho * q), 0.
 const KICE = 0.176 / 0.93;                                                                               // |K|^2 of ice against water (WRF)
 const zcol = new Float64Array(nz), tcol = new Float64Array(nz);
 const dbzOf = (z) => z > 1e-3 ? 10 * Math.log10(z) : -30;
-function dbzColumn(i, j, res) {                                                                          // dBZ for every level of a column into res[k]
-  if (!ice) { for (let k = 0; k < nz; k++) { const g = b.rhoc[k] * S.qr[idx(i, j, k)] * 1000; res[k] = g > 1e-6 ? 10 * Math.log10(17300 * Math.pow(g, 1.75)) : -30; } return; }   // WRF's Kessler reflectivity
+function dbzColumn(i, j, res, vzres) {                                                                // dBZ for every level of a column into res[k] (and the reflectivity-weighted fall speed into vzres[k])
+  if (!ice) { for (let k = 0; k < nz; k++) { const q = S.qr[idx(i, j, k)], g = b.rhoc[k] * q * 1000; res[k] = g > 1e-6 ? 10 * Math.log10(17300 * Math.pow(g, 1.75)) : -30; if (vzres) vzres[k] = core.zFall.rain(q, k); } return; }   // WRF's Kessler reflectivity
   let kz = -1;                                                                                           // the highest level at or below freezing, then the first above it going down
   for (let k = nz - 1; k >= 0; k--) { const o = idx(i, j, k); tcol[k] = (b.thc[k] + S.th[o]) * (b.pibc[k] + S.pi[o]); }
   for (let k = nz - 1; k >= 0; k--) if (tcol[k] <= T0) { kz = k; break; }
   const msRef = kz >= 0 ? b.rhoc[kz] * S.qs[idx(i, j, kz)] : 0, mgRef = kz >= 0 ? b.rhoc[kz] * S.qg[idx(i, j, kz)] : 0;
   for (let k = 0; k < nz; k++) {
     const o = idx(i, j, k), rho = b.rhoc[k], T = tcol[k];
-    let z = 0;
-    if (S.qr[o] > 1e-9) { const l = lamOf(8e6, 1000, rho, S.qr[o]); z += 720 * 8e6 / Math.pow(l, 7); }
-    for (const [q, n0, rx, mref] of [[S.qs[o], Math.min(2e8, 2e6 * Math.exp(0.12 * Math.max(0, T0 - T))), 100, msRef], [S.qg[o], n0g, rhog, mgRef]]) {
+    let z = 0, zv = 0;
+    if (S.qr[o] > 1e-9) { const l = lamOf(8e6, 1000, rho, S.qr[o]), zr = 720 * 8e6 / Math.pow(l, 7); z += zr; zv += zr * core.zFall.rain(S.qr[o], k); }
+    for (const [q, n0, rx, mref, sp] of [[S.qs[o], Math.min(2e8, 2e6 * Math.exp(0.12 * Math.max(0, T0 - T))), 100, msRef, 'snow'], [S.qg[o], n0g, rhog, mgRef, 'graupel']]) {
       if (q <= 1e-9) continue;
       const l = lamOf(n0, rx, rho, q);
       let wet = 0;                                                                                       // water fraction: from what has melted since the freezing level (WRF)
       if (T > T0) wet = mref > 0 ? Math.max(0.005, Math.min(1 - rho * q / mref, 0.99)) : 0.99;
       const kk = KICE + (1 - KICE) * Math.min(1, wet / 0.25);                                            // a water coat on a quarter of the mass reflects like rain
-      z += kk * Math.pow(rx / 900, 2) * 720 * n0 / Math.pow(l, 7);
+      const zs = kk * Math.pow(rx / 900, 2) * 720 * n0 / Math.pow(l, 7);
+      z += zs; zv += zs * (sp === 'snow' ? core.zFall.snow(q, k, o) : core.zFall.graupel(q, k));
     }
     res[k] = dbzOf(z * 1e18);
+    if (vzres) vzres[k] = z > 0 ? zv / z : 0;
   }
 }
 function zeta(i, j, k) {                                  // vertical vorticity at a cell centre, from the winds averaged to centres
@@ -76,7 +81,8 @@ function water() {
   return w;
 }
 
-const nFrames = Math.floor(minutes / frameMin) + 1, d3 = new Int8Array(nFrames * nz * ny * nx);
+const nFrames = Math.floor(minutes / frameMin) + 1, d3 = new Int8Array(nFrames * nz * ny * nx), wnd = new Int16Array(nFrames * 3 * nz * ny * nx), vzf = new Uint8Array(nFrames * nz * ny * nx);
+const sxc = 1, syc = core.idx(0, 1, 0) - core.idx(0, 0, 0), szc = core.idx(0, 0, 1) - core.idx(0, 0, 0), q16 = (v) => Math.max(-32767, Math.min(32767, Math.round(100 * v)));
 const frames = [], log = [], w0 = water(), t0 = Date.now(), k5 = Math.floor(5250 / dz), k1 = Math.floor(1000 / dz), kfz = (() => { let k = 0; while (k < nz && (b.thc[k] * b.pibc[k]) > T0) k++; return k; })();
 let nextFrame = 0;
 for (let step = 0; step * dt <= minutes * 60; step++) {
@@ -86,10 +92,17 @@ for (let step = 0; step * dt <= minutes * 60; step++) {
     const d = core.diag();
     let wm = -1, wl = null, z1 = 0, z4 = 0, uh = 0, zmax = -99, pmax = 0, topMax = 0, iwpMax = 0, z1max = -99, qgcol = 0;
     const comp = new Array(nx * ny), r1 = new Array(nx * ny), w5 = new Array(nx * ny), z1m = new Array(nx * ny), thv = new Array(nx * ny), pr = new Array(nx * ny), top = new Array(nx * ny), iwp = new Array(nx * ny), hail = new Array(nx * ny);
-    const col = new Float64Array(nz);
+    const col = new Float64Array(nz), vzc = new Float64Array(nz), nF = frames.length;
     for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
-      dbzColumn(i, j, col);
-      for (let k = 0; k < nz; k++) d3[((frames.length * nz + k) * ny + j) * nx + i] = Math.max(-30, Math.min(120, Math.round(col[k])));
+      dbzColumn(i, j, col, vzc);
+      for (let k = 0; k < nz; k++) {
+        const o = idx(i, j, k), at = ((nF * nz + k) * ny + j) * nx + i;
+        d3[at] = Math.max(-30, Math.min(120, Math.round(col[k])));
+        vzf[at] = col[k] > -29 ? Math.max(0, Math.min(255, Math.round(4 * vzc[k]))) : 0;
+        wnd[((nF * 3 + 0) * nz + k) * ny * nx + j * nx + i] = q16(0.5 * (S.u[o] + S.u[o + sxc]));
+        wnd[((nF * 3 + 1) * nz + k) * ny * nx + j * nx + i] = q16(0.5 * (S.v[o] + S.v[o + syc]));
+        wnd[((nF * 3 + 2) * nz + k) * ny * nx + j * nx + i] = q16(0.5 * (S.w[o] + S.w[o + szc]));
+      }
       let zc = -30, u2 = 0, tp = 0, ip = 0, hp = 0;
       for (let k = 0; k < nz; k++) {
         const o = idx(i, j, k), w = S.w[o];
@@ -135,7 +148,11 @@ for (let step = 0; step * dt <= minutes * 60; step++) {
   }
   core.step(dt);
 }
-const d3file = out.replace(/\.json$/, '') + '.dbz3d.i8';
+const d3file = out.replace(/\.json$/, '') + '.dbz3d.i8', wfile = out.replace(/\.json$/, '') + '.wind3d.i16', vfile = out.replace(/\.json$/, '') + '.vz3d.u8';
 writeFileSync(d3file, Buffer.from(d3.buffer, 0, frames.length * nz * ny * nx));
-writeFileSync(out, JSON.stringify({ dx, nx, ny, nz, dz, dt, ice, kfz, dbz3d: { file: d3file.split('/').pop(), nt: frames.length, times: frames.map((f) => f.t) }, log, frames }));
+writeFileSync(wfile, Buffer.from(wnd.buffer, 0, frames.length * 3 * nz * ny * nx * 2));
+writeFileSync(vfile, Buffer.from(vzf.buffer, 0, frames.length * nz * ny * nx));
+const times = frames.map((f) => f.t), motion = snd.motion, base = { z: Array.from(b.rhoc, (_, k) => (k + 0.5) * dz), u: Array.from(b.ubc, (v) => +(v + motion.u).toFixed(3)), v: Array.from(b.vbc, (v) => +(v + motion.v).toFixed(3)) };
+writeFileSync(out, JSON.stringify({ dx, nx, ny, nz, dz, dt, ice, kfz, dbz3d: { file: d3file.split('/').pop(), nt: frames.length, times }, wind3d: { file: wfile.split('/').pop(), scale: 0.01, nt: frames.length },
+                                  vz3d: { file: vfile.split('/').pop(), scale: 0.25, nt: frames.length }, motion, base, log, frames }));
 console.log('wrote ' + out);
