@@ -2507,6 +2507,9 @@ again building EPAC):**
 - Save / resume is one slot in one browser; several slots, a file to export and import, and the autosave switch and GIF export of the original plan are not built.
 - Forecaster mode (hurricane hunters, model guidance, cones/AOIs) — deliberately
   not started; Simulation mode across basins comes first.
+- Severe (tornadoes, hail, derechos): **planned, nothing built** — `docs/severe-plan.md` (a radar-app look in dark, light and satellite themes; Simulation first, Forecaster much later;
+  a 3-D cloud model on WebGPU with a ladder of microphysics schemes; the radar and satellite pictures measured from the model; milestones S0-S9, open questions at the end). The
+  measurements behind its budgets are in `tools/severe_research/`.
 - Radar/satellite storm imagery (synthetic, generated from the sim's own storm
   state — not a real tile provider).
 - ENSO's three lag terms are summed rather than weighted to total 1 (SST, humidity and shear alike;
