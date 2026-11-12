@@ -103,6 +103,31 @@ check('the roads come in three classes (interstate, US highway, other) and the r
   let bad = 0; try { await PK.gunzip(new Uint8Array([1, 2, 3, 4, 5])); } catch (e) { bad++; }
   check('the file form is "HFP1" and a gzip stream, read with the browser\'s own DecompressionStream, and anything else is refused', gz.length === body.length && PK.fromBody(gz).n === 3 && bad === 1); }
 
+/* 6b. A pack of version 2 with two nests in one frame: the blocks have different lengths, the offsets are in the header, every value known */
+{ const nx = 4, ny = 3, nz = 2, per = nx * ny * nz, NS = [{ nx: 2, ny: 2, nz: 2, dx: 500, dz: 250, w: 0.75, vz: 0.5, fr: { u: 3, v: -2 }, at: [1500, 700], seed: 9 }, { nx: 3, ny: 1, nz: 2, dx: 250, dz: 125, w: 1, vz: 0.25, fr: { u: 0, v: 0 }, at: [2500, 300], seed: 13 }];
+  const np = NS.map((n) => n.nx * n.ny * n.nz);
+  const h = { v: 2, name: 'test2', nx, ny, nz, dx: 1000, dz: 500, floor: -30, times: [0, 1, 2], motion: { u: 8, v: 5 }, base: { z: [250, 750], u: [1, 2], v: [3, 4] }, track: [[1, 2, 3], [4, 5, 6], [7, 8, 9]],
+    scale: { wind: 0.5, vz: 0.25 }, scenario: { lat0: 36, lon0: -97, origin: [-10000, -20000], radar: 'KXXX', clock: '23:50', tz: 'CDT' },
+    nests: NS.map((n) => ({ name: 'test nest', nx: n.nx, ny: n.ny, nz: n.nz, dx: n.dx, dz: n.dz, scale: { wind: n.w, vz: n.vz }, frame: n.fr })), fn: [[], [[0, 1500, 700], [1, 2500, 300]], []],
+    offsets: [0, 5 * per, 10 * per + 5 * (np[0] + np[1]), 15 * per + 5 * (np[0] + np[1])] };
+  const head = Buffer.from(JSON.stringify(h)), body = Buffer.alloc(4 + head.length + h.offsets[3]); body.writeUInt32LE(head.length); head.copy(body, 4);
+  const at = 4 + head.length, fill = (o, n, f, c) => { for (let i = 0; i < n; i++) { const q = o + i; if (c === 1) body.writeUInt8((f * 11 + i * 3) % 200, q); else body.writeInt8(c === 0 ? ((i * 5 + f) % 70) - 30 : ((i * 2 + 7 * c + f) % 50) - 25, q); } };
+  for (let f = 0; f < 3; f++) for (let c = 0; c < 5; c++) fill(at + h.offsets[f] + c * per, per, f, c);
+  let q = at + h.offsets[1] + 5 * per; NS.forEach((n, k) => { for (let c = 0; c < 5; c++) fill(q + c * np[k], np[k], n.seed, c); q += 5 * np[k]; });       // the nests' five arrays, after the box's, in frame 1
+  const pk = PK.fromBody(new Uint8Array(body)), v0 = pk.volume(0), v1 = pk.volume(1), v2 = pk.volume(2);
+  check('a pack of version 2: the blocks are 5 x ' + per + ' bytes, with the two nests 5 x ' + (per + np[0] + np[1]) + ', and every frame starts where the offsets say (frame 2\'s arrays come after the nests\' block: dbz[3] ' + pk.frame(2).dbz[3] + ')',
+    pk.n === 3 && pk.frameBytes(0).length === 5 * per && pk.frameBytes(1).length === 5 * (per + np[0] + np[1]) && pk.frameBytes(2).length === 5 * per && pk.nests.length === 2 && pk.frame(2).dbz[3] === ((3 * 5 + 2) % 70) - 30 && pk.frame(1).vz[4] === (1 * 11 + 12) % 200 && pk.frame(0).dbz[1] === ((1 * 5 + 0) % 70) - 30);
+  check('the volume of a frame with nests has `nests: [{ x, y, vol }]` in the order of the header\'s list: the corners (' + v1.nests.map((n) => n.x + ', ' + n.y).join('; ') + ') m of the box, the nests\' own grids, and the frames without any have none',
+    v1.nests.length === 2 && v0.nests === undefined && v2.nests === undefined && NS.every((n, k) => { const g = v1.nests[k]; return g.x === n.at[0] && g.y === n.at[1] && g.vol.nx === n.nx && g.vol.ny === n.ny && g.vol.nz === n.nz && g.vol.dx === n.dx && g.vol.dy === n.dx && g.vol.dz === n.dz; }));
+  const mo = h.motion, nd = (n, i) => ((i * 5 + n.seed) % 70) - 30, nvz = (n, i) => (n.seed * 11 + i * 3) % 200, nuv = (n, c, i) => ((i * 2 + 7 * c + n.seed) % 50) - 25;
+  check('each nest\'s values: reflectivity as stored, the winds in the ground\'s frame (its own step plus the box\'s motion plus its own over the box), w as stored, the fall speed in its own step, the floor and the base state of the pack',
+    NS.every((n, k) => { const g = v1.nests[k].vol; return g.dbz.every((x, i) => x === nd(n, i)) && g.u.every((x, i) => close(x, nuv(n, 2, i) * n.w + mo.u + n.fr.u, 1e-5)) && g.v.every((x, i) => close(x, nuv(n, 3, i) * n.w + mo.v + n.fr.v, 1e-5)) && g.w.every((x, i) => close(x, nuv(n, 4, i) * n.w, 1e-5)) && g.vz.every((x, i) => close(x, nvz(n, i) * n.vz, 1e-6)) && g.floor === -30 && g.base === pk.h.base; }));
+  const vf = PK.volumeFromFrame(pk.h, pk.frameBytes(1), 1);
+  check('the block of bytes of a frame alone (what a worker is handed, with the frame\'s number) makes the same volume, nests and all', vf.nests.length === 2 && vf.nests.every((g, k) => g.x === v1.nests[k].x && g.vol.u.every((x, i) => x === v1.nests[k].vol.u[i]) && g.vol.dbz.every((x, i) => x === v1.nests[k].vol.dbz[i]) && g.vol.vz.every((x, i) => x === v1.nests[k].vol.vz[i])) && vf.u.every((x, i) => x === v1.u[i]));
+  let thrown = 0; try { PK.fromBody(new Uint8Array(body.subarray(0, body.length - 3))); } catch (e) { thrown++; }
+  const gz = await PK.gunzip(new Uint8Array(Buffer.concat([Buffer.from('HFP2'), gzipSync(body)])));
+  check('a version 2 pack that is cut short is refused, and "HFP2" is a pack as "HFP1" is', thrown === 1 && gz.length === body.length && PK.fromBody(gz).n === 3); }
+
 /* 7. The pack the page ships: the 1 km supercell */
 const file = rd('data/severe/packs/wk82-1km-5min.hfp'), pack = PK.fromBody(await PK.gunzip(new Uint8Array(file)));
 { const f12 = pack.frame(12), f0 = pack.frame(0); let mx = -99, m0 = -99; for (let i = 0; i < pack.per; i++) { if (f12.dbz[i] > mx) mx = f12.dbz[i]; if (f0.dbz[i] > m0) m0 = f0.dbz[i]; }
