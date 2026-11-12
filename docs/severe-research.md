@@ -653,8 +653,18 @@ A child of 100 m by 100 m by 200 m cells over 12 km (120 x 120 x 100, 1.4 millio
 20 model minutes of a tornado nest are a few hours' work, and four such runs at once are what four cores can bear. (The nest in the page, running live, is the GPU port's business, S2b.)
 
 ### The environment, in numbers
-The Weisman-Klemp wind profile has a 0-1 km shear of 5.6 m/s and a helicity of **37 m2/s2** over 0-1 km and **81** over 0-3 km for the box's own motion (8.1, 4.9 m/s): a supercell day, not the day of a tornado (a significant
-tornado is typically 150 m2/s2 and more over 0-1 km). `LLJ=` in `wk82_nest.mjs` adds a low-level jet of southerly wind (sin^2, peaking at 1.5 km): 10 m/s gives 100 and 220 m2/s2 and a 0-1 km shear of 12.9 m/s.
+The helicity of a storm is for the storm's own motion, and the Weisman-Klemp storm moves, over the ground, at about (16, 2) m/s (the box's 8.1 and 4.9 and the storm's own drift through the box of 8.3 and -2.5), which Bunkers' internal-dynamics method puts at (14.8, 0). For that motion the Weisman-Klemp wind profile has a 0-1 km shear of 5.6 m/s, a **helicity of 82 m2/s2 over 0-1 km and 199 over 0-3 km**, a 0-6 km shear of 31 m/s and a CAPE of 2146 J/kg: a supercell day, not the day of a tornado (a significant tornado is typically 150 and more over 0-1 km). (An earlier version of these notes said 37 and 81: those were for the box's own motion, which is not the storm's.) `LLJ=` in `wk82_nest.mjs` adds a low-level jet of southerly wind (sin2 over 0-3 km, peaking at 1.5 km): 10 m/s gives 187 and 305 m2/s2 and a 0-1 km shear of 12.9 m/s; **15 m/s, the hero runs' setting, 238 and 358 and 16.7 m/s**; 20 m/s 289 and 412 (`src/severe-sounding.js`).
+
+### An environment in a forecaster's terms (`src/severe-sounding.js`)
+The research runs took a table and a jet. The Severe discipline asks for days: a surface temperature and moisture, a mixed layer, a cap, a tropopause, winds at heights, a jet. `HFSevereSounding.make(spec)` makes the four functions the core takes (theta, qv, u, v) from such a spec, with the Weisman-Klemp family's formulae for the profile (it gives WRF's own table to 0.003 K, 0.04 g/kg and 0.07 m/s), a mixed layer (the moisture never past a set share of saturation), a cap of a few kelvin, a jet and winds through nodes (a monotone cubic), and the frame of the Bunkers right mover; `indices(env)` gives CAPE, CIN and the levels of the surface and the mixed-layer parcel (the core's own saturation formula, a pseudo-adiabatic ascent), the shear of 0-1, 0-3 and 0-6 km, Bunkers' motions, the helicity of 0-1 and 0-3 km and the significant tornado parameter (Thompson et al. 2003, fixed layers). Three presets:
+
+| day | mixed-layer CAPE | CIN | condensation level | 0-6 km shear | helicity 0-1 km | tornado parameter |
+| --- | --- | --- | --- | --- | --- | --- |
+| Weisman-Klemp | 2365 J/kg | -22 | 1110 m | 30.7 m/s | 82 | 1.2 |
+| tornado | 3023 | -34 | 940 | 32.6 | 175 (0-3 km: 303) | 3.5 |
+| hail | 2911 | 0 | 1370 | 23.3 | 37 | 0.35 |
+
+`tests/severe_sounding.mjs` has **32 checks** (the table, the hydrostatic pressure, CAPE against the tool written first and Bolton's condensation level, the buoyancy integral on profiles of known areas, the monotone cubic against scipy's, the helicity and Bunkers on a straight and on a circular hodograph, the tornado parameter on its definition, the core running on it) and `tools/severe_sounding_mutants.mjs` **76 mutants, all killed** (two more, a change in the midpoint of a 10 m step of the moist ascent, make no difference worth a test).
 
 ### The storm at 500 m (rung H0)
 The recorder's storm (the Weisman-Klemp sounding, the ice scheme, a +3 K bubble, an 84 km box that moves with the storm) at 500 m cells for 90 minutes (75 minutes of work), next to the same at 1 km:
