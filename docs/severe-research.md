@@ -630,6 +630,12 @@ what the finer grids show is the next one.
   storm that drifts through the parent. One way: the parent is the same with or without a child.
 - `tools/severe_research/wk82_nest.mjs`: the parent (500 m, the recorder's own setup, `CKPT_AT=50,60,70` writes restart files on the way) and then the child from a restart file (100 to 250 m cells, the drag of the
   ground, a log of the strongest rotation, the lowest pressure and the strongest wind of the lowest level every 10 s, and frames of the child: reflectivity and winds). `wk82_run.mjs` takes `BOX_KM`.
+- **The radar operator reads nests** (`src/severe-radar.js`): a volume may carry `nests = [{ x, y, vol }]`, finer volumes inside it (x and y the metres from the box's south-west corner to the nest's); the first nest that holds a
+  point answers for it, for the reflectivity and for the winds, the box for the rest. A 500 m cell cannot hold a hook or a vortex; a 100 m one can: in the test a radar 20 km away sees a 55 dBZ core 500 m across as
+  57 dBZ with the nest and 23 without, and a 40 m/s vortex as a couplet of 52 m/s with it and none without. 2 new checks (71), 7 mutants.
+- **The rain** (`iceParams` of the ice scheme): `n0r`, the intercept of the rain's size distribution (8e6 m-4: a tenth of it makes the rain fall 10^0.2 = 1.585 times faster), and `evap`, a factor on the rain's evaporation (1): the
+  knob of the cold pool, whose strength decides whether a storm's rear-flank downdraft helps or smothers a tornado (the Weisman-Klemp storm's is -9.9 K at 1 km, a tornadic one's a few kelvin). 1 new check (34), 2 mutants.
+- `tools/severe_research/slice_look.mjs`: a horizontal slice of a recorded storm or a child's frames in three panels (reflectivity, vertical velocity, vertical vorticity).
 - `tests/severe_nest.mjs`: **13 checks** (14 s, in `npm test`), and `tools/severe_nest_mutants.mjs`: **49 mutants, all killed** (five more changes make no difference and are listed in the file).
 
 ### What the tests show

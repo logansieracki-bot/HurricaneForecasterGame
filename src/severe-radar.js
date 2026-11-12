@@ -93,6 +93,16 @@
       return true;
     };
   }
+  /* ---- nests: a finer volume inside the box (vol.nests = [{ x, y, vol }], x and y the metres from the box's south-west corner to the nest's: the first nest that holds a point answers for it, the box
+     for the rest). The nest's own grid may be finer in every direction (a hook and a tornado need 100 to 200 m cells that a 500 m box has not got); its winds are used if it has them. ---- */
+  function withNests(vol, make, has) {
+    const base = make(vol), nn = (vol.nests || []).filter((n) => n && n.vol && has(n.vol)).map((n) => ({ x: n.x, y: n.y, w: n.vol.nx * n.vol.dx, h: n.vol.ny * n.vol.dy, f: make(n.vol) }));
+    if (!nn.length) return base;
+    return function (x, y, z, out) {
+      for (let q = 0; q < nn.length; q++) { const n = nn[q], lx = x - n.x, ly = y - n.y; if (lx >= 0 && ly >= 0 && lx <= n.w && ly <= n.h) return n.f(lx, ly, z, out); }
+      return base(x, y, z, out);
+    };
+  }
   function envWind(e) {                                     // the wind outside the box: (z, out) -> out[0..1] = u, v. e: a function, { z, u, v } arrays (linear between the levels), { u, v } (uniform) or nothing (calm)
     if (typeof e === 'function') return e;
     if (e && e.z && e.u && e.v) {
@@ -138,12 +148,12 @@
     const elev = o.elev !== undefined ? o.elev : 0.5, dAz = o.dAz || 0.5, gate = o.gate || 250, r0 = o.r0 !== undefined ? o.r0 : 2125, nG = o.nGates || 920, antenna = o.antenna !== undefined ? o.antenna : 30;
     const seed = (o.seed === undefined ? 1 : o.seed) | 0, nS = Math.max(1, o.n || 2), nRad = Math.round(360 / dAz), quant = o.quant === undefined ? 0.5 : o.quant;
     const noise = Object.assign({ z1: -41.8, atten: 0.019, thr: 2.5, n: 16, sparse: 0.0008 }, o.noise), cl = Object.assign({ ground: 1, clearAir: 1 }, o.clutter), cla = Object.assign({}, CLEAR, o.clear);
-    const sample = vol ? volumeSampler(vol) : null, rx = o.x || 0, ry = o.y || 0, floor = vol && vol.floor !== undefined ? vol.floor : -30;
+    const sample = vol ? withNests(vol, volumeSampler, (v) => !!v.dbz) : null, rx = o.x || 0, ry = o.y || 0, floor = vol && vol.floor !== undefined ? vol.floor : -30;
     const out = new Float32Array(nRad * nG), snrThr = Math.pow(10, 0.1 * noise.thr) - 1, nN = Math.max(1, noise.n | 0);
     const sinE = Math.sin(elev * DEG), cosE = Math.cos(elev * DEG);
     const vel = o.velocity ? Object.assign({}, VEL, o.velocity === true ? {} : o.velocity) : null;
     if (vel) { vel.fine = Object.assign({}, VEL.fine, vel.fine); vel.width = Object.assign({}, VEL.width, vel.width); }
-    const velOut = vel ? new Float32Array(nRad * nG).fill(NaN) : null, swOut = vel ? new Float32Array(nRad * nG).fill(NaN) : null, wsamp = vel && vol && vol.u && vol.v && vol.w ? windSampler(vol) : null;
+    const velOut = vel ? new Float32Array(nRad * nG).fill(NaN) : null, swOut = vel ? new Float32Array(nRad * nG).fill(NaN) : null, wsamp = vel && vol && vol.u && vol.v && vol.w ? withNests(vol, windSampler, (v) => !!(v.u && v.v && v.w)) : null;
     const wenv = vel ? envWind(o.env || (vol && vol.base)) : null, wv = [0, 0, 0, 0], we = [0, 0], thrV = vel ? Math.pow(10, 0.1 * vel.thr) : 0;
     // the volume's footprint seen from the radar, to spare the sampling of gates far from it
     const lx = vol ? vol.nx * vol.dx : 0, ly = vol ? vol.ny * vol.dy : 0;

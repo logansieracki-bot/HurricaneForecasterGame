@@ -5,6 +5,7 @@
 //   node tools/severe_research/wk82_nest.mjs child  <in.ckpt> <out> <minutes>         from the restart: parent and child together for <minutes> more, the child's frames and a log
 // Settings are environment variables (the defaults in brackets):
 //   PDX=500 (m, the parent's cell)  BOX_KM=84  DT=4 (s, the parent's step)  ICE=1  QV_SCALE=1  LLJ=0 (m/s, a low-level jet added to the sounding's winds: see env())
+//   N0G=4e6 RHOG=400 (graupel/hail)  N0R=8e6 (rain's intercept)  EVAP=1 (the rain's evaporation, times: the knob of the cold pool); the same in the parent and the child
 //   CDX=100 (the child's cell)  CDZ=200 (its level)  CL=12 (km, its side)  RATIO=4 (child steps per parent step)  DRAG=1  Z0=0.1 (m)  KHC=0.25 (child viscosity: KHC * CDX m2/s)
 //   FRAME_EVERY=60 (s between the child's frames; 0 for none)  DIAG_EVERY=10 (s)  CENTRE=auto|x,y (km, the child's centre in the parent's box)  FRAME_UV=auto|u,v (m/s, the child's frame over the parent's)
 // The child's frames: <out>.cdbz.i8 (reflectivity, dBZ rounded, -30 for none, in the order frame, level, y, x), <out>.cuvw.i16 (u, v, w in 0.01 m/s at the cell centres, in the child's frame, order frame,
@@ -19,6 +20,7 @@ const C = globalThis.HFSevereCore, NEST = globalThis.HFSevereNest, { P0, CP, RD 
 const [mode, a1, a2, a3] = process.argv.slice(2);
 const E = (k, d) => (process.env[k] === undefined ? d : +process.env[k]);
 const PDX = E('PDX', 500), L = E('BOX_KM', 84) * 1000, DT = E('DT', 4), ICE = E('ICE', 1) !== 0, QV = E('QV_SCALE', 1), LLJ = E('LLJ', 0);
+const ICEP = { n0g: E('N0G', 4e6), rhog: E('RHOG', 400), n0r: E('N0R', 8e6), evap: E('EVAP', 1) };          // the ice scheme's settings (the same in the parent and the child)
 const NZ = 40, DZ = 500, MOTION = { u: 8.0998, v: 4.9419 };                                // the box's motion over the ground (wk82_run.mjs: the model's winds plus it are the ground's)
 const snd = loadSounding(undefined, QV);
 
@@ -26,7 +28,7 @@ const snd = loadSounding(undefined, QV);
    shear of 6 m/s and a 0-1 km helicity of 40 m2/s2, which is not the day of a tornado; a stronger low level shear and a veering wind put the storm in a more tornadic setting */
 const jet = (z) => LLJ * Math.sin(Math.PI * Math.min(z, 3000) / 3000) ** 2 * (z < 3000 ? 1 : 0);
 const wind = { u: (z) => snd.u(z), v: (z) => snd.v(z) + jet(z) };
-const parentOpts = () => ({ nx: Math.round(L / PDX), ny: Math.round(L / PDX), nz: NZ, dx: PDX, dy: PDX, dz: DZ, moist: true, ice: ICE, iceParams: { n0g: 4e6, rhog: 400 }, theta: snd.theta, qv: snd.qv, wind,
+const parentOpts = () => ({ nx: Math.round(L / PDX), ny: Math.round(L / PDX), nz: NZ, dx: PDX, dy: PDX, dz: DZ, moist: true, ice: ICE, iceParams: ICEP, theta: snd.theta, qv: snd.qv, wind,
   bc: { x: 'periodic', y: 'periodic' }, visc: { kh: 500 * PDX / 2000, kv: 500 * PDX / 2000 }, damp: { top: { depth: 5000, rate: 0.003 }, lateral: { width: 10000, rate: 0.02 } } });
 const lamOf = (n0, rhox, rho, q) => Math.pow(Math.PI * rhox * n0 / (rho * q), 0.25);
 
@@ -87,7 +89,7 @@ if (mode === 'parent') {
   const cen = process.env.CENTRE && process.env.CENTRE !== 'auto' ? process.env.CENTRE.split(',').map((v) => +v * 1000) : [last[1], last[2]];
   const x0 = Math.round((cen[0] - CL / 2) / PDX) * PDX, y0 = Math.round((cen[1] - CL / 2) / PDX) * PDX, nxc = Math.round(CL / CDX), nzc = Math.round(NZ * DZ / CDZ);
   const mot = head.motion, frame = { u: mot.u + fr.u, v: mot.v + fr.v };                  // the child's frame over the ground
-  const child = C.create({ nx: nxc, ny: nxc, nz: nzc, dx: CDX, dy: CDX, dz: CDZ, moist: true, ice: ICE, iceParams: { n0g: 4e6, rhog: 400 }, theta: snd.theta, qv: snd.qv,
+  const child = C.create({ nx: nxc, ny: nxc, nz: nzc, dx: CDX, dy: CDX, dz: CDZ, moist: true, ice: ICE, iceParams: ICEP, theta: snd.theta, qv: snd.qv,
     wind: { u: (z) => wind.u(z) - fr.u, v: (z) => wind.v(z) - fr.v }, bc: { x: 'driven', y: 'driven' }, relax: { width: Math.max(6, Math.round(1000 / CDX)) },
     visc: { kh: KHC * CDX, kv: KHC * CDX }, damp: { top: { depth: 5000, rate: 0.003 } }, drag: DRAG ? { z0: Z0, frame } : null });
   const nest = NEST.create({ parent, child, ratio: RATIO, x0, y0, frame: fr }); nest.init();

@@ -368,13 +368,13 @@
 
     /* ---- ice microphysics: a single-moment scheme of the Lin et al. (1983) / Rutledge & Hobbs (1984) class with five water species: cloud water, rain, cloud ice, snow and
        graupel or hail. Rain, snow and graupel have exponential size distributions N0 exp(-lambda D) (rain N0 = 8e6 m-4; snow N0 = 2e6 exp(0.12 (T0 - T)), density 100 kg/m3, as in
-       WSM6; graupel N0 = 4e6 m-4 and density 400 kg/m3 by default, the graupel of Lin et al.; the "hail" setting of Lin et al. is iceParams { n0g: 4e4, rhog: 900 }, which makes
+       WSM6; graupel N0 = 4e6 m-4 and density 400 kg/m3 by default, the graupel of Lin et al.; the rain intercept is iceParams.n0r (8e6 m-4) and iceParams.evap (1) scales the rain's evaporation (Kessler's formula, which does not depend on the intercept: the cooling of a cold pool is the knob of the tornado work); the "hail" setting of Lin et al. is iceParams { n0g: 4e4, rhog: 900 }, which makes
        reflectivities about 14 dB higher in a Weisman-Klemp storm than the real storms measured by radar, docs/severe-research.md part 3); cloud ice has the number of Rutledge & Hobbs.
        Every process moves mass between species with its latent heat (condensation Lv, freezing and melting Lf, deposition and sublimation Ls = Lv + Lf), so water and the moist enthalpy
        cp T + Lv qv - Lf (qi + qs + qg) are conserved by construction. The processes are applied one after the other, each limited by what it can take. ---- */
     const T0 = 273.15, LF = 3.34e5, LV = KS.XLV, LS = LV + LF, RVAP = 461.5, lvK = LV / CP, lfK = LF / CP, lsK = LS / CP;
-    const IPAR = Object.assign({ n0g: 4e6, rhog: 400 }, o.iceParams || {}), RHO0 = rhoc[0];
-    const N0R = 8e6, RHOW = 1000, RHOS = 100, N0S0 = 2e6, VRa = 842, VRb = 0.8, VSa = 11.72, VSb = 0.41, VGa = Math.sqrt(4 * G * IPAR.rhog / (3 * 0.6 * RHO0)), VGb = 0.5;   // fall speed a D^b (rain: Liu & Orville; snow: Locatelli & Hobbs; hail: drag law with C_D = 0.6)
+    const IPAR = Object.assign({ n0g: 4e6, rhog: 400, n0r: 8e6, evap: 1 }, o.iceParams || {}), RHO0 = rhoc[0];
+    const N0R = IPAR.n0r, RHOW = 1000, RHOS = 100, N0S0 = 2e6, VRa = 842, VRb = 0.8, VSa = 11.72, VSb = 0.41, VGa = Math.sqrt(4 * G * IPAR.rhog / (3 * 0.6 * RHO0)), VGb = 0.5;   // fall speed a D^b (rain: Liu & Orville; snow: Locatelli & Hobbs; hail: drag law with C_D = 0.6)
     const gvent = (b) => gammaF((b + 5) / 2), gmass = (b) => gammaF(4 + b) / 6, gcoll = (b) => gammaF(3 + b);
     const GR = { vent: gvent(VRb), mass: gmass(VRb), coll: gcoll(VRb) }, GS = { vent: gvent(VSb), mass: gmass(VSb), coll: gcoll(VSb) }, GG = { vent: gvent(VGb), mass: gmass(VGb), coll: gcoll(VGb) };
     const lamOf = (n0, rhox, rho, q) => Math.pow(Math.PI * rhox * n0 / (rho * q), 0.25);
@@ -505,7 +505,7 @@
         }
         if (qr > 1e-12) {                                   // rain evaporates in subsaturated air (Kessler's ventilation formula)
           const e = esw(T), qvs = KS.EP2 * e / (p - e), rcgs = 0.001 * rho, gW = 1 + p / (p - e) * qvs * F5 / ((T - KS.SVP3) * (T - KS.SVP3));
-          const ern = Math.min(dt * (((1.6 + 124.9 * Math.pow(rcgs * qr, 0.2046)) * Math.pow(rcgs * qr, 0.525)) / (2.55e8 / (p * qvs) + 5.4e5)) * (Math.max(qvs - qv, 0) / (rcgs * qvs)), qr, Math.max(0, (qvs - qv) / gW));
+          const ern = Math.min(dt * IPAR.evap * (((1.6 + 124.9 * Math.pow(rcgs * qr, 0.2046)) * Math.pow(rcgs * qr, 0.525)) / (2.55e8 / (p * qvs) + 5.4e5)) * (Math.max(qvs - qv, 0) / (rcgs * qvs)), qr, Math.max(0, (qvs - qv) / gW));
           qr -= ern; qv += ern; T -= lvK * ern;
         }
         const th1 = T / pii;

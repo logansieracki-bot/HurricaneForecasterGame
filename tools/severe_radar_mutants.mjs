@@ -12,6 +12,14 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const SRC = { radar: readFileSync(join(root, 'src/severe-radar.js'), 'utf8'), palette: readFileSync(join(root, 'src/severe-palette.js'), 'utf8') };
 // [name, file, the text to find (once), its replacement]
 const M = [
+  // a finer volume nested in the box
+  ['nest-dbz-ignored', 'radar', 'const sample = vol ? withNests(vol, volumeSampler, (v) => !!v.dbz) : null,', 'const sample = vol ? volumeSampler(vol) : null,'],
+  ['nest-winds-ignored', 'radar', 'withNests(vol, windSampler, (v) => !!(v.u && v.v && v.w))', 'windSampler(vol)'],
+  ['nest-offset-x-lost', 'radar', 'lx = x - n.x, ly = y - n.y;', 'lx = x, ly = y - n.y;'],
+  ['nest-offset-y-lost', 'radar', 'lx = x - n.x, ly = y - n.y;', 'lx = x - n.x, ly = y;'],
+  ['nest-never-holds', 'radar', 'if (lx >= 0 && ly >= 0 && lx <= n.w && ly <= n.h) return n.f(lx, ly, z, out);', 'if (lx >= 0 && ly >= 0 && lx <= n.w && ly <= 0) return n.f(lx, ly, z, out);'],
+  ['nest-wide-everywhere', 'radar', 'if (lx >= 0 && ly >= 0 && lx <= n.w && ly <= n.h) return n.f(lx, ly, z, out);', 'if (lx >= -1e9 && ly >= -1e9 && lx <= 1e9 && ly <= 1e9) return n.f(lx, ly, z, out);'],
+  ['nest-winds-from-box', 'radar', "filter((n) => n && n.vol && has(n.vol))", "filter((n) => n && n.vol)"],
   // the beam: where it is and how wide
   ['earth-radius-not-4-3', 'radar', 'const RE = 6371000 * 4 / 3', 'const RE = 6371000'],
   ['beam-width', 'radar', 'BEAMW = 0.9', 'BEAMW = 1.4'],

@@ -471,6 +471,26 @@ const median = (a) => { const s = Float64Array.from(a).sort(); return s[s.length
         P.unitScale('M/S') === 1 && P.unitScale('dBZ') === 1 && P.unitScale('') === 1 && P.unitScale(undefined) === 1);
 }
 
+/* 5b. A nest: a finer volume inside the box (vol.nests = [{ x, y, vol }]) answers for the points it holds. A box of 500 m cells with a broad weak echo and no wind, and in it, at 20 km from the radar, a nest of
+       100 m cells with a 55 dBZ core 500 m across and a cyclonic vortex of 40 m/s at 300 m from its axis (the box has neither: a 500 m cell cannot hold them). Without the nest the scan sees neither the core nor
+       the couplet; with it, it sees both, and a nest with no winds shows the core and no couplet. */
+{
+  const box = volw(80, 80, 20, 500, 500, () => 20, () => [0, 0, 0, 0]), nxn = 40, dxn = 100, cxn = nxn * dxn / 2;
+  const mkNest = (winds) => (winds ? volw : (nx, ny, nz, dx, dz, fn) => vol(nx, ny, nz, dx, dz, fn))(nxn, nxn, 100, dxn, 100, (x, y) => Math.hypot(x - cxn, y - cxn) < 250 ? 55 : 20, (x, y) => {
+    const dxv = x - cxn, dyv = y - cxn, r = Math.hypot(dxv, dyv), vt = r < 300 ? 40 * r / 300 : 40 * 300 / Math.max(r, 1); return [-vt * dyv / Math.max(r, 1), vt * dxv / Math.max(r, 1), 0, 0];
+  });
+  const withNest = Object.assign({}, box, { nests: [{ x: 20000 - cxn, y: 20000 - cxn, vol: mkNest(true) }] }), noWinds = Object.assign({}, box, { nests: [{ x: 20000 - cxn, y: 20000 - cxn, vol: mkNest(false) }] });
+  const o = Object.assign({ x: 20000, y: 0, elev: 0.5, seed: 3, velocity: true, noise: { sparse: 0, z1: -90 } }, { clutter: { ground: 0, clearAir: 0 } });
+  const a = R.scan(box, o), b = R.scan(withNest, o), c = R.scan(noWinds, o), g0 = Math.round((20000 - 2125) / 250);
+  const peak = (sw) => { let m = -99; for (const a_ of [718, 719, 0, 1]) for (let g = g0 - 2; g <= g0 + 2; g++) m = Math.max(m, sw.dbz[a_ * sw.nGates + g]); return m; };
+  const couple = (sw) => { let lo = 99, hi = -99; for (const a_ of [717, 718, 719, 0, 1, 2]) for (let g = g0 - 2; g <= g0 + 2; g++) { const v = sw.vel[a_ * sw.nGates + g]; if (v === v) { lo = Math.min(lo, v); hi = Math.max(hi, v); } } return hi - lo; };
+  check('a nest of finer cells shows what the box cannot hold: the 55 dBZ core (' + peak(b).toFixed(1) + ' dBZ at the gates beside it against ' + peak(a).toFixed(1) + ' without the nest) and the 40 m/s vortex as a couplet of ' + couple(b).toFixed(1) + ' m/s (' + couple(a).toFixed(1) + ' without it); a nest with no winds has the core (' + peak(c).toFixed(1) + ') and no couplet (' + couple(c).toFixed(1) + ')',
+    peak(a) < 25 && peak(b) > 40 && peak(c) > 40 && couple(b) > 30 && couple(a) < 8 && couple(c) < 8);
+  const far = R.scan(withNest, Object.assign({}, o, { y: -10000 })), near = R.scan(box, Object.assign({}, o, { y: -10000 }));
+  let diff = 0; for (let q = 0; q < far.dbz.length; q++) { const x = far.dbz[q], y = near.dbz[q]; if (x === x && y === y && Math.abs(x - y) > 0.01 && Math.abs(q % far.nGates - (g0 + 40)) > 6) diff++; }
+  check('away from the nest the scan is the box\'s own (' + diff + ' gates differ, in a radar ten kilometres further south, outside the nest\'s few gates)', diff === 0);
+}
+
 /* 6. The renderer: gates as blocks. */
 {
   const sw = { dbz: new Float32Array(720 * 920).fill(NaN), nRad: 720, nGates: 920, dAz: 0.5, gate: 250, r0: 2125, elev: 0.5, antenna: 30 };

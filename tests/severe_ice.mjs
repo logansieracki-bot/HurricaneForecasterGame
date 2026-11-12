@@ -189,6 +189,16 @@ const P = pK();
   check('freezing 1 g/kg of cloud water raises the pressure perturbation by Cc rho Delta theta (' + pi.toExponential(3) + ' against ' + want.toExponential(3) + ' by hand)', pi > 0 && Math.abs(pi / want - 1) < 0.02);
 }
 
+/* 5b. The rain's two settings: its evaporation in subsaturated air scales with iceParams.evap (the knob of a cold pool), and its intercept n0r sets how fast it falls as N0^(-b/4): the
+       reflectivity-weighted fall speed of an exponential distribution is proportional to lambda^-b, lambda to N0^0.25, b = 0.8, so a tenth of the intercept is 10^0.2 = 1.585 times faster. */
+{
+  const T = T0 + 12, q = 1e-3, evapOf = (ev) => { const c = mk({ iceParams: { evap: ev } }), o = setCell(c, 1, { T, qv: 0.5 * qsw(T, P), qr: q }); run(c, 1, 1); return q - read(c, o).qr; };
+  const e1 = evapOf(1), eh = evapOf(0.5), e0 = evapOf(0), ed = (() => { const c = mk(), o = setCell(c, 1, { T, qv: 0.5 * qsw(T, P), qr: q }); run(c, 1, 1); return q - read(c, o).qr; })();
+  const zf = (n0) => mk({ iceParams: { n0r: n0 } }).zFall.rain(q, K), zr = zf(8e5) / zf(8e6);
+  check('rain evaporates in dry air at a rate that iceParams.evap scales (' + f2(1e6 * e1, 2) + ' mg/kg in a second, half of it at 0.5: ' + f2(eh / e1, 3) + ', none at 0, the default the same as 1), and a tenth of the rain intercept makes it fall ' + f2(zr, 3) + ' times as fast (10^0.2 = ' + f2(Math.pow(10, 0.2), 3) + ')',
+    e1 > 1e-8 && Math.abs(eh / e1 - 0.5) < 0.01 && e0 === 0 && ed === e1 && Math.abs(zr - Math.pow(10, 0.2)) < 1e-9);
+}
+
 /* 6. Fall: with sedimentation on, graupel falls faster than snow and snow faster than cloud ice (and the hail setting faster than the graupel), and the water budget of the columns closes: what is in the air (vapour, cloud,
    rain, ice, snow, hail) plus what reached the ground is what was there at the start (the air is just short of saturation, so what melts reaches the ground as rain). */
 {

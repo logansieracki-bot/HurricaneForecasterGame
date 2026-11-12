@@ -10,6 +10,8 @@ import { fileURLToPath } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..'), src = readFileSync(join(root, 'src/severe-core.js'), 'utf8');
 const M = [
+  ['rain-evap-knob-ignored', 'dt * IPAR.evap * (((1.6 + 124.9', 'dt * (((1.6 + 124.9'],
+  ['rain-intercept-fixed', 'const N0R = IPAR.n0r, RHOW = 1000,', 'const N0R = 8e6, RHOW = 1000,'],
   // melting
   ['melt-snow-heat-sign', 'qs -= d; qr += d; T -= lfK * d;', 'qs -= d; qr += d; T += lfK * d;'],
   ['melt-hail-no-cooling', 'qg -= d; qr += d; T -= lfK * d;', 'qg -= d; qr += d;'],
