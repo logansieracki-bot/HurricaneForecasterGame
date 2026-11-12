@@ -7,12 +7,14 @@
 //   PDX=500 (m, the parent's cell)  BOX_KM=84  DT=4 (s, the parent's step)  ICE=1  QV_SCALE=1  LLJ=0 (m/s, a low-level jet added to the sounding's winds: see env())
 //   N0G=4e6 RHOG=400 (graupel/hail)  N0R=8e6 (rain's intercept)  EVAP=1 (the rain's evaporation, times: the knob of the cold pool); the same in the parent and the child
 //   CDX=100 (the child's cell)  CDZ=200 (its level)  CL=12 (km, its side)  RATIO=4 (child steps per parent step)  DRAG=1  Z0=0.1 (m)  KHC=0.25 (child viscosity: KHC * CDX m2/s)
+//   PERTURB=0 (K: random noise of this amplitude on theta in the child's lowest 3 km at its start, for copies of one storm that differ by a breath)  SEED=1
 //   FRAME_EVERY=60 (s between the child's frames; 0 for none)  DIAG_EVERY=10 (s)  CENTRE=auto|x,y (km, the child's centre in the parent's box)  FRAME_UV=auto|u,v (m/s, the child's frame over the parent's)
-// The child's frames: <out>.cdbz.i8 (reflectivity, dBZ rounded, -30 for none, in the order frame, level, y, x), <out>.cuvw.i16 (u, v, w in 0.01 m/s at the cell centres, in the child's frame, order frame,
-// component, level, y, x) and <out>.json (grid, times, the parent's motion over the ground, the child's frame, where the child lies); the log has, every DIAG_EVERY seconds, the strongest rotation,
+// The child's frames: <out>.cdbz.i8 (reflectivity, dBZ rounded, -30 for none, in the order frame, level, y, x), <out>.cvz.u8 (the reflectivity-weighted fall speed, 0.25 m/s downward, 0 for none, the same order),
+// <out>.cuvw.i16 (u, v, w in 0.01 m/s at the cell centres, in the child's frame, order frame, component, level, y, x) and <out>.json (grid, times, the parent's motion over the ground, the child's frame, where the child lies); the log has, every DIAG_EVERY seconds, the strongest rotation,
 // the lowest pressure and the strongest wind of the lowest level over the ground, with the places.
 import '../../src/severe-core.js';
 import '../../src/severe-nest.js';
+import '../../src/severe-refl.js';
 import { loadSounding, bubble } from './wk82.mjs';
 import { readFileSync, writeFileSync, openSync, writeSync, closeSync } from 'node:fs';
 
@@ -30,7 +32,6 @@ const jet = (z) => LLJ * Math.sin(Math.PI * Math.min(z, 3000) / 3000) ** 2 * (z 
 const wind = { u: (z) => snd.u(z), v: (z) => snd.v(z) + jet(z) };
 const parentOpts = () => ({ nx: Math.round(L / PDX), ny: Math.round(L / PDX), nz: NZ, dx: PDX, dy: PDX, dz: DZ, moist: true, ice: ICE, iceParams: ICEP, theta: snd.theta, qv: snd.qv, wind,
   bc: { x: 'periodic', y: 'periodic' }, visc: { kh: 500 * PDX / 2000, kv: 500 * PDX / 2000 }, damp: { top: { depth: 5000, rate: 0.003 }, lateral: { width: 10000, rate: 0.02 } } });
-const lamOf = (n0, rhox, rho, q) => Math.pow(Math.PI * rhox * n0 / (rho * q), 0.25);
 
 function newParent() {
   const core = C.create(parentOpts()), S = core.S, idx = core.idx, b = core.base, xc = L / 2, yc = L / 2, nx = core.nx, ny = core.ny;
@@ -93,18 +94,17 @@ if (mode === 'parent') {
     wind: { u: (z) => wind.u(z) - fr.u, v: (z) => wind.v(z) - fr.v }, bc: { x: 'driven', y: 'driven' }, relax: { width: Math.max(6, Math.round(1000 / CDX)) },
     visc: { kh: KHC * CDX, kv: KHC * CDX }, damp: { top: { depth: 5000, rate: 0.003 } }, drag: DRAG ? { z0: Z0, frame } : null });
   const nest = NEST.create({ parent, child, ratio: RATIO, x0, y0, frame: fr }); nest.init();
+  const PA = E('PERTURB', 0), PSEED = E('SEED', 1);
+  if (PA) {                                                  // a copy that differs by noise on theta below 3 km (mulberry32, so that a seed gives the same copy again)
+    let sd = PSEED >>> 0; const rnd = () => { sd = (sd + 0x6D2B79F5) | 0; let t = Math.imul(sd ^ (sd >>> 15), 1 | sd); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+    for (let k = 0; k < nzc; k++) if ((k + 0.5) * CDZ < 3000) for (let j = 0; j < nxc; j++) for (let i = 0; i < nxc; i++) child.S.th[child.idx(i, j, k)] += PA * (2 * rnd() - 1);
+    child.fill();
+  }
   console.log('child ' + nxc + 'x' + nxc + 'x' + nzc + ' cells of ' + CDX + ' x ' + CDZ + ' m from (' + (x0 / 1000) + ', ' + (y0 / 1000) + ') km in the parent, its frame moves at (' + fr.u + ', ' + fr.v + ') m/s over the parent\'s, ' + RATIO + ' steps per parent step of ' + DT + ' s, drag ' + (DRAG ? 'cd ' + child.drag.cd.toFixed(5) : 'off'));
   const FE = E('FRAME_EVERY', 60), DE = E('DIAG_EVERY', 10), steps = Math.round(minutes * 60 / DT), t0 = Date.now(), tStart = parent.time, times = [];
-  const fd = FE ? openSync(out + '.cdbz.i8', 'w') : -1, fv = FE ? openSync(out + '.cuvw.i16', 'w') : -1;
-  const dbzC = new Int8Array(nxc * nxc * nzc), uvw = new Int16Array(3 * nxc * nxc * nzc), CS = child.S, ci = child.idx, KICE = 0.176 / 0.93;
-  const zOf = (i, j, k) => {                                   // the reflectivity of a cell as in wk82_run.mjs (rain, and ice spheres of their density, the melting layer wet)
-    const o = ci(i, j, k), rho = child.base.rhoc[k]; let z = 0;
-    const qr = CS.qr[o], qs = CS.qs[o], qg = CS.qg[o];
-    if (qr > 1e-9) z += 720 * 8e6 / Math.pow(lamOf(8e6, 1000, rho, qr), 7);
-    if (qs > 1e-9) z += KICE * 720 * 2e6 * Math.exp(0.12 * Math.max(0, 273.15 - (child.base.thc[k] + CS.th[o]) * (child.base.pibc[k] + CS.pi[o]))) * Math.pow(100 / 1000, 2) / Math.pow(lamOf(Math.min(2e8, 2e6 * Math.exp(0.12 * Math.max(0, 273.15 - (child.base.thc[k] + CS.th[o]) * (child.base.pibc[k] + CS.pi[o])))), 100, rho, qs), 7);
-    if (qg > 1e-9) z += KICE * 720 * 4e6 * Math.pow(400 / 1000, 2) / Math.pow(lamOf(4e6, 400, rho, qg), 7);
-    return z > 1e-3 ? 10 * Math.log10(z * 1e18 / 1e18) : -30;
-  };
+  const fd = FE ? openSync(out + '.cdbz.i8', 'w') : -1, fv = FE ? openSync(out + '.cuvw.i16', 'w') : -1, fz = FE ? openSync(out + '.cvz.u8', 'w') : -1;
+  const dbzC = new Int8Array(nxc * nxc * nzc), vzC = new Uint8Array(nxc * nxc * nzc), uvw = new Int16Array(3 * nxc * nxc * nzc), CS = child.S, ci = child.idx;
+  const refl = globalThis.HFSevereRefl.create(child), dcol = new Float64Array(nzc), vcol = new Float64Array(nzc);       // reflectivity and fall speed, as in wk82_run.mjs (src/severe-refl.js)
   let nextDiag = DE, nextFrame = FE;
   for (let n = 0; n < steps; n++) {
     nest.step(DT); const tt = parent.time - tStart;
@@ -122,16 +122,19 @@ if (mode === 'parent') {
     }
     if (FE && tt + 1e-6 >= nextFrame) {
       nextFrame += FE; times.push(+tt.toFixed(1));
+      for (let j = 0; j < nxc; j++) for (let i = 0; i < nxc; i++) {
+        refl.column(i, j, dcol, vcol);
+        for (let k = 0; k < nzc; k++) { const q = (k * nxc + j) * nxc + i; dbzC[q] = Math.max(-30, Math.min(100, Math.round(dcol[k]))); vzC[q] = dcol[k] > -29 ? Math.max(0, Math.min(255, Math.round(4 * vcol[k]))) : 0; }
+      }
       for (let k = 0; k < nzc; k++) for (let j = 0; j < nxc; j++) for (let i = 0; i < nxc; i++) {
-        const o = ci(i, j, k), q = (k * nxc + j) * nxc + i, z = zOf(i, j, k);
-        dbzC[q] = Math.max(-30, Math.min(100, Math.round(z)));
+        const o = ci(i, j, k), q = (k * nxc + j) * nxc + i;
         uvw[q] = Math.max(-32767, Math.min(32767, Math.round(0.5 * (CS.u[o] + CS.u[o + 1]) * 100))); uvw[nxc * nxc * nzc + q] = Math.max(-32767, Math.min(32767, Math.round(0.5 * (CS.v[o] + CS.v[o + child.idx(0, 1, 0) - child.idx(0, 0, 0)]) * 100)));
         uvw[2 * nxc * nxc * nzc + q] = Math.max(-32767, Math.min(32767, Math.round(0.5 * (CS.w[o] + CS.w[o + child.idx(0, 0, 1) - child.idx(0, 0, 0)]) * 100)));
       }
-      writeSync(fd, Buffer.from(dbzC.buffer)); writeSync(fv, Buffer.from(uvw.buffer));
+      writeSync(fd, Buffer.from(dbzC.buffer)); writeSync(fv, Buffer.from(uvw.buffer)); writeSync(fz, Buffer.from(vzC.buffer));
     }
   }
-  if (FE) { closeSync(fd); closeSync(fv); }
-  writeFileSync(out + '.json', JSON.stringify({ v: 1, nx: nxc, ny: nxc, nz: nzc, dx: CDX, dz: CDZ, times, startMinute: tStart / 60, frame: fr, motion: mot, x0, y0, parentDx: PDX, ratio: RATIO, drag: DRAG, env: head.env }));
+  if (FE) { closeSync(fd); closeSync(fv); closeSync(fz); }
+  writeFileSync(out + '.json', JSON.stringify({ v: 1, vz: { scale: 0.25 }, nx: nxc, ny: nxc, nz: nzc, dx: CDX, dz: CDZ, times, startMinute: tStart / 60, frame: fr, motion: mot, x0, y0, parentDx: PDX, ratio: RATIO, drag: DRAG, perturb: PA ? { amp: PA, seed: PSEED } : null, env: head.env }));
   console.log('done (' + ((Date.now() - t0) / 1000).toFixed(0) + ' s)');
 } else { console.error('usage: wk82_nest.mjs parent <out.ckpt> <minutes> | child <in.ckpt> <out> <minutes>'); process.exit(1); }

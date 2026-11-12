@@ -1,6 +1,7 @@
 // The first real storm: the Weisman-Klemp (1982) supercell on WRF's test/em_quarter_ss geometry, run with the Severe core (src/severe-core.js, moist), with the
 // warm-rain scheme of Kessler (ice = 0) or with ice: cloud water, rain, cloud ice, snow and graupel/hail (ice = 1, the default).
-//   [QV_SCALE=1.25] node tools/severe_research/wk82_run.mjs <dx m> <minutes> <dt s> <out.json> [frameMinutes=5] [ice=1] [n0g=4e6 m-4] [rhog=400 kg/m3]
+//   [QV_SCALE=1.25] [N0R=8e6 EVAP=1] node tools/severe_research/wk82_run.mjs <dx m> <minutes> <dt s> <out.json> [frameMinutes=5] [ice=1] [n0g=4e6 m-4] [rhog=400 kg/m3]
+// N0R is the rain's intercept (m-4) and EVAP the factor on its evaporation: the two knobs of the cold pool (ice scheme only; the reflectivity reads the same N0R).
 // 2 km: 42 x 42 x 40 cells (84 km square, 20 km deep, 500 m levels), the sounding's winds already shifted so that the storm stays in the box, periodic sides with a
 // 10 km sponge, a 5 km Rayleigh layer under the lid, a constant viscosity of 500 m2/s (WRF's khdif/kvdif for this case at 2 km), a +3 K bubble 10 km x 10 km x 1.5 km.
 // It prints, every five minutes: the strongest updraft and where it is, the coldest air at the ground, cloud, rain and ice water, the strongest reflectivity, low-level and
@@ -13,15 +14,17 @@
 // Reflectivity is the Rayleigh value at 10 cm as WRF's refl10cm_lin computes it: rain 720 N0 / lambda^7; snow and graupel/hail as ice spheres of their density, with the
 // dielectric factor 0.176/0.93 against water, rising to 1 as the ice gets wet below the melting level (the bright band).
 import '../../src/severe-core.js';
+import '../../src/severe-refl.js';
 import { loadSounding, bubble } from './wk82.mjs';
 import { writeFileSync } from 'node:fs';
 
 const C = globalThis.HFSevereCore;
 const dx = +process.argv[2] || 2000, minutes = +process.argv[3] || 60, dt = +process.argv[4] || 10, out = process.argv[5] || 'wk82.json', frameMin = +process.argv[6] || 5;
 const ice = (process.argv[7] === undefined ? 1 : +process.argv[7]) !== 0, n0g = +process.argv[8] || 4e6, rhog = +process.argv[9] || 400;     // graupel/hail intercept and density
+const N0R = +process.env.N0R || 8e6, EVAP = process.env.EVAP === undefined ? 1 : +process.env.EVAP;
 const qvScale = +process.env.QV_SCALE || 1;                                                                // QV_SCALE=1.25: moister low levels, a larger CAPE (the larger-end scenarios)
 const L = (+process.env.BOX_KM || 84) * 1000, nx = Math.round(L / dx), ny = nx, nz = 40, dz = 500, snd = loadSounding(undefined, qvScale);          // BOX_KM: the side of the box (84 km)
-const core = C.create({ nx, ny, nz, dx, dy: dx, dz, moist: true, ice, iceParams: { n0g, rhog }, theta: snd.theta, qv: snd.qv, wind: { u: snd.u, v: snd.v }, bc: { x: 'periodic', y: 'periodic' },
+const core = C.create({ nx, ny, nz, dx, dy: dx, dz, moist: true, ice, iceParams: { n0g, rhog, n0r: N0R, evap: EVAP }, theta: snd.theta, qv: snd.qv, wind: { u: snd.u, v: snd.v }, bc: { x: 'periodic', y: 'periodic' },
                         visc: { kh: 500 * dx / 2000, kv: 500 * dx / 2000 }, damp: { top: { depth: 5000, rate: 0.003 }, lateral: { width: 10000, rate: 0.02 } } });
 const S = core.S, idx = core.idx, b = core.base, xc = L / 2, yc = L / 2, T0 = 273.15;
 for (let k = 0; k < nz; k++) for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
@@ -30,34 +33,8 @@ for (let k = 0; k < nz; k++) for (let j = 0; j < ny; j++) for (let i = 0; i < nx
 }
 core.fill();
 
-/* ---- reflectivity (mm6/m3 -> dBZ) ---- */
-const lamOf = (n0, rhox, rho, q) => Math.pow(Math.PI * rhox * n0 / (rho * q), 0.25);
-const KICE = 0.176 / 0.93;                                                                               // |K|^2 of ice against water (WRF)
-const zcol = new Float64Array(nz), tcol = new Float64Array(nz);
-const dbzOf = (z) => z > 1e-3 ? 10 * Math.log10(z) : -30;
-function dbzColumn(i, j, res, vzres) {                                                                // dBZ for every level of a column into res[k] (and the reflectivity-weighted fall speed into vzres[k])
-  if (!ice) { for (let k = 0; k < nz; k++) { const q = S.qr[idx(i, j, k)], g = b.rhoc[k] * q * 1000; res[k] = g > 1e-6 ? 10 * Math.log10(17300 * Math.pow(g, 1.75)) : -30; if (vzres) vzres[k] = core.zFall.rain(q, k); } return; }   // WRF's Kessler reflectivity
-  let kz = -1;                                                                                           // the highest level at or below freezing, then the first above it going down
-  for (let k = nz - 1; k >= 0; k--) { const o = idx(i, j, k); tcol[k] = (b.thc[k] + S.th[o]) * (b.pibc[k] + S.pi[o]); }
-  for (let k = nz - 1; k >= 0; k--) if (tcol[k] <= T0) { kz = k; break; }
-  const msRef = kz >= 0 ? b.rhoc[kz] * S.qs[idx(i, j, kz)] : 0, mgRef = kz >= 0 ? b.rhoc[kz] * S.qg[idx(i, j, kz)] : 0;
-  for (let k = 0; k < nz; k++) {
-    const o = idx(i, j, k), rho = b.rhoc[k], T = tcol[k];
-    let z = 0, zv = 0;
-    if (S.qr[o] > 1e-9) { const l = lamOf(8e6, 1000, rho, S.qr[o]), zr = 720 * 8e6 / Math.pow(l, 7); z += zr; zv += zr * core.zFall.rain(S.qr[o], k); }
-    for (const [q, n0, rx, mref, sp] of [[S.qs[o], Math.min(2e8, 2e6 * Math.exp(0.12 * Math.max(0, T0 - T))), 100, msRef, 'snow'], [S.qg[o], n0g, rhog, mgRef, 'graupel']]) {
-      if (q <= 1e-9) continue;
-      const l = lamOf(n0, rx, rho, q);
-      let wet = 0;                                                                                       // water fraction: from what has melted since the freezing level (WRF)
-      if (T > T0) wet = mref > 0 ? Math.max(0.005, Math.min(1 - rho * q / mref, 0.99)) : 0.99;
-      const kk = KICE + (1 - KICE) * Math.min(1, wet / 0.25);                                            // a water coat on a quarter of the mass reflects like rain
-      const zs = kk * Math.pow(rx / 900, 2) * 720 * n0 / Math.pow(l, 7);
-      z += zs; zv += zs * (sp === 'snow' ? core.zFall.snow(q, k, o) : core.zFall.graupel(q, k));
-    }
-    res[k] = dbzOf(z * 1e18);
-    if (vzres) vzres[k] = z > 0 ? zv / z : 0;
-  }
-}
+/* ---- reflectivity (dBZ) and the fall speed of what it sees, column by column: src/severe-refl.js ---- */
+const dbzColumn = globalThis.HFSevereRefl.create(core).column;
 function zeta(i, j, k) {                                  // vertical vorticity at a cell centre, from the winds averaged to centres
   const o = idx(i, j, k), sx = 1, sy = core.idx(0, 1, 0) - core.idx(0, 0, 0);
   const vc = (q) => 0.5 * (S.v[q] + S.v[q + sy]), uc = (q) => 0.5 * (S.u[q] + S.u[q + 1]);

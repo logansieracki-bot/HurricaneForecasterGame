@@ -517,6 +517,7 @@
     const core = { nx, ny, nz, dx, dy, dz, N, S, idx, zc, zw, cmax, dtauMax, time: 0, precip, precipS, precipG, stat, moist, ice,
                    base: { thc, thvc, thvw, Mc, Mw, Cc, dthc, rhoc, qvbc, pibc, ubc, vbc, piBar } };
     core.fill = () => { fillAll(S); };
+    core.iceParams = IPAR;                      // the ice scheme's settings (n0g, rhog, n0r, evap): the reflectivity reads them
     core.target = nestOn ? TG : null; core.names = names; core.halo = H; core.driven = drv; core.relaxWidth = RW; core.drag = DR;
     core.getState = () => { const r = { time: core.time, nx, ny, nz, f: {}, precip: precip.slice(), precipS: precipS.slice(), precipG: precipG.slice() }; for (const n of names) r.f[n] = S[n].slice(); return r; };
     core.setState = (r) => {

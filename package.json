@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "build": "node tools/build.mjs",
-    "test": "node tests/storms.mjs && node tests/nest.mjs && node tests/nest_radar.mjs && node tests/nest_sat.mjs && node tests/severe_core.mjs && node tests/severe_moist.mjs && node tests/severe_ice.mjs && node tests/severe_nest.mjs && node tests/severe_radar.mjs && node tests/severe_geo.mjs && node tests/severe_page.mjs && node tests/geo.mjs && node tests/expect.mjs && node tests/run.mjs"
+    "test": "node tests/storms.mjs && node tests/nest.mjs && node tests/nest_radar.mjs && node tests/nest_sat.mjs && node tests/severe_core.mjs && node tests/severe_moist.mjs && node tests/severe_ice.mjs && node tests/severe_nest.mjs && node tests/severe_refl.mjs && node tests/severe_radar.mjs && node tests/severe_geo.mjs && node tests/severe_page.mjs && node tests/geo.mjs && node tests/expect.mjs && node tests/run.mjs"
   },
   "devDependencies": {
     "@turf/turf": "^7.4.0",
