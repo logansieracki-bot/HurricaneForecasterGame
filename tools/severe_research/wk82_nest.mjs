@@ -5,6 +5,7 @@
 //                                                                                         FROM continues a restart file: <minutes> is then the minute to run to, counted from the storm's start (CKPT_AT likewise)
 //   node tools/severe_research/wk82_nest.mjs child  <in.ckpt> <out> <minutes>         from the restart: parent and child together for <minutes> more, the child's frames and a log
 // Settings are environment variables (the defaults in brackets):
+//   BUBBLE_X=42 BUBBLE_Y=42 (km, where the +3 K bubble is; the storm drifts east at 8 m/s: 26 keeps 100 minutes clear of the sponge, which starts 10 km from the east edge)
 //   PDX=500 (m, the parent's cell)  BOX_KM=84  DT=4 (s, the parent's step)  ICE=1  QV_SCALE=1  LLJ=0 (m/s, a low-level jet added to the sounding's winds: see env())
 //   N0G=4e6 RHOG=400 (graupel/hail)  N0R=8e6 (rain's intercept)  EVAP=1 (the rain's evaporation, times: the knob of the cold pool); the same in the parent and the child
 //   CDX=100 (the child's cell)  CDZ=200 (its level)  CL=12 (km, its side)  RATIO=4 (child steps per parent step)  DRAG=1  Z0=0.1 (m)  KHC=0.25 (child viscosity: KHC * CDX m2/s)
@@ -25,6 +26,7 @@ const [mode, a1, a2, a3] = process.argv.slice(2);
 const E = (k, d) => (process.env[k] === undefined ? d : +process.env[k]);
 const PDX = E('PDX', 500), L = E('BOX_KM', 84) * 1000, DT = E('DT', 4), ICE = E('ICE', 1) !== 0, QV = E('QV_SCALE', 1), LLJ = E('LLJ', 0);
 const ICEP = { n0g: E('N0G', 4e6), rhog: E('RHOG', 400), n0r: E('N0R', 8e6), evap: E('EVAP', 1) };          // the ice scheme's settings (the same in the parent and the child)
+const BX = E('BUBBLE_X', L / 2000), BY = E('BUBBLE_Y', L / 2000);                       // where the warm bubble is, km: the storm drifts east in the box at about 8 m/s, so a bubble west of the middle keeps its first 100 minutes clear of the sponge on the east side
 const NZ = 40, DZ = 500, MOTION = { u: 8.0998, v: 4.9419 };                                // the box's motion over the ground (wk82_run.mjs: the model's winds plus it are the ground's)
 const snd = loadSounding(undefined, QV);
 
@@ -36,7 +38,7 @@ const parentOpts = () => ({ nx: Math.round(L / PDX), ny: Math.round(L / PDX), nz
   bc: { x: 'periodic', y: 'periodic' }, visc: { kh: 500 * PDX / 2000, kv: 500 * PDX / 2000 }, damp: { top: { depth: 5000, rate: 0.003 }, lateral: { width: 10000, rate: 0.02 } } });
 
 function newParent() {
-  const core = C.create(parentOpts()), S = core.S, idx = core.idx, b = core.base, xc = L / 2, yc = L / 2, nx = core.nx, ny = core.ny;
+  const core = C.create(parentOpts()), S = core.S, idx = core.idx, b = core.base, xc = BX * 1000, yc = BY * 1000, nx = core.nx, ny = core.ny;
   for (let k = 0; k < NZ; k++) for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) { const o = idx(i, j, k); S.th[o] = bubble((i + 0.5) * PDX, (j + 0.5) * PDX, (k + 0.5) * DZ, xc, yc); S.u[o] = b.ubc[k]; S.v[o] = b.vbc[k]; }
   core.fill(); return core;
 }
