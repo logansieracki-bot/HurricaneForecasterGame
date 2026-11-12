@@ -608,10 +608,54 @@ sweep are the same colour** (99.7 %; the rest are block edges), and the storm's 
   it says that the radar could not start (a CPU fallback from the operator's own `render()` is possible and is not built).
 - *The map is the lower 48 only* (a radar elsewhere would have no basemap under it), has no county roads, streets or terrain, and has no satellite theme; the terminal radars (the T-sites) are left out because the
   operator is the S-band WSR-88D's. The first sweep takes about a second (a scan, then the first frame is drawn); the next ones are scanned ahead.
-- *Not here yet* (the next pieces, in the plan's order): storm-relative velocity with a storm-motion picker, cell tracks with motion vectors, rotation and hail markers from the radar's own data, the rotation-track
-  swath, the cross-section tool (the radar's vertical slice beside the model's true one), four panes, composite reflectivity, echo tops and VIL, warning polygons with the countdown card (no scoring: that is Forecaster's),
-  loading your own `.pal` from a file, PNG and GIF export with the stamp, range folding and a dealiasing algorithm in the operator.
+- *Not here, and not next:* storm-relative velocity, cell tracks, rotation and hail markers, the cross-section, four panes, composite reflectivity, echo tops and VIL, warning polygons with the countdown card, loading your own `.pal`, PNG and GIF export, range folding and a dealiasing algorithm. You chose to keep the products to reflectivity, velocity and spectrum width for now: these wait for the plan you will give (item 4 of the order in `docs/severe-plan.md` section 2).
 
 ### Next
-Linking the page from the menu is S5 (the Severe card turns on with the editor and the first live runs). Before that, the likeliest steps are storm-relative velocity (it makes a couplet readable) and the cell tracks
-and markers on this page, and in the model the first rung of the hook ladder: run the 1 km storm at 500 m and measure what the hook and the rear-flank downdraft look like against the real statistics.
+Your order of work (12 Nov): **1** hooks, rotation, natural tornadogenesis and supercells; **2** drawing the fronts and making simulations; **3** a demo release; **4** design features, markers, more products and warnings, after your plan. The first step of 1 is rung H0 of the plan's 6.8: the 1 km storm run again at 500 m with the same code, to see what a hook needs and what it costs.
+
+## Part 7. Toward hooks and tornadoes: a nest, drag and a restart (milestone 39, 12 Nov 2026)
+
+Your order of work (12 Nov) puts hooks, rotation, natural tornadogenesis and supercells first. A hook is a feature of a few kilometres and a tornado one of a few hundred metres, so the first thing the ladder of
+`docs/severe-plan.md` 6.8 needs is a way to run the same physics on a much finer grid *inside* a storm that a coarser run carries, at a cost that a machine like this one can bear. This part is that groundwork;
+what the finer grids show is the next one.
+
+### What was added
+- **Driven sides** (`src/severe-core.js`): `bc: { x: 'driven', y: 'driven' }` makes a core take what is across its sides from `core.target` (the halo, the faces at the edge) and, after every step, pulls the outer
+  `relax.width` cells (6) to it, fully at the edge and with a cos^2 taper inwards.
+- **Drag**: `drag: { z0, frame }` puts a quadratic drag cd |V| V / dz on the lowest level, V being the wind over the ground (the model's winds plus `frame`, the velocity of the model's frame over the ground: the
+  box moves with the storm), cd = (0.4 / ln(z1 / z0))^2 for the height z1 of the lowest level (0.0026 at 250 m, 0.0041 at 50 m, z0 = 0.1 m).
+- **A state out and back** (`core.getState()`, `core.setState()`): a restart, bit for bit.
+- **The nest** (`src/severe-nest.js`): a child core inside a parent core, stepped together; the child's sides take the parent's state, interpolated trilinearly in space with the staggering of every field and
+  blended in time between the parent's state at the start and at the end of its step (`ratio` child steps to one parent step); the child's frame may move over the parent's at a constant velocity, so that it can follow a
+  storm that drifts through the parent. One way: the parent is the same with or without a child.
+- `tools/severe_research/wk82_nest.mjs`: the parent (500 m, the recorder's own setup, `CKPT_AT=50,60,70` writes restart files on the way) and then the child from a restart file (100 to 250 m cells, the drag of the
+  ground, a log of the strongest rotation, the lowest pressure and the strongest wind of the lowest level every 10 s, and frames of the child: reflectivity and winds). `wk82_run.mjs` takes `BOX_KM`.
+- `tests/severe_nest.mjs`: **13 checks** (14 s, in `npm test`), and `tools/severe_nest_mutants.mjs`: **49 mutants, all killed** (five more changes make no difference and are listed in the file).
+
+### What the tests show
+- A nest at rest stays at rest and a uniform wind goes through it unchanged. Parent fields that are linear in space arrive on the child's grid **exactly** (errors of 1e-14) with every staggering, with the child's
+  frame removed from the winds, and a child whose frame moves at (3, -2) m/s over a parent at rest sees the parent's tracer move by exactly that.
+- A tracer blob carried into the child through its side by 10 m/s is the exact solution there to 0.9 %.
+- **A thermal in the child is the thermal of a run at the child's resolution everywhere**: a 2 K bubble, the parent at 1 km, the child at 500 m, a reference at 500 m over the whole box; after 180 s the child's
+  updraft differs from the reference's by 0.0009 m/s (rms, of a peak of 4.8), the parent's own field by 0.17 m/s.
+- The relaxation weights are cos^2 of the distance from the edge on all four sides and on the u and v faces; the halo, the edge faces and the corners of a driven side hold the target index for index.
+- The drag of a uniform 10 m/s wind over the ground slows the lowest level by cd U^2 / dz, to 4 significant figures of the formula, and acts on both components; a restored state runs on bit for bit.
+
+### What it costs (measured here, one thread of JavaScript)
+A step of the core is about 4 to 5 microseconds a cell. **The 500 m storm** (168 x 168 x 40 cells, 84 km, a step of 4 s) takes **about 46 s of work for every model minute**: 90 minutes in an hour and a quarter.
+A child of 100 m by 100 m by 200 m cells over 12 km (120 x 120 x 100, 1.4 million cells) at a step of 1 s would take about 6.5 s of work for every model second: **about seven minutes of work for every model minute**, so
+20 model minutes of a tornado nest are a few hours' work, and four such runs at once are what four cores can bear. (The nest in the page, running live, is the GPU port's business, S2b.)
+
+### The environment, in numbers
+The Weisman-Klemp wind profile has a 0-1 km shear of 5.6 m/s and a helicity of **37 m2/s2** over 0-1 km and **81** over 0-3 km for the box's own motion (8.1, 4.9 m/s): a supercell day, not the day of a tornado (a significant
+tornado is typically 150 m2/s2 and more over 0-1 km). `LLJ=` in `wk82_nest.mjs` adds a low-level jet of southerly wind (sin^2, peaking at 1.5 km): 10 m/s gives 100 and 220 m2/s2 and a 0-1 km shear of 12.9 m/s.
+
+### Said plainly
+- Nothing here is on the page: the nest and the tools are research code, and the radar page still plays the 1 km storm.
+- The child is driven one way. A child that disagrees with its parent (a storm that moves out of it, a cold pool the parent has not got) is not corrected by it; the restart files make a second try cheap.
+- The drag is a drag law on the lowest level with a constant coefficient: there is no turbulence closure yet (a constant viscosity of 0.25 CDX m2/s stands in), no finer levels near the ground (the child's are 200 m), and the
+  lowest level of a 200 m grid is at 100 m.
+
+### Next
+The first look at what a finer grid does to the storm: the 1 km storm at 500 m (rung H0 of 6.8), the same with a more tornadic wind profile, and then a child of 250 and of 100 m.
+

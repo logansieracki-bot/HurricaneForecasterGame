@@ -20,7 +20,7 @@ const C = globalThis.HFSevereCore;
 const dx = +process.argv[2] || 2000, minutes = +process.argv[3] || 60, dt = +process.argv[4] || 10, out = process.argv[5] || 'wk82.json', frameMin = +process.argv[6] || 5;
 const ice = (process.argv[7] === undefined ? 1 : +process.argv[7]) !== 0, n0g = +process.argv[8] || 4e6, rhog = +process.argv[9] || 400;     // graupel/hail intercept and density
 const qvScale = +process.env.QV_SCALE || 1;                                                                // QV_SCALE=1.25: moister low levels, a larger CAPE (the larger-end scenarios)
-const L = 84000, nx = Math.round(L / dx), ny = nx, nz = 40, dz = 500, snd = loadSounding(undefined, qvScale);
+const L = (+process.env.BOX_KM || 84) * 1000, nx = Math.round(L / dx), ny = nx, nz = 40, dz = 500, snd = loadSounding(undefined, qvScale);          // BOX_KM: the side of the box (84 km)
 const core = C.create({ nx, ny, nz, dx, dy: dx, dz, moist: true, ice, iceParams: { n0g, rhog }, theta: snd.theta, qv: snd.qv, wind: { u: snd.u, v: snd.v }, bc: { x: 'periodic', y: 'periodic' },
                         visc: { kh: 500 * dx / 2000, kv: 500 * dx / 2000 }, damp: { top: { depth: 5000, rate: 0.003 }, lateral: { width: 10000, rate: 0.02 } } });
 const S = core.S, idx = core.idx, b = core.base, xc = L / 2, yc = L / 2, T0 = 273.15;

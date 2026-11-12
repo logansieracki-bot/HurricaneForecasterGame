@@ -37,6 +37,8 @@
 | Time of day and season | controls on the drawing screen (they set the sun and the heating) |
 | Resolution | not the whole outbreak region at high resolution: a coarse *Day* for the region and a fine *Storm* nest that follows one storm |
 | "Nudger" labels | the yellow `missed / merged / storm gone` labels of clips 3 and 4 come from another server's examples and are **not wanted now**, perhaps much later or never; "missed" is read as "no storm could form in that environment", which the model gives for free |
+| Products for now (12 Nov) | **reflectivity, velocity and spectrum width only**; storm-relative velocity, composite products, echo tops, VIL, tracks, markers, the cross-section and the rest wait for the plan in item 4 below |
+| Order of work (12 Nov) | **1.** hooks, rotation, natural tornadogenesis and supercells (very important: 6.8 is its ladder); **2.** drawing the fronts and simulation making (S1, then the start flow); **3.** a demo release to play with (the menu card turns on); **4.** design features, markers, more products, warnings and watches (automatic and drawn), **not before the user has given a plan and 1, 2 and 3 are done** |
 | Page, stamp, card | a separate Severe page; stamp "HYPOTHETICAL from Isobar Severe Simulator"; the menu card turns on at the end of S5. (My defaults, not yet confirmed: change any.) |
 
 ## 3. The four reference clips (the look to match)
@@ -229,6 +231,7 @@ and the radar shows whatever the model has, a hook included or not.
 4. **H3, two-moment microphysics (S8)** for the cold pool: single-moment schemes make it too cold and cannot sort rain drops by size (Dawson et al. 2010), and the cold pool decides whether the rear-flank downdraft helps or smothers the rotation.
 5. **H4, a 100 m (or finer) tornado nest**, on demand, from a checkpoint, with several perturbed copies of the same state: tornadogenesis is sensitive to small differences, so the honest product is "of these runs, this many made a tornado", shown as what it is. Orf et al. (2017) used 30 m cells, 2200 by 2200 by 380 of them and about 100 TB of output for one storm: this rung is a small-scale version, and **it may not make a tornado at all** (6.6 (d)).
 6. **H5, the radar's side**, which needs no new physics: gates of 250 m show a gate-to-gate couplet (a TVS) where the vortex is wider than a gate, the debris ball needs the correlation coefficient (S8), the three-body scatter spike needs hail and a sidelobe model, and storm-relative velocity (7.2) makes a mesocyclone readable.
+**Status (12 Nov):** the groundwork of H1 and H2 is built and tested: drag on the lowest level, a one-way nest with a moving frame, and restart files (`docs/severe-research.md` part 7); H0 (the storm at 500 m) and the first finer nests are running. Not yet: a turbulence closure and finer levels near the ground (H1), two-moment microphysics (H3).
 Limits: tornadogenesis is an open research problem; even large-eddy simulations of observed storms get a tornado only for some choices of the environment and the numerics, and a simulated one is a real flow, not a forecast.
 
 ## 7. The radar app
@@ -357,6 +360,8 @@ Sizes are guesses relative to a tropical milestone such as 32: M about 2-3 of th
 **Order (revised: the real physics first, the riskiest part first):** S2a, then S3 (the real core and the first real storm), then S0 (the radar app, on that recording) and S2b (the GPU port, which makes it live and decides the grid sizes) in either order; S1 (the drawing tool, which needs no cloud model) whenever you want to see it. S4 after S3. S6 and S7 come before S8
 because they make the drawn fronts matter (S8 deepens what already works); they can swap if you want the microphysics first. Go/no-go gates (A1, A2, B, C, D): if one fails, the next piece does not
 start until it is understood.
+
+**The order now (12 Nov, the user's):** 1 the physics of hooks, rotation, natural tornadogenesis and supercells (6.8, rung by rung, each measured before the next); 2 the drawing of fronts and the making of simulations (S1, S5); 3 the demo release; 4 the design features, markers, products and warnings, which wait for the user's plan. The radar page keeps three products meanwhile.
 
 ## 12. What carries over from the tropical side, and what does not
 

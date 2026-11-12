@@ -22,9 +22,15 @@
  *  Moisture: Kessler's warm-rain scheme as in WRF's module_mp_kessler (rain falls with its mass-weighted speed, autoconversion and accretion make rain, rain
  *  evaporates in dry air, one Newton step of saturation adjustment condenses or evaporates cloud), applied once per step after the dynamics.
  *
- *  Boundaries, per direction: 'wall' (free slip, nothing through, zero gradient of everything else) or 'periodic'; z is always a wall (ground and lid). Optional
+ *  Boundaries, per direction: 'wall' (free slip, nothing through, zero gradient of everything else), 'periodic' or 'driven'; z is always a wall (ground and lid). Optional
  *  damping: a Rayleigh layer under the lid and a sponge along the lateral edges, relaxing the perturbations (and the winds towards the base-state winds).
  *  A 2-D slice is a grid with ny = 1 (no y terms, no halo in y).
+ *
+ *  A nest (src/severe-nest.js): a core with bc { x: 'driven', y: 'driven' } takes what is across its sides from the arrays of core.target (the parent puts its own state there,
+ *  interpolated in space and time) and, after every step, pulls the outer `relax.width` cells (6) towards them, fully at the edge and with a cos^2 taper inwards.
+ *  Drag: o.drag = { cd or z0, frame: { u, v } } puts a quadratic drag on the lowest level, cd |V| V / dz with V the wind over the ground (the model's winds plus `frame`, the velocity
+ *  of the model's frame over the ground) and cd = (0.4 / ln(z1 / z0))^2 for the height z1 of the lowest level (z0 = 0.1 m unless given).
+ *  core.getState() and core.setState(s) copy the whole state out and back (for a restart).
  *
  *  Pure JavaScript, no DOM. A classic script that sets `globalThis.HFSevereCore`.
  */
@@ -53,7 +59,8 @@
     const nx = o.nx, ny = o.ny || 1, nz = o.nz, dx = o.dx, dy = o.dy || o.dx, dz = o.dz;
     const bc = Object.assign({ x: 'wall', y: 'wall', z: 'wall' }, o.bc || {});
     if (bc.z !== 'wall') throw new Error('severe-core: z must be a wall (ground and lid)');
-    const per = [bc.x === 'periodic', bc.y === 'periodic', false];
+    for (const d of ['x', 'y']) if (!['wall', 'periodic', 'driven'].includes(bc[d])) throw new Error('severe-core: bc.' + d + ' must be wall, periodic or driven');
+    const per = [bc.x === 'periodic', bc.y === 'periodic', false], drv = [bc.x === 'driven', bc.y === 'driven', false], nestOn = drv[0] || drv[1];
     const hy = ny > 1 ? H : 0, Nx = nx + 2 * H, Ny = ny + 2 * hy, Nz = nz + 2 * H, N = Nx * Ny * Nz;
     const sx = 1, sy = Nx, sz = Nx * Ny, off = H + hy * sy + H * sz;
     const idx = (i, j, k) => off + i * sx + j * sy + k * sz;
@@ -63,6 +70,8 @@
     const names = ['u', 'v', 'w', 'th', 'pi'].concat(wnames, tracerNames), scalarNames = ['th'].concat(wnames, tracerNames);
     const S = {}, S0 = {}, R = {};
     for (const n of names) { S[n] = new Float64Array(N); S0[n] = new Float64Array(N); R[n] = new Float64Array(N); }
+    const TG = {};                                       // a driven side (a nest in a parent) takes what is across it from these arrays, which the parent fills (core.target)
+    if (nestOn) for (const n of names) TG[n] = new Float64Array(N);
     const THV = moist ? new Float64Array(N) : null;
     if (moist && !ice) { const ZERO = new Float64Array(N); S.qi = ZERO; S.qs = ZERO; S.qg = ZERO; }          // no ice: the ice waters are a shared array of zeros     // theta_v' of the stage state (the live theta' in a dry run)
 
@@ -111,34 +120,57 @@
 
     /* ---- halos and boundary conditions ---- */
     const dimN = [nx, ny, nz], st = [sx, sy, sz], lo = [-H, -hy, -H], hi = [nx + H, ny + hy, nz + H];
-    function fillDir(a, d, face) {          // face: the field lives on the faces of direction d (the normal wind), else at the cell centres
-      const n = dimN[d], s = st[d], d1 = (d + 1) % 3, d2 = (d + 2) % 3, pr = per[d];
+    function fillDir(a, d, face, tg) {      // face: the field lives on the faces of direction d (the normal wind), else at the cell centres; tg: what a driven side takes from outside
+      const n = dimN[d], s = st[d], d1 = (d + 1) % 3, d2 = (d + 2) % 3, pr = per[d], dv = drv[d] && !!tg;
       for (let p = lo[d2]; p < hi[d2]; p++) for (let q = lo[d1]; q < hi[d1]; q++) {
         const b = off + q * st[d1] + p * st[d2];
         if (!face) {
           if (pr) for (let m = 1; m <= H; m++) { a[b - m * s] = a[b + (n - m) * s]; a[b + (n - 1 + m) * s] = a[b + (m - 1) * s]; }
+          else if (dv) for (let m = 1; m <= H; m++) { a[b - m * s] = tg[b - m * s]; a[b + (n - 1 + m) * s] = tg[b + (n - 1 + m) * s]; }
           else for (let m = 1; m <= H; m++) { a[b - m * s] = a[b + (m - 1) * s]; a[b + (n - 1 + m) * s] = a[b + (n - m) * s]; }
         } else if (pr) {
           a[b + n * s] = a[b];
           for (let m = 1; m <= H; m++) { a[b - m * s] = a[b + (n - m) * s]; a[b + (n + m) * s] = a[b + m * s]; }
+        } else if (dv) {
+          a[b] = tg[b]; a[b + n * s] = tg[b + n * s];
+          for (let m = 1; m <= H; m++) { a[b - m * s] = tg[b - m * s]; a[b + (n + m) * s] = tg[b + (n + m) * s]; }
         } else {
           a[b] = 0; a[b + n * s] = 0;
           for (let m = 1; m <= H; m++) { a[b - m * s] = -a[b + m * s]; a[b + (n + m) * s] = -a[b + (n - m) * s]; }
         }
       }
     }
-    const fill = (a, fx, fy, fz) => { fillDir(a, 0, fx); if (ny > 1) fillDir(a, 1, fy); fillDir(a, 2, fz); };
-    const fillC = (a) => fill(a, 0, 0, 0);
+    const fill = (a, fx, fy, fz, tg) => { fillDir(a, 0, fx, tg); if (ny > 1) fillDir(a, 1, fy, tg); fillDir(a, 2, fz); };
+    const fillC = (a, tg) => fill(a, 0, 0, 0, tg);
     function fillAll(X) {
-      fill(X.u, 1, 0, 0); if (ny > 1) fill(X.v, 0, 1, 0); fill(X.w, 0, 0, 1); fillC(X.th); fillC(X.pi);
-      for (const n of wnames) fillC(X[n]);
-      for (const n of tracerNames) fillC(X[n]);
+      fill(X.u, 1, 0, 0, TG.u); if (ny > 1) fill(X.v, 0, 1, 0, TG.v); fill(X.w, 0, 0, 1, TG.w); fillC(X.th, TG.th); fillC(X.pi, TG.pi);
+      for (const n of wnames) fillC(X[n], TG[n]);
+      for (const n of tracerNames) fillC(X[n], TG[n]);
     }
     function faceBC(X) {                    // the faces that sit on a wall are zero, the periodic duplicates are copies
-      for (let k = 0; k < nz; k++) for (let j = 0; j < ny; j++) { const a = idx(0, j, k), b = idx(nx, j, k); if (per[0]) X.u[b] = X.u[a]; else X.u[a] = X.u[b] = 0; }
-      if (ny > 1) for (let k = 0; k < nz; k++) for (let i = 0; i < nx; i++) { const a = idx(i, 0, k), b = idx(i, ny, k); if (per[1]) X.v[b] = X.v[a]; else X.v[a] = X.v[b] = 0; }
+      for (let k = 0; k < nz; k++) for (let j = 0; j < ny; j++) { const a = idx(0, j, k), b = idx(nx, j, k); if (per[0]) X.u[b] = X.u[a]; else if (drv[0]) { X.u[a] = TG.u[a]; X.u[b] = TG.u[b]; } else X.u[a] = X.u[b] = 0; }
+      if (ny > 1) for (let k = 0; k < nz; k++) for (let i = 0; i < nx; i++) { const a = idx(i, 0, k), b = idx(i, ny, k); if (per[1]) X.v[b] = X.v[a]; else if (drv[1]) { X.v[a] = TG.v[a]; X.v[b] = TG.v[b]; } else X.v[a] = X.v[b] = 0; }
       for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) { X.w[idx(i, j, 0)] = 0; X.w[idx(i, j, nz)] = 0; }
     }
+
+    /* ---- the relaxation zone of a driven side: after every step the outer cells are pulled towards the target, fully at the edge, with a cos^2 taper over `width` cells ---- */
+    const RW = nestOn ? ((o.relax && o.relax.width) || 6) : 0, RMAX = (o.relax && o.relax.max) || 1;
+    const rlx = (d) => d < RW ? RMAX * Math.pow(Math.cos(0.5 * Math.PI * d / RW), 2) : 0;       // d: cells from the edge (0 at the edge face, or at the outermost cell centre)
+    function relax() {
+      const big = 1e9, other = names.filter((n) => n !== 'u' && n !== 'v');
+      for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+        const dcx = drv[0] ? Math.min(i, nx - 1 - i) : big, dcy = drv[1] && ny > 1 ? Math.min(j, ny - 1 - j) : big, dfx = drv[0] ? Math.min(i, nx - i) : big, dfy = drv[1] && ny > 1 ? Math.min(j, ny - j) : big;
+        const aC = rlx(Math.min(dcx, dcy)), aU = rlx(Math.min(dfx, dcy)), aV = rlx(Math.min(dcx, dfy));
+        if (aC === 0 && aU === 0 && aV === 0) continue;
+        for (let k = 0; k < nz; k++) {
+          const q = idx(i, j, k);
+          if (aU) S.u[q] += aU * (TG.u[q] - S.u[q]);
+          if (aV && ny > 1) S.v[q] += aV * (TG.v[q] - S.v[q]);
+          if (aC) for (const n of other) S[n][q] += aC * (TG[n][q] - S[n][q]);
+        }
+      }
+    }
+    const DR = o.drag ? { cd: o.drag.cd || Math.pow(0.4 / Math.log(0.5 * dz / (o.drag.z0 || 0.1)), 2), fu: (o.drag.frame && o.drag.frame.u) || 0, fv: (o.drag.frame && o.drag.frame.v) || 0 } : null;
 
     /* ---- advection: out = -(u.grad psi) at the points of psi; tp: 0 centre, 1 u face, 2 v face, 3 w face ---- */
     function advect(out, psi, tp, U, V, W) {
@@ -251,6 +283,12 @@
           for (const n of wnames) R[n][o] -= rc * X[n][o];
         }
       }
+      if (DR) for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {                    // the drag of the ground on the lowest level
+        const o = idx(i, j, 0), cdz = DR.cd / dz;
+        const vu = (ny > 1 ? 0.25 * (X.v[o - 1] + X.v[o] + X.v[o - 1 + sy] + X.v[o + sy]) : 0) + DR.fv, ug = X.u[o] + DR.fu;
+        R.u[o] -= cdz * Math.sqrt(ug * ug + vu * vu) * ug;
+        if (ny > 1) { const uv = 0.25 * (X.u[o] + X.u[o + 1] + X.u[o - sy] + X.u[o + 1 - sy]) + DR.fu, vg = X.v[o] + DR.fv; R.v[o] -= cdz * Math.sqrt(uv * uv + vg * vg) * vg; }
+      }
     }
 
     /* ---- the fast terms: forward-backward small steps from the state at the start of the step, the slow tendencies R held fixed, theta_v frozen at the stage state ---- */
@@ -260,7 +298,7 @@
       for (const n of ['u', 'v', 'w', 'pi']) S[n].set(S0[n]);
       PP.set(S.pi);
       for (let m = 0; m < ns; m++) {
-        fillC(S.pi);
+        fillC(S.pi, TG.pi);
         for (let n = 0; n < N; n++) { PS[n] = S.pi[n] + DD * (S.pi[n] - PP[n]); PP[n] = S.pi[n]; }
         for (let k = 0; k < nz; k++) for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
           const o = idx(i, j, k);
@@ -479,6 +517,12 @@
     const core = { nx, ny, nz, dx, dy, dz, N, S, idx, zc, zw, cmax, dtauMax, time: 0, precip, precipS, precipG, stat, moist, ice,
                    base: { thc, thvc, thvw, Mc, Mw, Cc, dthc, rhoc, qvbc, pibc, ubc, vbc, piBar } };
     core.fill = () => { fillAll(S); };
+    core.target = nestOn ? TG : null; core.names = names; core.halo = H; core.driven = drv; core.relaxWidth = RW; core.drag = DR;
+    core.getState = () => { const r = { time: core.time, nx, ny, nz, f: {}, precip: precip.slice(), precipS: precipS.slice(), precipG: precipG.slice() }; for (const n of names) r.f[n] = S[n].slice(); return r; };
+    core.setState = (r) => {
+      if (r.nx !== nx || r.ny !== ny || r.nz !== nz) throw new Error('severe-core: the state is of another grid');
+      for (const n of names) S[n].set(r.f[n]); core.time = r.time; precip.set(r.precip); precipS.set(r.precipS); precipG.set(r.precipG); fillAll(S);
+    };
     core.micro = (dt) => { fillAll(S); (ice ? microIce : micro)(dt); fillAll(S); };           // the microphysics alone (for tests and diagnostics)
     // The reflectivity-weighted fall speed of each precipitating species, m/s downward: what a Doppler radar adds to the vertical wind (it sees the power-weighted mean motion of the particles, and the power
     // of Rayleigh scatterers goes as D^6). Over the exponential distribution N0 exp(-lambda D) with the fall speed a sqrt(rho0/rho) D^b it is a sqrt(rho0/rho) Gamma(7 + b) / Gamma(7) / lambda^b,
@@ -500,6 +544,7 @@
         }
       }
       if (moist) (ice ? microIce : micro)(dt);
+      if (nestOn && RW) relax();
       fillAll(S);
       core.time += dt;
     };
