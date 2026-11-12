@@ -1,0 +1,39 @@
+/* Severe: the scanning worker (docs/severe-plan.md 7.1). The page makes a Worker from this text put behind the sources of HFSevereGeo, HFSevereRadar and HFSeverePack (a worker made
+ * from a Blob cannot import them), so that a scan (about half a second of arithmetic for one tilt at 1 km) never stops the page.
+ *   -> { t: 'init', body }          the pack's body bytes (an ArrayBuffer), read once
+ *   <- { t: 'ready' }
+ *   -> { t: 'scan', id, frame, opts }  opts as HFSevereRadar.scan takes them (elev, x, y, seed, velocity, dealias, ...)
+ *   <- { t: 'sweep', id, meta, dbz, vel, sw }   Int16Arrays of the values in half units (NaN: -32768), nRad rows of nGates; meta: nRad, nGates, dAz, gate, r0, elev, antenna, nyquist
+ * `HFSevereScanner` is the same thing without a worker (the page's fallback, and what the tests use): scan(frame, opts) -> the message above.
+ */
+(function () {
+  const NONE = -32768;
+  function quant(a) {
+    const out = new Int16Array(a.length);
+    for (let i = 0; i < a.length; i++) { const v = a[i]; out[i] = v === v ? Math.max(-32767, Math.min(32767, Math.round(v * 2))) : NONE; }
+    return out;
+  }
+  function make(pack) {
+    const vols = new Map();
+    return {
+      scan(frame, opts) {
+        let vol = vols.get(frame); if (!vol) { vol = pack.volume(frame); vols.set(frame, vol); if (vols.size > 3) vols.delete(vols.keys().next().value); }
+        const s = globalThis.HFSevereRadar.scan(vol, Object.assign({ velocity: true }, opts));
+        return { meta: { nRad: s.nRad, nGates: s.nGates, dAz: s.dAz, gate: s.gate, r0: s.r0, elev: s.elev, antenna: s.antenna, nyquist: s.nyquist }, dbz: quant(s.dbz), vel: quant(s.vel), sw: quant(s.sw) };
+      },
+    };
+  }
+  globalThis.HFSevereScanner = { make, quant, NONE };
+
+  if (typeof WorkerGlobalScope !== 'undefined' && typeof self !== 'undefined' && self instanceof WorkerGlobalScope) {       // inside a worker
+    let sc = null;
+    self.onmessage = (e) => {
+      const m = e.data;
+      if (m.t === 'init') { sc = make(globalThis.HFSeverePack.fromBody(new Uint8Array(m.body))); self.postMessage({ t: 'ready' }); }
+      else if (m.t === 'scan') {
+        try { const r = sc.scan(m.frame, m.opts); self.postMessage({ t: 'sweep', id: m.id, meta: r.meta, dbz: r.dbz, vel: r.vel, sw: r.sw }, [r.dbz.buffer, r.vel.buffer, r.sw.buffer]); }
+        catch (err) { self.postMessage({ t: 'error', id: m.id, message: String(err && err.message || err) }); }
+      }
+    };
+  }
+})();
