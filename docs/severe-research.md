@@ -656,7 +656,37 @@ A child of 100 m by 100 m by 200 m cells over 12 km (120 x 120 x 100, 1.4 millio
 The Weisman-Klemp wind profile has a 0-1 km shear of 5.6 m/s and a helicity of **37 m2/s2** over 0-1 km and **81** over 0-3 km for the box's own motion (8.1, 4.9 m/s): a supercell day, not the day of a tornado (a significant
 tornado is typically 150 m2/s2 and more over 0-1 km). `LLJ=` in `wk82_nest.mjs` adds a low-level jet of southerly wind (sin^2, peaking at 1.5 km): 10 m/s gives 100 and 220 m2/s2 and a 0-1 km shear of 12.9 m/s.
 
+### The storm at 500 m (rung H0)
+The recorder's storm (the Weisman-Klemp sounding, the ice scheme, a +3 K bubble, an 84 km box that moves with the storm) at 500 m cells for 90 minutes (75 minutes of work), next to the same at 1 km:
+
+| minute | cells | strongest updraft, m/s | coldest air at the ground, K | rotation at 1 km, 1e-3/s | rotation at 3 to 5 km, 1e-3/s | updraft helicity, m2/s2 | rain at the ground, mm |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 30 | 500 m | 67 | -4.5 | 4.9 | 29.7 | 1232 | 22 |
+| 30 | 1 km | 57 | -4.4 | 1.9 | 15.0 | 704 | 18 |
+| 50 | 500 m | 66 | -9.2 | 24.0 | 35.7 | 941 | 32 |
+| 50 | 1 km | 57 | -9.1 | 9.5 | 19.7 | 573 | 27 |
+| 70 | 500 m | 60 | -10.7 | 14.9 | 42.8 | 978 | 46 |
+| 70 | 1 km | 60 | -9.8 | 10.9 | 22.2 | 906 | 42 |
+| 90 | 500 m | 67 | -15.0 | 28.8 | 46.8 | 1004 | 52 |
+
+- **A finer grid makes a much stronger rotation**, as it should: at 500 m the rotation at 1 km is 15 to 29 against the 1 km storm's 7 to 11, at 3 to 5 km 33 to 47 against 15 to 27, and the updraft helicity 940 to 1440 against 570 to 900. The two storms are chaotic neighbours and differ in their details; the 500 m storm's low-level rotation comes and goes in cycles of about twenty minutes (24 at minute 50, 15 at 70, 29 at 90).
+- **A hook-like appendage appears, late.** At minutes 85 to 90 the 0.5 degree echo of a radar 39 km away has a curved lobe and a notch on its rear flank (not yet a textbook comma) (`docs/severe-research/wk82-500m-hook.png`), with a line of strong upward motion curving round a downdraft at 750 m and, along it, a sheet of strong vertical vorticity (34e-3 per second at the lowest level): the rear-flank downdraft's gust front wrapping round the low-level rotation. It is a **vortex sheet, not a vortex**: a 500 m cell cannot hold anything narrower than about 1.5 km, which is what the nests are for.
+- **The cold pool is far too cold**: -9 K at minute 50 and -15 K at minute 90, where the rear-flank air of a tornadic storm is a few kelvin colder than its surroundings. A pool this strong sends the gust front out ahead of the rotation.
+- The echo is large: at minute 50 the area of 50 dBZ or more at 250 m is 88 km2 (323 km2 of 40 or more), two to four times what a big real supercell has. The melting reference of the reflectivity (below) makes no difference to the lowest levels.
+
+### The cold pool's knob
+The rain's evaporation is `iceParams.evap` (a factor, 1 as published): single-moment schemes evaporate rain too fast because they cannot let the large drops of a downdraft fall through dry air with little loss, which a two-moment scheme can (Dawson et al. 2010; Snook and Xue 2008 reduce it on purpose). At 1 km, 75 minutes, the coldest air at the ground:
+
+| evaporation factor | minute 45 | minute 60 | minute 75 |
+| --- | --- | --- | --- |
+| 1 | -8.5 K | -9.4 K | -9.7 K |
+| 0.5 | -6.3 K | -7.0 K | -7.9 K |
+| 0.25 | -4.3 K | -5.1 K | (the run was stopped at minute 65: -5.0 K) |
+
+The rotation at 1 km moves little at this grid (7 to 10); the knob acts on the cold pool, which is what it is for. A factor of a quarter to a third puts the pool in the range of tornadic storms and is the setting of the nests that follow (`EVAP=` in `wk82_nest.mjs`); it is a tuning, said so wherever it is used, until the two-moment scheme (rung H3) replaces it.
+
 ### Said plainly
+- The melting reference of the reflectivity (`src/severe-refl.js`, as the recorder always had it) is the ice mass at the highest level at or below freezing, the column's top, where there is none, so all ice above 0 C is treated as wet. WRF's version takes the level where the melting starts. At minute 50 of the 500 m storm the areas of 40 and 50 dBZ at 250, 750 and 1250 m are the same by either rule (the ice is gone by then), and at 2250 m differ by 2 km2 in 124, so nothing recorded has changed; the rule is to be corrected when the hail is looked at (rung H3).
 - Nothing here is on the page: the nest and the tools are research code, and the radar page still plays the 1 km storm.
 - The child is driven one way. A child that disagrees with its parent (a storm that moves out of it, a cold pool the parent has not got) is not corrected by it; the restart files make a second try cheap.
 - The drag is a drag law on the lowest level with a constant coefficient: there is no turbulence closure yet (a constant viscosity of 0.25 CDX m2/s stands in), no finer levels near the ground (the child's are 200 m), and the

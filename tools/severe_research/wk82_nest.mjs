@@ -8,6 +8,7 @@
 //   PDX=500 (m, the parent's cell)  BOX_KM=84  DT=4 (s, the parent's step)  ICE=1  QV_SCALE=1  LLJ=0 (m/s, a low-level jet added to the sounding's winds: see env())
 //   N0G=4e6 RHOG=400 (graupel/hail)  N0R=8e6 (rain's intercept)  EVAP=1 (the rain's evaporation, times: the knob of the cold pool); the same in the parent and the child
 //   CDX=100 (the child's cell)  CDZ=200 (its level)  CL=12 (km, its side)  RATIO=4 (child steps per parent step)  DRAG=1  Z0=0.1 (m)  KHC=0.25 (child viscosity: KHC * CDX m2/s)
+//   AGREE_EVERY=60 (s between the lines that set the child against its parent: means and rms differences at four levels inside the child; 0 for none)
 //   PERTURB=0 (K: random noise of this amplitude on theta in the child's lowest 3 km at its start, for copies of one storm that differ by a breath)  SEED=1
 //   FRAME_EVERY=60 (s between the child's frames; 0 for none)  DIAG_EVERY=10 (s)  CENTRE=auto|vort|x,y (km, the child's centre in the parent's box: auto the strongest updraft, vort the strongest rotation at 750 m near it)  FRAME_UV=auto|u,v (m/s, the child's frame over the parent's)
 // The child's frames: <out>.cdbz.i8 (reflectivity, dBZ rounded, -30 for none, in the order frame, level, y, x), <out>.cvz.u8 (the reflectivity-weighted fall speed, 0.25 m/s downward, 0 for none, the same order),
@@ -123,9 +124,37 @@ if (mode === 'parent') {
   const fd = FE ? openSync(out + '.cdbz.i8', 'w') : -1, fv = FE ? openSync(out + '.cuvw.i16', 'w') : -1, fz = FE ? openSync(out + '.cvz.u8', 'w') : -1;
   const dbzC = new Int8Array(nxc * nxc * nzc), vzC = new Uint8Array(nxc * nxc * nzc), uvw = new Int16Array(3 * nxc * nxc * nzc), CS = child.S, ci = child.idx;
   const refl = globalThis.HFSevereRefl.create(child), dcol = new Float64Array(nzc), vcol = new Float64Array(nzc);       // reflectivity and fall speed, as in wk82_run.mjs (src/severe-refl.js)
+  /* how the child agrees with its parent: at the parent's cell centres inside the child (away from its relaxation zone) the child's field is taken by trilinear interpolation and set against the parent's own, at one level;
+     the mean of each, the rms of the difference and the parent's own spread, for w at 5.25 km, theta' at 1.25 km, the speed over the ground at 250 m and the water vapour at 1.25 km */
+  const AE = E('AGREE_EVERY', 60); let nextAgree = AE;
+  const cAt = (a, ox, oy, oz, x, y, z) => {                       // the child's array a (a kind with offsets ox, oy, oz in cells) at the child's own coordinates (metres)
+    const fi = x / CDX - ox, fj = y / CDX - oy, fk = z / CDZ - oz; let i0 = Math.floor(fi), j0 = Math.floor(fj), k0 = Math.floor(fk);
+    const wx = fi - i0, wy = fj - j0, wz = fk - k0; i0 = Math.max(0, Math.min(nxc - 2, i0)); j0 = Math.max(0, Math.min(nxc - 2, j0)); k0 = Math.max(0, Math.min(nzc - 2, k0));
+    const o = ci(i0, j0, k0), sy = ci(0, 1, 0) - ci(0, 0, 0), sz = ci(0, 0, 1) - ci(0, 0, 0);
+    const c = (d) => a[o + d] * (1 - wx) + a[o + d + 1] * wx, f = (d) => c(d) * (1 - wy) + c(d + sy) * wy;
+    return f(0) * (1 - wz) + f(sz) * wz;
+  };
+  function agree(tt) {
+    const PS = parent.S, pidx = parent.idx, psy = pidx(0, 1, 0) - pidx(0, 0, 0), cx = x0 + fr.u * tt, cy = y0 + fr.v * tt, m = child.relaxWidth * CDX + 1000, out = [];       // the interior: 1 km and the relaxation width inside the child's side
+    const rows = [['w 5 km', 10, 5000, (o) => PS.w[o], (x, y, z) => cAt(CS.w, 0.5, 0.5, 0, x, y, z)],
+                  ["th' 1.25 km", 2, 1250, (o) => PS.th[o], (x, y, z) => cAt(CS.th, 0.5, 0.5, 0.5, x, y, z)],
+                  ["qv' 1.25 km", 2, 1250, (o) => PS.qv[o], (x, y, z) => cAt(CS.qv, 0.5, 0.5, 0.5, x, y, z)],
+                  ['speed 250 m', 0, 250, (o) => Math.hypot(0.5 * (PS.u[o] + PS.u[o + 1]), 0.5 * (PS.v[o] + PS.v[o + psy])), (x, y, z) => Math.hypot(cAt(CS.u, 0, 0.5, 0.5, x, y, z) + fr.u, cAt(CS.v, 0.5, 0, 0.5, x, y, z) + fr.v)]];
+    for (const [name, kp, z, pv, cv] of rows) {
+      let n = 0, sp = 0, sc = 0, sd = 0, spp = 0;
+      for (let j = 0; j < parent.ny; j++) for (let i = 0; i < parent.nx; i++) {
+        const xp = (i + 0.5) * PDX - cx, yp = (j + 0.5) * PDX - cy; if (xp < m || yp < m || xp > CL - m || yp > CL - m) continue;
+        const a = pv(pidx(i, j, kp)), b = cv(xp, yp, z);
+        n++; sp += a; sc += b; sd += (b - a) * (b - a); spp += a * a;
+      }
+      out.push(name + ' parent ' + (sp / n).toFixed(2) + ' child ' + (sc / n).toFixed(2) + ' rms diff ' + Math.sqrt(sd / n).toFixed(2) + ' (spread ' + Math.sqrt(Math.max(0, spp / n - (sp / n) ** 2)).toFixed(2) + ')');
+    }
+    console.log('  nest agreement at ' + tt.toFixed(0) + ' s: ' + out.join(' | '));
+  }
   let nextDiag = DE, nextFrame = FE;
   for (let n = 0; n < steps; n++) {
     nest.step(DT); const tt = parent.time - tStart;
+    if (AE && tt + 1e-6 >= nextAgree) { nextAgree += AE; agree(tt); }
     if (DE && tt + 1e-6 >= nextDiag) {
       nextDiag += DE;
       const kk = 1, zc = vort(child, kk, 0, nxc, 0, nxc), z0v = vort(child, 0, 0, nxc, 0, nxc);
