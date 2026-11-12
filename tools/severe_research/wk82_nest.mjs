@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // The Weisman-Klemp (1982) storm with a finer nest in it (docs/severe-plan.md 6.8): the parent is the recorder's own run (wk82_run.mjs: 500 m cells, 84 km box, 500 m levels, Kessler or ice
 // microphysics as there), the child a core of 100 to 250 m cells round the storm's low-level rotation, driven at its sides by the parent (src/severe-nest.js), with the drag of the ground.
-//   [CKPT_AT=50,60] node tools/severe_research/wk82_nest.mjs parent <out.ckpt> <minutes>   the parent alone to <minutes>, then its state (the restart file; CKPT_AT also writes <out>.50.ckpt and so on on the way), with the track of its strongest updraft
+//   [CKPT_AT=50,60] [FROM=<in.ckpt>] node tools/severe_research/wk82_nest.mjs parent <out.ckpt> <minutes>   the parent alone to <minutes>, then its state (the restart file; CKPT_AT also writes <out>.50.ckpt and so on on the way), with the track of its strongest updraft;
+//                                                                                         FROM continues a restart file: <minutes> is then the minute to run to, counted from the storm's start (CKPT_AT likewise)
 //   node tools/severe_research/wk82_nest.mjs child  <in.ckpt> <out> <minutes>         from the restart: parent and child together for <minutes> more, the child's frames and a log
 // Settings are environment variables (the defaults in brackets):
 //   PDX=500 (m, the parent's cell)  BOX_KM=84  DT=4 (s, the parent's step)  ICE=1  QV_SCALE=1  LLJ=0 (m/s, a low-level jet added to the sounding's winds: see env())
@@ -61,21 +62,9 @@ function writeCkpt(core, track, file) {
   const all = Buffer.concat(bufs); writeFileSync(file, all); console.log('wrote ' + file + ' (' + (all.length / 1e6).toFixed(0) + ' MB)');
 }
 
-if (mode === 'parent') {
-  const out = a1, minutes = +a2, core = newParent(), track = [], t0 = Date.now(), at = (process.env.CKPT_AT || '').split(',').filter(Boolean).map(Number);
-  let m = 0; const steps = Math.round(minutes * 60 / DT);
-  console.log('parent ' + core.nx + 'x' + core.ny + 'x' + core.nz + ' cells of ' + PDX + ' m, ' + steps + ' steps of ' + DT + ' s' + (at.length ? ', restart files at minutes ' + at.join(', ') : ''));
-  for (let n = 0; n < steps; n++) {
-    core.step(DT);
-    if (Math.round(core.time) % 60 === 0 && core.time - m * 60 >= 59.9) {
-      m++; const u = updraft(core), d = core.diag(); track.push([m, u.x, u.y, +u.w.toFixed(1)]);
-      if (m % 5 === 0) console.log('t=' + String(m).padStart(3) + ' min  wmax ' + d.wmax.toFixed(1) + ' at (' + (u.x / 1000).toFixed(1) + ', ' + (u.y / 1000).toFixed(1) + ') km  thv_min ' + d.thvmin.toFixed(2) + ' K  (' + ((Date.now() - t0) / 1000).toFixed(0) + ' s)');
-      if (at.includes(m) && m < minutes) writeCkpt(core, track, out.replace(/(\.ckpt)?$/, '.' + m + '$1'));
-    }
-  }
-  writeCkpt(core, track, out);
-} else if (mode === 'child') {
-  const inFile = a1, out = a2, minutes = +a3, raw = readFileSync(inFile), hl = raw.readUInt32LE(0), head = JSON.parse(raw.subarray(4, 4 + hl).toString());
+/* a restart file: the header and the state (the settings in the header have to be the environment's, for the parent is made again as it was) */
+function readCkpt(inFile) {
+  const raw = readFileSync(inFile), hl = raw.readUInt32LE(0), head = JSON.parse(raw.subarray(4, 4 + hl).toString());
   const here = { PDX, L, DT, ICE, QV, LLJ, ICEP };                                  // the child's parent has to be made as the restart's was: the settings in the environment must be the run's
   for (const k of Object.keys(head.env)) if (JSON.stringify(head.env[k]) !== JSON.stringify(here[k])) throw new Error('the restart was made with ' + k + ' = ' + JSON.stringify(head.env[k]) + ' and this run has ' + JSON.stringify(here[k]) + ': set it in the environment');
   const parent = newParent(); let off = 4 + hl;
@@ -84,6 +73,29 @@ if (mode === 'parent') {
   for (const n of head.names) st.f[n] = take(head.N);
   st.precip = take(parent.nx * parent.ny); st.precipS = take(parent.nx * parent.ny); st.precipG = take(parent.nx * parent.ny);
   parent.setState(st);
+  return { parent, head };
+}
+
+if (mode === 'parent') {
+  const out = a1, minutes = +a2, from = process.env.FROM, at = (process.env.CKPT_AT || '').split(',').filter(Boolean).map(Number), t0 = Date.now();
+  let core, track = [], m = 0;                                                       // m: the minutes done
+  if (from) { const r = readCkpt(from); core = r.parent; track = r.head.track.slice(); m = Math.round(core.time / 60); } else core = newParent();
+  const steps = Math.round((minutes - m) * 60 / DT);
+  console.log('parent ' + core.nx + 'x' + core.ny + 'x' + core.nz + ' cells of ' + PDX + ' m, ' + steps + ' steps of ' + DT + ' s' + (from ? ' from minute ' + m : '') + (at.length ? ', restart files at minutes ' + at.join(', ') : ''));
+  for (let n = 0; n < steps; n++) {
+    core.step(DT);
+    if (Math.round(core.time) % 60 === 0 && core.time - m * 60 >= 59.9) {
+      m++; const u = updraft(core), d = core.diag(); track.push([m, u.x, u.y, +u.w.toFixed(1)]);
+      if (m % 5 === 0) {
+        const z0 = vort(core, 0, 0, core.nx, 0, core.ny), z1 = vort(core, 1, 0, core.nx, 0, core.ny);
+        console.log('t=' + String(m).padStart(3) + ' min  wmax ' + d.wmax.toFixed(1) + ' at (' + (u.x / 1000).toFixed(1) + ', ' + (u.y / 1000).toFixed(1) + ') km  thv_min ' + d.thvmin.toFixed(2) + ' K  zeta 250 m ' + (z0.z * 1000).toFixed(1) + ' (' + (z0.i * PDX / 1000).toFixed(1) + ', ' + (z0.j * PDX / 1000).toFixed(1) + '), 750 m ' + (z1.z * 1000).toFixed(1) + ' 1e-3/s  (' + ((Date.now() - t0) / 1000).toFixed(0) + ' s)');
+      }
+      if (at.includes(m) && m < minutes) writeCkpt(core, track, out.replace(/(\.ckpt)?$/, '.' + m + '$1'));
+    }
+  }
+  writeCkpt(core, track, out);
+} else if (mode === 'child') {
+  const inFile = a1, out = a2, minutes = +a3, { parent, head } = readCkpt(inFile);
   /* the child: where it lies and how it moves over the parent */
   const CDX = E('CDX', 100), CDZ = E('CDZ', 200), CL = E('CL', 12) * 1000, RATIO = E('RATIO', 4), DRAG = E('DRAG', 1) !== 0, Z0 = E('Z0', 0.1), KHC = E('KHC', 0.25);
   const track = head.track, last = track[track.length - 1], prev = track[Math.max(0, track.length - 11)];

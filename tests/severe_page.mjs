@@ -16,7 +16,8 @@ async function open(w, h, opts = {}) {
   const ctx = await browser.newContext({ viewport: { width: w, height: h }, colorScheme: opts.scheme || 'dark' }), page = await ctx.newPage(), log = { errors: [], requests: [] };
   page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') log.errors.push(m.type() + ': ' + m.text()); }); page.on('pageerror', (e) => log.errors.push('pageerror: ' + e));
   await ctx.route('**/*', (route) => { const u = route.request().url(); if (/^(file|blob|data):/.test(u)) route.continue(); else { log.requests.push(u); route.abort(); } });
-  if (!opts.keepStorage) await page.addInitScript(() => { try { if (!sessionStorage.getItem('sev-cleared')) { localStorage.clear(); sessionStorage.setItem('sev-cleared', '1'); } } catch (e) { /* none */ } });      // (once per tab: a reload keeps what the page saved)
+  // (a context of its own starts with empty storage; a reload keeps what the page saved. An init script that cleared the storage "once per tab", told by the session storage, cleared it again whenever the
+  //  session storage was dropped by a reload under load, and CI run 166 lost the light theme that way)
   if (opts.init) await page.addInitScript(opts.init);
   const t = Date.now(); await page.goto(pathToFileURL(FILE).href);
   await page.waitForFunction('window.SEVERE && (window.SEVERE.ready === true || window.SEVERE.error)', null, { timeout: 120000 });
@@ -140,7 +141,7 @@ await ev(pg, "SEVERE.S.units = 'imperial'");
 await A.ctx.close();
 
 /* 10. A damaged memory does not stop it; a phone; a big screen */
-const B = await open(1280, 800, { keepStorage: true, init: () => { try { localStorage.setItem('hf-severe-v1', '{not json'); } catch (e) { /* none */ } } });
+const B = await open(1280, 800, { init: () => { try { localStorage.setItem('hf-severe-v1', '{not json'); } catch (e) { /* none */ } } });
 check('a damaged localStorage entry is ignored: the page still starts, dark, with no error', !(await ev(B.page, 'window.SEVERE.error')) && B.log.errors.length === 0 && await ev(B.page, 'document.documentElement.dataset.theme') === 'dark'); await B.ctx.close();
 const C = await open(390, 844); await ev(C.page, 'SEVERE.setPaneCount(2)'); await C.page.waitForTimeout(500); await idle(C.page);
 const sph = await ev(C.page, stampProbe);
