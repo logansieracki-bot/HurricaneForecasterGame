@@ -11,9 +11,10 @@
 //   CDX=100 (the child's cell)  CDZ=200 (its level)  CL=12 (km, its side)  RATIO=4 (child steps per parent step)  DRAG=1  Z0=0.1 (m)  KHC=0.25 (child viscosity: KHC * CDX m2/s)
 //   AGREE_EVERY=60 (s between the lines that set the child against its parent: means and rms differences at four levels inside the child; 0 for none)
 //   PERTURB=0 (K: random noise of this amplitude on theta in the child's lowest 3 km at its start, for copies of one storm that differ by a breath)  SEED=1
-//   FRAME_EVERY=60 (s between the child's frames; 0 for none)  DIAG_EVERY=10 (s)  CENTRE=auto|vort|x,y (km, the child's centre in the parent's box: auto the strongest updraft, vort the strongest rotation at 750 m near it)  FRAME_UV=auto|u,v (m/s, the child's frame over the parent's)
+//   FRAME_EVERY=60 (s between the child's frames; 0 for none)  PARENT_FRAMES=1 (the parent's whole box at the same times, for a pack)  DIAG_EVERY=10 (s)  CENTRE=auto|vort|x,y (km, the child's centre in the parent's box: auto the strongest updraft, vort the strongest rotation at 750 m near it)  FRAME_UV=auto|u,v (m/s, the child's frame over the parent's)
 // The child's frames: <out>.cdbz.i8 (reflectivity, dBZ rounded, -30 for none, in the order frame, level, y, x), <out>.cvz.u8 (the reflectivity-weighted fall speed, 0.25 m/s downward, 0 for none, the same order),
-// <out>.cuvw.i16 (u, v, w in 0.01 m/s at the cell centres, in the child's frame, order frame, component, level, y, x) and <out>.json (grid, times, the parent's motion over the ground, the child's frame, where the child lies); the log has, every DIAG_EVERY seconds, the strongest rotation,
+// <out>.cuvw.i16 (u, v, w in 0.01 m/s at the cell centres, in the child's frame, order frame, component, level, y, x) and <out>.json (grid, times, the parent's motion over the ground, the child's frame, where the child lies, its south-west corner in the box at each frame, the parent's grid, its updraft track and the base state);
+// with PARENT_FRAMES the parent's box at the same times in the same kinds of files (<out>.pdbz.i8, <out>.pvz.u8, <out>.puvw.i16: tools/severe_research/make_nest_pack.mjs makes a pack of the two); the log has, every DIAG_EVERY seconds, the strongest rotation,
 // the lowest pressure and the strongest wind of the lowest level over the ground, with the places.
 import '../../src/severe-core.js';
 import '../../src/severe-nest.js';
@@ -55,6 +56,27 @@ function vort(core, k, i0, i1, j0, j1) {                  // the strongest verti
     if (z > best) { best = z; bi = i; bj = j; } if (z < worst) worst = z;
   }
   return { z: best, i: bi, j: bj, min: worst };
+}
+
+/* the frame of a core for the radar (as wk82_run.mjs records one): `take()` fills dbz (dBZ rounded, -30 for none, in the order level, y, x), vz (the reflectivity-weighted fall speed in 0.25 m/s steps downward, 0 for none)
+   and uvw (u, v, w at the cell centres in 0.01 m/s, in the core's own frame, in the order component, level, y, x) from the core's state */
+function recorder(core) {
+  const nx = core.nx, ny = core.ny, nz = core.nz, per = nx * ny * nz, S = core.S, ix = core.idx, sy = ix(0, 1, 0) - ix(0, 0, 0), sz = ix(0, 0, 1) - ix(0, 0, 0);
+  const refl = globalThis.HFSevereRefl.create(core), dcol = new Float64Array(nz), vcol = new Float64Array(nz), dbz = new Int8Array(per), vz = new Uint8Array(per), uvw = new Int16Array(3 * per);
+  const q16 = (x) => Math.max(-32767, Math.min(32767, Math.round(x * 100)));
+  return {
+    dbz, vz, uvw,
+    take() {
+      for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+        refl.column(i, j, dcol, vcol);
+        for (let k = 0; k < nz; k++) { const q = (k * ny + j) * nx + i; dbz[q] = Math.max(-30, Math.min(100, Math.round(dcol[k]))); vz[q] = dcol[k] > -29 ? Math.max(0, Math.min(255, Math.round(4 * vcol[k]))) : 0; }
+      }
+      for (let k = 0; k < nz; k++) for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+        const o = ix(i, j, k), q = (k * ny + j) * nx + i;
+        uvw[q] = q16(0.5 * (S.u[o] + S.u[o + 1])); uvw[per + q] = q16(0.5 * (S.v[o] + S.v[o + sy])); uvw[2 * per + q] = q16(0.5 * (S.w[o] + S.w[o + sz]));
+      }
+    },
+  };
 }
 
 function writeCkpt(core, track, file) {
@@ -123,9 +145,10 @@ if (mode === 'parent') {
   }
   console.log('child ' + nxc + 'x' + nxc + 'x' + nzc + ' cells of ' + CDX + ' x ' + CDZ + ' m from (' + (x0 / 1000) + ', ' + (y0 / 1000) + ') km in the parent, its frame moves at (' + fr.u + ', ' + fr.v + ') m/s over the parent\'s, ' + RATIO + ' steps per parent step of ' + DT + ' s, drag ' + (DRAG ? 'cd ' + child.drag.cd.toFixed(5) : 'off'));
   const FE = E('FRAME_EVERY', 60), DE = E('DIAG_EVERY', 10), steps = Math.round(minutes * 60 / DT), t0 = Date.now(), tStart = parent.time, times = [];
+  const PF = FE > 0 && E('PARENT_FRAMES', 1) !== 0, ptrack = [], corners = [];                  // the parent's box at the child's frame times too (the pack's box: tools/severe_research/make_nest_pack.mjs)
   const fd = FE ? openSync(out + '.cdbz.i8', 'w') : -1, fv = FE ? openSync(out + '.cuvw.i16', 'w') : -1, fz = FE ? openSync(out + '.cvz.u8', 'w') : -1;
-  const dbzC = new Int8Array(nxc * nxc * nzc), vzC = new Uint8Array(nxc * nxc * nzc), uvw = new Int16Array(3 * nxc * nxc * nzc), CS = child.S, ci = child.idx;
-  const refl = globalThis.HFSevereRefl.create(child), dcol = new Float64Array(nzc), vcol = new Float64Array(nzc);       // reflectivity and fall speed, as in wk82_run.mjs (src/severe-refl.js)
+  const pfd = PF ? openSync(out + '.pdbz.i8', 'w') : -1, pfv = PF ? openSync(out + '.puvw.i16', 'w') : -1, pfz = PF ? openSync(out + '.pvz.u8', 'w') : -1;
+  const CS = child.S, ci = child.idx, rec = recorder(child), prec = PF ? recorder(parent) : null;       // reflectivity and fall speed as in wk82_run.mjs (src/severe-refl.js)
   /* how the child agrees with its parent: at the parent's cell centres inside the child (away from its relaxation zone) the child's field is taken by trilinear interpolation and set against the parent's own, at one level;
      the mean of each, the rms of the difference and the parent's own spread, for w at 5.25 km, theta' at 1.25 km, the speed over the ground at 250 m and the water vapour at 1.25 km */
   const AE = E('AGREE_EVERY', 60); let nextAgree = AE;
@@ -170,20 +193,18 @@ if (mode === 'parent') {
       console.log('t=' + tt.toFixed(0).padStart(5) + ' s  zeta0 ' + (z0v.z * 1000).toFixed(0) + ' (' + z0v.i + ',' + z0v.j + ') zeta1 ' + (zc.z * 1000).toFixed(0) + ' 1e-3/s  pmin ' + pmin.toFixed(1) + ' hPa (' + pi_ + ',' + pj + ')  vmax0 ' + vmax.toFixed(1) + ' m/s (' + vi + ',' + vj + ')  wmax ' + wmax.toFixed(1) + ' at (' + wi + ',' + wj + ',' + wk + ')  [' + ((Date.now() - t0) / 1000).toFixed(0) + ' s]');
     }
     if (FE && tt + 1e-6 >= nextFrame) {
-      nextFrame += FE; times.push(+tt.toFixed(1));
-      for (let j = 0; j < nxc; j++) for (let i = 0; i < nxc; i++) {
-        refl.column(i, j, dcol, vcol);
-        for (let k = 0; k < nzc; k++) { const q = (k * nxc + j) * nxc + i; dbzC[q] = Math.max(-30, Math.min(100, Math.round(dcol[k]))); vzC[q] = dcol[k] > -29 ? Math.max(0, Math.min(255, Math.round(4 * vcol[k]))) : 0; }
+      nextFrame += FE; times.push(+tt.toFixed(1)); corners.push([+(x0 + fr.u * tt).toFixed(1), +(y0 + fr.v * tt).toFixed(1)]);     // the child's south-west corner in the parent's box at this frame (src/severe-nest.js)
+      rec.take(); writeSync(fd, Buffer.from(rec.dbz.buffer)); writeSync(fv, Buffer.from(rec.uvw.buffer)); writeSync(fz, Buffer.from(rec.vz.buffer));
+      if (PF) {
+        prec.take(); writeSync(pfd, Buffer.from(prec.dbz.buffer)); writeSync(pfv, Buffer.from(prec.uvw.buffer)); writeSync(pfz, Buffer.from(prec.vz.buffer));
+        const u = updraft(parent); ptrack.push([Math.round(u.x), Math.round(u.y), +u.w.toFixed(1)]);
       }
-      for (let k = 0; k < nzc; k++) for (let j = 0; j < nxc; j++) for (let i = 0; i < nxc; i++) {
-        const o = ci(i, j, k), q = (k * nxc + j) * nxc + i;
-        uvw[q] = Math.max(-32767, Math.min(32767, Math.round(0.5 * (CS.u[o] + CS.u[o + 1]) * 100))); uvw[nxc * nxc * nzc + q] = Math.max(-32767, Math.min(32767, Math.round(0.5 * (CS.v[o] + CS.v[o + child.idx(0, 1, 0) - child.idx(0, 0, 0)]) * 100)));
-        uvw[2 * nxc * nxc * nzc + q] = Math.max(-32767, Math.min(32767, Math.round(0.5 * (CS.w[o] + CS.w[o + child.idx(0, 0, 1) - child.idx(0, 0, 0)]) * 100)));
-      }
-      writeSync(fd, Buffer.from(dbzC.buffer)); writeSync(fv, Buffer.from(uvw.buffer)); writeSync(fz, Buffer.from(vzC.buffer));
     }
   }
   if (FE) { closeSync(fd); closeSync(fv); closeSync(fz); }
-  writeFileSync(out + '.json', JSON.stringify({ v: 1, vz: { scale: 0.25 }, nx: nxc, ny: nxc, nz: nzc, dx: CDX, dz: CDZ, times, startMinute: tStart / 60, frame: fr, motion: mot, x0, y0, parentDx: PDX, ratio: RATIO, drag: DRAG, perturb: PA ? { amp: PA, seed: PSEED } : null, env: head.env }));
+  if (PF) { closeSync(pfd); closeSync(pfv); closeSync(pfz); }
+  const pb = parent.base, pbase = { z: Array.from(pb.rhoc, (_, k) => (k + 0.5) * DZ), u: Array.from(pb.ubc, (v) => +(v + mot.u).toFixed(3)), v: Array.from(pb.vbc, (v) => +(v + mot.v).toFixed(3)) };      // the base state's winds over the ground (what a clear-air echo outside the box follows)
+  writeFileSync(out + '.json', JSON.stringify({ v: 1, vz: { scale: 0.25 }, nx: nxc, ny: nxc, nz: nzc, dx: CDX, dz: CDZ, times, startMinute: tStart / 60, frame: fr, motion: mot, x0, y0, parentDx: PDX, ratio: RATIO, drag: DRAG, perturb: PA ? { amp: PA, seed: PSEED } : null, env: head.env,
+    corners, parent: PF ? { nx: parent.nx, ny: parent.ny, nz: parent.nz, dx: PDX, dz: DZ, track: ptrack, base: pbase } : null }));
   console.log('done (' + ((Date.now() - t0) / 1000).toFixed(0) + ' s)');
 } else { console.error('usage: wk82_nest.mjs parent <out.ckpt> <minutes> | child <in.ckpt> <out> <minutes>'); process.exit(1); }
