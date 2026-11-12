@@ -94,6 +94,26 @@ const pair = (extra = {}, childExtra = {}, popt = {}) => {
   check('a child whose frame moves at (3, -2) m/s over a parent at rest sees the parent\'s tracer move by exactly that (error ' + e.toExponential(1) + ', the side values being those of the end of each step, of a field that changes by ' + (0.0004 * 3 * t + 0.0003 * 2 * t).toFixed(2) + '; winds ' + windU.toExponential(1) + ' and ' + windV.toExponential(1) + ' from (-3, 2) m/s)', e < 1e-5 && windU < 1e-9 && windV < 1e-9);
 }
 
+/* 4b. The corner is where it is said to be when the nest is made, whatever the parent's clock says: the same set-up as 4, from a parent whose clock stands at 7000 s (a restart), gives the same
+       child, bit for bit, and its corner has moved by the frame's velocity over the time since the nest was made, not since the clock's zero. */
+{
+  const run = (clock) => {
+    const { parent, child } = pair({ tracers: ['q'] }, { tracers: ['q'], wind: { u: () => -3, v: () => 2 } });
+    const lin = (x, y) => 2 + 0.0004 * x + 0.0003 * y;
+    for (let k = -3; k < PAR.nz + 3; k++) for (let j = -3; j < PAR.ny + 3; j++) for (let i = -3; i < PAR.nx + 3; i++) parent.S.q[parent.idx(i, j, k)] = lin((i + 0.5) * PAR.dx, (j + 0.5) * PAR.dx);
+    parent.time = clock;
+    const nest = N.create({ parent, child, ratio: 2, x0: 5000, y0: 5000, frame: { u: 3, v: -2 } }); nest.init();
+    for (let m = 0; m < 34; m++) nest.step(6);
+    return { child, lin };
+  };
+  const a = run(0), b = run(7000); let diff = 0, e = 0;
+  for (let k = 0; k < CHD.nz; k++) for (let j = 0; j < CHD.ny; j++) for (let i = 0; i < CHD.nx; i++) {
+    const o = a.child.idx(i, j, k); diff = Math.max(diff, Math.abs(a.child.S.q[o] - b.child.S.q[o]), Math.abs(a.child.S.u[o] - b.child.S.u[o]), Math.abs(a.child.S.w[o] - b.child.S.w[o]));
+    e = Math.max(e, Math.abs(b.child.S.q[o] - b.lin(5000 + 3 * 204 + (i + 0.5) * CHD.dx, 5000 - 2 * 204 + (j + 0.5) * CHD.dy)));
+  }
+  check('a nest made when the parent\'s clock stands at 7000 s is the nest made at 0: the same child bit for bit (' + diff.toExponential(1) + '), its tracer at the places 204 s of the frame\'s motion from x0 (error ' + e.toExponential(1) + ')', diff === 0 && e < 1e-5 && b.child.time === 7204);
+}
+
 /* 5. A tracer blob carried across the child's sides by a wind of 10 m/s (the parent periodic, the blob 4 parent cells wide and periodic itself, so that the parent has it right): the child's tracer is the exact
       solution where the blob has come in through the west side. */
 {

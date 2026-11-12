@@ -8,7 +8,7 @@
 //   N0G=4e6 RHOG=400 (graupel/hail)  N0R=8e6 (rain's intercept)  EVAP=1 (the rain's evaporation, times: the knob of the cold pool); the same in the parent and the child
 //   CDX=100 (the child's cell)  CDZ=200 (its level)  CL=12 (km, its side)  RATIO=4 (child steps per parent step)  DRAG=1  Z0=0.1 (m)  KHC=0.25 (child viscosity: KHC * CDX m2/s)
 //   PERTURB=0 (K: random noise of this amplitude on theta in the child's lowest 3 km at its start, for copies of one storm that differ by a breath)  SEED=1
-//   FRAME_EVERY=60 (s between the child's frames; 0 for none)  DIAG_EVERY=10 (s)  CENTRE=auto|x,y (km, the child's centre in the parent's box)  FRAME_UV=auto|u,v (m/s, the child's frame over the parent's)
+//   FRAME_EVERY=60 (s between the child's frames; 0 for none)  DIAG_EVERY=10 (s)  CENTRE=auto|vort|x,y (km, the child's centre in the parent's box: auto the strongest updraft, vort the strongest rotation at 750 m near it)  FRAME_UV=auto|u,v (m/s, the child's frame over the parent's)
 // The child's frames: <out>.cdbz.i8 (reflectivity, dBZ rounded, -30 for none, in the order frame, level, y, x), <out>.cvz.u8 (the reflectivity-weighted fall speed, 0.25 m/s downward, 0 for none, the same order),
 // <out>.cuvw.i16 (u, v, w in 0.01 m/s at the cell centres, in the child's frame, order frame, component, level, y, x) and <out>.json (grid, times, the parent's motion over the ground, the child's frame, where the child lies); the log has, every DIAG_EVERY seconds, the strongest rotation,
 // the lowest pressure and the strongest wind of the lowest level over the ground, with the places.
@@ -54,7 +54,7 @@ function vort(core, k, i0, i1, j0, j1) {                  // the strongest verti
 }
 
 function writeCkpt(core, track, file) {
-  const st = core.getState(), names = Object.keys(st.f), head = JSON.stringify({ v: 1, time: st.time, nx: st.nx, ny: st.ny, nz: st.nz, names, track: track.slice(), env: { PDX, L, DT, ICE, QV, LLJ }, motion: MOTION, N: core.N });
+  const st = core.getState(), names = Object.keys(st.f), head = JSON.stringify({ v: 1, time: st.time, nx: st.nx, ny: st.ny, nz: st.nz, names, track: track.slice(), env: { PDX, L, DT, ICE, QV, LLJ, ICEP }, motion: MOTION, N: core.N });
   const hb = Buffer.from(head), hl = Buffer.alloc(4); hl.writeUInt32LE(hb.length);
   const bufs = [hl, hb]; for (const n of names) bufs.push(Buffer.from(st.f[n].buffer, st.f[n].byteOffset, st.f[n].byteLength));
   for (const a of [st.precip, st.precipS, st.precipG]) bufs.push(Buffer.from(a.buffer, a.byteOffset, a.byteLength));
@@ -76,6 +76,8 @@ if (mode === 'parent') {
   writeCkpt(core, track, out);
 } else if (mode === 'child') {
   const inFile = a1, out = a2, minutes = +a3, raw = readFileSync(inFile), hl = raw.readUInt32LE(0), head = JSON.parse(raw.subarray(4, 4 + hl).toString());
+  const here = { PDX, L, DT, ICE, QV, LLJ, ICEP };                                  // the child's parent has to be made as the restart's was: the settings in the environment must be the run's
+  for (const k of Object.keys(head.env)) if (JSON.stringify(head.env[k]) !== JSON.stringify(here[k])) throw new Error('the restart was made with ' + k + ' = ' + JSON.stringify(head.env[k]) + ' and this run has ' + JSON.stringify(here[k]) + ': set it in the environment');
   const parent = newParent(); let off = 4 + hl;
   const st = { time: head.time, nx: head.nx, ny: head.ny, nz: head.nz, f: {}, precip: null, precipS: null, precipG: null };
   const take = (len) => { const a = new Float64Array(raw.buffer.slice(raw.byteOffset + off, raw.byteOffset + off + len * 8)); off += len * 8; return a; };
@@ -87,7 +89,11 @@ if (mode === 'parent') {
   const track = head.track, last = track[track.length - 1], prev = track[Math.max(0, track.length - 11)];
   const mv = process.env.FRAME_UV && process.env.FRAME_UV !== 'auto' ? process.env.FRAME_UV.split(',').map(Number) : [(last[1] - prev[1]) / ((last[0] - prev[0]) * 60 || 1), (last[2] - prev[2]) / ((last[0] - prev[0]) * 60 || 1)];
   const fr = { u: +mv[0].toFixed(2), v: +mv[1].toFixed(2) };
-  const cen = process.env.CENTRE && process.env.CENTRE !== 'auto' ? process.env.CENTRE.split(',').map((v) => +v * 1000) : [last[1], last[2]];
+  let cen = process.env.CENTRE && process.env.CENTRE !== 'auto' && process.env.CENTRE !== 'vort' ? process.env.CENTRE.split(',').map((v) => +v * 1000) : [last[1], last[2]];
+  if (process.env.CENTRE === 'vort') {                       // the strongest vertical vorticity at 750 m within 10 km of the strongest updraft
+    const v = vort(parent, 1, Math.floor((last[1] - 10000) / PDX), Math.ceil((last[1] + 10000) / PDX), Math.floor((last[2] - 10000) / PDX), Math.ceil((last[2] + 10000) / PDX));
+    cen = [v.i * PDX, v.j * PDX]; console.log('the strongest rotation at 750 m in the parent: ' + (v.z * 1000).toFixed(1) + ' 1e-3/s at (' + (cen[0] / 1000).toFixed(1) + ', ' + (cen[1] / 1000).toFixed(1) + ') km, ' + (Math.hypot(cen[0] - last[1], cen[1] - last[2]) / 1000).toFixed(1) + ' km from the updraft');
+  }
   const x0 = Math.round((cen[0] - CL / 2) / PDX) * PDX, y0 = Math.round((cen[1] - CL / 2) / PDX) * PDX, nxc = Math.round(CL / CDX), nzc = Math.round(NZ * DZ / CDZ);
   const mot = head.motion, frame = { u: mot.u + fr.u, v: mot.v + fr.v };                  // the child's frame over the ground
   const child = C.create({ nx: nxc, ny: nxc, nz: nzc, dx: CDX, dy: CDX, dz: CDZ, moist: true, ice: ICE, iceParams: ICEP, theta: snd.theta, qv: snd.qv,

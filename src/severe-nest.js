@@ -7,7 +7,8 @@
  * the parent is the same with or without a child.
  *
  * The child's frame may move over the parent's with a constant velocity `frame` (m/s): the child follows a storm that drifts through the parent, its winds are the parent's minus `frame`, and
- * its south-west corner is at (x0 + frame.u t, y0 + frame.v t) of the parent's plane (metres, the origin of the parent's grid). The child's base-state wind (its `wind` option) and its drag
+ * its south-west corner is at (x0 + frame.u t, y0 + frame.v t) of the parent's plane (metres, the origin of the parent's grid), t the seconds since the nest was made: (x0, y0) is where the corner is
+ * when `create` is called, whatever the parent's clock says. The child's base-state wind (its `wind` option) and its drag
  * frame have to be given for that frame by the caller: wind(z) - frame, and the parent's frame over the ground + frame.
  *
  *   const nest = HFSevereNest.create({ parent, child, ratio, x0, y0, frame: { u, v } });
@@ -27,7 +28,7 @@
     const names = C.names, pn = new Set(P.names);
     for (const n of names) if (!pn.has(n)) throw new Error('severe-nest: the parent has no field ' + n);
     const nx = C.nx, ny = C.ny, nz = C.nz, RW = C.relaxWidth, T = C.target;
-    const nest = { parent: P, child: C, ratio, x0: opt.x0, y0: opt.y0, frame: fr, time: P.time };
+    const nest = { parent: P, child: C, ratio, x0: opt.x0, y0: opt.y0, frame: fr, time: P.time }, T0 = P.time;       // T0: the parent's clock when the corner is (x0, y0)
 
     /* where a field lives in a cell (ox, oy, oz in cells: 0.5 at a centre, 0 on a face) */
     const KIND = { u: [0, 0.5, 0.5], v: [0.5, 0, 0.5], w: [0.5, 0.5, 0], c: [0.5, 0.5, 0.5] };
@@ -55,7 +56,7 @@
       return (c00 * (1 - wy1) + c10 * wy1) * (1 - wz) + (c01 * (1 - wy1) + c11 * wy1) * wz;
     }
     /* the child's point (i, j, k) of a kind, in the parent's plane at time t */
-    const posX = (i, ox, t) => nest.x0 + fr.u * t + (i + ox) * C.dx, posY = (j, oy, t) => nest.y0 + fr.v * t + (j + oy) * C.dy, posZ = (k, oz) => (k + oz) * C.dz;
+    const posX = (i, ox, t) => nest.x0 + fr.u * (t - T0) + (i + ox) * C.dx, posY = (j, oy, t) => nest.y0 + fr.v * (t - T0) + (j + oy) * C.dy, posZ = (k, oz) => (k + oz) * C.dz;
 
     function sample(B, t) {                       // targets at the ring of points, from the parent's state as it is now, for the parent's time t
       for (const n of names) {
