@@ -3,7 +3,7 @@
  * Three small pieces that the map, the radar layer and the tests share, all pure arithmetic:
  *   - the map's projection: Web Mercator (`mercX`, `mercY`, `fromMerc`) and the view of a pane (centre and metres per pixel: `toScreen`, `fromScreen`, `zoomOf`, `mppOf`);
  *   - the radar's plane: the azimuthal equidistant projection about a point (`local`, `fromLocal`), so that a point 100 km from a radar on the ground really is 100 km and at its
- *     real bearing whatever the latitude (a flat Mercator picture is 25 % too wide at 41 degrees); `distBearing` and `dest` are the great-circle pair; the sphere is the mean one;
+ *     real bearing whatever the latitude (a Mercator picture is 1 / cos(latitude) too big: 25 % at the radar the page starts with, 36.7 degrees north); `distBearing` and `dest` are the great-circle pair; the sphere is the mean one;
  *   - the baked map data (`encodeBundle`, `decodeBundle`): lines, polygons and points in 1e-4 degree units, delta-coded, as LEB128 varints, tools/make_severe_geo.mjs writes it and the
  *     page decodes it (a bundle is the bytes before deflate: a 32-bit header length, the header as JSON, the body).
  * A classic script that sets `globalThis.HFSevereGeo`.

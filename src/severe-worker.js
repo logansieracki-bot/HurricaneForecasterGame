@@ -1,8 +1,8 @@
 /* Severe: the scanning worker (docs/severe-plan.md 7.1). The page makes a Worker from this text put behind the sources of HFSevereGeo, HFSevereRadar and HFSeverePack (a worker made
  * from a Blob cannot import them), so that a scan (about half a second of arithmetic for one tilt at 1 km) never stops the page.
- *   -> { t: 'init', body }          the pack's body bytes (an ArrayBuffer), read once
+ *   -> { t: 'init', header }        the pack's header (grid, winds' scale, the box's motion, the base state): a worker never holds the recording, only the frames it is asked about
  *   <- { t: 'ready' }
- *   -> { t: 'scan', id, frame, opts }  opts as HFSevereRadar.scan takes them (elev, x, y, seed, velocity, dealias, ...)
+ *   -> { t: 'scan', id, frame, bytes, opts }  the frame's five arrays (an ArrayBuffer, pack.frameBytes) and opts as HFSevereRadar.scan takes them (elev, x, y, seed, velocity, dealias, ...)
  *   <- { t: 'sweep', id, meta, dbz, vel, sw }   Int16Arrays of the values in half units (NaN: -32768), nRad rows of nGates; meta: nRad, nGates, dAz, gate, r0, elev, antenna, nyquist
  * `HFSevereScanner` is the same thing without a worker (the page's fallback, and what the tests use): scan(frame, opts) -> the message above.
  */
@@ -26,13 +26,15 @@
   globalThis.HFSevereScanner = { make, quant, NONE };
 
   if (typeof WorkerGlobalScope !== 'undefined' && typeof self !== 'undefined' && self instanceof WorkerGlobalScope) {       // inside a worker
-    let sc = null;
+    let sc = null, header = null; const frames = new Map();
     self.onmessage = (e) => {
       const m = e.data;
-      if (m.t === 'init') { sc = make(globalThis.HFSeverePack.fromBody(new Uint8Array(m.body))); self.postMessage({ t: 'ready' }); }
+      if (m.t === 'init') { header = m.header; sc = make({ volume: (frame) => globalThis.HFSeverePack.volumeFromFrame(header, frames.get(frame)) }); self.postMessage({ t: 'ready' }); }
       else if (m.t === 'scan') {
-        try { const r = sc.scan(m.frame, m.opts); self.postMessage({ t: 'sweep', id: m.id, meta: r.meta, dbz: r.dbz, vel: r.vel, sw: r.sw }, [r.dbz.buffer, r.vel.buffer, r.sw.buffer]); }
-        catch (err) { self.postMessage({ t: 'error', id: m.id, message: String(err && err.message || err) }); }
+        try {
+          frames.set(m.frame, new Uint8Array(m.bytes)); if (frames.size > 4) frames.delete(frames.keys().next().value);
+          const r = sc.scan(m.frame, m.opts); self.postMessage({ t: 'sweep', id: m.id, meta: r.meta, dbz: r.dbz, vel: r.vel, sw: r.sw }, [r.dbz.buffer, r.vel.buffer, r.sw.buffer]);
+        } catch (err) { self.postMessage({ t: 'error', id: m.id, message: String(err && err.message || err) }); }
       }
     };
   }

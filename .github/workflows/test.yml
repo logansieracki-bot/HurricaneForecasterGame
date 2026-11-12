@@ -48,6 +48,7 @@ jobs:
             dist/spac-sst-simulator.html
             dist/satl-sst-simulator.html
             dist/med-sst-simulator.html
+            dist/severe.html
           if-no-files-found: error
 
       - name: Link the built HTML in the run summary
@@ -94,6 +95,7 @@ jobs:
           cp dist/spac-sst-simulator.html _site/dist/
           cp dist/satl-sst-simulator.html _site/dist/
           cp dist/med-sst-simulator.html _site/dist/
+          cp dist/severe.html _site/dist/
 
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3

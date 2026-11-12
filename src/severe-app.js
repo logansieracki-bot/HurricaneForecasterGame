@@ -29,13 +29,13 @@
   const toast = (msg, ms) => { const t = $('toast'); t.textContent = msg; t.hidden = false; clearTimeout(toast.k); toast.k = setTimeout(() => { t.hidden = true; }, ms || 2600); };
 
   /* ---- the scanner: a pool of workers (or the page itself) ---- */
-  async function makeScanner(body) {
+  async function makeScanner() {
     const queue = [], inflight = new Map(); let seq = 0, workers = [], idle = [], fallback = null;
     const done = (id, res, err) => { const j = inflight.get(id); if (!j) return; inflight.delete(id); err ? j.reject(new Error(err)) : j.resolve(res); };
     function pump() {
       while (queue.length && (workers.length ? idle.length : !fallback.busy)) {
         queue.sort((a, b) => a.prio - b.prio); const j = queue.shift(); inflight.set(j.id, j);
-        if (workers.length) { const w = idle.shift(); w.job = j.id; w.postMessage({ t: 'scan', id: j.id, frame: j.frame, opts: j.opts }); }
+        if (workers.length) { const w = idle.shift(); w.job = j.id; const bytes = pack.frameBytes(j.frame).slice().buffer; w.postMessage({ t: 'scan', id: j.id, frame: j.frame, bytes, opts: j.opts }, [bytes]); }
         else { fallback.busy = true; setTimeout(() => { try { done(j.id, fallback.sc.scan(j.frame, j.opts)); } catch (e) { done(j.id, null, String(e)); } fallback.busy = false; pump(); }, 0); }
       }
     }
@@ -49,7 +49,7 @@
           else if (m.t === 'sweep') { idle.push(w); done(m.id, { meta: m.meta, dbz: m.dbz, vel: m.vel, sw: m.sw }); pump(); }
           else if (m.t === 'error') { idle.push(w); done(m.id, null, m.message); pump(); } };
         w.onerror = (e) => { clearTimeout(tm); no(new Error(e.message || 'worker error')); };
-        const copy = body.slice().buffer; w.postMessage({ t: 'init', body: copy }, [copy]);
+        w.postMessage({ t: 'init', header: pack.h });
       })));
     } catch (e) { for (const w of workers) w.terminate(); workers = []; idle = []; fallback = { sc: HFSevereScanner.make(pack), busy: false }; console.warn('severe: scanning on the page itself (' + e.message + ')'); }
     return {
@@ -79,7 +79,7 @@
   const ready = (frame) => panes.every((p) => cache.has(keyOf(frame, p.tilt, S.radar, quickOf())));
 
   /* ---- time ---- */
-  const hasEvery = (iv) => pack.times.filter((t) => Math.abs(t / iv - Math.round(t / iv)) < 1e-6).length >= 2;
+  const hasEvery = (iv) => { let gap = Infinity; for (let i = 1; i < pack.times.length; i++) gap = Math.min(gap, pack.times[i] - pack.times[i - 1]); return iv >= gap - 1e-9 && pack.times.filter((t) => Math.abs(t / iv - Math.round(t / iv)) < 1e-6).length >= 2; };      // a chip is on if the recording has frames that close together
   function frames() { const iv = S.interval, a = []; pack.times.forEach((t, i) => { if (Math.abs(t / iv - Math.round(t / iv)) < 1e-6) a.push(i); }); return a.length ? a : pack.times.map((_, i) => i); }
   function frameAt(t) { const f = frames(); let r = f[0]; for (const i of f) if (pack.times[i] <= t + 1e-6) r = i; return r; }
   const tSpan = () => { const f = frames(); return [pack.times[f[0]], pack.times[f[f.length - 1]]]; };
@@ -234,7 +234,7 @@
   }
   function openLayers(anchor) {
     const L = S.layers, items = [['rings', 'Range rings'], ['place', 'Places'], ['site', 'Radar sites'], ['road', 'Roads'], ['river', 'Rivers'], ['county', 'County lines'], ['state', 'State lines']];
-    openPop(anchor, '<h4>Map layers</h4>' + items.map(([k, n]) => row(k, n, '', L[k])).join(''), 'below', (el) => onRows(el, (id, b) => { L[id] = !L[id]; b.setAttribute('aria-checked', L[id] ? 'true' : 'false'); for (const p of panes) { p.map.layers = L; p.map.redraw(); } save(); }));
+    openPop(anchor, '<h4>Map layers</h4>' + items.map(([k, n]) => row(k, n, '', L[k])).join('') + '<div class="kv"><span></span><span style="font-weight:400;font-size:11px;color:var(--dim)">Map data: Census cartographic boundaries, Natural Earth and the US Cities Database, all public domain.</span></div>', 'below', (el) => onRows(el, (id, b) => { L[id] = !L[id]; b.setAttribute('aria-checked', L[id] ? 'true' : 'false'); for (const p of panes) { p.map.layers = L; p.map.redraw(); } save(); }));
   }
   function openSettings(anchor) {
     const seg = (id, opts, cur) => '<div class="seg" data-seg="' + id + '">' + opts.map(([v, n]) => '<button data-v="' + v + '" aria-pressed="' + (cur === v) + '">' + n + '</button>').join('') + '</div>';
@@ -281,7 +281,7 @@
       const beam = R.beamHeight(slant, m.elev, m.antenna);
       html += '<div class="big">' + (val === null ? '—' : val.toFixed(p.product === 'dbz' ? 1 : 0)) + '<small>' + (val === null ? 'no data here' : unit) + '</small></div><div class="kv"><span>Range</span><span>' + (ground / U.m).toFixed(1) + ' ' + U.dist + '</span><span>Bearing</span><span>' + Math.round(bearing) + '°</span><span>Beam height</span><span>' + (beam / (U.dist === 'km' ? 1000 : 1609.344)).toFixed(2) + ' ' + (U.dist === 'km' ? 'km' : 'mi') + ' above ground</span></div>';
       // the model's own values at that point: what is true, beside what the radar says
-      const t = pack.times[sw.frame], c = pack.corner(t), bx = loc.x - c[0] + 0, by = loc.y - c[1], truth = pack.radarBox ? pack.sample(sw.frame, G.local(pack.scenario.lat0, pack.scenario.lon0, ll.lat, ll.lon).x - c[0], G.local(pack.scenario.lat0, pack.scenario.lon0, ll.lat, ll.lon).y - c[1], Math.max(50, beam)) : null;
+      const c = pack.corner(pack.times[sw.frame]), lp = G.local(pack.scenario.lat0, pack.scenario.lon0, ll.lat, ll.lon), truth = pack.sample(sw.frame, lp.x - c[0], lp.y - c[1], Math.max(50, beam));
       if (truth) { const spd = Math.hypot(truth.u, truth.v), dir = ((Math.atan2(-truth.u, -truth.v) / DEG) + 360) % 360;
         html += '<h4>The model, at the beam</h4><div class="kv"><span>Reflectivity</span><span>' + (truth.dbz <= pack.floor ? 'none' : truth.dbz + ' dBZ') + '</span><span>Wind</span><span>' + Math.round(spd * U.k) + ' ' + U.speed + ' from ' + Math.round(dir) + '°</span><span>Vertical wind</span><span>' + (truth.w >= 0 ? '+' : '') + (truth.w * U.k).toFixed(1) + ' ' + U.speed + '</span><span>Fall speed</span><span>' + (truth.vz * U.k).toFixed(1) + ' ' + U.speed + '</span></div>'; }
       else html += '<h4>The model</h4><div class="kv"><span></span><span style="font-weight:400;color:var(--dim)">Outside the storm\'s box: clear air.</span></div>';
@@ -289,7 +289,7 @@
     const near = nearestPlace(ll.lat, ll.lon); if (near) html += '<div class="kv"><span>Near</span><span>' + near + '</span></div>';
     const r = p.top.getBoundingClientRect(); openPop({ left: r.left + x, top: r.top + y, right: r.left + x, bottom: r.top + y, width: 0 }, html, 'point');
     const bm = p.barEl.querySelector('.bm'); bm.style.display = 'none';
-    if (val !== null && p.barSpec) { const f = (sw[p.product][0] === undefined ? 0 : 0), ph = p.product === 'dbz' ? val : val / U.k, fr = (ph - p.barSpec.lo) / (p.barSpec.hi - p.barSpec.lo); if (fr >= 0 && fr <= 1) { bm.style.left = fr * 100 + '%'; bm.style.display = 'block'; } }
+    if (val !== null && p.barSpec) { const ph = p.product === 'dbz' ? val : val / U.k, fr = (ph - p.barSpec.lo) / (p.barSpec.hi - p.barSpec.lo); if (fr >= 0 && fr <= 1) { bm.style.left = fr * 100 + '%'; bm.style.display = 'block'; } }
   }
   function nearestPlace(lat, lon) { const P = geo.points.place; let best = -1, bd = 25000; for (let i = 0; i < P.n; i++) { if (Math.abs(P.lat[i] - lat) > 0.3 || Math.abs(P.lon[i] - lon) > 0.4) continue; const d = G.distBearing(lat, lon, P.lat[i], P.lon[i]).d; if (d < bd) { bd = d; best = i; } } return best < 0 ? '' : P.names[best] + ', ' + P.extra[best] + ' (' + (bd / 1000).toFixed(0) + ' km)'; }
 
@@ -304,7 +304,7 @@
   function syncDock() {
     const p = act(), R0 = S.radar; $('site-id').textContent = R0.id || 'Virtual'; $('site-nm').textContent = R0.custom ? R0.lat.toFixed(2) + '°N ' + Math.abs(R0.lon).toFixed(2) + '°W' : R0.name;
     $('prod-nm').textContent = PRODUCTS[p.product].name; $('tilt-v').textContent = TILTS[p.tilt].toFixed(1) + '°'; $('tilt-dn').disabled = p.tilt === 0; $('tilt-up').disabled = p.tilt === TILTS.length - 1;
-    document.querySelectorAll('#int button').forEach((b) => { const iv = +b.dataset.i; b.disabled = !hasEvery(iv); b.setAttribute('aria-pressed', iv === S.interval ? 'true' : 'false'); });
+    document.querySelectorAll('#int button').forEach((b) => { const iv = +b.dataset.i, on = hasEvery(iv); b.disabled = !on; b.title = on ? 'A frame every ' + iv + ' minutes' : 'This recording has a frame every 5 minutes; 1 and 3 come with live runs'; b.setAttribute('aria-pressed', iv === S.interval ? 'true' : 'false'); });
     $('speed').textContent = '×' + SPEEDS[S.speed]; const t = pack.times[S.frame], tm = pack.clock(t).text; $('clk').textContent = tm; const sw = p.sweep; $('clk-sub').textContent = sw && sw.frame !== S.frame ? 'Loading…' : 'Updated ' + tm;
     panes.forEach(title);
   }
@@ -336,6 +336,7 @@
     on('tilt-dn', () => setTilt(act(), act().tilt - 1)); on('tilt-up', () => setTilt(act(), act().tilt + 1));
     on('b-probe', () => setTool('probe')); on('b-measure', () => setTool('measure'));
     on('b-locate', () => { const R0 = S.radar, v = act().map.view; for (const p of panes) p.map.setView({ cx: G.mercX(R0.lon), cy: G.mercY(R0.lat), mpp: Math.min(v.mpp, G.mppOf(8.4)) }); });
+    on('z-in', () => { const m = act().map; m.zoomAt(m.view.w / 2, m.view.h / 2, 1.6); }); on('z-out', () => { const m = act().map; m.zoomAt(m.view.w / 2, m.view.h / 2, 1 / 1.6); });
     on('b-theme', () => setTheme(S.theme === 'dark' ? 'light' : 'dark')); on('b-layers', (e) => openLayers(e.currentTarget)); on('b-settings', (e) => openSettings(e.currentTarget)); on('b-panes', () => setPaneCount(S.panes === 1 ? 2 : 1));
     document.addEventListener('keydown', (e) => {
       if (e.target && /input|textarea|select/i.test(e.target.tagName) && e.target.id !== 'slider') return; if (e.metaKey || e.ctrlKey || e.altKey) return;
@@ -357,7 +358,7 @@
     luts = { br: PAL.lut(pals.br, { step: 0.25, vmin: -40, vmax: 105 }), bv: PAL.lut(pals.bv, { step: 0.25 }), sw: PAL.lut(pals.sw, { step: 0.1 }) };
     luts.brLight = Object.assign({}, luts.br, { rgba: Uint8ClampedArray.from(luts.br.rgba) });                    // on white the weak echo is made fainter, as RadarScope's light map does
     for (let i = 0; i < luts.br.n; i++) { const v = luts.br.vmin + i * luts.br.step; if (v < 25) luts.brLight.rgba[4 * i + 3] = Math.round(luts.br.rgba[4 * i + 3] * Math.max(0.35, Math.min(1, 0.35 + (v + 5) / 30 * 0.65))); }
-    scanner = await makeScanner(body);
+    scanner = await makeScanner();
     const sc = pack.scenario, i0 = geo.points.site.names.indexOf(sc.radar), s0 = siteInfo(i0); S.radar = { id: s0.id, custom: false, name: s0.name, lat: s0.lat, lon: s0.lon };
     document.documentElement.dataset.theme = S.theme; $('b-theme').innerHTML = S.theme === 'dark' ? ICON_SUN : ICON_MOON; if (!hasEvery(S.interval)) S.interval = 5;
     setPaneCount(S.panes); panes[0].tilt = 0;
@@ -366,6 +367,7 @@
     for (const p of panes) { p.map.activeSite = S.radar.id; p.map.setView({ cx: G.mercX(mid.lon), cy: G.mercY(mid.lat), mpp: G.mppOf(8.9) }); }
     new ResizeObserver(() => { const d = $('dock'); document.documentElement.style.setProperty('--dockh', d.offsetHeight + 'px'); }).observe($('dock'));
     wire(); buildTicks(); setActive(0); panes.forEach((p) => { applyTheme(p); drawBar(p); }); refresh(); syncSlider(); requestAnimationFrame(tick);
+    try { if (!localStorage.getItem(LS + '-tip')) { localStorage.setItem(LS + '-tip', '1'); setTimeout(() => toast('Tip: drag the radar\'s pill to move it, tap another pill to switch radar, tap Probe to read the storm', 7000), 1500); } } catch (e) { /* none */ }
     window.SEVERE.ready = true;
   }
 

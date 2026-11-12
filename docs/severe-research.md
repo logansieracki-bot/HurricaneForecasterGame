@@ -516,3 +516,102 @@ sharper (`radar-velocity-real-vs-model.png`). The tilt matters as it does for a 
 The radar page (panes, the three themes, colour bars, the site pill, the frame slider with 1, 3, 5 and 10 game minutes) on these two products; storm-relative velocity as a second view (subtract the storm's motion: it
 makes a couplet readable); a finer grid inside the box for the storm of interest (a 250-500 m nest would give the hook and a tornadic vortex signature a place to live); a boundary-layer eddy field for the
 clear air.
+
+## Part 6. The radar app (milestone 38, 12 Nov 2026)
+
+You asked for the radar app before anything else ("a modern RadarScope vibe but with more features and such") and gave three screenshots: a dark map with a clear-air velocity sweep and a blue site pill (TBLV), a velocity
+pane with a floating dock, a colour-bar capsule, a warning polygon and its card (KGPR), and RadarScope's own Super-Res Velocity (KTLX). The result is a page, `dist/severe.html`, that **the menu does not link** (the
+Severe card stays "Soon"; nothing in the menu changed and there is no version change): a vector map with a GPU sweep over it, drawn from what the operator of parts 4 and 5 makes of a recorded storm. Everything on the
+screen that is weather comes out of the model; nothing is painted. The pictures are `docs/severe-research/radar-app-panes.png` (reflectivity and velocity side by side), `radar-app-light.png` (the light theme at 2.4°)
+and `radar-app-phone.png` (390 x 844 pixels).
+
+### What was added
+- **The page**: `src/severe.html`, `src/severe-app.css`, `src/severe-app.js`, built by `tools/build.mjs` into `dist/severe.html` (5.8 MB with the map, the storm, the colour tables and the code inline: it makes no request
+  and runs from `file://`). It has the menu's design tokens (`--bg #060a12`, `--acc #72d6ff`, the font stack) so that the disciplines look like one product.
+- **The geometry** (`src/severe-geo.js`, pure): Web Mercator for the map, the azimuthal equidistant plane about the radar for the sweep, the great circle, and the codec of the baked map.
+- **The map engine** (`src/severe-map.js`): one view (centre, metres per pixel) that every layer redraws from in one animation frame (the lag between layers that milestones 26 and 28 had to fix cannot happen: there is only
+  one clock), wheel, drag, pinch and inertia, zoom 3.4 to 13.2, a dark and a light theme, the label layout, hit tests for the radar pills.
+- **The sweep on the GPU** (`src/severe-gl.js`), **the storm pack** (`src/severe-pack.js`, `tools/severe_research/make_pack.mjs`, `data/severe/packs/wk82-1km-5min.hfp`) and **the scanning worker** (`src/severe-worker.js`).
+- **The baked map** (`tools/make_severe_geo.mjs` writes `data/generated/severe-geo.bin`, 1.18 MB).
+- `tests/severe_geo.mjs` (**37 checks**, 2 s) and `tests/severe_page.mjs` (**34 checks**, about 40 s, a real Chromium on `file://` with the network refused), `tools/severe_geo_mutants.mjs` (**59 mutants, all
+  killed**); the first two are in `npm test`, and the workflow's "Assemble the site" step copies `dist/severe.html` to the site (it is reachable at `dist/severe.html`, not linked from anywhere).
+
+### What the page does
+- **Panes.** One, or two side by side (stacked on a phone) with the view linked, each with a product, a tilt, a title chip ("KVNX  Base Velocity · 0.5° · 4:15 PM") and a **colour-bar capsule read from the palette itself**:
+  your reflectivity table, your velocity table in mph (and m/s or knots when the units change: the bar's labels are the table's, converted), the width's placeholder.
+- **Products and tilts.** Base reflectivity, base velocity and spectrum width; **one scan gives all three, so switching the product is instant**; the tilts of a volume (0.5, 0.9, 1.3, 1.8, 2.4, 3.1, 4.0, 5.1, 6.4,
+  8.0, 10.0, 12.5, 15.6, 19.5°) on a stepper. Settings: units (miles and mph, nautical miles and knots, kilometres and m/s: **imperial by default**), super-res (0.5° by 250 m) or legacy (1° by 1 km), velocity folded
+  or unfolded (the operator's switch), clutter and clear air shown or hidden, the theme.
+- **Time.** A slider with ticks and the clock (local time of the scenario, 3:00 PM CDT at the first frame), first / previous / play / next / last, a loop, five speeds (1, 2, 5, 10, 20 game minutes per second), and the
+  **interval chips 1, 3, 5, 10**: a chip is lit only where the recording has frames that close together (this one has a frame every 5 minutes, so 1 and 3 are off and say why; 10 takes every second frame). While
+  it plays, the next three frames are scanned ahead; if the scans are late, it waits for them ("buffers") rather than skipping.
+- **Tools.** *Probe*: the radar's value at the point, its range, bearing and beam height, and under it **what the model says at that point** (reflectivity, the three winds, the fall speed): the teaching view
+  (plan 7.3). *Measure*: two points give a distance and a bearing, a third starts again. *Centre on the radar*. **The radar can be dragged anywhere**: while the pill is held the sweep is the quick legacy-resolution
+  scan (about 60 ms), and on release the full scan of the new place follows; and the **site list** (the 145 WSR-88Ds, nearest first) puts it on a real radar's position.
+- **The map.** Counties, states, interstates, US and state highways, rivers, lakes, places by importance (labels never overlap; the radar pills block the ones under them), state names, range rings with labels in
+  the chosen units, the radar pills (blue for the one in use, grey for the others). A layers list turns each off.
+- **Keyboard.** Space plays; left and right step; up and down change the tilt; 1, 2, 3 the product; P the probe; M the measuring tool; T the theme; C centres on the radar; + and - zoom; Escape closes a list and then puts a tool away.
+- **Remembered** in the browser's localStorage (inside try/catch; a damaged entry is ignored): theme, units, speed, interval, panes, resolution, velocity, clutter, layers.
+- **The stamp**: "HYPOTHETICAL · Isobar Severe Simulator" sits on the top edge of the dock in every layout, so any screenshot of the page carries it.
+
+### The map data
+All of it public domain, fetched once by `tools/make_severe_geo.mjs` (into the git-ignored `data/raw/severe-geo/`) and baked into one bundle; **the page requests no tile and no file**.
+
+| What | Source | In the bundle |
+| --- | --- | --- |
+| states, counties, the outline | the Census cartographic boundary files as the `us-atlas@3.0.1` npm package carries them (1:10 million) | 7,639 county lines, 1,231 state lines, 507 outline lines |
+| roads (interstate, US, state), rivers, lakes, land | Natural Earth 10m (public domain; its GitHub mirror) | 7,344 road lines in three classes, 2,435 river lines in four, 934 land and 653 water polygons |
+| places | Natural Earth populated places and the US cities table of github.com/kelvins/US-Cities-Database (names and positions from the Census gazetteer) | 29,415 places, 49 state labels |
+| radar sites | `data/generated/severe-sites.json` (the table of milestone 36) | 145 WSR-88Ds, each named for the biggest town within 35 km ("Oklahoma City, OK") |
+
+Coordinates are integers of 1e-4 degree (11 m), delta-coded with zigzag and written as LEB128 varints, one deflate stream (`DecompressionStream('deflate-raw')` in the browser): 1.72 MB inflated, **1.18 MB**.
+The region kept is the lower 48 and a margin; land is cut to a wider rectangle (136 to 52 W, 12 to 58 N) so that the continent does not end at a visible edge when the map is zoomed out as far as it goes (the zoom
+stops where the land stops filling the pane). A county line is as good as a 1:10 million file is (a few hundred metres), which is more than a pane shows below zoom 11.
+NASA GIBS, OpenStreetMap, Carto and Esri tiles are not reachable from the sandbox, and a page that fetched tiles could not be tested from `file://` with the network refused as the rest of the suite is: that is why
+the basemap is vectors, and why a satellite theme (a baked shaded relief) is a later piece.
+
+### Two projections, and why
+The map is Web Mercator, as every web map is, but **the sweep is not drawn in it**: a Mercator picture is 1 / cos(latitude) too big (25 % at the radar the page starts with, 36.7° N), and the meridians' convergence
+turns the map against the radar's own north (about 0.24° at 42 km at that latitude: half a beam). So the radar's gates live in the azimuthal equidistant plane about the radar (`local`, `fromLocal`; range and
+bearing are the ground's, on the mean sphere R = 6371008.8 m), and each vertex of the drawing carries its east and north in metres from the radar, computed in double precision on the CPU. The test of this is
+the operator's own renderer: on a spherical earth the page's drawing agrees with `render()` at 95.5 % of the pixels of a coarse test sweep (the rest are block edges that the Mercator scale moves by up to 0.7 px; a
+mirrored azimuth or a gate off by one would leave 15 %), and the browser test compares it with the CPU reference on a real sweep (below).
+
+### The sweep on the GPU
+A fullscreen mesh of 48 by 48 cells (WebGL2) whose vertices carry (east, north) from the radar. The fragment shader turns that into a range and an azimuth, takes the nearest gate from an **R16I texture of the
+sweep in half units** (-32768 for none) with `texelFetch`, and looks the value up in a **colour texture made from the palette** (RGBA8, steps of 0.25: the table's own interpolation, exactly as `HFSeverePalette.lut`
+makes it, with the unit's scale multiplied in first). Nearest neighbour, so **the gates are blocks at every zoom and nothing is smoothed**; when a gate is smaller than about 2.4 pixels, four taps per pixel
+average it (a sweep seen from the whole country is not a moire). It draws premultiplied, over the map's canvas, and the weak echo is made fainter on the light theme the way RadarScope's own light map does it.
+`HFSevereGL.reference` is the same arithmetic on the CPU; `tests/severe_page.mjs` reads the pixels the GPU drew (software GL: SwiftShader) and holds them to it: **80,678 of 80,901 sampled pixels of a 1440 by 900
+sweep are the same colour** (99.7 %; the rest are block edges), and the storm's core shows as the red and magenta of 50 dBZ and more.
+
+### The operator in Workers, and the storm pack
+- **A Worker pool of up to three** (one fewer than the cores, at least one; built from Blobs of the page's own script texts: a Blob Worker works from `file://`, which was the plan's first risk) runs `HFSevereRadar.scan` at display time. A scan is one
+  tilt: 0.5° by 250 m, 720 radials by 920 gates, **about 0.5 to 0.6 s**, and the **quick scan** used while the radar is dragged is 1° by 1 km, 230 gates, **about 58 ms**. A worker never holds the recording: it gets the
+  header once and each scan carries the five arrays of its frame as bytes (`pack.frameBytes`), so three workers cost three frames, not three recordings. The page keeps 30 sweeps (a sweep is one frame, one tilt, one
+  radar position, quick or full, and the two switches that change the scan: unfolded velocity and clutter) and, if Workers cannot start, scans on the page itself.
+- **The pack** (`HFP1`: "HFP1" and one gzip stream of a 32-bit header length, the header as JSON, and the frames): the grid (84 by 84 by 40, 1000 m cells, 500 m levels), the frame times, the box's motion, the
+  base-state winds, the track of the strongest updraft, and for every frame five arrays: reflectivity (Int8, dBZ), the fall speed (Uint8, 0.25 m/s) and u, v, w (Int8, **0.5 m/s**, clamped at 63.5). 19 frames, 0 to
+  90 minutes every 5: 26.8 MB raw, **3.07 MB** packed (reflectivity 0.44, fall speed 0.34, winds 2.3). `make_pack.mjs` takes any recorded run and a spec of windows (`0-45:5,46-80:1`).
+- **Where the storm is on the ground.** The scenario puts the model's box over northern Oklahoma: the south-west corner of the box at (-110, -35) km from KVNX (Vance AFB, 36.7408 N, 98.1279 W) at 3:00 PM CDT, moving
+  with the model's own motion (8.10 m/s east, 4.94 north), so that the strongest updraft is **34 km from the radar to the 313° at 60 minutes and 28 km away at 90**; the page opens at 4:00 PM on the radar KVNX with
+  the view between the radar and the storm.
+
+### Said plainly
+- *The storm is the model's smooth 1 km supercell.* The velocity has a mesocyclone's couplet (the red and green pair in `radar-app-panes.png`) and no hook, no tornadic vortex, no gate-sized shear: that is the
+  resolution ladder of the answer about hooks (a 250 m nest and a 100 m tornado nest; surface drag; two-moment microphysics) and is not in this milestone.
+- *The 1- and 3-minute chips are off.* A recording with a frame every minute is too big to carry inside a page: a 47-frame one (every minute from minute 46 to 80, every five elsewhere) packed to 10 MB,
+  cropping the box, delta-coding the frames and 1 m/s steps for the winds only brought it to 5 or 6, and a whole 90 minutes of one-minute frames would be about 15 MB (0.16 MB a frame). The chips light up as
+  soon as a recording has such frames, and the live runs (the GPU port of S2b, then S5) will make them real.
+- *The page is 5.8 MB* (the pack as base64 is 4.1, the map 1.6, the code the rest): fine for a preview that is not linked; when it is, the pack and the map move to fetched files that the browser keeps.
+- *Tested in a headless Chromium with software WebGL2* (SwiftShader), not on a phone's GPU or in Safari. It needs WebGL2, Workers and `DecompressionStream` with `deflate-raw` (browsers of 2023 and later); without them
+  it says that the radar could not start (a CPU fallback from the operator's own `render()` is possible and is not built).
+- *The map is the lower 48 only* (a radar elsewhere would have no basemap under it), has no county roads, streets or terrain, and has no satellite theme; the terminal radars (the T-sites) are left out because the
+  operator is the S-band WSR-88D's. The first sweep takes about a second (a scan, then the first frame is drawn); the next ones are scanned ahead.
+- *Not here yet* (the next pieces, in the plan's order): storm-relative velocity with a storm-motion picker, cell tracks with motion vectors, rotation and hail markers from the radar's own data, the rotation-track
+  swath, the cross-section tool (the radar's vertical slice beside the model's true one), four panes, composite reflectivity, echo tops and VIL, warning polygons with the countdown card (no scoring: that is Forecaster's),
+  loading your own `.pal` from a file, PNG and GIF export with the stamp, range folding and a dealiasing algorithm in the operator.
+
+### Next
+Linking the page from the menu is S5 (the Severe card turns on with the editor and the first live runs). Before that, the likeliest steps are storm-relative velocity (it makes a couplet readable) and the cell tracks
+and markers on this page, and in the model the first rung of the hook ladder: run the 1 km storm at 500 m and measure what the hook and the rear-flank downdraft look like against the real statistics.

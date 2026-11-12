@@ -7,7 +7,8 @@
  * What a pack knows about the ground: the box of the model moves over the ground with `motion` (the frame in which the storm stays in the box), its south-west corner at the first frame is
  * at scenario.origin (metres east and north of (lat0, lon0) in the azimuthal equidistant plane of HFSevereGeo), so a radar on the ground has a position in the box that changes with time:
  * `radarBox(t, lat, lon)`. `volume(i)` is a frame as the radar operator takes it (winds in the ground's frame: the model's plus the motion), `sample(i, x, y, z)` the model's own values at a
- * point (the page's probe shows them beside the radar's).
+ * point (the page's probe shows them beside the radar's). `frameBytes(i)` is the five arrays of a frame as one block of bytes: what the page hands a scanning worker, which makes the
+ * volume with `volumeFromFrame` (so that a worker never holds the whole recording).
  * A classic script that sets `globalThis.HFSeverePack`; it needs HFSevereGeo.
  */
 (function () {
@@ -19,6 +20,15 @@
     return new Uint8Array(await rs.arrayBuffer());
   }
 
+  /* a frame as the radar operator takes it, from the five arrays of that frame (f5: Uint8Array of 5 * nz * ny * nx bytes) and the header: the winds in the ground's frame (the model's plus the motion of the box) */
+  function volumeFromFrame(h, f5) {
+    const nx = h.nx, ny = h.ny, nz = h.nz, per = nx * ny * nz, W = h.scale.wind, VZ = h.scale.vz, mo = h.motion || { u: 0, v: 0 }, b = f5.buffer, o = f5.byteOffset;
+    const dbz = new Int8Array(b, o, per), vzb = new Uint8Array(b, o + per, per), ub = new Int8Array(b, o + 2 * per, per), vb = new Int8Array(b, o + 3 * per, per), wb = new Int8Array(b, o + 4 * per, per);
+    const u = new Float32Array(per), v = new Float32Array(per), w = new Float32Array(per), vz = new Float32Array(per);
+    for (let k = 0; k < per; k++) { u[k] = ub[k] * W + mo.u; v[k] = vb[k] * W + mo.v; w[k] = wb[k] * W; vz[k] = vzb[k] * VZ; }
+    return { nx, ny, nz, dx: h.dx, dy: h.dx, dz: h.dz, floor: h.floor, dbz, u, v, w, vz, base: h.base };
+  }
+
   function fromBody(u8) {
     const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength), hl = dv.getUint32(0, true), h = JSON.parse(new TextDecoder().decode(u8.subarray(4, 4 + hl))), base = 4 + hl;
     const nx = h.nx, ny = h.ny, nz = h.nz, per = nx * ny * nz, n = h.times.length, W = h.scale.wind, VZ = h.scale.vz, mo = h.motion || { u: 0, v: 0 }, sc = h.scenario;
@@ -26,11 +36,8 @@
     const P = { h, n, per, nx, ny, nz, dx: h.dx, dz: h.dz, times: h.times, floor: h.floor, scenario: sc, motion: mo, track: h.track, name: h.name };
     const view = (i, c, Cls) => new Cls(u8.buffer, u8.byteOffset + base + (i * 5 + c) * per, per);
     P.frame = (i) => ({ dbz: view(i, 0, Int8Array), vz: view(i, 1, Uint8Array), u: view(i, 2, Int8Array), v: view(i, 3, Int8Array), w: view(i, 4, Int8Array) });
-    P.volume = (i) => {
-      const f = P.frame(i), u = new Float32Array(per), v = new Float32Array(per), w = new Float32Array(per), vz = new Float32Array(per);
-      for (let k = 0; k < per; k++) { u[k] = f.u[k] * W + mo.u; v[k] = f.v[k] * W + mo.v; w[k] = f.w[k] * W; vz[k] = f.vz[k] * VZ; }
-      return { nx, ny, nz, dx: h.dx, dy: h.dx, dz: h.dz, floor: h.floor, dbz: f.dbz, u, v, w, vz, base: h.base };
-    };
+    P.frameBytes = (i) => new Uint8Array(u8.buffer, u8.byteOffset + base + i * 5 * per, 5 * per);
+    P.volume = (i) => volumeFromFrame(h, P.frameBytes(i));
     /* where the box is on the ground at model minute t: the south-west corner, metres east and north of the scenario's point */
     P.corner = (t) => [sc.origin[0] + mo.u * 60 * t, sc.origin[1] + mo.v * 60 * t];
     P.radarBox = (t, lat, lon) => { const l = G.local(sc.lat0, sc.lon0, lat, lon), c = P.corner(t); return { x: l.x - c[0], y: l.y - c[1] }; };
@@ -48,5 +55,5 @@
     return P;
   }
 
-  globalThis.HFSeverePack = { gunzip, fromBody };
+  globalThis.HFSeverePack = { gunzip, fromBody, volumeFromFrame };
 })();
