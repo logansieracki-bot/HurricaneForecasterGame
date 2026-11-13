@@ -6,7 +6,8 @@
  *
  * What a pack knows about the ground: the box of the model moves over the ground with `motion` (the frame in which the storm stays in the box), its south-west corner at the first frame is
  * at scenario.origin (metres east and north of (lat0, lon0) in the azimuthal equidistant plane of HFSevereGeo), so a radar on the ground has a position in the box that changes with time:
- * `radarBox(t, lat, lon)`. `volume(i)` is a frame as the radar operator takes it (winds in the ground's frame: the model's plus the motion), `sample(i, x, y, z)` the model's own values at a
+ * `radarBox(t, lat, lon)`. A recording whose box follows its storm in whole cells (the Lab's: src/severe-lab.js) has a header `drift`, for each frame the metres east and north that the box's corner is from where
+ * `motion` alone puts it; `corner(t)` adds the drift of the latest frame at or before t. `volume(i)` is a frame as the radar operator takes it (winds in the ground's frame: the model's plus the motion), `sample(i, x, y, z)` the model's own values at a
  * point (the page's probe shows them beside the radar's). `frameBytes(i)` is the five arrays of a frame as one block of bytes: what the page hands a scanning worker, which makes the
  * volume with `volumeFromFrame` (so that a worker never holds the whole recording).
  * A pack of version 2 (header `v: 2`) may also carry NESTS, finer volumes of a storm that a finer run (src/severe-nest.js) made inside the box, for the frames in which it has them: the header's `nests` lists
@@ -59,7 +60,8 @@
     P.frameBytes = (i) => new Uint8Array(u8.buffer, u8.byteOffset + base + at(i), at(i + 1) - at(i));
     P.volume = (i) => volumeFromFrame(h, P.frameBytes(i), i);
     /* where the box is on the ground at model minute t: the south-west corner, metres east and north of the scenario's point */
-    P.corner = (t) => [sc.origin[0] + mo.u * 60 * t, sc.origin[1] + mo.v * 60 * t];
+    const drift = h.drift || null;                                                  // a recording whose box follows its storm (the Lab's) says, for each frame, how far the box's corner is from where the uniform motion puts it: it holds from that frame to the next
+    P.corner = (t) => { let d = [0, 0]; if (drift) { let k = 0; for (let q = 0; q < n; q++) if (h.times[q] <= t + 1e-6) k = q; d = drift[k]; } return [sc.origin[0] + mo.u * 60 * t + d[0], sc.origin[1] + mo.v * 60 * t + d[1]]; };
     P.radarBox = (t, lat, lon) => { const l = G.local(sc.lat0, sc.lon0, lat, lon), c = P.corner(t); return { x: l.x - c[0], y: l.y - c[1] }; };
     P.boxLatLon = (t, bx, by) => { const c = P.corner(t); return G.fromLocal(sc.lat0, sc.lon0, c[0] + bx, c[1] + by); };
     /* the model's values at a point of the box (x, y, z metres from the south-west corner and the ground), or null outside it: dBZ, u, v, w (ground frame), the fall speed */
