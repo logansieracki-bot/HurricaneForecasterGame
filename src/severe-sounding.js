@@ -163,7 +163,7 @@
 
   /* a parcel of the given potential temperature and vapour mixing ratio lifted from the ground: dry up to its condensation level, then along the pseudo-adiabat; the CAPE, the CIN, the levels */
   function lift(env, th0, qv0) {
-    const t = env.table, z = t.z, n = z.length, tvP = new Float64Array(n), tvE = new Float64Array(n);
+    const t = env.table, z = t.z, n = z.length, tvP = new Float64Array(n), tvE = new Float64Array(n), path = new Float64Array(n);
     let sat = false, T = th0, lcl = NaN, qp = qv0, ePrev = 0;
     for (let k = 0; k < n; k++) {
       const pk = P0 * Math.pow(t.pi[k], CP / RD), Tenv = t.theta[k] * t.pi[k];
@@ -186,11 +186,11 @@
         const dzk = z[k] - z[k - 1], pm = P0 * Math.pow(0.5 * (t.pi[k] + t.pi[k - 1]), CP / RD), Tm = T - 0.5 * moistLapse(T, qvsAt(T, pm)) * dzk;      // the midpoint rule: the rate at the middle of the layer
         T -= moistLapse(Tm, qvsAt(Tm, pm)) * dzk; qp = qvsAt(T, pk);
       }
-      tvP[k] = T * (1 + RV1 * qp);
+      tvP[k] = T * (1 + RV1 * qp); path[k] = T;
     }
     if (Number.isNaN(lcl)) lcl = z[n - 1];
     const b = buoyancy(z, tvP, tvE, lcl);
-    return { cape: b.cape, cin: b.cin, lcl, lfc: b.lfc, el: b.el };
+    return { cape: b.cape, cin: b.cin, lcl, lfc: b.lfc, el: b.el, path };                                    // path: the parcel's temperature (K) at every level of the table, the dry adiabat to the condensation level and the pseudo-adiabat above
   }
 
   /* the significant tornado parameter of Thompson et al. (2003), fixed layers: the mixed-layer CAPE over 1500 J/kg, the condensation level (1 at 1000 m or less, 0 at 2000 m or more), the helicity of 0-1 km over 150,
@@ -208,7 +208,7 @@
     const b = bunkers(env), c = o.c || b.right, shear = (z1) => Math.hypot(env.uG(z1) - env.uG(0), env.vG(z1) - env.vG(0));
     const s01 = shear(1000), s03 = shear(3000), s06 = shear(6000), h01 = srh(env, 0, 1000, c), h03 = srh(env, 0, 3000, c);
     const stp = stpOf(ml.cape, ml.lcl, h01, s06, ml.cin);
-    return { sbcape: sb.cape, sbcin: sb.cin, sblcl: sb.lcl, sblfc: sb.lfc, sbel: sb.el, mlcape: ml.cape, mlcin: ml.cin, mllcl: ml.lcl, mllfc: ml.lfc, mlel: ml.el,
+    return { sbcape: sb.cape, sbcin: sb.cin, sblcl: sb.lcl, sblfc: sb.lfc, sbel: sb.el, mlcape: ml.cape, mlcin: ml.cin, mllcl: ml.lcl, mllfc: ml.lfc, mlel: ml.el, mlpath: ml.path, sbpath: sb.path,
       shear01: s01, shear03: s03, shear06: s06, srh01: h01, srh03: h03, motion: { u: c.u, v: c.v }, bunkers: b, stp };
   }
 

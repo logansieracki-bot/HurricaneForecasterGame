@@ -1,6 +1,7 @@
 /* Severe: the analysis builder (docs/severe-plan.md 6.2): a drawn day (lows, highs, fronts, a dryline, troughs, jets, arrows) turned into the pressure, the air masses, the winds and, at any point, a sounding.
  *
- *   const A = HFSevereAnalysis.create(drawing);        // drawing: { lat, base, aloft: { speed, from }, objects: [...] }, positions in km east and north of the drawing's centre, speeds in m/s, pressures in hPa
+ *   const A = HFSevereAnalysis.create(drawing);        // drawing: { lat, base, aloft: { speed, from }, air: { warm: { qv0: 14 } }, objects: [...] }, positions in km east and north of the drawing's centre, speeds in m/s, pressures in hPa;
+ *                                                      // `air` changes any key of the spec of an air mass (warm, cold, dry or cool: the keys of HFSevereSounding.make, e.g. theta0, qv0, ml, cap)
  *   A.pressure(x, y, t)                                // sea-level pressure, hPa; t is hours after the drawing
  *   A.surface(x, y, t)                                 // { p, T, Td, u, v, speed, dir } at the ground (C, m/s, the wind's direction in degrees from which it blows)
  *   A.sounding(x, y, t, { dz, top })                   // an environment (HFSevereSounding.fromProfile: the object `make` returns) at that point; the indices are HFSevereSounding.indices(env)
@@ -38,11 +39,11 @@
     cool: { theta0: 291, qv0: 12, ml: 200, cap: 5, capDepth: 600, rhMax: 0.95, rhDry: 0.4, ztr: 12000, thetaTr: 344, tTr: 213, thExp: 1.25, rhExp: 1.25 },
   };
   const tableCache = {};
-  function airTables(dz, top) {                                               // the four air masses on the grid of this analysis: theta and the vapour at every level (cached)
-    const key = dz + '/' + top; if (tableCache[key]) return tableCache[key];
+  function airTables(dz, top, over) {                                         // the four air masses on the grid of this analysis: theta and the vapour at every level (cached); `over` changes keys of an air mass's spec
+    const key = dz + '/' + top + '/' + (over ? JSON.stringify(over) : ''); if (tableCache[key]) return tableCache[key];
     const n = Math.round(top / dz) + 1, out = {}, z = Float64Array.from({ length: n }, (_, k) => k * dz);
     for (const name of Object.keys(AIR_SPEC)) {
-      const t = SND.make(Object.assign({}, AIR_SPEC[name], { winds: [[0, 0, 0], [12000, 0, 0]], jets: [], motion: { u: 0, v: 0 } })).table, step = Math.round(dz / (t.z[1] - t.z[0]));
+      const t = SND.make(Object.assign({}, AIR_SPEC[name], over && over[name], { winds: [[0, 0, 0], [12000, 0, 0]], jets: [], motion: { u: 0, v: 0 } })).table, step = Math.round(dz / (t.z[1] - t.z[0]));
       out[name] = { theta: Float64Array.from({ length: n }, (_, k) => t.theta[k * step]), qv: Float64Array.from({ length: n }, (_, k) => t.qv[k * step]), pi: Float64Array.from({ length: n }, (_, k) => t.pi[k * step]) };
     }
     return (tableCache[key] = { z, n, air: out });
@@ -84,7 +85,7 @@
       if (o.type === 'front' && !FRONT[o.kind || 'cold']) throw new Error('severe-analysis: no front of kind ' + o.kind);
     }
     const mv = (o, t) => { const m = o.motion || { u: 0, v: 0 }; return [m.u * t * KMH, m.v * t * KMH]; };            // how far an object has gone, km, in t hours
-    const T = airTables(opts.dz, opts.top);
+    const T = airTables(opts.dz, opts.top, D.air);
     const strength = (o) => (o.type === 'dryline' ? -1 : o.type === 'front' ? (o.contrast === undefined ? FRONT[o.kind || 'cold'].contrast : o.contrast) : o.type === 'outflow' ? (o.contrast === undefined ? 4 : o.contrast) : 99);
     const ordered = objs.slice().sort((a, b) => strength(a) - strength(b));                                  // where air masses overlap the coldest wins: the dry air first, then the lines by their contrast, the largest last
     const nominal = {};                                                                                       // how different the cold and the cool air are from the warm at the ground (theta, K): the contrast a line of 1 means
@@ -143,7 +144,7 @@
     /* ---- the profile at a point: the warm air mass with the others let in by the lines' weights at every height ---- */
     function sounding(x, y, t, o) {
       t = t || 0;
-      const dz = (o && o.dz) || opts.dz, top = (o && o.top) || opts.top, W = dz === opts.dz && top === opts.top ? T : airTables(dz, top), n = W.n, z = W.z;
+      const dz = (o && o.dz) || opts.dz, top = (o && o.top) || opts.top, W = dz === opts.dz && top === opts.top ? T : airTables(dz, top, D.air), n = W.n, z = W.z;
       const th = Float64Array.from(W.air.warm.theta), qv = Float64Array.from(W.air.warm.qv), piG = Math.pow(pressure(x, y, t) / 1000, RD / CP);
       for (const ob of ordered) {
         const [sx, sy] = mv(ob, t);

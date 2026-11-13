@@ -257,5 +257,22 @@ const north = (x) => [[x, -3000], [x, 3000]];                                   
   check('a moist tongue with no line is refused (' + (mm || '').slice(0, 50) + ')', /a moisture needs a line of at least two points/.test(mm));
 }
 
+/* 12. The air masses of a day can be changed: `air` changes keys of the spec of an air mass (the warmth, the moisture, the cap), on every grid, and one analysis's change never leaks into another. */
+{
+  const base = mk([]), moist = mk([], { air: { warm: { qv0: 12 } } }), warmer = mk([], { air: { warm: { theta0: 305 } } }), back = mk([]);
+  const e0 = base.surface(0, 0, 0), e1 = moist.surface(0, 0, 0), e2 = warmer.surface(0, 0, 0), e3 = back.surface(0, 0, 0), x0 = S.indices(base.sounding(0, 0, 0)), x1 = S.indices(moist.sounding(0, 0, 0));
+  check('a drier warm air (qv0 12 g/kg for 15.5) has a lower dew point (' + e1.Td.toFixed(2) + ' C for ' + e0.Td.toFixed(2) + ') and less CAPE (' + x1.mlcape.toFixed(0) + ' for ' + x0.mlcape.toFixed(0) + '), the same temperature (' + e1.T.toFixed(2) + ', ' + e0.T.toFixed(2) + ')',
+    e0.Td - e1.Td > 4 && x1.mlcape < 0.7 * x0.mlcape && near(e1.T, e0.T, 0.05));
+  check('a warmer warm air (theta0 305 K for 301) is 4 K warmer at the ground, up to the Exner function (' + (e2.T - e0.T).toFixed(2) + ' K)', near(e2.T - e0.T, 4 * pi(1015), 0.05));
+  check('an analysis made after one with a change has none of it: the same numbers as the first (' + e3.Td.toFixed(2) + ' C, ' + e3.T.toFixed(2) + ' C against ' + e0.Td.toFixed(2) + ' C, ' + e0.T.toFixed(2) + ' C), and the one with the change is still itself (' + moist.surface(0, 0, 0).Td.toFixed(2) + ')',
+    e3.Td === e0.Td && e3.T === e0.T && moist.surface(0, 0, 0).Td === e1.Td);
+  const g = moist.sounding(0, 0, 0, { dz: 250, top: 16000 }), g0 = base.sounding(0, 0, 0, { dz: 250, top: 16000 });
+  check('the change holds on another grid of the same day (dz 250 m, top 16 km: the vapour at the ground ' + (g.table.qv[0] * 1000).toFixed(2) + ' g/kg for ' + (g0.table.qv[0] * 1000).toFixed(2) + ' without it, and the change itself ' + (e1.Td - e0.Td).toFixed(2) + ' K of dew point)',
+    near(g.table.qv[0] * 1000, 12, 0.3) && near(g0.table.qv[0] * 1000, 15.5, 0.4));
+  const cold = mk([{ type: 'front', kind: 'cold', pts: north(0), cold: 'left', contrast: 12 }], { air: { cold: { theta0: 283 } } }), cold0 = mk([{ type: 'front', kind: 'cold', pts: north(0), cold: 'left', contrast: 12 }]);
+  check('a change to the cold air keeps the front\'s drawn contrast at the ground (12 K: ' + (cold.surface(-600, 0, 0).T - cold.surface(600, 0, 0).T).toFixed(2) + ' K for ' + (cold0.surface(-600, 0, 0).T - cold0.surface(600, 0, 0).T).toFixed(2) + ') and changes the air aloft a little, as the contrast is held at the ground (the 3 km temperature ' + (cold.sounding(-600, 0, 0).table.theta[30] * cold.sounding(-600, 0, 0).table.pi[30] - 273.15).toFixed(2) + ' C for ' + (cold0.sounding(-600, 0, 0).table.theta[30] * cold0.sounding(-600, 0, 0).table.pi[30] - 273.15).toFixed(2) + ')',
+    near(cold.surface(-600, 0, 0).T - cold.surface(600, 0, 0).T, -12, 0.1) && near(cold0.surface(-600, 0, 0).T - cold0.surface(600, 0, 0).T, -12, 0.1) && Math.abs(cold.sounding(-600, 0, 0).table.theta[30] - cold0.sounding(-600, 0, 0).table.theta[30]) > 0.3);
+}
+
 console.log('\n' + passed + ' passed, ' + failed + ' failed (' + ((Date.now() - t0) / 1000).toFixed(1) + ' s)');
 process.exit(failed ? 1 : 0);

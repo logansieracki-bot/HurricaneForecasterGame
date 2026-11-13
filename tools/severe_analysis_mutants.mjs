@@ -13,6 +13,12 @@ const FILES = { core: 'severe-core.js', snd: 'severe-sounding.js', ana: 'severe-
 const SRC = Object.fromEntries(Object.entries(FILES).map(([k, f]) => [k, readFileSync(join(root, 'src/' + f), 'utf8')]));
 // [name, file, the text to find (once), its replacement]
 const M = [
+  // the air masses of a day can be changed
+  ['air-override-ignored', 'ana', "Object.assign({}, AIR_SPEC[name], over && over[name], { winds", "Object.assign({}, AIR_SPEC[name], { winds"],
+  ['air-override-order', 'ana', "Object.assign({}, AIR_SPEC[name], over && over[name], { winds", "Object.assign({}, over && over[name], AIR_SPEC[name], { winds"],
+  ['air-cache-key', 'ana', "const key = dz + '/' + top + '/' + (over ? JSON.stringify(over) : '');", "const key = dz + '/' + top;"],
+  ['air-main-tables', 'ana', 'const T = airTables(opts.dz, opts.top, D.air);', 'const T = airTables(opts.dz, opts.top);'],
+  ['air-other-grid', 'ana', 'airTables(dz, top, D.air), n = W.n', 'airTables(dz, top), n = W.n'],
   // the pressure
   ['low-depth-default', 'ana', '(o.depth === undefined ? 15 : o.depth) + (o.deepen', '(o.depth === undefined ? 12 : o.depth) + (o.deepen'],
   ['low-size-default', 'ana', '(o.size || 400)', '(o.size || 300)'],

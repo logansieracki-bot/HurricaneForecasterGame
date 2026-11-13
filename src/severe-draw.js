@@ -7,6 +7,11 @@
  *   HFSevereDraw.moved(o, t)                          // an object as it is at hour t (its points moved along its arrow)
  *   HFSevereDraw.History(initial)                     // the drawing's undo and redo: .push(next), .undo(), .redo(), .now
  *   HFSevereDraw.skewT                                // the geometry of a skew-T chart: x and y of a temperature and a pressure, the dry adiabats and the lines of constant mixing ratio
+ *   HFSevereDraw.windBarb(kt)                         // a wind in knots as a station model's barb: { kt (to the nearest 5), calm, pennants (50), longs (10), shorts (5) }
+ *   HFSevereDraw.simplify(pts, tol)                   // a sketched line with fewer points (Douglas-Peucker: no point of the original is further than tol from the result; the ends are kept)
+ *   HFSevereDraw.along(pts, f)                        // the point a fraction f of the way along a polyline: { x, y, ang } (ang: the direction of the piece there)
+ *   HFSevereDraw.heading(u, v), HFSevereDraw.velocity(speed, heading)   // the compass heading an arrow points to (degrees clockwise from north) from its east and north parts, and back
+ *   HFSevereDraw.symbolSides(o)                       // what a line's symbols are and on which side of the way it was drawn: [{ shape: 'tooth' | 'semi' | 'scallop' | 'tick', side: 'left' | 'right' }] (alternating when there are two)
  *
  * A classic script that sets `globalThis.HFSevereDraw`.
  */
@@ -124,6 +129,61 @@
     return H;
   }
 
+  /* ---- a wind as a station model's barb: pennants of 50 kt, long barbs of 10, short ones of 5, rounded to the nearest 5 ---- */
+  function windBarb(kt) {
+    const n = kt >= 0 ? Math.round(kt / 5) * 5 : 0; if (n < 5) return { kt: n, calm: true, pennants: 0, longs: 0, shorts: 0 };
+    let r = n; const pennants = Math.floor(r / 50); r -= 50 * pennants; const longs = Math.floor(r / 10); r -= 10 * longs;
+    return { kt: n, calm: false, pennants, longs, shorts: r >= 5 ? 1 : 0 };
+  }
+
+  /* ---- a sketched line with fewer points: Douglas-Peucker with an explicit stack ---- */
+  function simplify(pts, tol) {
+    const n = pts.length; if (n < 3) return pts.map((p) => p.slice());
+    const keep = new Uint8Array(n); keep[0] = keep[n - 1] = 1; const stack = [[0, n - 1]];
+    while (stack.length) {
+      const [a, b] = stack.pop(); let far = -1, fd = tol;
+      for (let i = a + 1; i < b; i++) {
+        const ax = pts[a][0], ay = pts[a][1], vx = pts[b][0] - ax, vy = pts[b][1] - ay, L2 = vx * vx + vy * vy, t = L2 > 0 ? Math.max(0, Math.min(1, ((pts[i][0] - ax) * vx + (pts[i][1] - ay) * vy) / L2)) : 0;
+        const d = Math.hypot(pts[i][0] - (ax + vx * t), pts[i][1] - (ay + vy * t)); if (d > fd) { fd = d; far = i; }
+      }
+      if (far >= 0) { keep[far] = 1; stack.push([a, far], [far, b]); }
+    }
+    return pts.filter((_, i) => keep[i]).map((p) => p.slice());
+  }
+
+  /* ---- the point a fraction of the way along a polyline ---- */
+  function along(pts, f) {
+    let total = 0; for (let i = 0; i < pts.length - 1; i++) total += Math.hypot(pts[i + 1][0] - pts[i][0], pts[i + 1][1] - pts[i][1]);
+    if (!(total > 0)) return { x: pts[0][0], y: pts[0][1], ang: 0 };
+    let want = Math.max(0, Math.min(1, f)) * total;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const dx = pts[i + 1][0] - pts[i][0], dy = pts[i + 1][1] - pts[i][1], L = Math.hypot(dx, dy);
+      if (L > 0 && (want <= L || i === pts.length - 2)) { const t = Math.min(1, want / L); return { x: pts[i][0] + dx * t, y: pts[i][1] + dy * t, ang: Math.atan2(dy, dx) }; }
+      want -= L;
+    }
+    return { x: pts[0][0], y: pts[0][1], ang: 0 };
+  }
+
+  /* ---- an arrow's compass heading (the way it points: degrees clockwise from north) and back ---- */
+  const heading = (u, v) => ((Math.atan2(u, v) * 180 / Math.PI) % 360 + 360) % 360;
+  const velocity = (speed, hd) => ({ u: speed * Math.sin(hd * Math.PI / 180), v: speed * Math.cos(hd * Math.PI / 180) });
+
+  /* ---- the symbols of a line and the side they stand on: a cold front's teeth point the way it moves (the warm side), a warm front's half circles too (it moves towards the cold air), a stationary front has
+        both (teeth on the warm side, half circles on the cold side), an occluded one both on the side it moves towards; a dryline's scallops stand on the moist side, an outflow boundary's ticks on the warm side ---- */
+  function symbolSides(o) {
+    const opp = (s) => (s === 'left' ? 'right' : 'left');
+    if (o.type === 'front') {
+      const cold = o.cold || 'left', warm = opp(cold), kind = o.kind || 'cold';
+      if (kind === 'cold') return [{ shape: 'tooth', side: warm }];
+      if (kind === 'warm') return [{ shape: 'semi', side: cold }];
+      if (kind === 'stationary') return [{ shape: 'tooth', side: warm }, { shape: 'semi', side: cold }];
+      if (kind === 'occluded') return [{ shape: 'tooth', side: warm }, { shape: 'semi', side: warm }];
+    }
+    if (o.type === 'dryline') return [{ shape: 'scallop', side: opp(o.dry || 'left') }];
+    if (o.type === 'outflow') return [{ shape: 'tick', side: opp(o.cool || 'left') }];
+    return [];
+  }
+
   /* ---- the skew-T chart: x = T (C) skewed by ln p, y = ln p; the unit of x is a degree of temperature at 1000 hPa ---- */
   const skewT = {
     SKEW: 35,                                                                                              // degrees of x per unit of ln(1000 / p)
@@ -134,5 +194,5 @@
     mixingRatioLine: (w, p) => { const e = w * p / (622 + w), l = Math.log(e / 6.112); return 243.5 * l / (17.67 - l); },    // the dew point (C) at p of a mixing ratio w (g/kg): Bolton's
   };
 
-  globalThis.HFSevereDraw = { contourLines, symbolsAlong, nearest, pick, moved, History, skewT };
+  globalThis.HFSevereDraw = { contourLines, symbolsAlong, nearest, pick, moved, History, skewT, windBarb, simplify, along, heading, velocity, symbolSides };
 })();

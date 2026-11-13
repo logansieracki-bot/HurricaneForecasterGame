@@ -77,6 +77,11 @@ const M = [
   ['shear-layer-1km', 'snd', 's01 = shear(1000), s03 = shear(3000), s06 = shear(6000), h01 = srh(env, 0, 1000, c), h03 = srh(env, 0, 3000, c)', 's01 = shear(500), s03 = shear(3000), s06 = shear(6000), h01 = srh(env, 0, 1000, c), h03 = srh(env, 0, 3000, c)'],
   ['helicity-layer-3km', 'snd', 'h03 = srh(env, 0, 3000, c)', 'h03 = srh(env, 0, 2000, c)'],
   ['indices-storm-motion', 'snd', 'c = o.c || b.right', 'c = o.c || b.left'],
+  // the parcel's path
+  ['path-dry-adiabat', 'snd', 'T = th0 * t.pi[k];\n        const qs', 'T = th0 * t.pi[0];\n        const qs'],
+  ['path-surface-parcel', 'snd', 'mlpath: ml.path, sbpath: sb.path,', 'mlpath: ml.path, sbpath: ml.path,'],
+  ['path-ml-parcel', 'snd', 'mlpath: ml.path, sbpath: sb.path,', 'mlpath: sb.path, sbpath: sb.path,'],
+  ['path-moist-step', 'snd', 'T -= moistLapse(Tm, qvsAt(Tm, pm)) * dzk; qp = qvsAt(T, pk);\n      }\n      tvP[k]', 'T -= 0.0065 * dzk; qp = qvsAt(T, pk);\n      }\n      tvP[k]'],
   // the buoyancy integral
   ['buoyancy-cin-sign', 'snd', 'k++) if (bl[k] < 0) cin += bl[k]', 'k++) if (bl[k] < 0) cin -= bl[k]'],
   ['buoyancy-cin-counts-positive', 'snd', 'k++) if (bl[k] < 0) cin += bl[k] * (z[k + 1] - z[k]);', 'k++) cin += bl[k] * (z[k + 1] - z[k]);'],

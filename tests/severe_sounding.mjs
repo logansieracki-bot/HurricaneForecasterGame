@@ -207,5 +207,17 @@ check('the surface parcel\'s CAPE of the Weisman-Klemp day is ' + ixw.sbcape.toF
   check('a parcel that is saturated at the ground (22 g/kg of vapour at 300 K, much more than the day\'s 14) has its condensation level there (' + sat.lcl + ' m) and a CAPE of its own, a finite number larger than the day\'s (' + sat.cape.toFixed(0) + ' J/kg)', sat.lcl === 0 && Number.isFinite(sat.cape) && sat.cape > 4000 && sat.cape < 20000);
 }
 
+/* The parcel's path (for a skew-T): the temperature of the mixed-layer and of the surface parcel at every level of the table, the dry adiabat to its condensation level and the pseudo-adiabat above it. */
+{
+  const e = S.make(S.presets.tornado), t = e.table, ix = S.indices(e); let th = 0, qv = 0, n = 0; for (let k = 0; t.z[k] <= 1000; k++) { th += t.theta[k]; qv += t.qv[k]; n++; }
+  const thMl = th / n, below = [], above = []; for (let k = 0; k < t.z.length; k++) (t.z[k] < ix.mllcl - 1 ? below : above).push(k);
+  const worstDry = Math.max(...below.map((k) => Math.abs(ix.mlpath[k] - thMl * t.pi[k])));
+  check('the mixed-layer parcel\'s path has a temperature for every level of the table (' + ix.mlpath.length + ' of ' + t.z.length + ') and follows the dry adiabat, theta of the mixed layer (' + thMl.toFixed(2) + ' K) times the Exner function, below its condensation level at ' + ix.mllcl.toFixed(0) + ' m (the worst of ' + below.length + ' levels ' + worstDry.toExponential(1) + ' K)',
+    ix.mlpath.length === t.z.length && below.length > 5 && worstDry < 1e-9 && ix.mlpath instanceof Float64Array);
+  const warmer = above.filter((k) => k > 0 && t.z[k] > ix.mllcl + 300 && t.z[k] < 8000).every((k) => ix.mlpath[k] > thMl * t.pi[k] + 0.5), cooling = above.slice(1).every((k, j) => ix.mlpath[k] < ix.mlpath[above[j]]);
+  check('above it the parcel is on the pseudo-adiabat: it cools with height (' + cooling + ') and stays warmer than the dry adiabat would have it (at 4 km ' + ix.mlpath[t.z.indexOf(4000)].toFixed(1) + ' K against ' + (thMl * t.pi[t.z.indexOf(4000)]).toFixed(1) + ' K), and the surface parcel starts at the temperature of the ground (' + ix.sbpath[0].toFixed(3) + ' K against ' + (t.theta[0] * t.pi[0]).toFixed(3) + ' K)',
+    warmer && cooling && near(ix.sbpath[0], t.theta[0] * t.pi[0], 1e-9) && ix.sbpath.length === t.z.length);
+}
+
 console.log(passed + ' passed, ' + failed + ' failed');
 process.exit(failed ? 1 : 0);
