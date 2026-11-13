@@ -125,6 +125,10 @@ function allCells(P, nf, step, nestStep, ov) {                                  
 { const o = join(dir, 'g4.hfp'), r = pack(jp, o, 'all', { AT: '51.4:0:0' }), { P: F } = read(o), c = F.corner(51);
   check('an AT minute between two frames takes the nearest frame\'s updraft (51.4: the frame at 51: ' + ((c[0] + TRACK[1][0]) / 1000).toFixed(3) + ' km)', r.code === 0 && near(c[0] + TRACK[1][0], 0, 1) && near(c[1] + TRACK[1][1], 0, 1)); }
 
+{ const o = join(dir, 'g5.hfp'), r = pack(jp, o, 'all', { AT: '51:10:20', ON: '3,-4' }), { P: H5 } = read(o), c = H5.corner(51), c2 = H5.corner(52);
+  check('ON=3,-4 puts the box\'s point (3, -4) km, not its updraft (at ' + (TRACK[1][0] / 1000) + ', ' + (TRACK[1][1] / 1000) + '), at AT (10 km east, 20 north): the point is at (' + ((c[0] + 3000) / 1000).toFixed(3) + ', ' + ((c[1] - 4000) / 1000).toFixed(3) + ') at minute 51 and the box moves on by the motion',
+    r.code === 0 && near(c[0] + 3000, 10000, 1) && near(c[1] - 4000, 20000, 1) && near(c2[0] - c[0], MOTION.u * 60, 1) && near(c2[1] - c[1], MOTION.v * 60, 1)); }
+
 /* the name, and the refusals */
 { const o = join(dir, 'n.hfp'), r = pack(jp, o, 'all', { NAME: 'A test storm' }), r0 = read(outA).P.name;
   check('the name is the one given, or says the grids (' + read(o).P.name + '; ' + r0 + ')', r.code === 0 && read(o).P.name === 'A test storm' && /500 m/.test(r0) && /100 m nest/.test(r0)); }

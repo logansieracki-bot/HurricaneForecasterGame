@@ -11,7 +11,7 @@
 //   CDX=100 (the child's cell)  CDZ=200 (its level)  CL=12 (km, its side)  RATIO=4 (child steps per parent step)  DRAG=1  Z0=0.1 (m)  KHC=0.25 (child viscosity: KHC * CDX m2/s)
 //   AGREE_EVERY=60 (s between the lines that set the child against its parent: means and rms differences at four levels inside the child; 0 for none)
 //   PERTURB=0 (K: random noise of this amplitude on theta in the child's lowest 3 km at its start, for copies of one storm that differ by a breath)  SEED=1
-//   FRAME_EVERY=60 (s between the child's frames; 0 for none)  PARENT_FRAMES=1 (the parent's whole box at the same times, for a pack)  DIAG_EVERY=10 (s)  CENTRE=auto|vort|x,y (km, the child's centre in the parent's box: auto the strongest updraft, vort the strongest rotation at 750 m near it)  FRAME_UV=auto|u,v (m/s, the child's frame over the parent's)
+//   FRAME_EVERY=60 (s between the child's frames; 0 for none)  PARENT_FRAMES=1 (the parent's whole box at the same times, for a pack)  DIAG_EVERY=10 (s)  CENTRE=auto|vort|vort@x,y|x,y (km, the child's centre in the parent's box: auto the strongest updraft, vort the strongest rotation at 750 m near it, vort@x,y near that point)  FRAME_UV=auto|u,v (m/s, the child's frame over the parent's)
 // The child's frames: <out>.cdbz.i8 (reflectivity, dBZ rounded, -30 for none, in the order frame, level, y, x), <out>.cvz.u8 (the reflectivity-weighted fall speed, 0.25 m/s downward, 0 for none, the same order),
 // <out>.cuvw.i16 (u, v, w in 0.01 m/s at the cell centres, in the child's frame, order frame, component, level, y, x) and <out>.json (grid, times, the parent's motion over the ground, the child's frame, where the child lies, its south-west corner in the box at each frame, the parent's grid, its updraft track and the base state);
 // with PARENT_FRAMES the parent's box at the same times in the same kinds of files (<out>.pdbz.i8, <out>.pvz.u8, <out>.puvw.i16: tools/severe_research/make_nest_pack.mjs makes a pack of the two); the log has, every DIAG_EVERY seconds, the strongest rotation,
@@ -128,10 +128,11 @@ if (mode === 'parent') {
   const track = head.track, last = track[track.length - 1], prev = track[Math.max(0, track.length - 11)];
   const mv = process.env.FRAME_UV && process.env.FRAME_UV !== 'auto' ? process.env.FRAME_UV.split(',').map(Number) : [(last[1] - prev[1]) / ((last[0] - prev[0]) * 60 || 1), (last[2] - prev[2]) / ((last[0] - prev[0]) * 60 || 1)];
   const fr = { u: +mv[0].toFixed(2), v: +mv[1].toFixed(2) };
-  let cen = process.env.CENTRE && process.env.CENTRE !== 'auto' && process.env.CENTRE !== 'vort' ? process.env.CENTRE.split(',').map((v) => +v * 1000) : [last[1], last[2]];
-  if (process.env.CENTRE === 'vort') {                       // the strongest vertical vorticity at 750 m within 10 km of the strongest updraft
-    const v = vort(parent, 1, Math.floor((last[1] - 10000) / PDX), Math.ceil((last[1] + 10000) / PDX), Math.floor((last[2] - 10000) / PDX), Math.ceil((last[2] + 10000) / PDX));
-    cen = [v.i * PDX, v.j * PDX]; console.log('the strongest rotation at 750 m in the parent: ' + (v.z * 1000).toFixed(1) + ' 1e-3/s at (' + (cen[0] / 1000).toFixed(1) + ', ' + (cen[1] / 1000).toFixed(1) + ') km, ' + (Math.hypot(cen[0] - last[1], cen[1] - last[2]) / 1000).toFixed(1) + ' km from the updraft');
+  const CV = /^vort@([\d.]+),([\d.]+)$/.exec(process.env.CENTRE || ''), anchor = CV ? [+CV[1] * 1000, +CV[2] * 1000] : [last[1], last[2]];                       // vort@x,y: the strongest rotation near that point (km), when the strongest updraft is another storm's
+  let cen = process.env.CENTRE && process.env.CENTRE !== 'auto' && process.env.CENTRE !== 'vort' && !CV ? process.env.CENTRE.split(',').map((v) => +v * 1000) : [last[1], last[2]];
+  if (process.env.CENTRE === 'vort' || CV) {                 // the strongest vertical vorticity at 750 m within 10 km of the strongest updraft (or of the point given)
+    const v = vort(parent, 1, Math.floor((anchor[0] - 10000) / PDX), Math.ceil((anchor[0] + 10000) / PDX), Math.floor((anchor[1] - 10000) / PDX), Math.ceil((anchor[1] + 10000) / PDX));
+    cen = [v.i * PDX, v.j * PDX]; console.log('the strongest rotation at 750 m in the parent: ' + (v.z * 1000).toFixed(1) + ' 1e-3/s at (' + (cen[0] / 1000).toFixed(1) + ', ' + (cen[1] / 1000).toFixed(1) + ') km, ' + (Math.hypot(cen[0] - anchor[0], cen[1] - anchor[1]) / 1000).toFixed(1) + ' km from the ' + (CV ? 'point given' : 'updraft'));
   }
   const x0 = Math.round((cen[0] - CL / 2) / PDX) * PDX, y0 = Math.round((cen[1] - CL / 2) / PDX) * PDX, nxc = Math.round(CL / CDX), nzc = Math.round(NZ * DZ / CDZ);
   const mot = head.motion, frame = { u: mot.u + fr.u, v: mot.v + fr.v };                  // the child's frame over the ground

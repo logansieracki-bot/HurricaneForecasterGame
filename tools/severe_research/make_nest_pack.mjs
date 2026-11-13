@@ -6,7 +6,7 @@
 //   node tools/severe_research/make_nest_pack.mjs <child.json> <out.hfp> [spec="all"] ["name"]
 // spec: windows `from-to:every` in model minutes (since the storm's start), comma-separated, as in make_pack.mjs; "all" keeps every frame the run recorded. Settings (environment):
 //   SITE=KVNX (the radar the page starts with: an id of data/generated/severe-sites.json)  AT=85:-30:25 (minute:east km:north km, where the strongest updraft of the box is that minute, from the radar; it fixes
-//   where the box lies on the ground: the radar stays and the box, which moves with the storm, goes by)  CLOCK=15:00 (the local time at model minute 0)  TZ=CDT
+//   where the box lies on the ground: the radar stays and the box, which moves with the storm, goes by; ON=x,y km of the box instead of the updraft: the vortex, say, when another cell has the strongest updraft)  CLOCK=15:00 (the local time at model minute 0)  TZ=CDT
 import { readFileSync, createWriteStream } from 'node:fs';
 import { createGzip } from 'node:zlib';
 import { once } from 'node:events';
@@ -32,12 +32,12 @@ const WBOX = 0.5, WNEST = cmax > 63.5 ? 1 : 0.5;                                
 
 // where the box lies on the ground: the radar (the site) is the point; at the minute of AT the strongest updraft of the box is at (east, north) km from it
 const [atMin, atE, atN] = process.env.AT ? process.env.AT.split(':').map(Number) : [];
-const mot = run.motion;
+const mot = run.motion, ON = process.env.ON ? process.env.ON.split(',').map(Number) : null;               // ON=x,y (km): the point of the box that AT places (where it is at the minute of the nearest frame), instead of the strongest updraft
 let origin;
 {
   const m = isFinite(atMin) ? atMin : keep[Math.floor(keep.length / 2)][0];                  // the middle of the kept frames unless AT says
   let near = keep[0][1], dn = 1e9; keep.forEach(([t, i]) => { if (Math.abs(t - m) < dn) { dn = Math.abs(t - m); near = i; } });
-  const tr = PR.track[near], e = isFinite(atE) ? atE : -30, nn = isFinite(atN) ? atN : 25, tm = minutes[near];
+  const tr = ON ? [ON[0] * 1000, ON[1] * 1000] : PR.track[near], e = isFinite(atE) ? atE : -30, nn = isFinite(atN) ? atN : 25, tm = minutes[near];
   origin = [Math.round(e * 1000 - tr[0] - mot.u * 60 * tm), Math.round(nn * 1000 - tr[1] - mot.v * 60 * tm)];            // the box's south-west corner at model minute 0, from the site (P.corner(t) = origin + motion * 60 * t)
 }
 
