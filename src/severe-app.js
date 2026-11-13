@@ -56,6 +56,7 @@
       mode: () => (workers.length ? 'workers:' + workers.length : 'inline'),
       scan(frame, opts, prio) { return new Promise((resolve, reject) => { queue.push({ id: ++seq, frame, opts, prio: prio || 0, resolve, reject }); pump(); }); },
       busy: () => queue.length + inflight.size,
+      dispose() { for (const w of workers) w.terminate(); workers = []; idle = []; for (const j of queue) j.reject(new Error('cancelled')); queue.length = 0; },
       cancelBelow(prio) { for (let i = queue.length - 1; i >= 0; i--) if (queue[i].prio >= prio) { queue[i].reject(new Error('cancelled')); queue.splice(i, 1); } },
     };
   }
@@ -325,6 +326,20 @@
     setT(nt, true);
   }
 
+  /* ---- another storm: the page plays the pack it is given (the Lab's, or a file's) ---- */
+  async function setPack(p, o) {
+    o = o || {}; setPlaying(false);
+    const old = scanner; pack = p; cache.clear(); pending.clear();
+    scanner = await makeScanner(); if (old && old.dispose) old.dispose();
+    const sc = pack.scenario, i0 = geo.points.site.names.indexOf(sc.radar); if (i0 < 0) throw new Error('no radar ' + sc.radar);
+    const s0 = siteInfo(i0); S.radar = { id: s0.id, custom: false, name: s0.name, lat: s0.lat, lon: s0.lon };
+    if (!hasEvery(S.interval)) S.interval = [5, 10, 3, 1].find(hasEvery) || 5;
+    const want = o.t === undefined ? 60 : o.t, near = pack.times.reduce((b, t, i) => (Math.abs(t - want) < Math.abs(pack.times[b] - want) ? i : b), 0); S.t = pack.times[near]; S.frame = frameAt(S.t);
+    const tr = pack.track[S.frame], c = pack.boxLatLon(pack.times[S.frame], tr[0], tr[1]), mid = { lat: (c.lat + S.radar.lat) / 2, lon: (c.lon + S.radar.lon) / 2 };
+    for (const pn of panes) { pn.map.activeSite = S.radar.id; pn.map.setView({ cx: G.mercX(mid.lon), cy: G.mercY(mid.lat), mpp: G.mppOf(8.9) }); pn.sweep = null; pn.key = ''; }
+    buildTicks(); refresh(); syncSlider(); syncDock();
+  }
+
   /* ---- wiring ---- */
   function wire() {
     const on = (id, f) => $(id).addEventListener('click', f);
@@ -372,7 +387,7 @@
     window.SEVERE.ready = true; window.dispatchEvent(new Event('severe-ready'));
   }
 
-  const api = { S, TILTS, SPEEDS, PRODUCTS, toast, get panes() { return panes; }, get pack() { return pack; }, get geo() { return geo; }, get cache() { return cache; }, get scanner() { return scanner; }, ready: false,
+  const api = { S, TILTS, SPEEDS, PRODUCTS, toast, setPack, get panes() { return panes; }, get pack() { return pack; }, get geo() { return geo; }, get cache() { return cache; }, get scanner() { return scanner; }, ready: false,
     setT, step, setPlaying, setPaneCount, setTheme, setTool, setProduct, setTilt, setRadar, frames, keyOf, probeAt, tapPane, refresh, UNITS, siteInfo,
     async whenIdle() { for (let i = 0; i < 600; i++) { if (!scanner.busy() && !panes.some((p) => p.busy)) { await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))); if (!scanner.busy() && !panes.some((p) => p.busy)) return true; } await new Promise((r) => setTimeout(r, 50)); } return false; } };
   window.SEVERE = api;

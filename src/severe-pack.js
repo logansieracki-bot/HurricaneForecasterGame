@@ -13,6 +13,7 @@
  * their grids ({ nx, ny, nz, dx, dz, scale: { wind, vz }, frame: { u, v } the nest's motion over the box }), `fn[i]` the nests of frame i as [k, x, y] (nest k, its south-west corner in the box in metres), and
  * `offsets` the byte offsets of the frames' blocks (a block is the box's five arrays and then the five arrays of each of its nests, in the order of `fn[i]`). `volume(i)` then has `nests: [{ x, y, vol }]`,
  * which the radar operator reads (a point inside a nest is the nest's, the rest the box's). A pack of version 1 has none of this and reads as before.
+ * `assemble(header, blocks)` makes the same object from a header and the frames' blocks (what the Lab of src/severe-lab.js records).
  * A classic script that sets `globalThis.HFSeverePack`; it needs HFSevereGeo.
  */
 (function () {
@@ -74,5 +75,13 @@
     return P;
   }
 
-  globalThis.HFSeverePack = { gunzip, fromBody, volumeFromFrame };
+  /* a pack from what a run made (src/severe-lab.js): the header (without `offsets`, which a version 1 pack does not have) and the blocks of the frames, each the five arrays of nz*ny*nx bytes; the same object `fromBody` makes of a file */
+  function assemble(header, blocks) {
+    const per = header.nx * header.ny * header.nz, head = new TextEncoder().encode(JSON.stringify(header)), body = new Uint8Array(4 + head.length + blocks.length * 5 * per);
+    new DataView(body.buffer).setUint32(0, head.length, true); body.set(head, 4);
+    blocks.forEach((b, i) => { if (b.length !== 5 * per) throw new Error('storm pack: frame ' + i + ' has ' + b.length + ' bytes, not ' + 5 * per); body.set(b, 4 + head.length + i * 5 * per); });
+    return fromBody(body);
+  }
+
+  globalThis.HFSeverePack = { gunzip, fromBody, volumeFromFrame, assemble };
 })();

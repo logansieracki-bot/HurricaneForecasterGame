@@ -162,6 +162,32 @@ check('Load takes the saved file back: the outbreak day with its dew point chang
 await pg.setInputFiles('#d-file', { name: 'bad.json', mimeType: 'application/json', buffer: Buffer.from('{"nothing": 1}') }); await settle(pg);
 check('a file that is not a day is refused and the day stays (' + await E(pg, 'E.day.name') + ', toast: "' + await ev(pg, "document.getElementById('toast').textContent") + '")', await E(pg, 'E.day.name') === 'Tornado outbreak day' && /Could not load/.test(await ev(pg, "document.getElementById('toast').textContent")));
 
+/* 10b. A storm from the drawing: the card, a short run in a Worker, the radar playing it, a cancel */
+await ev(pg, "SEVERE.editor.loadDay(HFSevereDays.get('dryline'))"); await settle(pg);
+await pg.click('#ed-start'); await pg.waitForSelector('#run-go', { timeout: 5000 });
+const card = await ev(pg, "(() => { const t = document.getElementById('ed-run').textContent; return { t, tiles: document.querySelectorAll('#ed-run .env div').length, chips: document.querySelectorAll('#run-len button').length, shown: !document.getElementById('ed-run').hidden }; })()");
+check('Run a storm opens a card that says where and when (' + (card.t.match(/Near [A-Za-z .]+ · \+\d h · [\d:]+ [AP]M/) || [''])[0] + '), the environment in four numbers (' + card.tiles + ') and what to expect, and the lengths to choose from (' + card.chips + ')', card.shown && card.tiles === 4 && card.chips === 4 && /Near [A-Za-z .]+ · \+4 h · 4:00 PM/.test(card.t) && /Supercells/.test(card.t) && /CAPE/.test(card.t));
+await pg.click('#run-x'); check('the card closes (' + await ev(pg, "document.getElementById('ed-run').hidden") + ')', await ev(pg, "document.getElementById('ed-run').hidden"));
+const runP = pg.evaluate(() => SEVERE.editor.runStorm({ minutes: 10, dx: 4000, box: 48000, dt: 10, frameEvery: 5 }).then((r) => ({ ok: true, n: r.pack.n, times: r.pack.times, name: r.pack.name, scenario: r.scenario, header: r.pack.h })).catch((e) => ({ ok: false, e: String(e.message || e) })));
+await pg.waitForSelector('#run-cancel', { timeout: 10000 }); await settle(pg);
+const running = await ev(pg, "(() => ({ title: document.querySelector('#ed-run b').textContent, cancel: !!document.getElementById('run-cancel'), busy: SEVERE.editor.LAB.busy }))()");
+check('while it runs the card says so and offers a cancel (' + running.title + ', busy ' + running.busy + ')', running.title === 'Running the storm' && running.cancel && running.busy);
+const run = await runP;
+check('a run of 10 minutes at 4 km finishes with three frames at 0, 5 and 10 minutes (' + JSON.stringify(run.times) + '), named after the day (' + run.name + ')', run.ok && JSON.stringify(run.times) === '[0,5,10]' && run.name === 'Dryline day, storm run');
+await pg.evaluate('SEVERE.whenIdle()');
+const landed = await ev(pg, "(() => { const S = SEVERE, E = S.editor.E, G = HFSevereGeo, sc = E.lastRun.scenario, p = S.pack, here = G.fromLocal(E.day.lat, E.day.lon, E.lastRun.spot.x * 1000, E.lastRun.spot.y * 1000), box = p.boxLatLon(0, 24000, 24000), site = S.siteInfo(S.geo.points.site.names.indexOf(sc.radar)); " +
+  "const mid = G.fromLocal(E.day.lat, E.day.lon, E.lastRun.spot.x * 1000 + p.motion.u * 3000, E.lastRun.spot.y * 1000 + p.motion.v * 3000); return { mode: document.getElementById('app').dataset.mode, frames: S.frames().length, frame: S.S.frame, t: S.S.t, radar: S.S.radar.id, scRadar: sc.radar, startErr: G.distBearing(here.lat, here.lon, box.lat, box.lon).d, midToSite: G.distBearing(mid.lat, mid.lon, site.lat, site.lon).d, clock: p.clock(p.times[S.S.frame]).text, tz: sc.tz, clock0: sc.clock, sweep: !!S.panes[0].sweep, ticks: document.querySelectorAll('#ticks span').length, runHidden: document.getElementById('ed-run').hidden, busy: S.editor.LAB.busy }; })()");
+check('the radar then plays it: the Radar mode is on (' + landed.mode + '), the page has the three frames (' + landed.frames + ') and shows the last at ' + landed.t + ' minutes, 4:10 PM local (' + landed.clock + '), with a sweep of it scanned in Workers (' + landed.sweep + '), the card is gone (' + landed.runHidden + ') and the model is free (' + !landed.busy + ')',
+  landed.mode === 'radar' && landed.frames === 3 && landed.t === 10 && landed.frame === 2 && landed.clock === '4:10 PM' && landed.sweep && landed.runHidden && !landed.busy && landed.tz === 'CDT' && landed.clock0 === '16:00');
+check('the box is on the ground so that the storm starts at the spot that was tapped (the bubble, at the middle of the box, is ' + (landed.startErr / 1000).toFixed(2) + ' km from it), and the radar is the site nearest the storm\'s track that is at least 25 km from it (' + landed.radar + ', ' + (landed.midToSite / 1000).toFixed(0) + ' km from the middle of the track)',
+  landed.startErr < 800 && landed.radar === landed.scRadar && landed.midToSite >= 25000 && landed.midToSite < 160000);
+await pg.click('#m-draw'); await settle(pg);
+const cancelP = pg.evaluate(() => SEVERE.editor.runStorm({ minutes: 120, dx: 2000, box: 84000, dt: 10 }).then(() => 'finished').catch((e) => 'rejected: ' + (e.message || e)));
+await pg.waitForSelector('#run-cancel', { timeout: 10000 }); await pg.waitForTimeout(1500); await pg.click('#run-cancel');
+const cres = await cancelP;
+check('a cancel stops a run of two hours at once (' + cres + '), the card goes, the model is free and the page keeps the first storm (' + await ev(pg, 'SEVERE.pack.n') + ' frames)', cres === 'rejected: cancelled' && await ev(pg, "document.getElementById('ed-run').hidden") && !(await ev(pg, 'SEVERE.editor.LAB.busy')) && await ev(pg, 'SEVERE.pack.n') === 3);
+await pg.setInputFiles('#d-file', path); await pg.waitForFunction("SEVERE.editor.E.day.id === 'file'", null, { timeout: 5000 }); await settle(pg);              // (the saved day again, for the draft below)
+
 /* 11. The draft is kept, the radar mode still works after the editor, and back */
 const draftId = await E(pg, 'E.day.name'), reload = await open(1440, 900, { ctx: A.ctx }); await A.page.close();
 check('a reload brings the drawing back from the draft (' + await E(reload.page, 'E.day.name') + ', ' + (await objs(reload.page)).length + ' objects, qv0 ' + await E(reload.page, 'E.drawing.air.warm.qv0') + ')', await E(reload.page, 'E.day.name') === draftId && (await objs(reload.page)).length === 8 && await E(reload.page, 'E.drawing.air.warm.qv0') === doc.drawing.air.warm.qv0);

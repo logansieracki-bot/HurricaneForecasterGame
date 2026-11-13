@@ -86,7 +86,7 @@ build({ basin: 'med', templatePath: join(ROOT, 'src/template-med.html'), dataPat
 {
   const text = (p) => readFileSync(join(ROOT, p), 'utf8').trimEnd(), b64 = (p) => readFileSync(join(ROOT, p)).toString('base64');
   const libs = [['src-geo', 'severe-geo.js'], ['src-palette', 'severe-palette.js'], ['src-radar', 'severe-radar.js'], ['src-pack', 'severe-pack.js'], ['src-worker', 'severe-worker.js'], ['src-gl', 'severe-gl.js'], ['src-map', 'severe-map.js'],
-    ['src-core', 'severe-core.js'], ['src-sounding', 'severe-sounding.js'], ['src-analysis', 'severe-analysis.js'], ['src-draw', 'severe-draw.js'], ['src-days', 'severe-days.js'], ['src-guide', 'severe-guide.js'], ['src-paint', 'severe-editor-paint.js']];
+    ['src-core', 'severe-core.js'], ['src-sounding', 'severe-sounding.js'], ['src-analysis', 'severe-analysis.js'], ['src-draw', 'severe-draw.js'], ['src-days', 'severe-days.js'], ['src-guide', 'severe-guide.js'], ['src-paint', 'severe-editor-paint.js'], ['src-refl', 'severe-refl.js'], ['src-lab', 'severe-lab.js'], ['src-labworker', 'severe-lab-worker.js']];
   const scripts = libs.map(([id, f]) => {
     const s = text('src/' + f); if (s.includes('</script>')) throw new Error('src/' + f + ' must not contain a closing script tag: it is inlined into a <script>');
     return `<script id="${id}">\n${s}\n</script>`;

@@ -105,7 +105,7 @@
   function redo() { if (E.hist.canRedo()) restore(E.hist.redo()); }
   function saveDraft() { try { localStorage.setItem(LS, JSON.stringify({ v: 1, day: { id: E.day.id, name: E.day.name, place: E.day.place, lat: E.day.lat, lon: E.day.lon, story: E.day.story, spot: E.day.spot }, drawing: E.drawing })); } catch (e) { /* none */ } }
   function loadDay(day, quiet) {
-    E.day = JSON.parse(JSON.stringify(day)); E.drawing = E.day.drawing; E.drawing.lat = E.day.lat; delete E.day.drawing; E.sel = -1; E.build = null; E.t = 0; E.probe = null; E.spot = { x: E.day.spot.x, y: E.day.spot.y };
+    E.day = JSON.parse(JSON.stringify(day)); E.drawing = E.day.drawing; E.drawing.lat = E.day.lat; delete E.day.drawing; E.sel = -1; E.build = null; E.t = 0; E.probe = null; E.spot = { x: E.day.spot.x, y: E.day.spot.y }; E.spotT = E.day.spot.t;
     E.hist = DR.History(snap()); closeSheet(); setTool('select', true);
     if (!rebuild()) return false;
     if (map) { const c = G.fromLocal(E.day.lat, E.day.lon, 0, 0), w = map.view.w || 1200, frac = w < 820 ? 0.96 : 0.62, mpp = 1500e3 / (frac * w) / Math.cos(E.day.lat * DEG); map.setView({ cx: G.mercX(c.lon), cy: G.mercY(c.lat), mpp }); }
@@ -307,13 +307,14 @@
   }
 
   /* ---- the sounding at a spot ---- */
-  function nearestPlace(lat, lon) {                                                                          // the nearest big place within 200 km, or a smaller one within 80 km
-    const P = geo.points.place; let best = -1, bd = Infinity;
+  function nearestPlace(lat, lon) {                                                                          // the nearest big place within 200 km, else the nearest smaller one within 80 km
+    const P = geo.points.place; let big = -1, bd = Infinity, small = -1, sd = Infinity;
     for (let i = 0; i < P.n; i++) {
       if (Math.abs(P.lat[i] - lat) > 2.6 || Math.abs(P.lon[i] - lon) > 3.4) continue; const k = P.c[i]; if (k > 5) continue;
-      const d = G.distBearing(lat, lon, P.lat[i], P.lon[i]).d; if ((k <= 3 && d <= 200000 || d <= 80000) && d < bd) { bd = d; best = i; }
+      const d = G.distBearing(lat, lon, P.lat[i], P.lon[i]).d;
+      if (k <= 3 && d <= 200000 && d < bd) { bd = d; big = i; } else if (d <= 80000 && d < sd) { sd = d; small = i; }
     }
-    return best < 0 ? null : { name: P.names[best], d: bd };
+    const i = big >= 0 ? big : small; return i < 0 ? null : { name: P.names[i], d: big >= 0 ? bd : sd };
   }
   function openSheet(km) {
     E.probe = { x: km[0], y: km[1] }; const A = E.A, t = E.t;
@@ -467,6 +468,76 @@
     r.readAsText(f);
   }
 
+  /* ---- the Lab: a storm in the drawing's environment at the spot, run in a Worker, played by the radar ---- */
+  const LAB = { worker: null, busy: false, minutes: 90, blocks: [], t0: 0 };
+  function labEnv() {
+    const sp = E.spot, t = E.spotT === undefined ? E.day.spot.t : E.spotT, env = E.A.sounding(sp.x, sp.y, t, { dz: 100, top: 20000 }), tb = env.table;
+    return { env, ix: SND.indices(env), t, arr: { z: Array.from(tb.z), theta: Array.from(tb.theta), qv: Array.from(tb.qv), u: Array.from(tb.z, (z) => env.uG(z)), v: Array.from(tb.z, (z) => env.vG(z)), p0: 1000, motion: { u: env.motion.u, v: env.motion.v } } };
+  }
+  function labWorker() {
+    const src = ['src-core', 'src-sounding', 'src-refl', 'src-lab', 'src-labworker'].map((id) => document.getElementById(id).textContent).join('\n;\n');
+    return new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
+  }
+  const DBZ_STOPS = [[5, 70, 120, 200], [15, 60, 190, 190], [25, 70, 200, 90], [35, 240, 230, 60], [45, 250, 150, 40], [55, 235, 60, 50], [65, 235, 70, 220], [75, 255, 255, 255]];
+  function dbzRgb(d) { if (d < 5) return null; for (let i = 1; i < DBZ_STOPS.length; i++) if (d <= DBZ_STOPS[i][0]) { const a = DBZ_STOPS[i - 1], b = DBZ_STOPS[i], f = (d - a[0]) / (b[0] - a[0]); return [a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f, a[3] + (b[3] - a[3]) * f]; } return DBZ_STOPS[DBZ_STOPS.length - 1].slice(1); }
+  function drawThumb(cv, block, nx, ny, nz) {
+    const c = cv.getContext('2d'), img = c.createImageData(nx, ny), dbz = new Int8Array(block.buffer, block.byteOffset, nx * ny * nz);
+    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) { let m = -30; for (let k = 0; k < nz; k++) { const d = dbz[(k * ny + j) * nx + i]; if (d > m) m = d; } const rgb = dbzRgb(m), q = ((ny - 1 - j) * nx + i) * 4; if (rgb) { img.data[q] = rgb[0]; img.data[q + 1] = rgb[1]; img.data[q + 2] = rgb[2]; img.data[q + 3] = 255; } else img.data[q + 3] = 0; }
+    c.clearRect(0, 0, cv.width, cv.height); const tmp = document.createElement('canvas'); tmp.width = nx; tmp.height = ny; tmp.getContext('2d').putImageData(img, 0, 0); c.imageSmoothingEnabled = false; c.drawImage(tmp, 0, 0, cv.width, cv.height);
+  }
+  const envNumbers = (ix) => '<div class="env"><div><b>' + Math.round(ix.mlcape) + '</b><span>CAPE J/kg</span></div><div><b>' + fmtSpeed(ix.shear06) + '</b><span>shear 0-6 km</span></div><div><b>' + Math.round(ix.srh01) + '</b><span>helicity 0-1 km</span></div><div><b>' + Math.round(ix.mllcl) + ' m</b><span>cloud base</span></div></div>';
+  function openRun() {
+    if (!E.spot || LAB.busy) return; const L = labEnv(), ex = GD.expect(L.ix), ll = G.fromLocal(lat0(), lon0(), E.spot.x * 1000, E.spot.y * 1000), pl = nearestPlace(ll.lat, ll.lon), el = $('ed-run');
+    closeSheet(); el.hidden = false;
+    el.innerHTML = '<div class="hd"><div><b>Run a storm</b><i>' + (pl ? 'Near ' + ESC(pl.name) + ' · ' : '') + '+' + L.t + ' h · ' + timeText(L.t) + '</i></div><button class="x" id="run-x" aria-label="Close"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>' +
+      envNumbers(L.ix) + '<div class="ex"><b>' + ESC(ex.mode) + '</b>' + ex.hazards.map((h) => '<span class="tag">' + ESC(h) + '</span>').join('') + '</div>' +
+      '<h3>Run for</h3><div class="mini sp" id="run-len">' + [45, 60, 90, 120].map((m) => '<button data-m="' + m + '" aria-pressed="' + (m === LAB.minutes) + '">' + (m < 60 ? m + ' min' : m / 60 + ' h') + '</button>').join('') + '</div>' +
+      '<p class="story">The real model, 2 km cells in a box 84 km wide that moves with the storm, started in the drawing\'s sounding at the spot you tapped by a warm bubble. It takes a few minutes on this device, and then the radar plays it.</p>' +
+      '<div class="row2"><button id="run-go" class="primary">Start</button></div>';
+    $('run-x').addEventListener('click', closeRun); $('run-go').addEventListener('click', () => { runStorm({ minutes: LAB.minutes }).catch(() => {}); });
+    el.querySelectorAll('#run-len button').forEach((b) => b.addEventListener('click', () => { LAB.minutes = +b.dataset.m; el.querySelectorAll('#run-len button').forEach((x) => x.setAttribute('aria-pressed', String(x === b))); }));
+  }
+  function closeRun() { if (LAB.busy) return cancelRun(); $('ed-run').hidden = true; }
+  function cancelRun() { if (LAB.worker) LAB.worker.postMessage({ t: 'cancel' }); }
+  function scenarioOf(L, header, name) {                                                                   // where the box is on the ground: the radar site that the storm's track passes best, the box so that the storm starts at the spot
+    const sp = E.spot, m = header.motion, mid = G.fromLocal(lat0(), lon0(), sp.x * 1000 + m.u * 3000, sp.y * 1000 + m.v * 3000), S = geo.points.site; let best = -1, bd = Infinity;
+    for (let i = 0; i < S.n; i++) { if (Math.abs(S.lat[i] - mid.lat) > 2 || Math.abs(S.lon[i] - mid.lon) > 2.6) continue; const d = G.distBearing(mid.lat, mid.lon, S.lat[i], S.lon[i]).d; if (d >= 25000 && d < bd) { bd = d; best = i; } }
+    if (best < 0) for (let i = 0; i < S.n; i++) { const d = G.distBearing(mid.lat, mid.lon, S.lat[i], S.lon[i]).d; if (d < bd) { bd = d; best = i; } }
+    const site = { id: S.names[best], lat: S.lat[best], lon: S.lon[best] }, here = G.fromLocal(lat0(), lon0(), sp.x * 1000, sp.y * 1000), l = G.local(site.lat, site.lon, here.lat, here.lon), half = header.nx * header.dx / 2;
+    const mm = Math.round(720 + L.t * 60), tz = here.lon > -85 ? 'EDT' : here.lon > -101 ? 'CDT' : here.lon > -115 ? 'MDT' : 'PDT';
+    return { lat0: site.lat, lon0: site.lon, origin: [Math.round(l.x - half), Math.round(l.y - half)], radar: site.id, clock: String(Math.floor(mm / 60) % 24).padStart(2, '0') + ':' + String(mm % 60).padStart(2, '0'), tz };
+  }
+  function runStorm(o) {
+    o = Object.assign({ minutes: 90, dx: 2000, box: 84000, dt: 10 }, o);
+    return new Promise((resolve, reject) => {
+      if (LAB.busy) return reject(new Error('a storm is running')); if (!E.spot) return reject(new Error('no spot'));
+      const L = labEnv(), el = $('ed-run'); LAB.busy = true; LAB.blocks = []; LAB.t0 = Date.now(); el.hidden = false; let nx = Math.round(o.box / o.dx), last = null;
+      el.innerHTML = '<div class="hd"><div><b>Running the storm</b><i>' + o.minutes + ' model minutes, ' + (o.dx / 1000) + ' km cells</i></div></div><div class="live"><canvas id="run-th" width="150" height="150"></canvas><p id="run-note">Waking the model up.</p></div>' +
+        '<div class="pbar"><i id="run-bar"></i></div><div class="pt"><span id="run-time">0 of ' + o.minutes + ' min</span><span id="run-eta"></span></div><div class="row2"><button id="run-cancel" class="btn">Cancel</button></div>';
+      $('run-cancel').addEventListener('click', cancelRun);
+      let w; try { w = labWorker(); } catch (e) { LAB.busy = false; el.hidden = true; toast('This browser cannot run the model: ' + e.message, 6000); return reject(e); }
+      LAB.worker = w; const end = () => { LAB.busy = false; w.terminate(); LAB.worker = null; };
+      w.onerror = (e) => { end(); el.hidden = true; toast('The model stopped: ' + (e.message || 'worker error'), 7000); reject(new Error(e.message || 'worker error')); };
+      w.onmessage = async (ev) => {
+        const m = ev.data;
+        if (m.t === 'frame') { LAB.blocks[m.i] = new Uint8Array(m.block); last = m; const cv = $('run-th'); if (cv) drawThumb(cv, LAB.blocks[m.i], nx, nx, 40); const n = $('run-note'); if (n) n.innerHTML = 'The strongest updraft is <b>' + Math.round(m.wmax * 2.2369) + ' mph</b>, the strongest echo <b>' + m.zmax + ' dBZ</b>.'; }
+        else if (m.t === 'progress') { const bar = $('run-bar'); if (bar) bar.style.width = Math.min(100, m.time / m.of * 100) + '%'; const t = $('run-time'); if (t) t.textContent = Math.floor(m.time) + ' of ' + m.of + ' min'; const eta = $('run-eta'); if (eta && m.time > 3) { const left = m.wall * (m.of - m.time) / m.time; eta.textContent = left > 90 ? 'about ' + Math.round(left / 60) + ' min left' : 'about ' + Math.round(left) + ' s left'; } }
+        else if (m.t === 'done') {
+          end();
+          if (m.stopped && m.reason === 'cancelled') { el.hidden = true; toast('The run was cancelled', 2200); return reject(new Error('cancelled')); }
+          if (LAB.blocks.length < 3) { el.hidden = true; toast('The model did not get far: ' + (m.reason || 'no frames'), 6000); return reject(new Error(m.reason || 'no frames')); }
+          try {
+            const name = (E.day.name || 'A drawn day') + ', storm run', sc = scenarioOf(L, m.header, name), header = Object.assign({}, m.header, { name, scenario: sc }), pack = HFSeverePack.assemble(header, LAB.blocks.filter(Boolean));
+            E.lastRun = { pack, spot: Object.assign({}, E.spot), t: L.t, wall: m.wall, ix: L.ix, scenario: sc, stopped: !!m.stopped, reason: m.reason || '' };
+            await SEV.setPack(pack, { t: Math.min(50, header.times[header.times.length - 1]) }); el.hidden = true; setMode('radar');
+            toast((m.stopped ? m.reason + '; ' : '') + 'The storm is on the radar: ' + header.times.length + ' frames, ' + sc.radar + ' is the radar (' + Math.round(m.wall) + ' s of work)', 6000); resolve(E.lastRun);
+          } catch (e) { el.hidden = true; toast('Could not show the storm: ' + e.message, 7000); reject(e); }
+        } else if (m.t === 'error') { end(); el.hidden = true; toast('The model stopped: ' + m.message, 7000); reject(new Error(m.message)); }
+      };
+      w.postMessage({ t: 'run', spec: { env: L.arr, dx: o.dx, box: o.box, dt: o.dt, minutes: o.minutes, frameEvery: o.frameEvery || 5, nz: o.nz || 40, dz: o.dz || 500, bubble: o.bubble } });
+    });
+  }
+
   /* ---- the mode, the map, the keys ---- */
   function ensureEditor() {
     if (E.ready) return; geo = SEV.geo;
@@ -485,7 +556,7 @@
     $('ed-undo').addEventListener('click', undo); $('ed-redo').addEventListener('click', redo);
     $('ed-slider').addEventListener('input', (e) => { const v = +e.target.value; stopPlay(); setTime(v); });
     $('ed-play').addEventListener('click', () => (E.playing ? stopPlay() : startPlay()));
-    $('ed-start').addEventListener('click', () => { if (E.runDay) E.runDay(E); else toast('Running a storm from the drawing is the next step', 3200); });
+    $('ed-start').addEventListener('click', openRun);
   }
   function startPlay() { if (E.t >= 12) setTime(0); E.playing = true; last = 0; syncTime(); raf = requestAnimationFrame(tick); }
   function stopPlay() { E.playing = false; cancelAnimationFrame(raf); syncTime(); }
@@ -515,7 +586,7 @@
     $('m-draw').addEventListener('click', () => setMode('draw')); $('m-radar').addEventListener('click', () => setMode('radar'));
     document.addEventListener('keydown', onKey, true);
     $('b-theme').addEventListener('click', () => { if (!map) return; map.setTheme(SEV.S.theme); E.fields = null; syncLegend(); if (E.sel >= 0 || E.probe) closeSheet(); scheduleField(0); redraw(); });
-    SEV.editor = { E, setMode, loadDay, setTool, setLayer, setTime, undo, redo, rebuild, commit, addObject, newObject, nearestPlace, openSheet, closeSheet, get map() { return map; }, toKm, toScreen, deleteSelected, TOOLS, PROPS, anchorOf, tipOf };
+    SEV.editor = { E, LAB, runStorm, openRun, closeRun, labEnv, scenarioOf, setMode, loadDay, setTool, setLayer, setTime, undo, redo, rebuild, commit, addObject, newObject, nearestPlace, openSheet, closeSheet, get map() { return map; }, toKm, toScreen, deleteSelected, TOOLS, PROPS, anchorOf, tipOf };
     if (location.hash === '#draw') setMode('draw');
   }
   if (window.SEVERE && window.SEVERE.ready) init(); else window.addEventListener('severe-ready', init);
