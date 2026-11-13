@@ -2,6 +2,7 @@
  *
  *   const env = HFSevereSounding.make(spec);        // spec: a preset (HFSevereSounding.presets.tornado) or any of its keys changed
  *   env.theta(z), env.qv(z), env.u(z), env.v(z)     // the four functions the core takes as its base state (K, kg/kg, m/s: the winds in the frame that moves with the storm, env.motion over the ground)
+ *   HFSevereSounding.fromProfile({ z, theta, qv, uG, vG, p0, motion })   // the same object from profiles made some other way (a blend of air masses): the hydrostatic pressure, the vapour held to saturation
  *   HFSevereSounding.indices(env)                   // CAPE, CIN, the condensation level, the level of free convection and the equilibrium level of the surface and the mixed-layer parcel,
  *                                                   // the bulk shear of 0-1, 0-3 and 0-6 km, Bunkers storm motions, the storm-relative helicity of 0-1 and 0-3 km, the significant tornado parameter
  *
@@ -96,6 +97,28 @@
     return env;
   }
 
+  /* an environment from profiles that were made some other way (a blend of air masses, the analysis of a drawing): the object `make` returns, from theta and the vapour mixing ratio at the heights of `o.z` (an even grid from 0),
+     the winds as functions of height in the ground's frame (o.uG, o.vG), the pressure at the ground o.p0 (hPa, 1000 as in the core) and the storm's motion o.motion (the Bunkers right mover's by default). The pressure is
+     the hydrostatic one, with the virtual temperature, level by level; the vapour is held to the saturation of its own level (air that a blend of two air masses makes more than saturated is saturated). */
+  function fromProfile(o) {
+    const z = o.z, n = z.length, dz = z[1] - z[0], zTop = z[n - 1], th = Float64Array.from(o.theta), qIn = Float64Array.from(o.qv), qv = new Float64Array(n), pi = new Float64Array(n);
+    const sat = (k, piK) => Math.min(qIn[k], qvsAt(th[k] * piK, P0 * Math.pow(piK, CP / RD)));
+    pi[0] = Math.pow((o.p0 || 1000) * 100 / P0, RD / CP); qv[0] = sat(0, pi[0]);
+    for (let k = 1; k < n; k++) {
+      const thvA = th[k - 1] * (1 + RV1 * qv[k - 1]);
+      let piK = pi[k - 1] - G * dz / (CP * thvA), q = sat(k, piK);
+      for (let it = 0; it < 2; it++) { const thvB = th[k] * (1 + RV1 * q); piK = pi[k - 1] - G * dz / (CP * 0.5 * (thvA + thvB)); q = sat(k, piK); }
+      pi[k] = piK; qv[k] = q;
+    }
+    const lin = (a) => (zz) => { if (zz <= z[0]) return a[0]; if (zz >= zTop) return a[n - 1]; const f = (zz - z[0]) / dz, i = Math.floor(f); return a[i] + (a[i + 1] - a[i]) * (f - i); };
+    const env = { spec: o.spec || null, theta: lin(th), qv: lin(qv), uG: o.uG, vG: o.vG, zmax: zTop, table: { z, pi, theta: th, qv } };
+    let mo = o.motion;
+    if (!mo) { const b = bunkers(env); mo = { u: Math.round(b.right.u * 10) / 10, v: Math.round(b.right.v * 10) / 10 }; }
+    env.motion = { u: mo.u, v: mo.v };
+    env.u = (zz) => o.uG(zz) - mo.u; env.v = (zz) => o.vG(zz) - mo.v;
+    return env;
+  }
+
   /* the mean wind of a layer (the mean over height) */
   function meanWind(env, z0, z1) { const n = Math.max(4, Math.round((z1 - z0) / 50)); let u = 0, v = 0; for (let i = 0; i <= n; i++) { const w = i === 0 || i === n ? 0.5 : 1, zz = z0 + (z1 - z0) * i / n; u += w * env.uG(zz); v += w * env.vG(zz); } return { u: u / n, v: v / n }; }
 
@@ -115,18 +138,24 @@
     return s;
   }
 
-  /* the buoyancy of a parcel along the height: the area above the level of free convection (cape), below it where it is negative (cin), and where those are */
+  /* the buoyancy of a parcel along the height: the area above the level of free convection (cape), below it where it is negative (cin), and where those are. Free convection starts at the first buoyant layer
+     above the condensation level that begins a stretch of buoyant layers MIN_STRETCH deep (or one that runs to the top of the table): a sliver of warm air at the condensation level, which a cap just above it
+     cancels, is not free convection, and the cap is the inhibition (a parcel that is a twentieth of a kelvin warm there must not make the cap vanish, on one grid and not on another). */
+  const MIN_STRETCH = 250;
   function buoyancy(z, tvParcel, tvEnv, lcl) {
-    let cape = 0, cin = 0, lfc = NaN, el = NaN;
-    for (let k = 0; k < z.length - 1; k++) {
-      const bk = G * (tvParcel[k] - tvEnv[k]) / tvEnv[k], bk1 = G * (tvParcel[k + 1] - tvEnv[k + 1]) / tvEnv[k + 1], dzk = z[k + 1] - z[k], b = 0.5 * (bk + bk1);
-      if (Number.isNaN(lfc)) {
-        if (b > 0 && z[k + 1] > lcl) lfc = Math.max(z[k], lcl);                       // the first buoyant layer above the condensation level
-        else { if (b < 0) cin += b * dzk; continue; }                                  // until then the negative buoyancy is the inhibition
-      }
-      if (b > 0) { cape += b * dzk; el = z[k + 1]; }
+    const n = z.length - 1, bl = new Float64Array(n);
+    for (let k = 0; k < n; k++) bl[k] = 0.5 * (G * (tvParcel[k] - tvEnv[k]) / tvEnv[k] + G * (tvParcel[k + 1] - tvEnv[k + 1]) / tvEnv[k + 1]);       // a layer's buoyancy: the mean of its two levels
+    let lfcK = -1;
+    for (let k = 0; k < n && lfcK < 0; k++) {
+      if (!(bl[k] > 0 && z[k + 1] > lcl)) continue;
+      let m = k; while (m < n && bl[m] > 0) m++;
+      if (m === n || z[m] - Math.max(z[k], lcl) >= MIN_STRETCH) lfcK = k; else k = m - 1;
     }
-    return { cape, cin, lfc, el };
+    let cape = 0, cin = 0, el = NaN;
+    for (let k = 0; k < (lfcK < 0 ? n : lfcK); k++) if (bl[k] < 0) cin += bl[k] * (z[k + 1] - z[k]);
+    if (lfcK < 0) return { cape: 0, cin, lfc: NaN, el: NaN };
+    for (let k = lfcK; k < n; k++) if (bl[k] > 0) { cape += bl[k] * (z[k + 1] - z[k]); el = z[k + 1]; }
+    return { cape, cin, lfc: Math.max(z[lfcK], lcl), el };
   }
 
   /* the rate at which saturated air cools as it rises, K/m, for a saturation mixing ratio qs at the temperature T */
@@ -135,14 +164,24 @@
   /* a parcel of the given potential temperature and vapour mixing ratio lifted from the ground: dry up to its condensation level, then along the pseudo-adiabat; the CAPE, the CIN, the levels */
   function lift(env, th0, qv0) {
     const t = env.table, z = t.z, n = z.length, tvP = new Float64Array(n), tvE = new Float64Array(n);
-    let sat = false, T = th0, lcl = NaN, qp = qv0;
+    let sat = false, T = th0, lcl = NaN, qp = qv0, ePrev = 0;
     for (let k = 0; k < n; k++) {
       const pk = P0 * Math.pow(t.pi[k], CP / RD), Tenv = t.theta[k] * t.pi[k];
       tvE[k] = Tenv * (1 + RV1 * t.qv[k]);
       if (!sat) {
         T = th0 * t.pi[k];
-        const qs = qvsAt(T, pk);
-        if (qp >= qs) { sat = true; lcl = z[k]; qp = qs; }
+        const qs = qvsAt(T, pk), e = qp - qs;
+        if (e >= 0) {                                                                                  // saturated at this level: the condensation level lies between the last level and this, where the excess of vapour is nil
+          sat = true; qp = qs;
+          if (k === 0) lcl = z[0];
+          else {                                                                                       // (a parcel that went on dry to the level above would be too cold for the rest of its way: 0.5 K for 100 m, a tenth of the CAPE)
+            const f = -ePrev / (e - ePrev), piL = t.pi[k - 1] + f * (t.pi[k] - t.pi[k - 1]), TL = th0 * piL, dzL = (1 - f) * (z[k] - z[k - 1]);
+            lcl = z[k - 1] + f * (z[k] - z[k - 1]);
+            const pm = P0 * Math.pow(0.5 * (piL + t.pi[k]), CP / RD), Tm = TL - 0.5 * moistLapse(TL, qvsAt(TL, pm)) * dzL;
+            T = TL - moistLapse(Tm, qvsAt(Tm, pm)) * dzL; qp = qvsAt(T, pk);                           // the rest of the layer on the pseudo-adiabat
+          }
+        }
+        ePrev = e;
       } else {
         const dzk = z[k] - z[k - 1], pm = P0 * Math.pow(0.5 * (t.pi[k] + t.pi[k - 1]), CP / RD), Tm = T - 0.5 * moistLapse(T, qvsAt(T, pm)) * dzk;      // the midpoint rule: the rate at the middle of the layer
         T -= moistLapse(Tm, qvsAt(Tm, pm)) * dzk; qp = qvsAt(T, pk);
@@ -173,5 +212,5 @@
       shear01: s01, shear03: s03, shear06: s06, srh01: h01, srh03: h03, motion: { u: c.u, v: c.v }, bunkers: b, stp };
   }
 
-  globalThis.HFSevereSounding = { make, indices, presets, bunkers, srh, pchip, lift, buoyancy, qvsAt, stpOf, meanWind, moistLapse };
+  globalThis.HFSevereSounding = { make, fromProfile, indices, presets, bunkers, srh, pchip, lift, buoyancy, qvsAt, stpOf, meanWind, moistLapse };
 })();

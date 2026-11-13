@@ -141,5 +141,71 @@ check('the surface parcel\'s CAPE of the Weisman-Klemp day is ' + ixw.sbcape.toF
   check('the core runs on the tornado day: after six steps the base state has not moved (the strongest w ' + d.wmax.toExponential(1) + ' m/s, no cloud water ' + d.qcmax.toExponential(1) + ' kg/kg)', Math.abs(d.wmax) < 1e-6 && Math.abs(d.wmin) < 1e-6 && d.qcmax < 1e-9);
 }
 
+/* 10. An environment from profiles made some other way (what the analysis builder blends air masses into): the table of a preset gives the preset back; an isothermal atmosphere has the closed-form pressure; the vapour is held to saturation;
+   the winds and the motion are the caller's or Bunkers'; and a grid of 100 m gives the CAPE of a grid of 10 m to a few per cent (the maps use it). */
+{
+  const e = S.make(S.presets.tornado), t = e.table, f = S.fromProfile({ z: t.z, theta: t.theta, qv: t.qv, uG: e.uG, vG: e.vG, p0: 1000, motion: e.motion });
+  let dp = 0; for (let k = 0; k < t.z.length; k++) dp = Math.max(dp, Math.abs(f.table.pi[k] - t.pi[k]) / t.pi[k]);
+  const a = S.indices(e), b = S.indices(f);
+  check('the tornado preset\'s own profiles give the preset back: the Exner function to ' + dp.toExponential(1) + ' of itself, the mixed-layer CAPE ' + b.mlcape.toFixed(1) + ' against ' + a.mlcape.toFixed(1) + ', the condensation level, the helicity and the tornado parameter the same',
+    dp < 1e-7 && rel(b.mlcape, a.mlcape) < 1e-4 && near(b.mllcl, a.mllcl, 1e-6) && near(b.srh01, a.srh01, 1e-9) && near(b.stp, a.stp, 1e-4) && near(f.motion.u, e.motion.u, 0) && near(f.motion.v, e.motion.v, 0));
+  const T0 = 250, n = 1001, z = Float64Array.from({ length: n }, (_, k) => k * 20), th = Float64Array.from(z, (zz) => T0 * Math.pow(1000 / 950, C.consts.RD / CP) * Math.exp(G * zz / (CP * T0))), qz = new Float64Array(n);                 // theta of 250 K air under 950 hPa, the reference being 1000 hPa
+  const iso = S.fromProfile({ z, theta: th, qv: qz, uG: () => 0, vG: () => 0, p0: 950 }); let worst = 0;
+  for (let k = 0; k < n; k += 50) { const p = 1e5 * Math.pow(iso.table.pi[k], CP / C.consts.RD), want = 95000 * Math.exp(-G * z[k] / (C.consts.RD * T0)); worst = Math.max(worst, Math.abs(p - want) / want); }
+  check('an isothermal dry atmosphere of 250 K under 950 hPa has p = 950 hPa exp(-g z / (R T)) at every 1000 m to ' + worst.toExponential(1) + ' of itself (the ground is at 95000 Pa: ' + (1e5 * Math.pow(iso.table.pi[0], CP / C.consts.RD)).toFixed(3) + ')',
+    worst < 2e-4 && near(1e5 * Math.pow(iso.table.pi[0], CP / C.consts.RD), 95000, 1e-6));
+  const wet = S.fromProfile({ z: t.z, theta: t.theta, qv: Float64Array.from(t.z, () => 0.05), uG: e.uG, vG: e.vG }), dry = S.fromProfile({ z: t.z, theta: t.theta, qv: Float64Array.from(t.z, () => 1e-7), uG: e.uG, vG: e.vG });
+  let wetBad = 0, dryBad = 0; for (let k = 0; k < t.z.length; k += 100) { const T = wet.table.theta[k] * wet.table.pi[k], p = 1e5 * Math.pow(wet.table.pi[k], CP / C.consts.RD); if (!near(wet.table.qv[k], S.qvsAt(T, p), 1e-12)) wetBad++; if (dry.table.qv[k] !== 1e-7) dryBad++; }
+  check('vapour beyond saturation is held to the saturation of its level (50 g/kg everywhere: ' + wetBad + ' levels off), and vapour below it is kept as it was (' + dryBad + ' levels off)', wetBad === 0 && dryBad === 0 && wet.table.qv[0] < 0.05 && wet.table.qv[0] > 0.01);
+  const w2 = S.fromProfile({ z: t.z, theta: t.theta, qv: t.qv, uG: (zz) => 10 + 1.37 * zz / 1000, vG: () => -5 }), w3 = S.fromProfile({ z: t.z, theta: t.theta, qv: t.qv, uG: (zz) => 10 + 1.37 * zz / 1000, vG: () => -5, motion: { u: 3, v: 4 } }), bk = S.bunkers(w2);
+  check('the winds are the caller\'s functions in the ground\'s frame and the model\'s are those minus the motion, which is the Bunkers right mover\'s to 0.1 m/s unless the caller gives one (' + w2.motion.u + ', ' + w2.motion.v + ' for ' + bk.right.u.toFixed(2) + ', ' + bk.right.v.toFixed(2) + ')',
+    near(w2.uG(2000), 12.74, 1e-9) && near(w2.u(2000), 12.74 - w2.motion.u, 1e-12) && near(w2.v(0), -5 - w2.motion.v, 1e-12) && near(w2.motion.u, bk.right.u, 0.06) && near(w2.motion.v, bk.right.v, 0.06) && w3.motion.u === 3 && w3.motion.v === 4 && near(w3.u(0), 7, 1e-12) && near(w3.v(0), -9, 1e-12));
+  const fi = S.fromProfile({ z: t.z, theta: t.theta, qv: t.qv, uG: e.uG, vG: e.vG }), zm = 0.5 * (t.z[100] + t.z[101]);
+  check('theta and the vapour as functions of height are the table at its levels and linear between them (the midpoint of two levels is their mean) and constant beyond the first and the last, and with no ground pressure given the ground is at 1000 hPa (Exner function ' + fi.table.pi[0] + ')',
+    fi.theta(t.z[100]) === t.theta[100] && near(fi.theta(zm), 0.5 * (t.theta[100] + t.theta[101]), 1e-12) && near(fi.qv(zm), 0.5 * (fi.table.qv[100] + fi.table.qv[101]), 1e-15) && fi.theta(-50) === t.theta[0] && fi.theta(1e6) === t.theta[t.z.length - 1] && fi.qv(1e6) === fi.table.qv[t.z.length - 1] && fi.table.pi[0] === 1);
+  const ci = (k) => Float64Array.from(t.z.filter((_, i) => i % k === 0)), c10 = S.fromProfile({ z: ci(10), theta: Float64Array.from(t.theta.filter((_, i) => i % 10 === 0)), qv: Float64Array.from(t.qv.filter((_, i) => i % 10 === 0)), uG: e.uG, vG: e.vG, motion: e.motion }), d = S.indices(c10);
+  check('a grid of 100 m gives the tornado day\'s mixed-layer CAPE (' + d.mlcape.toFixed(0) + ' against ' + a.mlcape.toFixed(0) + ' J/kg) within 3 %, its CIN within 5 J/kg, the helicity within 1 and the condensation level within 100 m',
+    rel(d.mlcape, a.mlcape) < 0.03 && near(d.mlcin, a.mlcin, 5) && near(d.srh01, a.srh01, 1) && near(d.mllcl, a.mllcl, 100));
+}
+
+/* 11. The parcel on a coarse grid: the condensation level is found between two levels (a parcel that went on dry to the level above would be too cold for all the rest of its way: 0.5 K for 100 m, a tenth of the CAPE), so the CAPE,
+   the CIN and the levels are those of the fine grid to a fraction of a per cent on grids of 50 and 100 m; a parcel saturated at the ground has its condensation level there; and a sliver of warm air at the condensation level,
+   which a cap just above cancels, is not free convection (the cap is the inhibition), while a stretch of 250 m or more is. */
+{
+  let worstC = 0, worstL = 0, worstI = 0, names = [];
+  for (const nme of ['wk82', 'tornado', 'hail']) {
+    const e = S.make(S.presets[nme]), t = e.table, fine = S.indices(e);
+    for (const k of [5, 10]) {
+      const f = S.fromProfile({ z: Float64Array.from(t.z.filter((_, i) => i % k === 0)), theta: Float64Array.from(t.theta.filter((_, i) => i % k === 0)), qv: Float64Array.from(t.qv.filter((_, i) => i % k === 0)), uG: e.uG, vG: e.vG, motion: e.motion }), c = S.indices(f);
+      worstC = Math.max(worstC, rel(c.sbcape, fine.sbcape), rel(c.mlcape, fine.mlcape)); worstL = Math.max(worstL, Math.abs(c.sblcl - fine.sblcl)); worstI = Math.max(worstI, Math.abs(c.sbcin - fine.sbcin), Math.abs(c.mlcin - fine.mlcin));
+    }
+    names.push(nme);
+  }
+  check('the three presets on grids of 50 and 100 m: the surface and mixed-layer CAPE within ' + (100 * worstC).toFixed(2) + ' % of the 10 m grid\'s (under 0.3 %), the surface condensation level within ' + worstL.toFixed(2) + ' m (under 1.5 m), the CIN within ' + worstI.toFixed(2) + ' J/kg (under 1)',
+    worstC < 0.003 && worstL < 1.5 && worstI < 1);
+  const e = S.make(S.presets.tornado), ix = S.indices(e);
+  check('the tornado day\'s cap just over its condensation level counts: mixed-layer CIN ' + ix.mlcin.toFixed(1) + ' J/kg (-32), the level of free convection above the cap at ' + ix.mllfc + ' m (1820), CAPE ' + ix.mlcape.toFixed(0) + ' (3070); the same on a grid of 100 m (CIN ' + S.indices(S.fromProfile({ z: Float64Array.from(e.table.z.filter((_, i) => i % 10 === 0)), theta: Float64Array.from(e.table.theta.filter((_, i) => i % 10 === 0)), qv: Float64Array.from(e.table.qv.filter((_, i) => i % 10 === 0)), uG: e.uG, vG: e.vG, motion: e.motion })).mlcin.toFixed(1) + ')',
+    near(ix.mlcin, -32.1, 0.5) && near(ix.mllfc, 1820, 25) && near(ix.mlcape, 3070, 20));
+  const dz = 10, n = 301, z = Float64Array.from({ length: n }, (_, k) => k * dz), tvE = new Float64Array(n).fill(300), k0 = G / 300;
+  const sliver = new Float64Array(n); for (let k = 0; k < n; k++) { const h = z[k] + 5; sliver[k] = 300 + (h < 50 ? 0.5 : h < 400 ? -1 : h < 1400 ? 1.5 : -1); }
+  const bs = S.buoyancy(z, sliver, tvE, 0);
+  check('a sliver of warm air 50 m deep at the condensation level, a cap of 350 m, then 1 km of warm air: free convection starts at the layer above the cap, 390 m (' + bs.lfc + '), the inhibition is the cap and the layer under it, ' + (-k0 * 342.5).toFixed(1) + ' J/kg (' + bs.cin.toFixed(1) + '), the CAPE is what is above it, ' + (k0 * 1502.5).toFixed(0) + ' (' + bs.cape.toFixed(0) + ')',
+    bs.lfc === 390 && rel(bs.cin, -k0 * 342.5) < 0.03 && rel(bs.cape, k0 * 1502.5) < 0.01 && bs.el === 1400);
+  const stretch = new Float64Array(n); for (let k = 0; k < n; k++) { const h = z[k] + 5; stretch[k] = 300 + (h < 300 ? 0.5 : h < 600 ? -1 : h < 2600 ? 2 : -1); }
+  const bt = S.buoyancy(z, stretch, tvE, 0);
+  check('warm air 300 m deep at the condensation level is free convection there, a cap above it is not subtracted (the level of free convection ' + bt.lfc + ', the CIN ' + bt.cin.toFixed(2) + ')', bt.lfc === 0 && bt.cin === 0 && rel(bt.cape, k0 * (290 * 0.5 + 10 * 0.25 + 2000 * 2 - 10 * 0.5 * 0) / 1) < 0.2);
+  const b3 = S.buoyancy(z, sliver.map((v, k) => 300 + ((z[k] + 5) < 500 ? -0.5 : (z[k] + 5) < 1500 ? 2 : (z[k] + 5) < 2000 ? -1 : 1)), tvE, 805);
+  check('warm air that begins under the condensation level and goes on above it counts from the condensation level only: with it at 805 m the CAPE is g/300 x (2 K x 700 m + 1 K x 1000 m) = ' + (k0 * 2400).toFixed(1) + ' J/kg (' + b3.cape.toFixed(1) + '), not with the 300 m under it', rel(b3.cape, k0 * 2400) < 0.01);
+  const under = new Float64Array(n); for (let k = 0; k < n; k++) { const h = z[k] + 5; under[k] = 300 + (h < 400 ? -1 : h < 700 ? 1 : h < 1000 ? -1 : 1.5); }
+  const bu = S.buoyancy(z, under, tvE, 800);
+  check('warm air 300 m deep that lies under the condensation level (800 m) is not free convection, whatever its depth: the level of free convection is above the cold layer over it, at 990 m (' + bu.lfc + ')', bu.lfc === 990);
+  const shallow = new Float64Array(n); for (let k = 0; k < n; k++) { const h = z[k] + 5; shallow[k] = 300 + (h < 400 ? -1 : h < 1060 ? 1 : h < 1450 ? -1 : 2); }
+  const bh = S.buoyancy(z, shallow, tvE, 805);
+  check('a stretch of warm air is measured from the condensation level, not from the base of its layer: from 805 m to 1050 m it is 245 m, too shallow to be free convection (the level of free convection is above the next cold layer, ' + bh.lfc + ' m), and it is 250 m (' + S.buoyancy(z, shallow.map((v, k) => (z[k] + 5 < 1060 && z[k] + 5 >= 400 ? 301 : v)), tvE, 800).lfc + ' m) from 800 m',
+    bh.lfc === 1440 && S.buoyancy(z, shallow, tvE, 800).lfc === 800);
+  const th = S.make(S.presets.wk82).table, sat = S.lift(S.make(S.presets.wk82), th.theta[0], S.qvsAt(th.theta[0] * th.pi[0], 1e5 * Math.pow(th.pi[0], CP / C.consts.RD)) * 1.0000001);
+  check('a parcel that is saturated at the ground (22 g/kg of vapour at 300 K, much more than the day\'s 14) has its condensation level there (' + sat.lcl + ' m) and a CAPE of its own, a finite number larger than the day\'s (' + sat.cape.toFixed(0) + ' J/kg)', sat.lcl === 0 && Number.isFinite(sat.cape) && sat.cape > 4000 && sat.cape < 20000);
+}
+
 console.log(passed + ' passed, ' + failed + ' failed');
 process.exit(failed ? 1 : 0);

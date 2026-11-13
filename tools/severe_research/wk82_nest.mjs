@@ -15,12 +15,13 @@
 // The child's frames: <out>.cdbz.i8 (reflectivity, dBZ rounded, -30 for none, in the order frame, level, y, x), <out>.cvz.u8 (the reflectivity-weighted fall speed, 0.25 m/s downward, 0 for none, the same order),
 // <out>.cuvw.i16 (u, v, w in 0.01 m/s at the cell centres, in the child's frame, order frame, component, level, y, x) and <out>.json (grid, times, the parent's motion over the ground, the child's frame, where the child lies, its south-west corner in the box at each frame, the parent's grid, its updraft track and the base state);
 // with PARENT_FRAMES the parent's box at the same times in the same kinds of files (<out>.pdbz.i8, <out>.pvz.u8, <out>.puvw.i16: tools/severe_research/make_nest_pack.mjs makes a pack of the two); the log has, every DIAG_EVERY seconds, the strongest rotation,
-// the lowest pressure and the strongest wind of the lowest level over the ground, with the places.
+// the lowest pressure and the strongest wind of the lowest level over the ground, with the places, and what the criteria of plan 6.8 ask (z1km: the rotation near 1 km above the lowest level's strongest, adj: the cells joined to it
+// by their sides with a rotation of 0.1 per second or more, pmed: the median pressure change of the level, what the vortex is under); vortex_series.py reads the lines and says whether a log has a tornado-like vortex.
 import '../../src/severe-core.js';
 import '../../src/severe-nest.js';
 import '../../src/severe-refl.js';
 import { loadSounding, bubble } from './wk82.mjs';
-import { readFileSync, writeFileSync, openSync, writeSync, closeSync } from 'node:fs';
+import { readFileSync, writeFileSync, openSync, writeSync, closeSync, renameSync } from 'node:fs';
 
 const C = globalThis.HFSevereCore, NEST = globalThis.HFSevereNest, { P0, CP, RD } = C.consts;
 const [mode, a1, a2, a3] = process.argv.slice(2);
@@ -84,7 +85,8 @@ function writeCkpt(core, track, file) {
   const hb = Buffer.from(head), hl = Buffer.alloc(4); hl.writeUInt32LE(hb.length);
   const bufs = [hl, hb]; for (const n of names) bufs.push(Buffer.from(st.f[n].buffer, st.f[n].byteOffset, st.f[n].byteLength));
   for (const a of [st.precip, st.precipS, st.precipG]) bufs.push(Buffer.from(a.buffer, a.byteOffset, a.byteLength));
-  const all = Buffer.concat(bufs); writeFileSync(file, all); console.log('wrote ' + file + ' (' + (all.length / 1e6).toFixed(0) + ' MB)');
+  const all = Buffer.concat(bufs); writeFileSync(file + '.tmp', all); renameSync(file + '.tmp', file);     // written whole, then named: a run that is stopped in the middle of it leaves no half file
+  console.log('wrote ' + file + ' (' + (all.length / 1e6).toFixed(0) + ' MB)');
 }
 
 /* a restart file: the header and the state (the settings in the header have to be the environment's, for the parent is made again as it was) */
@@ -177,6 +179,8 @@ if (mode === 'parent') {
     console.log('  nest agreement at ' + tt.toFixed(0) + ' s: ' + out.join(' | '));
   }
   let nextDiag = DE, nextFrame = FE;
+  const dpBuf = new Float64Array(nxc * nxc), k1km = Math.max(0, Math.round(1000 / CDZ - 0.5));                         // the lowest level's pressure change (for its median), and the level near 1 km
+  const zAt = (i, j) => (i < 1 || j < 1 || i >= nxc || j >= nxc ? -1e9 : (CS.v[ci(i, j, 0)] - CS.v[ci(i - 1, j, 0)]) / CDX - (CS.u[ci(i, j, 0)] - CS.u[ci(i, j - 1, 0)]) / CDX);       // the lowest level's vertical vorticity at a cell corner
   for (let n = 0; n < steps; n++) {
     nest.step(DT); const tt = parent.time - tStart;
     if (AE && tt + 1e-6 >= nextAgree) { nextAgree += AE; agree(tt); }
@@ -187,10 +191,14 @@ if (mode === 'parent') {
       const pib0 = child.base.pibc[0];
       for (let j = 0; j < nxc; j++) for (let i = 0; i < nxc; i++) {
         const o = ci(i, j, 0), dp = (P0 * Math.pow(pib0 + CS.pi[o], CP / RD) - P0 * Math.pow(pib0, CP / RD)) / 100, ug = CS.u[o] + frame.u, vg = CS.v[o] + frame.v, sp = Math.hypot(ug, vg);
-        if (dp < pmin) { pmin = dp; pi_ = i; pj = j; } if (sp > vmax) { vmax = sp; vi = i; vj = j; }
+        dpBuf[j * nxc + i] = dp; if (dp < pmin) { pmin = dp; pi_ = i; pj = j; } if (sp > vmax) { vmax = sp; vi = i; vj = j; }
       }
       for (let k = 0; k < nzc; k++) for (let j = 0; j < nxc; j++) for (let i = 0; i < nxc; i++) { const w = CS.w[ci(i, j, k)]; if (w > wmax) { wmax = w; wi = i; wj = j; wk = k; } }
-      console.log('t=' + tt.toFixed(0).padStart(5) + ' s  zeta0 ' + (z0v.z * 1000).toFixed(0) + ' (' + z0v.i + ',' + z0v.j + ') zeta1 ' + (zc.z * 1000).toFixed(0) + ' 1e-3/s  pmin ' + pmin.toFixed(1) + ' hPa (' + pi_ + ',' + pj + ')  vmax0 ' + vmax.toFixed(1) + ' m/s (' + vi + ',' + vj + ')  wmax ' + wmax.toFixed(1) + ' at (' + wi + ',' + wj + ',' + wk + ')  [' + ((Date.now() - t0) / 1000).toFixed(0) + ' s]');
+      /* what the criteria of plan 6.8 ask of a vortex: the rotation at 1 km above the lowest level's strongest, the cells joined (by their sides) to it with 0.1 per second or more, and the surroundings' pressure (the median of the level) */
+      const zk = vort(child, k1km, z0v.i - 3, z0v.i + 4, z0v.j - 3, z0v.j + 4), srt = Float64Array.from(dpBuf).sort(), pmed = srt[srt.length >> 1];
+      let adj = 0;
+      if (zAt(z0v.i, z0v.j) >= 0.1) { const seen = new Set([z0v.j * nxc + z0v.i]), st = [[z0v.i, z0v.j]]; while (st.length) { const [i, j] = st.pop(); adj++; for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const a = i + di, b = j + dj, key = b * nxc + a; if (!seen.has(key) && zAt(a, b) >= 0.1) { seen.add(key); st.push([a, b]); } } } }
+      console.log('t=' + tt.toFixed(0).padStart(5) + ' s  zeta0 ' + (z0v.z * 1000).toFixed(0) + ' (' + z0v.i + ',' + z0v.j + ') zeta1 ' + (zc.z * 1000).toFixed(0) + ' 1e-3/s  pmin ' + pmin.toFixed(1) + ' hPa (' + pi_ + ',' + pj + ')  vmax0 ' + vmax.toFixed(1) + ' m/s (' + vi + ',' + vj + ')  wmax ' + wmax.toFixed(1) + ' at (' + wi + ',' + wj + ',' + wk + ')  [' + ((Date.now() - t0) / 1000).toFixed(0) + ' s]  z1km ' + (zk.z * 1000).toFixed(0) + ' adj ' + adj + ' pmed ' + pmed.toFixed(1));
     }
     if (FE && tt + 1e-6 >= nextFrame) {
       nextFrame += FE; times.push(+tt.toFixed(1)); corners.push([+(x0 + fr.u * tt).toFixed(1), +(y0 + fr.v * tt).toFixed(1)]);     // the child's south-west corner in the parent's box at this frame (src/severe-nest.js)
