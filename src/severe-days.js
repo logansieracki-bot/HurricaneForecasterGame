@@ -66,7 +66,7 @@
       story: 'A lee trough and a short dryline under northwest flow, a surface high to the north pushing moist air up the slope: a high cloud base, steep lapse rates and a long straight hodograph make large hail.',
       drawing: {
         base: 1014, aloft: { speed: 25, from: 270 },
-        air: { warm: { theta0: 304, qv0: 15.5, ml: 1500, cap: 4.5, capDepth: 500, rhMax: 0.95, rhDry: 0.8, ztr: 13000, thetaTr: 348 } },
+        air: { warm: { theta0: 304, qv0: 15.5, ml: 1700, cap: 1.5, capDepth: 400, rhMax: 0.95, rhDry: 0.8, ztr: 13000, thetaTr: 348 } },
         objects: [
           { type: 'high', x: 150, y: 450, rise: 10, size: 500, motion: { u: 3, v: -1 } },
           { type: 'trough', pts: [[-250, -350], [-230, 0], [-250, 350]], depth: 5, width: 150 },
