@@ -15,6 +15,12 @@
   const UNITS = { imperial: { name: 'Miles and mph', speed: 'mph', k: 2.2369362920544, dist: 'mi', m: 1609.344 }, nautical: { name: 'Nautical miles and knots', speed: 'kt', k: 1.9438444924406, dist: 'nm', m: 1852 },
     metric: { name: 'Kilometres and m/s', speed: 'm/s', k: 1, dist: 'km', m: 1000 } };
   const LS = 'hf-severe-v1';
+  /* the storms the page can show: the recorded 1 km storm is inside the page, the others are files beside it (severe-packs/, made by tools/severe_research/make_nest_pack.mjs) that are fetched when they are asked for;
+     t: the minute the page opens it at, zoom: how close, panes: the products of its panes, interval: the minutes between the frames it plays, mb: the size of the file (the menu says it) */
+  const STORMS = [
+    { id: 'wk82-1km', name: 'Supercell, 1 km grid', sub: 'Recorded · smooth rotation · a frame every 5 minutes' },
+    { id: 'wk82-100m', name: 'Supercell, 100 m nest', sub: 'Recorded · a notch and a tight couplet · a frame every minute', file: 'severe-packs/wk82-100m-nest.hfp', mb: 10, t: 76, zoom: 11.3, panes: ['dbz', 'vel'], interval: 1 },
+  ];
 
   /* ---- state ---- */
   const saved = (() => { try { return JSON.parse(localStorage.getItem(LS)) || {}; } catch (e) { return {}; } })();
@@ -24,7 +30,8 @@
   const save = () => { try { localStorage.setItem(LS, JSON.stringify({ theme: S.theme, units: S.units, speed: S.speed, interval: S.interval, panes: S.panes, dealias: S.dealias, clutter: S.clutter, res: S.res, layers: S.layers })); } catch (e) { /* none */ } };
   S.layers = Object.assign({ county: true, state: true, road: true, river: true, place: true, site: true, rings: true }, S.layers);
 
-  let geo, pack, scanner, pals, luts, panes = [];
+  let geo, pack, scanner, pals, luts, panes = [], pack0 = null, runPack = null, stormBusy = false;
+  S.storm = 'wk82-1km';
   const b64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
   const toast = (msg, ms) => { const t = $('toast'); t.textContent = msg; t.hidden = false; clearTimeout(toast.k); toast.k = setTimeout(() => { t.hidden = true; }, ms || 2600); };
 
@@ -327,17 +334,47 @@
   }
 
   /* ---- another storm: the page plays the pack it is given (the Lab's, or a file's) ---- */
+  const focusOf = (p, i) => { const h = p.h, f = h.nests && h.fn && h.fn[i]; if (f && f.length) { const nh = h.nests[f[0][0]]; return [f[0][1] + nh.nx * nh.dx / 2, f[0][2] + nh.ny * nh.dx / 2]; } return p.track[i]; };      // where to look: the middle of the first nest of the frame, else the strongest updraft
   async function setPack(p, o) {
-    o = o || {}; setPlaying(false);
+    o = o || {}; setPlaying(false); if ((o.id || 'run') === 'run') runPack = p;
     const old = scanner; pack = p; cache.clear(); pending.clear();
     scanner = await makeScanner(); if (old && old.dispose) old.dispose();
     const sc = pack.scenario, i0 = geo.points.site.names.indexOf(sc.radar); if (i0 < 0) throw new Error('no radar ' + sc.radar);
     const s0 = siteInfo(i0); S.radar = { id: s0.id, custom: false, name: s0.name, lat: s0.lat, lon: s0.lon };
-    if (!hasEvery(S.interval)) S.interval = [5, 10, 3, 1].find(hasEvery) || 5;
+    if (o.interval && hasEvery(o.interval)) S.interval = o.interval; else if (!hasEvery(S.interval)) S.interval = [5, 10, 3, 1].find(hasEvery) || 5;
     const want = o.t === undefined ? 60 : o.t, near = pack.times.reduce((b, t, i) => (Math.abs(t - want) < Math.abs(pack.times[b] - want) ? i : b), 0); S.t = pack.times[near]; S.frame = frameAt(S.t);
-    const tr = pack.track[S.frame], c = pack.boxLatLon(pack.times[S.frame], tr[0], tr[1]), mid = { lat: (c.lat + S.radar.lat) / 2, lon: (c.lon + S.radar.lon) / 2 };
-    for (const pn of panes) { pn.map.activeSite = S.radar.id; pn.map.setView({ cx: G.mercX(mid.lon), cy: G.mercY(mid.lat), mpp: G.mppOf(8.9) }); pn.sweep = null; pn.key = ''; }
-    buildTicks(); refresh(); syncSlider(); syncDock();
+    const tr = focusOf(pack, S.frame), c = pack.boxLatLon(pack.times[S.frame], tr[0], tr[1]), mid = o.zoom ? c : { lat: (c.lat + S.radar.lat) / 2, lon: (c.lon + S.radar.lon) / 2 };      // (close up: on the storm; else between the storm and the radar)
+    for (const pn of panes) { pn.map.activeSite = S.radar.id; pn.map.setView({ cx: G.mercX(mid.lon), cy: G.mercY(mid.lat), mpp: G.mppOf(o.zoom || 8.9) }); pn.sweep = null; pn.key = ''; }
+    S.storm = o.id || 'run'; buildTicks(); refresh(); syncSlider(); syncDock();
+  }
+  function fetchBytes(url, onProgress) {                                       // XMLHttpRequest, not fetch: it reads a file beside a page that was opened from disk (the browser's setting permitting) and says how far it is
+    return new Promise((resolve, reject) => {
+      const x = new XMLHttpRequest(); x.open('GET', url); x.responseType = 'arraybuffer';
+      x.onprogress = (e) => { if (onProgress && e.lengthComputable && e.total) onProgress(e.loaded / e.total); };
+      x.onload = () => (x.status === 0 || (x.status >= 200 && x.status < 300)) && x.response && x.response.byteLength ? resolve(new Uint8Array(x.response)) : reject(new Error(x.status ? 'the server said ' + x.status : 'the file is empty'));
+      x.onerror = () => reject(new Error('the file could not be fetched; it is a separate file beside this page, so the page has to be opened from its web address'));
+      x.send();
+    });
+  }
+  async function showStorm(id) {
+    if (stormBusy) return; const st = STORMS.find((q) => q.id === id);
+    if (id === 'run') { if (!runPack) throw new Error('no run yet: draw a day and run a storm'); return setPack(runPack, { id: 'run', t: S.storm === 'run' ? S.t : undefined }); }
+    if (!st) throw new Error('no storm ' + id);
+    if (!st.pack && st.file) {
+      stormBusy = true;
+      try { const bytes = await fetchBytes(st.file, (f) => toast('Loading ' + st.name + ' · ' + Math.round(f * 100) + '%', 60000)); st.pack = PACK.fromBody(await PACK.gunzip(bytes)); $('toast').hidden = true; }
+      finally { stormBusy = false; }
+    }
+    const p = st.pack || pack0;
+    await setPack(p, { id, t: st.t, zoom: st.zoom, interval: st.interval });
+    if (st.panes) { setPaneCount(st.panes.length); panes.forEach((pn, i) => { pn.tilt = 0; setProduct(pn, st.panes[i]); }); refresh(); }
+    closePop();
+  }
+  const row2 = (id, name, sub, checked) => '<button class="row two" role="menuitemradio" aria-checked="' + (checked ? 'true' : 'false') + '" data-id="' + id + '"><span class="rt"><b>' + name + '</b><span class="sub">' + sub + '</span></span></button>';        // a row with its note under the name
+  function openStormMenu(anchor) {
+    openPop(anchor, '<h4>Storms</h4>' + STORMS.map((q) => row2(q.id, q.name, q.sub + (q.mb ? ' · ' + q.mb + ' MB' : ''), S.storm === q.id)).join('') + (runPack ? row2('run', 'Your last run', 'From Draw: ' + (runPack.name || 'a storm'), S.storm === 'run') : '')
+      + '<div class="kv"><span></span><span style="font-weight:400;font-size:11px;color:var(--dim)">The 100 m storm is a recording of the real model: cells of 500 m with a nest of 100 m round the storm\'s rotation.</span></div>', 'below',
+      (el) => onRows(el, (id) => { closePop(); showStorm(id).catch((e) => { $('toast').hidden = true; toast('That storm could not be shown: ' + e.message, 9000); }); }));
   }
 
   /* ---- wiring ---- */
@@ -352,7 +389,7 @@
     on('b-probe', () => setTool('probe')); on('b-measure', () => setTool('measure'));
     on('b-locate', () => { const R0 = S.radar, v = act().map.view; for (const p of panes) p.map.setView({ cx: G.mercX(R0.lon), cy: G.mercY(R0.lat), mpp: Math.min(v.mpp, G.mppOf(8.4)) }); });
     on('z-in', () => { const m = act().map; m.zoomAt(m.view.w / 2, m.view.h / 2, 1.6); }); on('z-out', () => { const m = act().map; m.zoomAt(m.view.w / 2, m.view.h / 2, 1 / 1.6); });
-    on('b-theme', () => setTheme(S.theme === 'dark' ? 'light' : 'dark')); on('b-layers', (e) => openLayers(e.currentTarget)); on('b-settings', (e) => openSettings(e.currentTarget)); on('b-panes', () => setPaneCount(S.panes === 1 ? 2 : 1));
+    on('b-storms', (e) => openStormMenu(e.currentTarget)); on('b-theme', () => setTheme(S.theme === 'dark' ? 'light' : 'dark')); on('b-layers', (e) => openLayers(e.currentTarget)); on('b-settings', (e) => openSettings(e.currentTarget)); on('b-panes', () => setPaneCount(S.panes === 1 ? 2 : 1));
     document.addEventListener('keydown', (e) => {
       if ($('app').dataset.mode === 'draw') return;                                                      // (the editor has its own keys)
       if (e.target && /input|textarea|select/i.test(e.target.tagName) && e.target.id !== 'slider') return; if (e.metaKey || e.ctrlKey || e.altKey) return;
@@ -369,7 +406,7 @@
   async function boot() {
     const inflate = async (u8) => new Uint8Array(await new Response(new Blob([u8]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer());
     geo = G.decodeBundle(await inflate(b64(D.geo)));
-    const body = await PACK.gunzip(b64(D.pack)); pack = PACK.fromBody(body);
+    const body = await PACK.gunzip(b64(D.pack)); pack = PACK.fromBody(body); pack0 = pack;
     pals = { br: PAL.parse(D.pal.br), bv: PAL.parse(D.pal.bv), sw: PAL.parse(D.pal.sw) };
     luts = { br: PAL.lut(pals.br, { step: 0.25, vmin: -40, vmax: 105 }), bv: PAL.lut(pals.bv, { step: 0.25 }), sw: PAL.lut(pals.sw, { step: 0.1 }) };
     luts.brLight = Object.assign({}, luts.br, { rgba: Uint8ClampedArray.from(luts.br.rgba) });                    // on white the weak echo is made fainter, as RadarScope's light map does
@@ -387,7 +424,7 @@
     window.SEVERE.ready = true; window.dispatchEvent(new Event('severe-ready'));
   }
 
-  const api = { S, TILTS, SPEEDS, PRODUCTS, toast, setPack, get panes() { return panes; }, get pack() { return pack; }, get geo() { return geo; }, get cache() { return cache; }, get scanner() { return scanner; }, ready: false,
+  const api = { S, TILTS, SPEEDS, PRODUCTS, STORMS, toast, setPack, showStorm, fetchBytes, get runPack() { return runPack; }, get panes() { return panes; }, get pack() { return pack; }, get geo() { return geo; }, get cache() { return cache; }, get scanner() { return scanner; }, ready: false,
     setT, step, setPlaying, setPaneCount, setTheme, setTool, setProduct, setTilt, setRadar, frames, keyOf, probeAt, tapPane, refresh, UNITS, siteInfo,
     async whenIdle() { for (let i = 0; i < 600; i++) { if (!scanner.busy() && !panes.some((p) => p.busy)) { await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))); if (!scanner.busy() && !panes.some((p) => p.busy)) return true; } await new Promise((r) => setTimeout(r, 50)); } return false; } };
   window.SEVERE = api;

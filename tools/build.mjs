@@ -3,7 +3,7 @@
 // vendor/leaflet + data/generated/data.json + src/storms.js. No bundler: the template
 // is plain HTML/CSS/JS with placeholders substituted verbatim (the storm ones from src/storm-*.js, src/storm-ui.*) (a template that has
 // no `/*__STORMS__*/` or `/*__STORM_HOOKS__*/` placeholder simply does not get the storm engine / its page hooks yet).
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, copyFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -82,7 +82,8 @@ build({ basin: 'med', templatePath: join(ROOT, 'src/template-med.html'), dataPat
 
 // The Severe page, the radar and the editor (Draw mode): dist/severe.html (a preview the menu does not link) is made from src/severe.html and src/severe-app.css, the scripts of the page (each in a <script> of its own with
 // an id, so that the page can hand the sources of the radar operator to its scanning workers), the baked vector map (data/generated/severe-geo.bin, tools/make_severe_geo.mjs), the storm pack
-// (data/severe/packs/*.hfp, tools/severe_research/make_pack.mjs) and the colour tables (data/severe/*.pal), all inlined: one file that needs nothing from the network.
+// (data/severe/packs/wk82-1km-5min.hfp, tools/severe_research/make_pack.mjs) and the colour tables (data/severe/*.pal), all inlined: one file that needs nothing from the network. The other recorded storms (the other
+// files of data/severe/packs/, made by tools/severe_research/make_nest_pack.mjs) are too big to carry in the page: they go beside it, in severe-packs/, and the page fetches one when it is asked for it.
 {
   const text = (p) => readFileSync(join(ROOT, p), 'utf8').trimEnd(), b64 = (p) => readFileSync(join(ROOT, p)).toString('base64');
   const libs = [['src-geo', 'severe-geo.js'], ['src-palette', 'severe-palette.js'], ['src-radar', 'severe-radar.js'], ['src-pack', 'severe-pack.js'], ['src-worker', 'severe-worker.js'], ['src-gl', 'severe-gl.js'], ['src-map', 'severe-map.js'],
@@ -100,4 +101,6 @@ build({ basin: 'med', templatePath: join(ROOT, 'src/template-med.html'), dataPat
   mkdirSync(dirname(dest), { recursive: true });
   writeFileSync(dest, html);
   console.log(`Built ${dest} (${(html.length / 1024 / 1024).toFixed(2)} MB)`);
+  const packs = join(ROOT, 'data/severe/packs'), outPacks = join(dirname(dest), 'severe-packs');
+  for (const f of readdirSync(packs).sort()) if (f.endsWith('.hfp') && f !== 'wk82-1km-5min.hfp') { mkdirSync(outPacks, { recursive: true }); copyFileSync(join(packs, f), join(outPacks, f)); console.log(`Copied ${join(outPacks, f)}`); }
 }

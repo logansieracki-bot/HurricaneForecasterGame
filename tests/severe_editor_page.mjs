@@ -33,6 +33,7 @@ async function drag(p, pts, steps = 5) { await p.mouse.move(pts[0][0], pts[0][1]
 async function sketch(p, tool, kms) { await p.click('#ed-tools [data-id="' + tool + '"]'); const pts = []; for (const k of kms) pts.push(await px(p, k[0], k[1])); await drag(p, pts); }
 const slide = (p, id, v) => p.$eval('#' + id, (el, v) => { el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); }, v);
 const settle = (p) => p.waitForTimeout(120);
+const idle2 = (p) => p.evaluate('SEVERE.whenIdle()');
 
 /* 1. The editor opens from the address, with no request and no complaint, and shows the ready-made day */
 const A = await open(1440, 900), pg = A.page;
@@ -139,13 +140,18 @@ await pg.click('#d-layers [data-l="off"]'); await settle(pg);
 check('Off takes the map and its colour bar away (' + await ev(pg, "document.getElementById('ed-legend').hidden") + ')', await ev(pg, "document.getElementById('ed-legend').hidden"));
 
 /* 9. A tap on empty ground gives the sounding there, and sets where a storm would start */
+const stable = async (p) => { let last = ''; for (let i = 0; i < 60; i++) { const v = await ev(p, 'JSON.stringify(SEVERE.editor.map.view)'); if (v === last) return true; last = v; await p.waitForTimeout(100); } return false; };      // (the view has stopped moving)
+await stable(pg);
+await ev(pg, "(() => { const pane = document.getElementById('ed-pane'); window.__tap = null; pane.addEventListener('pointerup', (e) => { const r = pane.getBoundingClientRect(); window.__tap = { x: e.clientX - r.left, y: e.clientY - r.top, view: JSON.parse(JSON.stringify(SEVERE.editor.map.view)) }; }, { capture: true, once: true }); })()");
 const tapAt = await px(pg, 330, -150); await pg.mouse.click(tapAt[0], tapAt[1]); await pg.waitForSelector('#sh-skew', { timeout: 10000 }); await settle(pg);
+const tapped = await ev(pg, "(() => { const t = window.__tap; return t ? { x: t.x, y: t.y, km: SEVERE.editor.toKm(t.view, t.x, t.y) } : null; })()");
 const sk = await ev(pg, "(() => { const c = document.getElementById('sh-skew'), d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let red = 0, green = 0, any = 0; for (let i = 0; i < d.length; i += 4) { if (d[i + 3] > 200) any++; if (d[i] > 220 && d[i + 1] < 120 && d[i + 2] < 120 && d[i + 3] > 200) red++; if (d[i + 1] > 200 && d[i] < 130 && d[i + 2] < 160 && d[i + 3] > 200) green++; } return { red, green, any }; })()");
 const txt = await ev(pg, "document.getElementById('ed-sheet').textContent");
 check('a tap on empty ground opens the sounding: a skew-T with the temperature in red (' + sk.red + ' pixels) and the dew point in green (' + sk.green + '), a hodograph, the numbers and what to expect ("' + (txt.match(/Supercells\.|Organised multicell[^.]*\.|Pulse[^.]*\.|No storms[^.]*\.|Capped[^.]*\./) || [''])[0] + '")',
   sk.red > 200 && sk.green > 200 && /CAPE/.test(txt) && /Tornado param/.test(txt) && /Supercells|multicell|Pulse|Capped|No storms/.test(txt) && await ev(pg, "!!document.getElementById('sh-hodo')"));
 const spot = await E(pg, 'E.spot');
-check('the spot for a storm is the tapped one (' + spot.x + ', ' + spot.y + ' for 330, -150) and the button to run one is on (' + !(await ev(pg, "document.getElementById('ed-start').disabled")) + ')', near(spot.x, 330, 2) && near(spot.y, -150, 2) && !(await ev(pg, "document.getElementById('ed-start').disabled")));
+check('the spot for a storm is the tapped one (' + spot.x + ', ' + spot.y + ' for 330, -150: the pointer was at ' + (tapped ? tapped.x.toFixed(1) + ', ' + tapped.y.toFixed(1) + ' px of the pane, which is ' + tapped.km.map((v) => v.toFixed(1)).join(', ') + ' km, and the click was asked for ' + tapAt.map((v) => v.toFixed(1)).join(', ') + ') and the button to run one is on (' + !(await ev(pg, "document.getElementById('ed-start').disabled")) + ')' : 'no pointer') ,
+  !!tapped && spot.x === Math.round(tapped.km[0]) && spot.y === Math.round(tapped.km[1]) && near(spot.x, 330, 4) && near(spot.y, -150, 4) && !(await ev(pg, "document.getElementById('ed-start').disabled")));
 await pg.keyboard.press('Escape'); await settle(pg);
 check('Esc closes the sheet (' + await ev(pg, "document.getElementById('ed-sheet').hidden") + ')', await ev(pg, "document.getElementById('ed-sheet').hidden"));
 
@@ -181,6 +187,11 @@ check('the radar then plays it: the Radar mode is on (' + landed.mode + '), the 
   landed.mode === 'radar' && landed.frames === 3 && landed.t === 10 && landed.frame === 2 && landed.clock === '4:10 PM' && landed.sweep && landed.runHidden && !landed.busy && landed.tz === 'CDT' && landed.clock0 === '16:00');
 check('the box is on the ground so that the storm starts at the spot that was tapped (the bubble, at the middle of the box, is ' + (landed.startErr / 1000).toFixed(2) + ' km from it), and the radar is the site nearest the storm\'s track that is at least 25 km from it (' + landed.radar + ', ' + (landed.midToSite / 1000).toFixed(0) + ' km from the middle of the track)',
   landed.startErr < 800 && landed.radar === landed.scRadar && landed.midToSite >= 25000 && landed.midToSite < 160000);
+{ await pg.click('#b-storms'); const sr = await ev(pg, "[...document.querySelectorAll('#pop .row')].map((r) => ({ id: r.dataset.id, on: r.getAttribute('aria-checked') === 'true', text: r.textContent }))");
+  check('the Storms menu now has the run as "Your last run", in use, named after the day (' + sr.map((r) => r.id + (r.on ? '*' : '')).join(', ') + '; "' + (sr[2] ? sr[2].text : '') + '")', sr.length === 3 && sr[2].id === 'run' && sr[2].on && !sr[0].on && /Dryline day, storm run/.test(sr[2].text));
+  await pg.click('#pop [data-id="wk82-1km"]'); await pg.waitForFunction("SEVERE.S.storm === 'wk82-1km'", null, { timeout: 30000 }); await idle2(pg);
+  await pg.click('#b-storms'); await pg.click('#pop [data-id="run"]'); await pg.waitForFunction("SEVERE.S.storm === 'run'", null, { timeout: 30000 }); await idle2(pg);
+  check('the 1 km storm and the run can be swapped: the run is back with its three frames at 4:10 PM (' + await ev(pg, 'SEVERE.pack.n') + ' frames, ' + await ev(pg, "document.getElementById('clk').textContent") + ')', await ev(pg, 'SEVERE.pack.n') === 3 && await ev(pg, "document.getElementById('clk').textContent") === '4:10 PM'); }
 await pg.click('#m-draw'); await settle(pg);
 const cancelP = pg.evaluate(() => SEVERE.editor.runStorm({ minutes: 120, dx: 2000, box: 84000, dt: 10 }).then(() => 'finished').catch((e) => 'rejected: ' + (e.message || e)));
 await pg.waitForSelector('#run-cancel', { timeout: 10000 }); await pg.waitForTimeout(1500); await pg.click('#run-cancel');

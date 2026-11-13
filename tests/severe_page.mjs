@@ -4,14 +4,14 @@
 import { chromium } from 'playwright';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { existsSync } from 'node:fs';
+import { existsSync, statSync } from 'node:fs';
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url))), FILE = process.env.SEVERE_HTML || join(ROOT, 'dist/severe.html');
 if (!existsSync(FILE)) { console.error('dist/severe.html is missing: run `npm run build` first'); process.exit(2); }
 let failed = 0, passed = 0; const failedNames = [], t0 = Date.now();
 function check(name, cond) { if (cond) { passed++; console.log('ok   ' + name); } else { failed++; failedNames.push(name); console.log('FAIL ' + name); } }
 
-const browser = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+const browser = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--allow-file-access-from-files'] });      // (the last flag lets a page opened from disk read the recorded storm beside it)
 async function open(w, h, opts = {}) {
   const ctx = await browser.newContext({ viewport: { width: w, height: h }, colorScheme: opts.scheme || 'dark' }), page = await ctx.newPage(), log = { errors: [], requests: [] };
   page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') log.errors.push(m.type() + ': ' + m.text()); }); page.on('pageerror', (e) => log.errors.push('pageerror: ' + e));
@@ -151,6 +151,47 @@ check('on a phone (390 x 844) nothing scrolls sideways, the dock lies inside the
 await C.page.screenshot({ path: process.env.SEVERE_SHOT ? process.env.SEVERE_SHOT + '-phone.png' : '/dev/null' }).catch(() => {}); await C.ctx.close();
 const D = await open(1920, 1080); const big = await ev(D.page, () => ({ dw: document.getElementById('dock').getBoundingClientRect().width, p: SEVERE.panes[0].sweep !== null })); check('a 1920 x 1080 screen: the dock stays at most 1260 px wide and the sweep is up (' + Math.round(big.dw) + ' px)', big.dw <= 1262 && big.p && D.log.errors.length === 0);
 await D.page.screenshot({ path: process.env.SEVERE_SHOT ? process.env.SEVERE_SHOT + '-desktop.png' : '/dev/null' }).catch(() => {}); await D.ctx.close();
+
+/* 11. The storms: a menu, a recorded storm with a nest of 100 m (a file beside the page, fetched when it is asked for), a file that is not there, and the way back */
+const H = await open(1440, 900), hp = H.page, near = (a, b, tol) => Math.abs(a - b) <= tol;
+await ev(hp, "window.__xhr = []; const o = XMLHttpRequest.prototype.open; XMLHttpRequest.prototype.open = function (m, u) { window.__xhr.push(String(u)); return o.apply(this, arguments); };");      // (what the page asks for)
+const menuRows = async () => { await hp.click('#b-storms'); const r = await ev(hp, "[...document.querySelectorAll('#pop .row')].map((r) => ({ id: r.dataset.id, on: r.getAttribute('aria-checked') === 'true', text: r.textContent }))"); return r; };
+const packFile = join(dirname(FILE), 'severe-packs/wk82-100m-nest.hfp'), fileMB = existsSync(packFile) ? statSync(packFile).size / 1e6 : 0;
+let stRows = await menuRows();
+check('the Storms button lists the recorded storms, the 1 km one in use, and says what the other one weighs (' + stRows.map((r) => r.id + (r.on ? '*' : '')).join(', ') + '; ' + (/(\d+) MB/.exec(stRows[1] ? stRows[1].text : '') || [])[1] + ' MB for a file of ' + fileMB.toFixed(1) + ')',
+  stRows.length === 2 && stRows[0].id === 'wk82-1km' && stRows[0].on && stRows[1].id === 'wk82-100m' && !stRows[1].on && /100 m nest/.test(stRows[1].text) && /(\d+) MB/.test(stRows[1].text) && near(+/(\d+) MB/.exec(stRows[1].text)[1], fileMB, 1.5) && fileMB > 1);
+await hp.keyboard.press('Escape');
+/* a file that is not there: the page says so and stays with its storm */
+await ev(hp, "SEVERE.STORMS[1].file = 'severe-packs/not-there.hfp'"); await hp.click('#b-storms'); await hp.click('#pop [data-id="wk82-100m"]');
+await hp.waitForFunction("/could not be shown/.test(document.getElementById('toast').textContent) && !document.getElementById('toast').hidden", null, { timeout: 20000 });
+check('a storm file that is not there is refused with a word and the page stays with its storm (' + (await ev(hp, "document.getElementById('toast').textContent")).slice(0, 90) + '; ' + await ev(hp, 'SEVERE.S.storm') + ', ' + await ev(hp, 'SEVERE.pack.n') + ' frames)', await ev(hp, 'SEVERE.S.storm') === 'wk82-1km' && await ev(hp, 'SEVERE.pack.n') === 19 && !(await ev(hp, 'SEVERE.error')));
+await ev(hp, "SEVERE.STORMS[1].file = 'severe-packs/wk82-100m-nest.hfp'");
+await hp.click('#b-storms'); await hp.click('#pop [data-id="wk82-100m"]');
+await hp.waitForFunction("SEVERE.S.storm === 'wk82-100m' && SEVERE.panes.length === 2 && SEVERE.panes.every((p) => p.sweep && p.sweep.frame === SEVERE.S.frame)", null, { timeout: 120000 }); await idle(hp);
+const sn = await ev(hp, () => { const P = SEVERE.pack, v = P.volume(SEVERE.S.frame), G = HFSevereGeo, pn = SEVERE.panes[0], f = P.h.fn[SEVERE.S.frame][0], nh = P.h.nests[0], c = P.boxLatLon(P.times[SEVERE.S.frame], f[1] + nh.nx * nh.dx / 2, f[2] + nh.ny * nh.dx / 2), s = G.toScreen(pn.map.view, G.mercX(c.lon), G.mercY(c.lat));
+  return { n: P.n, t0: P.times[0], t1: P.times[P.n - 1], nests: v.nests.length, dx: v.nests[0].vol.dx, nx: P.nx, ny: P.ny, products: SEVERE.panes.map((q) => q.product + '/' + q.tilt), interval: SEVERE.S.interval, clock: document.getElementById('clk').textContent, mpp: pn.map.view.mpp, sx: s[0], sy: s[1], w: pn.map.view.w, h: pn.map.view.h, name: P.name, ticks: document.querySelectorAll('#ticks span').length }; });
+check('the 100 m storm is shown: ' + sn.n + ' frames from minute ' + sn.t0 + ' to ' + sn.t1 + ' with a nest of ' + sn.dx + ' m in each, in a box of ' + sn.nx + ' x ' + sn.ny + ' cells, open at ' + sn.clock + ' in two panes (' + sn.products.join(', ') + '), a frame every ' + sn.interval + ' minute and ' + sn.ticks + ' ticks',
+  sn.n === 15 && sn.t0 === 71 && sn.t1 === 85 && sn.nests === 1 && sn.dx === 100 && sn.clock === '4:16 PM' && sn.products.join() === 'dbz/0,vel/0' && sn.interval === 1 && sn.ticks === 15 && /100 m nest/.test(sn.name));
+check('and close up on the nest: ' + Math.round(sn.mpp) + ' m a pixel, the middle of the nest at ' + Math.round(sn.sx) + ', ' + Math.round(sn.sy) + ' of a pane of ' + Math.round(sn.w) + ' x ' + Math.round(sn.h), sn.mpp < 120 && sn.sx > 0.25 * sn.w && sn.sx < 0.75 * sn.w && sn.sy > 0.25 * sn.h && sn.sy < 0.75 * sn.h);
+const stGpu = await ev(hp, () => SEVERE.panes.map((p) => { p.gl.draw(p.map.view, p.sweep.radar); const g = p.gl.read(); let n = 0; for (let i = 3; i < g.length; i += 64) if (g[i] > 0) n++; return n; }));
+check('both panes draw the storm on the GPU (' + stGpu.join(' and ') + ' sampled pixels)', stGpu[0] > 2000 && stGpu[1] > 2000);
+const shear = async (frame) => { await ev(hp, (f) => { SEVERE.setPlaying(false); SEVERE.setT(SEVERE.pack.times[f]); }, frame); await hp.waitForFunction((f) => SEVERE.panes.every((p) => p.sweep && p.sweep.frame === f), frame, { timeout: 60000 }); await idle(hp);
+  return ev(hp, () => { const sw = SEVERE.panes[1].sweep, m = sw.meta, v = sw.vel; let mx = 0; for (let a = 0; a < m.nRad; a++) for (let g = 0; g < m.nGates; g++) { const x = v[a * m.nGates + g], y = v[((a + 1) % m.nRad) * m.nGates + g]; if (x === -32768 || y === -32768) continue; mx = Math.max(mx, Math.abs(x - y) / 2); } return mx; }); };
+const sh0 = await shear(0), sh8 = await shear(8);
+const sh8box = await ev(hp, () => { const P = SEVERE.pack, f = SEVERE.S.frame, vol = P.volume(f); delete vol.nests; const r = SEVERE.S.radar, rb = P.radarBox(P.times[f], r.lat, r.lon);
+  const sw = HFSevereRadar.scan(vol, { x: rb.x, y: rb.y, elev: 0.5, dAz: 0.5, gate: 250, nGates: 920, r0: 2125, seed: 1 + f * 131, clutter: { ground: 1, clearAir: 1 }, velocity: { nyquist: 28, dealias: false, noise: 1 } });
+  let mx = 0; for (let a = 0; a < sw.nRad; a++) for (let g = 0; g < sw.nGates; g++) { const x = sw.vel[a * sw.nGates + g], y = sw.vel[((a + 1) % sw.nRad) * sw.nGates + g]; if (!(x > -1e5) || !(y > -1e5)) continue; mx = Math.max(mx, Math.abs(x - y)); } return mx; });      // (the operator's own sweep: m/s, NaN for none)
+check('the radar sees the nest: at the start of the recording the largest velocity step between neighbouring radials is ' + sh0.toFixed(1) + ' m/s, at 4:19 PM it is ' + sh8.toFixed(1) + ' (a couplet, folded at the Nyquist velocity of 28 m/s) and the same frame scanned without its nest, the 500 m box alone, gives ' + sh8box.toFixed(1), sh0 < 35 && sh8 >= 40 && sh8box < 30);
+stRows = await menuRows(); await hp.click('#pop [data-id="wk82-1km"]');
+await hp.waitForFunction("SEVERE.S.storm === 'wk82-1km' && SEVERE.panes.every((p) => p.sweep && p.sweep.frame === SEVERE.S.frame)", null, { timeout: 60000 }); await idle(hp);
+const back = await ev(hp, () => ({ n: SEVERE.pack.n, interval: SEVERE.S.interval, clock: document.getElementById('clk').textContent, nests: SEVERE.pack.volume(SEVERE.S.frame).nests || null, mpp: SEVERE.panes[0].map.view.mpp }));
+check('the way back: the menu had the 100 m storm in use (' + stRows.map((r) => r.id + (r.on ? '*' : '')).join(', ') + '), choosing the 1 km storm brings back its 19 frames at ' + back.clock + ', 5 minutes apart (' + back.interval + '), without nests, at the old distance (' + Math.round(back.mpp) + ' m a pixel)', stRows[1].on && back.n === 19 && back.interval === 5 && back.clock === '4:00 PM' && !back.nests && back.mpp > 150);
+stRows = await menuRows(); const nRows = stRows.length; await hp.click('#pop [data-id="wk82-100m"]');
+await hp.waitForFunction("SEVERE.S.storm === 'wk82-100m' && SEVERE.panes.every((p) => p.sweep && p.sweep.frame === SEVERE.S.frame)", null, { timeout: 60000 }); await idle(hp);
+const asked = await ev(hp, 'window.__xhr');
+check('the 100 m storm is fetched when it is first asked for and not again: the page asked for ' + asked.map((u) => u.replace(/^.*\//, '')).join(', ') + ' (a missing file once, the recording once) and the second time it showed the one it had; with no run made there is no "Your last run" row (' + nRows + ' rows)',
+  asked.length === 2 && /not-there/.test(asked[0]) && /wk82-100m-nest/.test(asked[1]) && nRows === 2);
+await H.ctx.close();
 await browser.close();
 
 console.log(`\n${passed} passed, ${failed} failed (${((Date.now() - t0) / 1000).toFixed(0)} s)` + (failed ? '\nfailed: ' + failedNames.join(' | ') : ''));

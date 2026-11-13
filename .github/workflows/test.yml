@@ -96,6 +96,7 @@ jobs:
           cp dist/satl-sst-simulator.html _site/dist/
           cp dist/med-sst-simulator.html _site/dist/
           cp dist/severe.html _site/dist/
+          cp -r dist/severe-packs _site/dist/
 
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
