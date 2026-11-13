@@ -339,6 +339,7 @@
     on('z-in', () => { const m = act().map; m.zoomAt(m.view.w / 2, m.view.h / 2, 1.6); }); on('z-out', () => { const m = act().map; m.zoomAt(m.view.w / 2, m.view.h / 2, 1 / 1.6); });
     on('b-theme', () => setTheme(S.theme === 'dark' ? 'light' : 'dark')); on('b-layers', (e) => openLayers(e.currentTarget)); on('b-settings', (e) => openSettings(e.currentTarget)); on('b-panes', () => setPaneCount(S.panes === 1 ? 2 : 1));
     document.addEventListener('keydown', (e) => {
+      if ($('app').dataset.mode === 'draw') return;                                                      // (the editor has its own keys)
       if (e.target && /input|textarea|select/i.test(e.target.tagName) && e.target.id !== 'slider') return; if (e.metaKey || e.ctrlKey || e.altKey) return;
       const k = e.key; let used = true;
       if (k === ' ') setPlaying(!S.playing); else if (k === 'ArrowRight') { setPlaying(false); step(1); } else if (k === 'ArrowLeft') { setPlaying(false); step(-1); } else if (k === 'ArrowUp') setTilt(act(), act().tilt + 1); else if (k === 'ArrowDown') setTilt(act(), act().tilt - 1);
@@ -367,11 +368,11 @@
     for (const p of panes) { p.map.activeSite = S.radar.id; p.map.setView({ cx: G.mercX(mid.lon), cy: G.mercY(mid.lat), mpp: G.mppOf(8.9) }); }
     new ResizeObserver(() => { const d = $('dock'); document.documentElement.style.setProperty('--dockh', d.offsetHeight + 'px'); }).observe($('dock'));
     wire(); buildTicks(); setActive(0); panes.forEach((p) => { applyTheme(p); drawBar(p); }); refresh(); syncSlider(); requestAnimationFrame(tick);
-    try { if (!localStorage.getItem(LS + '-tip')) { localStorage.setItem(LS + '-tip', '1'); setTimeout(() => toast('Tip: drag the radar\'s pill to move it, tap another pill to switch radar, tap Probe to read the storm', 7000), 1500); } } catch (e) { /* none */ }
-    window.SEVERE.ready = true;
+    try { if (location.hash !== '#draw' && !localStorage.getItem(LS + '-tip')) { localStorage.setItem(LS + '-tip', '1'); setTimeout(() => toast('Tip: drag the radar\'s pill to move it, tap another pill to switch radar, tap Probe to read the storm', 7000), 1500); } } catch (e) { /* none */ }
+    window.SEVERE.ready = true; window.dispatchEvent(new Event('severe-ready'));
   }
 
-  const api = { S, TILTS, SPEEDS, PRODUCTS, get panes() { return panes; }, get pack() { return pack; }, get geo() { return geo; }, get cache() { return cache; }, get scanner() { return scanner; }, ready: false,
+  const api = { S, TILTS, SPEEDS, PRODUCTS, toast, get panes() { return panes; }, get pack() { return pack; }, get geo() { return geo; }, get cache() { return cache; }, get scanner() { return scanner; }, ready: false,
     setT, step, setPlaying, setPaneCount, setTheme, setTool, setProduct, setTilt, setRadar, frames, keyOf, probeAt, tapPane, refresh, UNITS, siteInfo,
     async whenIdle() { for (let i = 0; i < 600; i++) { if (!scanner.busy() && !panes.some((p) => p.busy)) { await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))); if (!scanner.busy() && !panes.some((p) => p.busy)) return true; } await new Promise((r) => setTimeout(r, 50)); } return false; } };
   window.SEVERE = api;

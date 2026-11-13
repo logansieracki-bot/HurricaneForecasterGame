@@ -80,19 +80,21 @@ build({ basin: 'med', templatePath: join(ROOT, 'src/template-med.html'), dataPat
   console.log(`Built ${join(ROOT, 'index.html')} (${(html.length / 1024).toFixed(0)} KB)`);
 }
 
-// The Severe radar page: dist/severe.html (a preview the menu does not link) is made from src/severe.html and src/severe-app.css, the scripts of the page (each in a <script> of its own with
+// The Severe page, the radar and the editor (Draw mode): dist/severe.html (a preview the menu does not link) is made from src/severe.html and src/severe-app.css, the scripts of the page (each in a <script> of its own with
 // an id, so that the page can hand the sources of the radar operator to its scanning workers), the baked vector map (data/generated/severe-geo.bin, tools/make_severe_geo.mjs), the storm pack
 // (data/severe/packs/*.hfp, tools/severe_research/make_pack.mjs) and the colour tables (data/severe/*.pal), all inlined: one file that needs nothing from the network.
 {
   const text = (p) => readFileSync(join(ROOT, p), 'utf8').trimEnd(), b64 = (p) => readFileSync(join(ROOT, p)).toString('base64');
-  const libs = [['src-geo', 'severe-geo.js'], ['src-palette', 'severe-palette.js'], ['src-radar', 'severe-radar.js'], ['src-pack', 'severe-pack.js'], ['src-worker', 'severe-worker.js'], ['src-gl', 'severe-gl.js'], ['src-map', 'severe-map.js']];
+  const libs = [['src-geo', 'severe-geo.js'], ['src-palette', 'severe-palette.js'], ['src-radar', 'severe-radar.js'], ['src-pack', 'severe-pack.js'], ['src-worker', 'severe-worker.js'], ['src-gl', 'severe-gl.js'], ['src-map', 'severe-map.js'],
+    ['src-core', 'severe-core.js'], ['src-sounding', 'severe-sounding.js'], ['src-analysis', 'severe-analysis.js'], ['src-draw', 'severe-draw.js'], ['src-days', 'severe-days.js'], ['src-guide', 'severe-guide.js'], ['src-paint', 'severe-editor-paint.js']];
   const scripts = libs.map(([id, f]) => {
     const s = text('src/' + f); if (s.includes('</script>')) throw new Error('src/' + f + ' must not contain a closing script tag: it is inlined into a <script>');
     return `<script id="${id}">\n${s}\n</script>`;
   });
   const data = { geo: b64('data/generated/severe-geo.bin'), pack: b64('data/severe/packs/wk82-1km-5min.hfp'), pal: { br: text('data/severe/Apocs_BR_Expert.pal'), bv: text('data/severe/User_BV_mph.pal'), sw: text('data/severe/Isobar_SW_placeholder.pal') } };
   const app = text('src/severe-app.js'); if (app.includes('</script>')) throw new Error('src/severe-app.js must not contain a closing script tag: it is inlined into a <script>');
-  scripts.push(`<script id="src-data">\nconst SEVERE_DATA = ${JSON.stringify(data).replace(/</g, '\\u003c')};\n</script>`, `<script id="src-app">\n${app}\n</script>`);
+  const editor = text('src/severe-editor.js'); if (editor.includes('</script>')) throw new Error('src/severe-editor.js must not contain a closing script tag: it is inlined into a <script>');
+  scripts.push(`<script id="src-data">\nconst SEVERE_DATA = ${JSON.stringify(data).replace(/</g, '\\u003c')};\n</script>`, `<script id="src-app">\n${app}\n</script>`, `<script id="src-editor">\n${editor}\n</script>`);
   const html = text('src/severe.html').replace('/*__SEVERE_CSS__*/', () => text('src/severe-app.css')).replace('<!--__SEVERE_SCRIPTS__-->', () => scripts.join('\n')) + '\n';
   const dest = join(process.env.HF_DIST || join(ROOT, 'dist'), 'severe.html');
   mkdirSync(dirname(dest), { recursive: true });

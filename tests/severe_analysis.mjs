@@ -274,5 +274,22 @@ const north = (x) => [[x, -3000], [x, 3000]];                                   
     near(cold.surface(-600, 0, 0).T - cold.surface(600, 0, 0).T, -12, 0.1) && near(cold0.surface(-600, 0, 0).T - cold0.surface(600, 0, 0).T, -12, 0.1) && Math.abs(cold.sounding(-600, 0, 0).table.theta[30] - cold0.sounding(-600, 0, 0).table.theta[30]) > 0.3);
 }
 
+/* 13. The numbers at any list of points (the maps of the editor are made on a lattice of the screen): the same as the single-point calls, at the hour asked, in the order given, on the grid asked for. */
+{
+  const a = mk([{ type: 'low', x: -150, y: 80, depth: 14, size: 380, motion: { u: 6, v: 3 } }, { type: 'front', kind: 'cold', pts: [[-150, 80], [-250, -300]], cold: 'right', contrast: 12, motion: { u: 8, v: 0 } },
+    { type: 'dryline', pts: [[-20, -400], [-60, 100]], dry: 'left', contrast: 14 }, { type: 'jet', pts: [[-600, 0], [600, 250]], speed: 30 }], { air: { warm: { qv0: 14 } } });
+  const pts = [[-100, 50], [200, -120], [0, 300], [-60, -250]], c = a.columns(pts, 2, { dz: 250 });
+  let worst = 0, ok = c.n === 4 && c.names.length === 13; for (let q = 0; q < pts.length; q++) {
+    const [x, y] = pts[q], s = a.surface(x, y, 2), ix = S.indices(a.sounding(x, y, 2, { dz: 250, top: 16000 }));
+    const pairs = [[c.mslp[q], s.p, 1e-2], [c.T[q], s.T, 1e-3], [c.Td[q], s.Td, 1e-3], [c.mlcape[q], ix.mlcape, 1e-3 * Math.max(1, ix.mlcape)], [c.shear06[q], ix.shear06, 1e-3], [c.srh01[q], ix.srh01, 1e-3 * Math.max(1, Math.abs(ix.srh01))], [c.stp[q], ix.stp, 1e-3 * Math.max(1, ix.stp)]];
+    for (const [got, want, tol] of pairs) { worst = Math.max(worst, Math.abs(got - want) / tol); if (!(Math.abs(got - want) <= tol)) ok = false; }
+  }
+  check('the numbers at four scattered points at 2 hours (grid 250 m) are those of the single-point calls: the pressure, the temperature and dew point at the ground, the CAPE, shear, helicity and tornado parameter (worst ' + worst.toFixed(2) + ' of the tolerance)', ok && worst < 1);
+  const c0 = a.columns(pts, 0, { dz: 250 }), diff = Math.abs(c0.T[0] - c.T[0]) + Math.abs(c0.mslp[1] - c.mslp[1]);
+  check('the hour is the one asked for (the low and the fronts moved: the pressure at (200, -120) is ' + c0.mslp[1].toFixed(2) + ' at 0 hours and ' + c.mslp[1].toFixed(2) + ' at 2), and with no grid given it is 100 m', diff > 0.05 && Math.abs(c0.mslp[1] - c.mslp[1]) > 0.01 && a.columns([[0, 0]], 0).mlcape[0] === a.columns([[0, 0]], 0, { dz: 100 }).mlcape[0] && a.columns([], 0).n === 0);
+  const f = a.fields(1, { x0: -300, x1: 300, y0: -200, y1: 200, nx: 3, ny: 2, dz: 250 }), cf = a.columns([[-300, -200], [0, -200], [300, -200], [-300, 200], [0, 200], [300, 200]], 1, { dz: 250 });
+  check('a map is the columns of its lattice, row after row from the south-west corner (3 by 2: ' + Array.from(f.mlcape).map((x) => x.toFixed(0)).join(', ') + ')', ['mslp', 'T', 'Td', 'mlcape', 'shear06', 'stp'].every((nm) => Array.from(f[nm]).every((v, i) => v === cf[nm][i])));
+}
+
 console.log('\n' + passed + ' passed, ' + failed + ' failed (' + ((Date.now() - t0) / 1000).toFixed(1) + ' s)');
 process.exit(failed ? 1 : 0);

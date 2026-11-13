@@ -13,6 +13,14 @@ const FILES = { core: 'severe-core.js', snd: 'severe-sounding.js', ana: 'severe-
 const SRC = Object.fromEntries(Object.entries(FILES).map(([k, f]) => [k, readFileSync(join(root, 'src/' + f), 'utf8')]));
 // [name, file, the text to find (once), its replacement]
 const M = [
+  // columns: the numbers at a list of points
+  ['columns-x-y', 'ana', 'const x = points[q][0], y = points[q][1];', 'const x = points[q][1], y = points[q][0];'],
+  ['columns-hour', 'ana', 'const env = sounding(x, y, t, { dz, top: 16000 }), ix = SND.indices(env), tb = env.table, w = windAt(x, y, 10, t), p = pressure(x, y, t);\n        out.mslp[q] = p; out.T[q]', 'const env = sounding(x, y, 0, { dz, top: 16000 }), ix = SND.indices(env), tb = env.table, w = windAt(x, y, 10, t), p = pressure(x, y, t);\n        out.mslp[q] = p; out.T[q]'],
+  ['columns-pressure-hour', 'ana', 'w = windAt(x, y, 10, t), p = pressure(x, y, t);\n        out.mslp[q] = p; out.T[q]', 'w = windAt(x, y, 10, t), p = pressure(x, y, 0);\n        out.mslp[q] = p; out.T[q]'],
+  ['columns-grid', 'ana', 'const dz = (o && o.dz) || 100, out = { n: points.length', 'const dz = (o && o.dz) || 250, out = { n: points.length'],
+  ['columns-grid-ignored', 'ana', 'const dz = (o && o.dz) || 100, out = { n: points.length', 'const dz = 100, out = { n: points.length'],
+  ['fields-lattice-order', 'ana', 'for (let j = 0; j < g.ny; j++) for (let i = 0; i < g.nx; i++) pts.push(', 'for (let i = 0; i < g.nx; i++) for (let j = 0; j < g.ny; j++) pts.push('],
+  ['fields-hour', 'ana', 'const c = columns(pts, t, { dz: g.dz })', 'const c = columns(pts, 0, { dz: g.dz })'],
   // the air masses of a day can be changed
   ['air-override-ignored', 'ana', "Object.assign({}, AIR_SPEC[name], over && over[name], { winds", "Object.assign({}, AIR_SPEC[name], { winds"],
   ['air-override-order', 'ana', "Object.assign({}, AIR_SPEC[name], over && over[name], { winds", "Object.assign({}, over && over[name], AIR_SPEC[name], { winds"],

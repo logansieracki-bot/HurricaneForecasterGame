@@ -226,7 +226,7 @@
     };
     top.addEventListener('pointerup', up); top.addEventListener('pointercancel', up);
     top.addEventListener('wheel', (e) => { e.preventDefault(); const [x, y] = rel(e); zoomAt(x, y, Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0016))); }, { passive: false });
-    top.addEventListener('dblclick', (e) => { const [x, y] = rel(e); zoomAt(x, y, 2); });
+    top.addEventListener('dblclick', (e) => { if (M.noDoubleZoom) return; const [x, y] = rel(e); zoomAt(x, y, 2); });
 
     Object.assign(M, { on, setView, resize, zoomAt, panBy, fitBounds, zoom, hitSite, redraw() { dirty = true; schedule(); }, setTheme(n) { M.theme = n; dirty = true; schedule(); }, drawNow() { dirty = false; drawBase(); for (const h of M.frameHooks) h(M.view); drawTop(); } });
     M.addHook = (f) => M.hooks.push(f); M.addFrameHook = (f) => M.frameHooks.push(f);

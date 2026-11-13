@@ -138,7 +138,7 @@
 
   /* ---- the colour bar of a map ---- */
   function drawLegend(c, w, h, layer, tick, T) {
-    const x0 = 10, x1 = w - 10, y0 = 18, bh = 11;
+    const x0 = 24, x1 = w - 24, y0 = 18, bh = 11;
     const g = c.createLinearGradient(x0, 0, x1, 0), lo = layer.range[0], hi = layer.range[1];
     for (let i = 0; i <= 24; i++) { const v = lo + (hi - lo) * i / 24, col = fieldColor(layer, v); g.addColorStop(i / 24, 'rgba(' + Math.round(col[0]) + ',' + Math.round(col[1]) + ',' + Math.round(col[2]) + ',' + Math.min(1, 0.25 + col[3] * 1.3).toFixed(2) + ')'); }
     c.clearRect(0, 0, w, h); c.fillStyle = g; c.beginPath(); c.roundRect ? c.roundRect(x0, y0, x1 - x0, bh, 6) : c.rect(x0, y0, x1 - x0, bh); c.fill();
@@ -175,7 +175,8 @@
 
   /* ---- the hodograph: the wind at heights from the ground to 10 km, the rings every 10 m/s, in the units given by `k` (display per m/s), the storm's motion marked ---- */
   function drawHodograph(c, S, env, ix, T, k, unit) {
-    const dark = T === OBJ.dark, R = S / 2 - 18, vmax = 50, cx = S / 2, cy = S / 2, sc = R / vmax;
+    let vm = 0; for (let z = 0; z <= 10000; z += 500) vm = Math.max(vm, Math.hypot(env.uG(z), env.vG(z)));
+    const dark = T === OBJ.dark, R = S / 2 - 18, vmax = Math.max(20, Math.ceil((vm + 2) / 10) * 10), cx = S / 2, cy = S / 2, sc = R / vmax;
     c.save(); c.clearRect(0, 0, S, S);
     c.lineWidth = 1; c.strokeStyle = dark ? 'rgba(180,196,220,.2)' : 'rgba(30,45,70,.2)'; c.fillStyle = T.text; c.font = '600 10px ' + FONT; c.textAlign = 'left'; c.textBaseline = 'middle';
     for (let v = 10; v <= vmax; v += 10) { c.beginPath(); c.arc(cx, cy, v * sc, 0, TAU); c.stroke(); c.globalAlpha = .6; c.fillText(String(Math.round(v * k)), cx + v * sc * 0.707 + 2, cy - v * sc * 0.707); c.globalAlpha = 1; }

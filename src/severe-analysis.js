@@ -5,6 +5,7 @@
  *   A.pressure(x, y, t)                                // sea-level pressure, hPa; t is hours after the drawing
  *   A.surface(x, y, t)                                 // { p, T, Td, u, v, speed, dir } at the ground (C, m/s, the wind's direction in degrees from which it blows)
  *   A.sounding(x, y, t, { dz, top })                   // an environment (HFSevereSounding.fromProfile: the object `make` returns) at that point; the indices are HFSevereSounding.indices(env)
+ *   A.columns(points, t, { dz })                        // the same numbers at a list of points [[x, y], ...] (km): arrays of the surface and of the indices, n of them (what `fields` is made of)
  *   A.fields(t, { x0, x1, y0, y1, nx, ny, dz })        // a map: Float32Arrays of the surface and of the indices on a grid, the same numbers as the points' (the CIN not below -1000: air with no free convection has no inhibition to speak of)
  *
  * What the objects mean (every one has a default for everything but where it is, and every one moves along its arrow `motion: { u, v }`, m/s, and a low deepens at `deepen` hPa per hour):
@@ -177,14 +178,14 @@
       return { p, T: tb.theta[0] * tb.pi[0] - 273.15, Td: dewpointC(tb.qv[0], 100 * p), u: w[0], v: w[1], speed: Math.hypot(w[0], w[1]), dir: (Math.atan2(-w[0], -w[1]) / DEG + 360) % 360 };
     }
 
-    /* ---- a map: the surface and the indices on a grid ---- */
-    function fields(t, g) {
-      g = Object.assign({ x0: -500, x1: 500, y0: -500, y1: 500, nx: 24, ny: 24, dz: 100 }, g);
-      const names = ['mslp', 'T', 'Td', 'u', 'v', 'mlcape', 'mlcin', 'mllcl', 'shear06', 'srh01', 'srh03', 'stp', 'scp'], out = { nx: g.nx, ny: g.ny, x0: g.x0, x1: g.x1, y0: g.y0, y1: g.y1, names };
-      for (const nm of names) out[nm] = new Float32Array(g.nx * g.ny);
-      for (let j = 0; j < g.ny; j++) for (let i = 0; i < g.nx; i++) {
-        const x = g.x0 + (g.x1 - g.x0) * (g.nx > 1 ? i / (g.nx - 1) : 0.5), y = g.y0 + (g.y1 - g.y0) * (g.ny > 1 ? j / (g.ny - 1) : 0.5), q = j * g.nx + i;
-        const env = sounding(x, y, t, { dz: g.dz, top: 16000 }), ix = SND.indices(env), tb = env.table, w = windAt(x, y, 10, t), p = pressure(x, y, t);
+    /* ---- the surface and the indices at a list of points: [[x, y], ...] (km) ---- */
+    const NAMES = ['mslp', 'T', 'Td', 'u', 'v', 'mlcape', 'mlcin', 'mllcl', 'shear06', 'srh01', 'srh03', 'stp', 'scp'];
+    function columns(points, t, o) {
+      const dz = (o && o.dz) || 100, out = { n: points.length, names: NAMES };
+      for (const nm of NAMES) out[nm] = new Float32Array(points.length);
+      for (let q = 0; q < points.length; q++) {
+        const x = points[q][0], y = points[q][1];
+        const env = sounding(x, y, t, { dz, top: 16000 }), ix = SND.indices(env), tb = env.table, w = windAt(x, y, 10, t), p = pressure(x, y, t);
         out.mslp[q] = p; out.T[q] = tb.theta[0] * tb.pi[0] - 273.15; out.Td[q] = dewpointC(tb.qv[0], 100 * p); out.u[q] = w[0]; out.v[q] = w[1];
         out.mlcape[q] = ix.mlcape; out.mlcin[q] = Math.max(-1000, ix.mlcin); out.mllcl[q] = ix.mllcl; out.shear06[q] = ix.shear06; out.srh01[q] = ix.srh01; out.srh03[q] = ix.srh03; out.stp[q] = ix.stp;
         const cinTerm = ix.mlcin > -40 ? 1 : -40 / ix.mlcin, shT = ix.shear06 < 10 ? 0 : Math.min(1.5, ix.shear06 / 20);
@@ -193,7 +194,16 @@
       return out;
     }
 
-    return { drawing: D, f, pressure, geostrophic, windAt, sounding, surface, fields, objects: objs.length, nominal, options: opts };
+    /* ---- a map: the surface and the indices on a grid ---- */
+    function fields(t, g) {
+      g = Object.assign({ x0: -500, x1: 500, y0: -500, y1: 500, nx: 24, ny: 24, dz: 100 }, g);
+      const pts = []; for (let j = 0; j < g.ny; j++) for (let i = 0; i < g.nx; i++) pts.push([g.x0 + (g.x1 - g.x0) * (g.nx > 1 ? i / (g.nx - 1) : 0.5), g.y0 + (g.y1 - g.y0) * (g.ny > 1 ? j / (g.ny - 1) : 0.5)]);
+      const c = columns(pts, t, { dz: g.dz }), out = { nx: g.nx, ny: g.ny, x0: g.x0, x1: g.x1, y0: g.y0, y1: g.y1, names: NAMES };
+      for (const nm of NAMES) out[nm] = c[nm];
+      return out;
+    }
+
+    return { drawing: D, f, pressure, geostrophic, windAt, sounding, surface, columns, fields, objects: objs.length, nominal, options: opts };
   }
 
   globalThis.HFSevereAnalysis = { create, polyNear, dewpointC, AIR_SPEC, FRONT };

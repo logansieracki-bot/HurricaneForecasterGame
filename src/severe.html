@@ -16,6 +16,7 @@
   <header id="top">
     <a id="back" href="../index.html" aria-label="Back to the menu"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg><span>Menu</span></a>
     <div id="brand"><b>Isobar</b> Severe <i>Radar</i></div>
+    <div id="mode" class="seg" role="tablist" aria-label="Draw a day or watch the radar"><button id="m-draw" role="tab" aria-selected="false">Draw</button><button id="m-radar" role="tab" aria-selected="true">Radar</button></div>
     <span class="grow"></span>
     <div class="tools top-tools">
       <button id="b-panes" class="ib" title="One or two panes" aria-label="One or two panes"><svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="7.5" height="14" rx="2"/><rect x="13" y="5" width="7.5" height="14" rx="2"/></svg></button>
@@ -58,6 +59,31 @@
   </div>
 
   <div id="zoom" role="group" aria-label="Zoom"><button id="z-in" class="ib" title="Zoom in (+)" aria-label="Zoom in"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button><button id="z-out" class="ib" title="Zoom out (-)" aria-label="Zoom out"><svg viewBox="0 0 24 24"><path d="M5 12h14"/></svg></button></div>
+  <section id="editor" hidden aria-label="Draw a day">
+    <div id="ed-pane"><canvas class="cv-base"></canvas><canvas class="cv-fill"></canvas><canvas class="cv-top"></canvas></div>
+    <div id="ed-tools" role="toolbar" aria-label="Drawing tools" aria-orientation="vertical"></div>
+    <div id="ed-hint" hidden></div>
+    <div id="ed-warn"></div>
+    <aside id="ed-side">
+      <div id="ed-day" class="glass"></div>
+      <div id="ed-props" class="glass" hidden></div>
+    </aside>
+    <div id="ed-legend" hidden><canvas width="520" height="46"></canvas></div>
+    <div id="ed-sheet" class="glass" hidden></div>
+    <div id="ed-dock" role="toolbar" aria-label="Day controls">
+      <div id="ed-stamp" class="stamp">HYPOTHETICAL · Isobar Severe Simulator</div>
+      <div class="dk-row">
+        <button id="ed-undo" class="ib" title="Undo (Ctrl+Z)" aria-label="Undo"><svg viewBox="0 0 24 24"><path d="M9 7L4.5 11.5 9 16"/><path d="M5 11.5h9.5a5 5 0 0 1 0 10H11" transform="translate(0 -4)"/></svg></button>
+        <button id="ed-redo" class="ib" title="Redo (Ctrl+Shift+Z)" aria-label="Redo"><svg viewBox="0 0 24 24"><path d="M15 7l4.500 4.500L15 16"/><path d="M19 11.500H9.500a5 5 0 0 0 0 10H13" transform="translate(0 -4)"/></svg></button>
+        <span class="sep"></span>
+        <button id="ed-play" class="ib play" title="Play the day (Space)" aria-label="Play"><svg id="ed-ic-play" viewBox="0 0 24 24"><path d="M7 4.500l13 7.500-13 7.500z"/></svg><svg id="ed-ic-pause" viewBox="0 0 24 24" hidden><path d="M7 5v14M17 5v14"/></svg></button>
+        <div class="clock"><b id="ed-clk">+0 h</b><i id="ed-clk-sub">12:00 PM</i></div>
+        <span class="grow"></span>
+        <button id="ed-start" class="primary" title="Run a storm at the spot you tapped">Run a storm</button>
+      </div>
+      <div class="dk-slider"><input id="ed-slider" class="rng" type="range" min="0" max="12" step="0.25" value="0" aria-label="Hours after the drawing"><div id="ed-ticks" aria-hidden="true"></div></div>
+    </div>
+  </section>
   <div id="pop" hidden></div>
   <div id="toast" hidden></div>
 </div>
