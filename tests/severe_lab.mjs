@@ -12,7 +12,7 @@ import '../src/severe-lab.js';
 
 const C = globalThis.HFSevereCore, S = globalThis.HFSevereSounding, L = globalThis.HFSevereLab, P = globalThis.HFSeverePack;
 let failed = 0, passed = 0;
-function check(name, cond) { if (cond) { passed++; console.log('ok   ' + name); } else { failed++; console.log('FAIL ' + name); } }
+function check(name, cond) { if (cond) { passed++; console.log('ok   ' + name); } else { failed++; console.log('FAIL ' + name); if (process.env.FAILFAST) process.exit(1); } }      // (FAILFAST=1: the mutant tool stops at the first check that fails)
 const near = (a, b, tol) => Math.abs(a - b) <= tol;
 const t0 = Date.now();
 const arrays = (nz = 41, dz = 500) => { const z = Array.from({ length: nz }, (_, k) => k * dz); return { z, theta: z.map((h) => 300 + 4 * h / 1000), qv: z.map((h) => 0.014 * Math.exp(-h / 2500)), u: z.map((h) => 3 + 5 * h / 1000), v: z.map((h) => 2 + 1 * h / 1000), p0: 1000, motion: { u: 8, v: 3 } }; };
@@ -145,6 +145,8 @@ const arrays = (nz = 41, dz = 500) => { const z = Array.from({ length: nz }, (_,
   check('a blob cut by the east edge (columns 41 and 0, rows 20 and 21) is one blob: its middle is at the edge, 0.0, so it is 21 cells from the middle of the box and not 21 - 41.5, and rows 20 and 21 are 3 rows above the middle (' + JSON.stringify(c3) + ')', c3 && Math.abs(c3.sx) === 21 && c3.sy === -3);
   const c4 = ce(four(10, 10, 2, 60).slice(0, 2).concat(four(10, 11, 2, 60).slice(0, 2)).concat([[30, 10, 2, 35], [31, 10, 2, 35]]));
   check('the echo counts by its power: two cells of 60 dBZ at columns 10 and 11 in two rows and two of 35 dBZ far off make the middle of the strong ones (11.0 and 11.0: moved by 10 east and 7 north, not by 0 as a plain mean of the cells would say) (' + JSON.stringify(c4) + ')', c4 && c4.sx === 10 && c4.sy === 7);
+  const cp = ce(four(20, 20, 2, 45).concat(four(32, 20, 2, 50)));
+  check('the weight is the power, 10^(dBZ/10): of two blobs of 4 cells, 45 dBZ at columns 20 and 21 and 50 dBZ at 32 and 33, the stronger counts 3.2 times as much, which puts the middle of the echo at column 30.9 (a shift of -10; by amplitude, 1.8 times, it would be -8, by the cells alone -6) and the rows at 20 and 21 are 3 above the middle (' + JSON.stringify(cp) + ')', cp && cp.sx === -10 && cp.sy === -3);
   check('under three cells of 30 dBZ is no storm (null for ' + JSON.stringify(ce([[3, 3, 2, 50], [4, 3, 2, 50]])) + '), and cells under 30 dBZ are no echo (' + JSON.stringify(ce(four(30, 5, 2, 29))) + ') and 30 dBZ is (' + JSON.stringify(ce(four(30, 5, 2, 30))) + '); the first of 3 is a storm', ce([[3, 3, 2, 50], [4, 3, 2, 50]]) === null && ce(four(30, 5, 2, 29)) === null && ce(four(30, 5, 2, 30)) !== null && ce([[3, 3, 2, 50], [4, 3, 2, 50], [3, 4, 2, 50]]) !== null);
   const lv = [0, 1, 7, 8].map((k) => ce(four(30, 5, k, 50)));
   check('only the levels from 500 m to 3.5 km are looked at (levels 0, 1, 7 and 8 of 500 m: ' + lv.map((x) => (x ? 'storm' : 'none')).join(', ') + ')', lv[0] === null && lv[1] !== null && lv[2] !== null && lv[3] === null);
@@ -153,8 +155,10 @@ const arrays = (nz = 41, dz = 500) => { const z = Array.from({ length: nz }, (_,
     two === null && twoY === null && wide === null && mid !== null && ce(four(10, 20, 2, 50).concat(four(14, 20, 2, 50))) !== null);
   const cy = ce(four(20, 30, 2, 50)), cy2 = ce(four(20, 5, 2, 50));
   check('rows are moved on their own: a blob above the middle (rows 30 and 31) goes south by 13 (' + JSON.stringify(cy) + '), one below (rows 5 and 6) north by 12 (' + JSON.stringify(cy2) + ') and neither moves east or west', cy && cy.sy === -13 && cy.sx === 0 && cy2 && cy2.sy === 12 && cy2.sx === 0);
-  const cz = L.centring(blk(four(30, 5, 4, 50)), NX, NY, NZ, 1000);
-  check('the levels are those of the grid: with levels of 1 km the band is the levels 0 to 3 (a blob at level 4 is none: ' + JSON.stringify(cz) + ', one at level 3 is one: ' + JSON.stringify(L.centring(blk(four(30, 5, 3, 50)), NX, NY, NZ, 1000)) + ')', cz === null && L.centring(blk(four(30, 5, 3, 50)), NX, NY, NZ, 1000) !== null);
+  const blkz = (nz) => (cells) => { const b = new Uint8Array(5 * NX * NY * nz), d = new Int8Array(b.buffer, 0, NX * NY * nz); d.fill(-30); for (const [i, j, k, v] of cells) d[(k * NY + j) * NX + i] = v; return b; };
+  const band = (nz, dz, ks) => ks.map((k) => (L.centring(blkz(nz)(four(30, 5, k, 50)), NX, NY, nz, dz) ? 'storm' : 'none')).join(' ');
+  const b250 = band(18, 250, [0, 1, 2, 14, 15]), b1000 = band(6, 1000, [0, 3, 4]);
+  check('the levels are those of the grid, in metres: with levels of 250 m the band is the levels 2 to 14 (0, 1, 2, 14, 15: ' + b250 + '), with levels of 1 km it is 0 to 3 (0, 3, 4: ' + b1000 + ')', b250 === 'none none storm storm none' && b1000 === 'storm storm none');
 
   /* a run that follows its storm: the dryline day's storm moves 13 m/s north of what Bunkers' estimate says, which takes it 5 cells of 3 km out of the middle in 30 minutes; with `follow` it stays within a cell or two */
   const d = globalThis.HFSevereDays.get('dryline'), A = globalThis.HFSevereAnalysis.create(d.drawing), sp = d.spot, env = A.sounding(sp.x, sp.y, sp.t, { dz: 100, top: 20000 }), tb = env.table;
@@ -170,6 +174,12 @@ const arrays = (nz = 41, dz = 500) => { const z = Array.from({ length: nz }, (_,
   check('the header says where the box\'s corner is, for each frame (' + dr.length + ' of ' + fol.frames.length + ': ' + JSON.stringify(dr.slice(0, 6)) + '...): none at the first frames, whole cells of 3 km after, and none at all without `follow` (' + JSON.stringify(non.header.drift.every((q) => q[0] === 0 && q[1] === 0)) + ')',
     dr.length === fol.frames.length && dr[0][0] === 0 && dr[0][1] === 0 && dr[1][0] === 0 && dr[3][0] === 0 && dr[3][1] === 0 && dr.every((q) => q[0] % 3000 === 0 && q[1] % 3000 === 0) && dr[fol.frames.length - 1][1] >= 9000 && non.header.drift.every((q) => q[0] === 0 && q[1] === 0) && fol.header.lab.follow === true && non.header.lab.follow === false);
   check('the drift of a frame is the sum of the shifts made before it: the first frame at which the echo was found (15 minutes) was moved after being recorded, so frame 3 has none and frame 4 has it (' + JSON.stringify(dr[3]) + ' and ' + JSON.stringify(dr[4]) + ')', dr[3][0] === 0 && dr[3][1] === 0 && (dr[4][0] !== 0 || dr[4][1] !== 0));
+  /* the box that follows must put the storm where the box that does not follow would have it: the storm's place on the ground, as the box's corner (the header's drift) plus the echo's place in the box, east and north, frame by frame */
+  const gd = (r, f) => { const c = L.centring(f.block, r.header.nx, r.header.ny, r.header.nz, r.header.dz), q = r.header.drift[f.i]; return c ? [q[0] - c.sx * 3000, q[1] - c.sy * 3000] : null; };
+  const gf = fol.frames.map((f) => gd(fol, f)), gn = non.frames.map((f) => gd(non, f)), both = gf.map((x, i) => (x && gn[i] ? i : -1)).filter((i) => i >= 0);
+  const gap = Math.max(...both.map((i) => Math.max(Math.abs(gf[i][0] - gn[i][0]), Math.abs(gf[i][1] - gn[i][1])))), last = both[both.length - 1];
+  check('the storm is on the ground where it would be without the roll: its place from the drift and the box (east, north, m) matches that of the run that is never moved to within a cell of 3 km, at each of the ' + both.length + ' frames with an echo in both (the worst is ' + gap + ' m; at the end ' + JSON.stringify(gf[last]) + ' and ' + JSON.stringify(gn[last]) + ': a storm that has gone west by 2 cells and north by 5)',
+    both.length >= 4 && gap <= 3000 && Math.abs(gn[last][0]) >= 6000 && gn[last][1] >= 12000 && Math.sign(dr[last][0]) === Math.sign(gn[last][0]) && Math.sign(dr[last][1]) === Math.sign(gn[last][1]));
   const hd = Object.assign({}, fol.header, { scenario: { lat0: 36, lon0: -98, origin: [1000, 2000], radar: 'KVNX', clock: '15:00', tz: 'CDT' } }), pk = P.assemble(hd, fol.frames.map((f) => f.block));
   const c4m = pk.corner(fol.header.times[4]), c0m = pk.corner(fol.header.times[0]), cb = pk.corner(fol.header.times[4] + 2.5), mo = fol.header.motion;
   check('the pack puts the box where its motion and the drift say: frame 4 at the origin plus the motion for 20 minutes plus the drift (' + c4m.map((v) => v.toFixed(0)).join(', ') + ' for ' + (1000 + mo.u * 1200 + dr[4][0]).toFixed(0) + ', ' + (2000 + mo.v * 1200 + dr[4][1]).toFixed(0) + '), frame 0 at the origin (' + c0m.join(', ') + '), and between two frames the drift of the earlier (' + cb.map((v) => v.toFixed(0)).join(', ') + ')',

@@ -11,6 +11,12 @@ import { fileURLToPath } from 'node:url';
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const FILES = { core: 'severe-core.js', snd: 'severe-sounding.js', refl: 'severe-refl.js', ana: 'severe-analysis.js', days: 'severe-days.js', geo: 'severe-geo.js', pack: 'severe-pack.js', lab: 'severe-lab.js' };
 const SRC = Object.fromEntries(Object.entries(FILES).map(([k, f]) => [k, readFileSync(join(root, 'src/' + f), 'utf8')]));
+// The echo's centre read after the frame hook instead of before it (a worker hands the block over to the page in the hook and it is gone): from the line with the centring through the hook's, moved behind it.
+// Built from the source because the comment between them is long.
+const AFTER_HOOK = (() => {
+  const s = SRC.lab, hook = 'frames.push(rec); if (hooks.frame) hooks.frame(rec);', c0 = s.indexOf('const c = follow ? centring('), h0 = s.indexOf(hook), h1 = h0 + hook.length;
+  return c0 < 0 || h0 < c0 ? ['(not found)', ''] : [s.slice(c0, h1), hook + '\n        const c = follow ? centring(block, nx, nx, nz, dz) : null;'];
+})();
 // [name, file, the text to find (once), its replacement]
 // Two changes that cannot be seen are left out: the cap of a frame's strongest echo at 120 dBZ (no storm here goes near it) and the zero for the fall speed of a cell with no echo (the reflectivity module gives zero there already).
 const M = [
@@ -120,6 +126,7 @@ const M = [
   ['centring-lowest-level', 'lab', 'k0 = Math.max(0, Math.floor(500 / dz))', 'k0 = Math.max(0, Math.floor(0 / dz))'],
   ['centring-highest-level', 'lab', 'k1 = Math.min(nz - 1, Math.floor(3500 / dz))', 'k1 = Math.min(nz - 1, Math.floor(4500 / dz))'],
   ['centring-levels-in-metres', 'lab', 'k0 = Math.max(0, Math.floor(500 / dz))', 'k0 = Math.max(0, Math.floor(500 / 500))'],
+  ['centring-levels-in-metres-top', 'lab', 'k1 = Math.min(nz - 1, Math.floor(3500 / dz))', 'k1 = Math.min(nz - 1, Math.floor(3500 / 500))'],
   ['centring-sign-east', 'lab', 'sx: wrap(nx / 2 - px, nx)', 'sx: wrap(px - nx / 2, nx)'],
   ['centring-sign-north', 'lab', 'sy: wrap(ny / 2 - py, ny)', 'sy: wrap(py - ny / 2, ny)'],
   ['centring-middle-x', 'lab', 'sx: wrap(nx / 2 - px, nx)', 'sx: wrap(nx / 2 + 1 - px, nx)'],
@@ -134,10 +141,10 @@ const M = [
   ['centring-no-rounding', 'lab', 'const r = mod(Math.round(v), m);', 'const r = mod(Math.floor(v), m);'],
   ['centring-rows-by-columns', 'lab', 'sy: wrap(ny / 2 - py, ny)', 'sy: wrap(nx / 2 - py, nx)'],
   ['centring-block-rows', 'lab', 'dbz[(k * ny + j) * nx + i]; if (d < 30)', 'dbz[(k * nx + j) * ny + i]; if (d < 30)'],
-  ['follow-after-hook', 'lab', '        const c = follow && frames.length >= 2 ? centring(block, nx, nx, nz, dz) : null;                    // (looked at before the hook: a worker hands the block over to the page and it is gone from here)\n        frames.push(rec); if (hooks.frame) hooks.frame(rec);\n', '        frames.push(rec); if (hooks.frame) hooks.frame(rec);\n        const c = follow && frames.length >= 3 ? centring(block, nx, nx, nz, dz) : null;\n'],
+  ['follow-after-hook', 'lab', AFTER_HOOK[0], AFTER_HOOK[1]],
   ['follow-default-off', 'lab', 'follow = spec.follow !== false,', 'follow = spec.follow === true,'],
   ['follow-ignored', 'lab', 'follow = spec.follow !== false,', 'follow = true,'],
-  ['follow-late', 'lab', 'if (follow && frames.length >= 3)', 'if (follow && frames.length >= 5)'],
+  ['follow-late', 'lab', 'const c = follow ? centring(', 'const c = follow && frames.length >= 4 ? centring('],
   ['follow-never-rolls', 'lab', 'if (c && (c.sx || c.sy)) { roll(core, c.sx, c.sy);', 'if (c && (c.sx || c.sy)) { '],
   ['drift-sign-east', 'lab', 'cum[0] -= c.sx * dx;', 'cum[0] += c.sx * dx;'],
   ['drift-sign-north', 'lab', 'cum[1] -= c.sy * dx;', 'cum[1] += c.sy * dx;'],
@@ -173,7 +180,7 @@ const prepare = (name, file, text) => {
   return d;
 };
 const run = (name, file, text) => new Promise((resolve) => {
-  const d = prepare(name, file, text), p = spawn('node', ['tests/severe_lab.mjs'], { cwd: d }); let out = '', err = '';
+  const d = prepare(name, file, text), p = spawn('node', ['tests/severe_lab.mjs'], { cwd: d, env: Object.assign({}, process.env, { FAILFAST: '1' }) }); let out = '', err = '';
   const timer = setTimeout(() => p.kill('SIGKILL'), 600000);
   p.stdout.on('data', (b) => { out += b; }); p.stderr.on('data', (b) => { err += b; });
   p.on('close', (code) => { clearTimeout(timer); const f = out.split('\n').filter((l) => l.startsWith('FAIL')).map((l) => l.slice(5, 90)); rmSync(d, { recursive: true, force: true }); resolve(code === 0 ? { killed: false } : { killed: true, by: f[0] || err.split('\n').find((l) => l.trim()) || 'crash' }); });

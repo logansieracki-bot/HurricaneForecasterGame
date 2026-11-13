@@ -4095,7 +4095,7 @@ async function checkSave() {
 
   // a new game deletes the save
   await Promise.all([p1.waitForNavigation({ waitUntil: 'load', timeout: 20000 }), p1.click('#b-menu')]);
-  const had = await meta(p1);
+  let had = await meta(p1); for (let t = 0; t < 20 && !had; t++) { await p1.waitForTimeout(250); had = await meta(p1); }          // (a save that another page made a moment ago reaches this page's storage a moment later: CI run 182 read nothing here, and then the old save outlived Start, whose removal a page that does not see it yet cannot make)
   await p1.click('#play'); await p1.click('#d-tropical'); await p1.click('.basin[data-id="atlantic"]');
   await Promise.all([p1.waitForNavigation({ waitUntil: 'load', timeout: 20000 }), p1.click('#start')]);
   await p1.waitForFunction(() => window.__ready === true, { timeout: 30000 });

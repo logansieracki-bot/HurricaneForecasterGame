@@ -102,7 +102,7 @@
         for (let j = 0; j < nx; j++) for (let i = 0; i < nx; i++) { const o = idx(i, j, k5), w = 0.5 * (S.w[o] + S.w[o + sz]); if (w > wm) { wm = w; wx = (i + 0.5) * dx; wy = (j + 0.5) * dx; } }
         const rec = { i: frames.length, t: t / 60, block, track: [Math.round(wx), Math.round(wy), +wm.toFixed(1)], wmax: +d.wmax.toFixed(1), zmax: Math.round(zmax), thvmin: +d.thvmin.toFixed(2), drift: [cum[0], cum[1]] };
         if (!Number.isFinite(d.wmax) || d.wmax > 150) { stopped = true; reason = 'the model blew up at ' + (t / 60).toFixed(1) + ' min'; break; }
-        const c = follow && frames.length >= 2 ? centring(block, nx, nx, nz, dz) : null;                    // (looked at before the hook: a worker hands the block over to the page and it is gone from here)
+        const c = follow ? centring(block, nx, nx, nz, dz) : null;                                         // (looked at before the hook: a worker hands the block over to the page and it is gone from here)
         frames.push(rec); if (hooks.frame) hooks.frame(rec);
         if (c && (c.sx || c.sy)) { roll(core, c.sx, c.sy); cum[0] -= c.sx * dx; cum[1] -= c.sy * dx; }       // (the storm is back in the middle, the box's corner is where the storm's drift has taken it)
       }
