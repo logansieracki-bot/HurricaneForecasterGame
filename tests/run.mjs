@@ -3806,7 +3806,7 @@ await checkBasin('Mediterranean', MED_DIST, async (page, label) => {
   await checkStormsBasin(page, label, 'med');
 });
 
-// Main menu (Isobar): home -> discipline -> basin on the map and the settings -> Begin opens the built basin. Severe and Forecaster are "soon" and cannot be picked.
+// Main menu (Isobar): home -> discipline -> basin on the map and the settings -> Begin opens the built basin. Forecaster is "soon" and cannot be picked; Severe opens its radar page (dist/severe.html).
 const menuGo = async (pg, basinId) => { await pg.click('#play'); await pg.click('#d-tropical'); if (basinId) await pg.click(`.basin[data-id="${basinId}"]`); };
 async function checkMenuBasin(basinId, name, expectedDistSuffix) {
   const errors = [], browser = await chromium.launch(launchOpts), pg = await browser.newPage({ viewport: { width: 1100, height: 760 } });
@@ -3839,10 +3839,10 @@ async function checkMenu() {
   check(`[menu] home: the line under the name is "Simulating and Forecasting weather around the world" (not "Weather, simulated"), and the footer says nothing about where seasons are kept ("${home.foot.replace(/\s+/g, ' ')}")`,
     home.text.includes('Simulating and Forecasting weather around the world') && !/weather, simulated/i.test(home.text) && !/browser/i.test(home.text));
 
-  // discipline: Tropical opens, Severe is coming soon and cannot be picked
+  // discipline: Tropical opens, Severe is a preview that opens its radar page
   await pg.click('#play');
-  const disc = await pg.evaluate(() => ({ trop: !document.getElementById('d-tropical').disabled, sev: document.getElementById('d-severe').disabled, soon: /soon/i.test(document.getElementById('d-severe').innerText), hash: location.hash }));
-  check(`[menu] discipline: Tropical can be picked, Severe is marked Soon and disabled (${disc.trop}, ${disc.sev}, ${disc.soon})`, disc.trop && disc.sev && disc.soon && disc.hash === '#disc');
+  const disc = await pg.evaluate(() => { const im = document.querySelector('#d-severe .art img'); return { trop: !document.getElementById('d-tropical').disabled, sev: !document.getElementById('d-severe').disabled, tag: (document.querySelector('#d-severe .soon') || {}).textContent, soon: /soon/i.test(document.getElementById('d-severe').innerText), img: !!im && im.complete && im.naturalWidth >= 400, hash: location.hash }; });
+  check(`[menu] discipline: Tropical and Severe can both be picked, Severe is marked "${disc.tag}" (not Soon) and shows a picture of its radar (${disc.trop}, ${disc.sev}, ${disc.soon}, ${disc.img})`, disc.trop && disc.sev && disc.tag === 'Preview' && !disc.soon && disc.img && disc.hash === '#disc');
   const dw = await pg.evaluate(() => ({ h: document.getElementById('t-disc').innerText, sub: document.querySelectorAll('#s-disc .sub, #s-disc p').length, text: document.getElementById('s-disc').innerText.replace(/\s+/g, ' ') }));
   check(`[menu] discipline: the heading is "${dw.h}", with no description under it (no "Pick a discipline", no "What are you forecasting")`, dw.h === 'Pick your weather phenomena' && dw.sub === 0 && !/discipline|what are you forecasting/i.test(dw.text));
   // the Tropical card is not a picture but a season of the game's own storms, drawn track by track over Blue Marble (tools/make_menu_season.mjs), and it moves
@@ -3851,8 +3851,11 @@ async function checkMenu() {
   const sa1 = await sa(); await pg.waitForTimeout(2600); const sa2 = await sa();
   check(`[menu] the Tropical card draws a highly active season of the game (${sa1.season && sa1.season.named} named storms, ${sa1.season && sa1.season.hurr} hurricanes, ACE ${sa1.season && sa1.season.ace}; ${sa1.season && sa1.season.tracks} tracks of ${sa1.season && sa1.season.fixes} fixes) on a ${sa1.w}x${sa1.h} canvas, and it moves (${sa1.sig} then ${sa2.sig}), labelled as hypothetical`,
     sa1.season && sa1.season.named >= 15 && sa1.season.ace >= 250 && sa1.season.tracks >= 18 && sa1.season.fixes > 500 && !sa1.season.gaps && sa1.w > 300 && sa1.h > 100 && sa1.sig !== sa2.sig && sa1.label);
-  await pg.click('#d-severe', { force: true, timeout: 2000 }).catch(() => {});
-  check('[menu] discipline: pressing Severe does nothing (the screen stays)', (await vis('#s-disc')) && !(await vis('#s-pick')));
+  await Promise.all([pg.waitForURL(/dist\/severe\.html/, { timeout: 30000 }), pg.click('#d-severe')]);
+  const sv = await pg.evaluate(() => ({ title: document.title, back: (document.getElementById('back') || {}).getAttribute && document.getElementById('back').getAttribute('href') }));
+  check(`[menu] discipline: pressing Severe opens its radar page ("${sv.title}", whose Menu link goes back to ${sv.back})`, /Severe/.test(sv.title) && sv.back === '../index.html#disc');
+  await pg.goBack(); await pg.waitForFunction(() => document.getElementById('s-disc') && !document.getElementById('s-disc').hidden, { timeout: 15000 });
+  check('[menu] and back: the discipline screen is shown again, with Tropical to pick', (await vis('#s-disc')) && !(await vis('#s-pick')) && (await pg.evaluate(() => !document.getElementById('d-tropical').disabled)));
   await pg.click('#d-tropical');
   check('[menu] the basin screen opens at #tropical', (await vis('#s-pick')) && (await pg.evaluate(() => location.hash)) === '#tropical');
   await pg.goBack(); await pg.waitForTimeout(150);

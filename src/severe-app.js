@@ -19,7 +19,7 @@
      t: the minute the page opens it at, zoom: how close, panes: the products of its panes, interval: the minutes between the frames it plays, mb: the size of the file (the menu says it) */
   const STORMS = [
     { id: 'wk82-1km', name: 'Supercell, 1 km grid', sub: 'Recorded · smooth rotation · a frame every 5 minutes' },
-    { id: 'wk82-100m', name: 'Supercell, 100 m nest', sub: 'Recorded · a notch and a tight couplet · a frame every minute', file: 'severe-packs/wk82-100m-nest.hfp', mb: 10, t: 76, zoom: 11.3, panes: ['dbz', 'vel'], interval: 1 },
+    { id: 'wk82-100m', name: 'Supercell, 100 m nest', sub: 'Recorded · a notch and a tight couplet · a frame every minute', file: 'severe-packs/wk82-100m-nest.hfp', mb: 10, t: 79, zoom: 11.3, panes: ['dbz', 'vel'], interval: 1 },
   ];
 
   /* ---- state ---- */
@@ -420,7 +420,7 @@
     for (const p of panes) { p.map.activeSite = S.radar.id; p.map.setView({ cx: G.mercX(mid.lon), cy: G.mercY(mid.lat), mpp: G.mppOf(8.9) }); }
     new ResizeObserver(() => { const d = $('dock'); document.documentElement.style.setProperty('--dockh', d.offsetHeight + 'px'); }).observe($('dock'));
     wire(); buildTicks(); setActive(0); panes.forEach((p) => { applyTheme(p); drawBar(p); }); refresh(); syncSlider(); requestAnimationFrame(tick);
-    try { if (location.hash !== '#draw' && !localStorage.getItem(LS + '-tip')) { localStorage.setItem(LS + '-tip', '1'); setTimeout(() => toast('Tip: drag the radar\'s pill to move it, tap another pill to switch radar, tap Probe to read the storm', 7000), 1500); } } catch (e) { /* none */ }
+    try { if (location.hash !== '#draw' && !localStorage.getItem(LS + '-tip')) { localStorage.setItem(LS + '-tip', '1'); setTimeout(() => toast('Tip: drag the radar\'s pill to move it, tap Probe to read the storm, and the cloud button brings a closer storm with a tight rotation', 8000), 1500); } } catch (e) { /* none */ }
     window.SEVERE.ready = true; window.dispatchEvent(new Event('severe-ready'));
   }
 
