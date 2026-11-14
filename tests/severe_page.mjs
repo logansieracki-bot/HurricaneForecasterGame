@@ -158,8 +158,8 @@ await ev(hp, "window.__xhr = []; const o = XMLHttpRequest.prototype.open; XMLHtt
 const menuRows = async () => { await hp.click('#b-storms'); const r = await ev(hp, "[...document.querySelectorAll('#pop .row')].map((r) => ({ id: r.dataset.id, on: r.getAttribute('aria-checked') === 'true', text: r.textContent }))"); return r; };
 const packFile = join(dirname(FILE), 'severe-packs/wk82-100m-nest.hfp'), fileMB = existsSync(packFile) ? statSync(packFile).size / 1e6 : 0;
 let stRows = await menuRows();
-check('the Storms button lists the recorded storms, the 1 km one in use, and says what the other one weighs (' + stRows.map((r) => r.id + (r.on ? '*' : '')).join(', ') + '; ' + (/(\d+) MB/.exec(stRows[1] ? stRows[1].text : '') || [])[1] + ' MB for a file of ' + fileMB.toFixed(1) + ')',
-  stRows.length === 2 && stRows[0].id === 'wk82-1km' && stRows[0].on && stRows[1].id === 'wk82-100m' && !stRows[1].on && /100 m nest/.test(stRows[1].text) && /(\d+) MB/.test(stRows[1].text) && near(+/(\d+) MB/.exec(stRows[1].text)[1], fileMB, 1.5) && fileMB > 1);
+check('the Storms button lists the recorded storms, the 1 km one in use, and says what the 100 m one weighs (' + stRows.map((r) => r.id + (r.on ? '*' : '')).join(', ') + '; ' + (/(\d+) MB/.exec(stRows[1] ? stRows[1].text : '') || [])[1] + ' MB for a file of ' + fileMB.toFixed(1) + ')',
+  stRows.length === 3 && stRows[0].id === 'wk82-1km' && stRows[0].on && stRows[1].id === 'wk82-100m' && !stRows[1].on && stRows[2].id === 'outbreak-500m' && !stRows[2].on && /500 m/.test(stRows[2].text) && /100 m nest/.test(stRows[1].text) && /(\d+) MB/.test(stRows[1].text) && near(+/(\d+) MB/.exec(stRows[1].text)[1], fileMB, 1.5) && fileMB > 1);
 await hp.keyboard.press('Escape');
 /* a file that is not there: the page says so and stays with its storm */
 await ev(hp, "SEVERE.STORMS[1].file = 'severe-packs/not-there.hfp'"); await hp.click('#b-storms'); await hp.click('#pop [data-id="wk82-100m"]');
@@ -190,7 +190,18 @@ stRows = await menuRows(); const nRows = stRows.length; await hp.click('#pop [da
 await hp.waitForFunction("SEVERE.S.storm === 'wk82-100m' && SEVERE.panes.every((p) => p.sweep && p.sweep.frame === SEVERE.S.frame)", null, { timeout: 60000 }); await idle(hp);
 const asked = await ev(hp, 'window.__xhr');
 check('the 100 m storm is fetched when it is first asked for and not again: the page asked for ' + asked.map((u) => u.replace(/^.*\//, '')).join(', ') + ' (a missing file once, the recording once) and the second time it showed the one it had; with no run made there is no "Your last run" row (' + nRows + ' rows)',
-  asked.length === 2 && /not-there/.test(asked[0]) && /wk82-100m-nest/.test(asked[1]) && nRows === 2);
+  asked.length === 2 && /not-there/.test(asked[0]) && /wk82-100m-nest/.test(asked[1]) && nRows === 3);
+/* 12. The 500 m storm of the outbreak day: a recorded storm with a hook, a file beside the page, opened close up between the updraft and the hook */
+await hp.click('#b-storms'); await hp.click('#pop [data-id="outbreak-500m"]');
+await hp.waitForFunction("SEVERE.S.storm === 'outbreak-500m' && SEVERE.panes.length === 2 && SEVERE.panes.every((p) => p.sweep && p.sweep.frame === SEVERE.S.frame)", null, { timeout: 120000 }); await idle(hp);
+const obFile = join(dirname(FILE), 'severe-packs/outbreak-500m.hfp'), obMB = existsSync(obFile) ? statSync(obFile).size / 1e6 : 0;
+const ob = await ev(hp, () => { const P = SEVERE.pack, pn = SEVERE.panes[0], G = HFSevereGeo, tr = P.track[SEVERE.S.frame], c = P.boxLatLon(P.times[SEVERE.S.frame], tr[0] - 20000, tr[1] - 8000), s = G.toScreen(pn.map.view, G.mercX(c.lon), G.mercY(c.lat));
+  return { n: P.n, t0: P.times[0], t1: P.times[P.n - 1], dx: P.dx, nx: P.nx, ny: P.ny, nz: P.nz, nests: P.nests.length, products: SEVERE.panes.map((q) => q.product + '/' + q.tilt), interval: SEVERE.S.interval, clock: document.getElementById('clk').textContent, name: P.name, ticks: document.querySelectorAll('#ticks span').length, mpp: pn.map.view.mpp, sx: s[0], sy: s[1], w: pn.map.view.w, h: pn.map.view.h, radar: SEVERE.S.radar.id }; });
+check('the outbreak day\'s storm is shown: ' + ob.n + ' frames from minute ' + ob.t0 + ' to ' + ob.t1 + ' of cells of ' + ob.dx + ' m in a box of ' + ob.nx + ' x ' + ob.ny + ' x ' + ob.nz + ' with no nest, open at ' + ob.clock + ' in two panes (' + ob.products.join(', ') + '), a frame every minute, ' + ob.ticks + ' ticks, the radar ' + ob.radar + ' (a file of ' + obMB.toFixed(1) + ' MB)',
+  ob.n === 17 && ob.t0 === 74 && ob.t1 === 90 && ob.dx === 500 && ob.nests === 0 && ob.clock === '4:20 PM' && ob.products.join() === 'dbz/0,vel/0' && ob.interval === 1 && ob.ticks === 17 && /outbreak/i.test(ob.name) && near(obMB, 20, 1.5));
+check('and the view is on the hook: ' + Math.round(ob.mpp) + ' m a pixel, the point 20 km west and 8 km south of the strongest updraft at ' + Math.round(ob.sx) + ', ' + Math.round(ob.sy) + ' of a pane of ' + Math.round(ob.w) + ' x ' + Math.round(ob.h), ob.mpp < 110 && ob.sx > 0.3 * ob.w && ob.sx < 0.7 * ob.w && ob.sy > 0.3 * ob.h && ob.sy < 0.7 * ob.h);
+const obGpu = await ev(hp, () => SEVERE.panes.map((p) => { p.gl.draw(p.map.view, p.sweep.radar); const g = p.gl.read(); let n = 0; for (let i = 3; i < g.length; i += 64) if (g[i] > 0) n++; return n; }));
+check('both panes draw the storm on the GPU (' + obGpu.join(' and ') + ' sampled pixels)', obGpu[0] > 2000 && obGpu[1] > 2000);
 await H.ctx.close();
 await browser.close();
 

@@ -16,10 +16,11 @@
     metric: { name: 'Kilometres and m/s', speed: 'm/s', k: 1, dist: 'km', m: 1000 } };
   const LS = 'hf-severe-v1';
   /* the storms the page can show: the recorded 1 km storm is inside the page, the others are files beside it (severe-packs/, made by tools/severe_research/make_nest_pack.mjs) that are fetched when they are asked for;
-     t: the minute the page opens it at, zoom: how close, panes: the products of its panes, interval: the minutes between the frames it plays, mb: the size of the file (the menu says it) */
+     t: the minute the page opens it at, zoom: how close, focus: where to look, km east and north of the strongest updraft (the hook of the outbreak storm is 20 km west of it), panes: the products of its panes, interval: the minutes between the frames it plays, mb: the size of the file (the menu says it) */
   const STORMS = [
     { id: 'wk82-1km', name: 'Supercell, 1 km grid', sub: 'Recorded · smooth rotation · a frame every 5 minutes' },
     { id: 'wk82-100m', name: 'Supercell, 100 m nest', sub: 'Recorded · a notch and a tight couplet · a frame every minute', file: 'severe-packs/wk82-100m-nest.hfp', mb: 10, t: 79, zoom: 11.3, panes: ['dbz', 'vel'], interval: 1 },
+    { id: 'outbreak-500m', name: 'Tornado outbreak day, 500 m', sub: 'Recorded · a hook echo curled round an eye · a frame every minute', file: 'severe-packs/outbreak-500m.hfp', mb: 20, t: 80, zoom: 11, focus: [-20, -8], panes: ['dbz', 'vel'], interval: 1 },
   ];
 
   /* ---- state ---- */
@@ -343,7 +344,7 @@
     const s0 = siteInfo(i0); S.radar = { id: s0.id, custom: false, name: s0.name, lat: s0.lat, lon: s0.lon };
     if (o.interval && hasEvery(o.interval)) S.interval = o.interval; else if (!hasEvery(S.interval)) S.interval = [5, 10, 3, 1].find(hasEvery) || 5;
     const want = o.t === undefined ? 60 : o.t, near = pack.times.reduce((b, t, i) => (Math.abs(t - want) < Math.abs(pack.times[b] - want) ? i : b), 0); S.t = pack.times[near]; S.frame = frameAt(S.t);
-    const tr = focusOf(pack, S.frame), c = pack.boxLatLon(pack.times[S.frame], tr[0], tr[1]), mid = o.zoom ? c : { lat: (c.lat + S.radar.lat) / 2, lon: (c.lon + S.radar.lon) / 2 };      // (close up: on the storm; else between the storm and the radar)
+    const tr0 = focusOf(pack, S.frame), fo = o.focus || [0, 0], tr = [tr0[0] + fo[0] * 1000, tr0[1] + fo[1] * 1000], c = pack.boxLatLon(pack.times[S.frame], tr[0], tr[1]), mid = o.zoom ? c : { lat: (c.lat + S.radar.lat) / 2, lon: (c.lon + S.radar.lon) / 2 };      // (close up: on the storm; else between the storm and the radar)
     for (const pn of panes) { pn.map.activeSite = S.radar.id; pn.map.setView({ cx: G.mercX(mid.lon), cy: G.mercY(mid.lat), mpp: G.mppOf(o.zoom || 8.9) }); pn.sweep = null; pn.key = ''; }
     S.storm = o.id || 'run'; buildTicks(); refresh(); syncSlider(); syncDock();
   }
@@ -366,14 +367,14 @@
       finally { stormBusy = false; }
     }
     const p = st.pack || pack0;
-    await setPack(p, { id, t: st.t, zoom: st.zoom, interval: st.interval });
+    await setPack(p, { id, t: st.t, zoom: st.zoom, focus: st.focus, interval: st.interval });
     if (st.panes) { setPaneCount(st.panes.length); panes.forEach((pn, i) => { pn.tilt = 0; setProduct(pn, st.panes[i]); }); refresh(); }
     closePop();
   }
   const row2 = (id, name, sub, checked) => '<button class="row two" role="menuitemradio" aria-checked="' + (checked ? 'true' : 'false') + '" data-id="' + id + '"><span class="rt"><b>' + name + '</b><span class="sub">' + sub + '</span></span></button>';        // a row with its note under the name
   function openStormMenu(anchor) {
     openPop(anchor, '<h4>Storms</h4>' + STORMS.map((q) => row2(q.id, q.name, q.sub + (q.mb ? ' · ' + q.mb + ' MB' : ''), S.storm === q.id)).join('') + (runPack ? row2('run', 'Your last run', 'From Draw: ' + (runPack.name || 'a storm'), S.storm === 'run') : '')
-      + '<div class="kv"><span></span><span style="font-weight:400;font-size:11px;color:var(--dim)">The 100 m storm is a recording of the real model: cells of 500 m with a nest of 100 m round the storm\'s rotation.</span></div>', 'below',
+      + '<div class="kv"><span></span><span style="font-weight:400;font-size:11px;color:var(--dim)">The 100 m storm is a recording of the real model: cells of 500 m with a nest of 100 m round the storm\'s rotation. The outbreak day\'s is the editor\'s own day, run with cells of 500 m.</span></div>', 'below',
       (el) => onRows(el, (id) => { closePop(); showStorm(id).catch((e) => { $('toast').hidden = true; toast('That storm could not be shown: ' + e.message, 9000); }); }));
   }
 

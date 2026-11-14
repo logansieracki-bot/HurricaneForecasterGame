@@ -245,7 +245,8 @@ if (mode === 'parent') {
 } else if (mode === 'frames') {
   /* the parent continued from a restart file for <minutes> more, recorded as a pack for the radar page (HFP1, tools/severe_research/make_nest_pack.mjs's way of putting the box on the ground): a frame every FRAME_EVERY minutes
      (1), the window BOX=x0,x1,y0,y1 (km of the box, whole cells outwards; all of it if not given), the levels up to ZTOP (km, 16); AT=minute:east:north (km: at that minute of the run the strongest updraft is there from the radar,
-     which fixes where the box lies on the ground: the radar stays and the box, which moves with the storm, goes by; the middle of the run, -30:25 if not given), SITE=KVNX, CLOCK=15:00 (local time at model minute 0) */
+     which fixes where the box lies on the ground: the radar stays and the box, which moves with the storm, goes by; the middle of the run, -30:25 if not given), SITE=KVNX, CLOCK=15:00 (local time at model minute 0),
+     START=4 (minutes of the continuation that are run before the first frame is kept) */
   const { parent } = readCkpt(a1), more = +a3, FEm = E('FRAME_EVERY', 1), ZT = E('ZTOP', 16) * 1000, kz = Math.min(NZ, Math.ceil(ZT / DZ)), nxp = parent.nx;
   const BX4 = process.env.BOX ? process.env.BOX.split(',').map(Number) : [0, L / 1000, 0, L / 1000], i0 = Math.max(0, Math.floor(BX4[0] * 1000 / PDX)), i1 = Math.min(nxp, Math.ceil(BX4[1] * 1000 / PDX)), j0 = Math.max(0, Math.floor(BX4[2] * 1000 / PDX)), j1 = Math.min(nxp, Math.ceil(BX4[3] * 1000 / PDX));
   const ni = i1 - i0, nj = j1 - j0, perW = ni * nj * kz, perB = nxp * nxp * NZ, rec = globalThis.HFSevereLab.recorder(parent), SITES = JSON.parse(readFileSync(new URL('../../data/generated/severe-sites.json', import.meta.url), 'utf8'));
@@ -253,7 +254,7 @@ if (mode === 'parent') {
   const frames = [], times = [], track = [], t0 = Date.now(), nSteps = Math.round(more * 60 / DT), every = Math.round(FEm * 60 / DT);
   const crop = (block) => { const out = new Uint8Array(5 * perW); for (let a = 0; a < 5; a++) for (let k = 0; k < kz; k++) for (let j = j0; j < j1; j++) for (let i = i0; i < i1; i++) out[a * perW + (k * nj + (j - j0)) * ni + (i - i0)] = block[a * perB + (k * nxp + j) * nxp + i]; return out; };
   for (let n = 0; n <= nSteps; n++) {
-    if (n % every === 0) {
+    if (n % every === 0 && n * DT / 60 >= E('START', 0)) {
       const r = rec(), u = updraft(parent); frames.push(crop(r.block)); times.push(+(parent.time / 60).toFixed(3)); track.push([Math.round(u.x - i0 * PDX), Math.round(u.y - j0 * PDX), +u.w.toFixed(1)]);
       if (frames.length % 5 === 1) console.log('minute ' + (parent.time / 60).toFixed(1) + ': updraft ' + u.w.toFixed(1) + ' m/s at (' + (u.x / 1000).toFixed(1) + ', ' + (u.y / 1000).toFixed(1) + ') km, ' + ((Date.now() - t0) / 1000).toFixed(0) + ' s');
     }
