@@ -5,6 +5,7 @@
 //                                                                                         FROM continues a restart file: <minutes> is then the minute to run to, counted from the storm's start (CKPT_AT likewise)
 //   node tools/severe_research/wk82_nest.mjs child  <in.ckpt> <out> <minutes>         from the restart: parent and child together for <minutes> more, the child's frames and a log
 // Settings are environment variables (the defaults in brackets):
+//   DAY=outbreak MOTION=23.2,45.3 (the environment of one of the editor's days at its spot, and the box's motion over the ground: see env(); the same in the parent, its restarts and the child)
 //   BUBBLE_X=42 BUBBLE_Y=42 (km, where the +3 K bubble is; the storm drifts east at 8 m/s: 26 keeps 100 minutes clear of the sponge, which starts 10 km from the east edge)
 //   PDX=500 (m, the parent's cell)  BOX_KM=84  DT=4 (s, the parent's step)  ICE=1  QV_SCALE=1  LLJ=0 (m/s, a low-level jet added to the sounding's winds: see env())
 //   N0G=4e6 RHOG=400 (graupel/hail)  N0R=8e6 (rain's intercept)  EVAP=1 (the rain's evaporation, times: the knob of the cold pool); the same in the parent and the child
@@ -20,6 +21,10 @@
 import '../../src/severe-core.js';
 import '../../src/severe-nest.js';
 import '../../src/severe-refl.js';
+import '../../src/severe-sounding.js';
+import '../../src/severe-analysis.js';
+import '../../src/severe-days.js';
+import '../../src/severe-lab.js';
 import { loadSounding, bubble } from './wk82.mjs';
 import { readFileSync, writeFileSync, openSync, writeSync, closeSync, renameSync } from 'node:fs';
 
@@ -29,8 +34,18 @@ const E = (k, d) => (process.env[k] === undefined ? d : +process.env[k]);
 const PDX = E('PDX', 500), L = E('BOX_KM', 84) * 1000, DT = E('DT', 4), ICE = E('ICE', 1) !== 0, QV = E('QV_SCALE', 1), LLJ = E('LLJ', 0);
 const ICEP = { n0g: E('N0G', 4e6), rhog: E('RHOG', 400), n0r: E('N0R', 8e6), evap: E('EVAP', 1) };          // the ice scheme's settings (the same in the parent and the child)
 const BX = E('BUBBLE_X', L / 2000), BY = E('BUBBLE_Y', L / 2000);                       // where the warm bubble is, km: the storm drifts east in the box at about 8 m/s, so a bubble west of the middle keeps its first 100 minutes clear of the sponge on the east side
-const NZ = 40, DZ = 500, MOTION = { u: 8.0998, v: 4.9419 };                                // the box's motion over the ground (wk82_run.mjs: the model's winds plus it are the ground's)
-const snd = loadSounding(undefined, QV);
+const NZ = 40, DZ = 500;
+/* DAY=outbreak (any day of the editor: dryline, outbreak, line, hail, dixie, pulse, derecho): the environment of that day at its spot, as the Lab makes it (the drawing's sounding through the analysis builder, the winds in the frame of the
+   storm), instead of the Weisman-Klemp sounding; MOTION=u,v (m/s) is the box's motion over the ground, Bunkers' estimate if not given (a storm that drifts over the box meets its sponge: the Lab's own runs say how fast it drifts) */
+const DAY = process.env.DAY || '', MOT = process.env.MOTION ? process.env.MOTION.split(',').map(Number) : null;
+function dayEnv() {
+  const d = globalThis.HFSevereDays.get(DAY); if (!d) throw new Error('no such day: ' + DAY);
+  const A = globalThis.HFSevereAnalysis.create(d.drawing), sp = d.spot, env = A.sounding(sp.x, sp.y, sp.t, { dz: 100, top: 20000 }), tb = env.table;
+  return globalThis.HFSevereLab.envOf({ z: Array.from(tb.z), theta: Array.from(tb.theta), qv: Array.from(tb.qv), u: Array.from(tb.z, (z) => env.uG(z)), v: Array.from(tb.z, (z) => env.vG(z)), p0: 1000, motion: MOT ? { u: MOT[0], v: MOT[1] } : env.motion });
+}
+const snd = DAY ? dayEnv() : loadSounding(undefined, QV);
+const MOTION = DAY ? snd.motion : { u: 8.0998, v: 4.9419 };                                // the box's motion over the ground (wk82_run.mjs: the model's winds plus it are the ground's)
+const RUN = Object.assign({ PDX, L, DT, ICE, QV, LLJ, ICEP }, DAY ? { DAY, MOTION } : {});        // what a restart file has to have been made with
 
 /* the environment: the sounding's winds, with a low-level jet added if LLJ > 0 (m/s of southerly wind at 800 m, tapering to nothing above 3 km): the Weisman-Klemp quarter circle has a 0-1 km
    shear of 6 m/s and a 0-1 km helicity of 40 m2/s2, which is not the day of a tornado; a stronger low level shear and a veering wind put the storm in a more tornadic setting */
@@ -81,7 +96,7 @@ function recorder(core) {
 }
 
 function writeCkpt(core, track, file) {
-  const st = core.getState(), names = Object.keys(st.f), head = JSON.stringify({ v: 1, time: st.time, nx: st.nx, ny: st.ny, nz: st.nz, names, track: track.slice(), env: { PDX, L, DT, ICE, QV, LLJ, ICEP }, motion: MOTION, N: core.N });
+  const st = core.getState(), names = Object.keys(st.f), head = JSON.stringify({ v: 1, time: st.time, nx: st.nx, ny: st.ny, nz: st.nz, names, track: track.slice(), env: RUN, motion: MOTION, N: core.N });
   const hb = Buffer.from(head), hl = Buffer.alloc(4); hl.writeUInt32LE(hb.length);
   const bufs = [hl, hb]; for (const n of names) bufs.push(Buffer.from(st.f[n].buffer, st.f[n].byteOffset, st.f[n].byteLength));
   for (const a of [st.precip, st.precipS, st.precipG]) bufs.push(Buffer.from(a.buffer, a.byteOffset, a.byteLength));
@@ -92,7 +107,7 @@ function writeCkpt(core, track, file) {
 /* a restart file: the header and the state (the settings in the header have to be the environment's, for the parent is made again as it was) */
 function readCkpt(inFile) {
   const raw = readFileSync(inFile), hl = raw.readUInt32LE(0), head = JSON.parse(raw.subarray(4, 4 + hl).toString());
-  const here = { PDX, L, DT, ICE, QV, LLJ, ICEP };                                  // the child's parent has to be made as the restart's was: the settings in the environment must be the run's
+  const here = RUN;                                                                 // the child's parent has to be made as the restart's was: the settings in the environment must be the run's
   for (const k of Object.keys(head.env)) if (JSON.stringify(head.env[k]) !== JSON.stringify(here[k])) throw new Error('the restart was made with ' + k + ' = ' + JSON.stringify(head.env[k]) + ' and this run has ' + JSON.stringify(here[k]) + ': set it in the environment');
   const parent = newParent(); let off = 4 + hl;
   const st = { time: head.time, nx: head.nx, ny: head.ny, nz: head.nz, f: {}, precip: null, precipS: null, precipG: null };
