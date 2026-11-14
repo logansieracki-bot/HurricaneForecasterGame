@@ -2,7 +2,7 @@
 // before it goes to the page.
 //   node tools/severe_research/pack_render.mjs <pack.hfp> <frame> <out.png> [key=value ...]
 // keys: site=KVNX (the radar: an id of data/generated/severe-sites.json, default the pack's own), radar=x,y (km, the radar's
-// place from the box's south-west corner at that frame, instead of the site), elev=0.5, view=auto | cx,cy,mpp,w,h (km east and north of the radar at the picture's centre, metres per pixel, pixels; `auto` centres on the
+// place from the box's south-west corner at that frame, instead of the site), elev=0.5, view=auto | cx,cy,mpp,w,h (km east and north of the radar at the picture's centre, metres per pixel, pixels; `auto` (mpp=100 w=1400 h=800 set the size) centres on the
 // strongest updraft of the frame, 100 m per pixel, 1400 x 800), product=dbz | vel | sw, seed=1, n=2, nyq=28, dealias=0, vnoise=1, nests=1 (0: the box alone, to see what the nest adds), pal=<file>.
 import '../../src/severe-geo.js';
 import '../../src/severe-pack.js';
@@ -21,7 +21,7 @@ const sites = JSON.parse(readFileSync(new URL('../../data/generated/severe-sites
 const rad = opt.radar ? opt.radar.split(',').map((v) => +v * 1000) : (() => { const b = P.radarBox(t, site[0], site[1]); return [b.x, b.y]; })();
 const vol = P.volume(fi); if (opt.nests === '0') delete vol.nests;
 const product = opt.product || 'dbz', tr = P.track[fi];
-const view = opt.view && opt.view !== 'auto' ? opt.view.split(',').map(Number) : [(tr[0] - rad[0]) / 1000, (tr[1] - rad[1]) / 1000, 100, 1400, 800];
+const view = opt.view && opt.view !== 'auto' ? opt.view.split(',').map(Number) : [(tr[0] - rad[0]) / 1000, (tr[1] - rad[1]) / 1000, +(opt.mpp || 100), +(opt.w || 1400), +(opt.h || 800)];
 const defPal = { dbz: 'Apocs_BR_Expert.pal', vel: 'User_BV_mph.pal', sw: 'Isobar_SW_placeholder.pal' }[product];
 const pal = PL.parse(readFileSync(opt.pal || new URL('../../data/severe/' + defPal, import.meta.url), 'utf8')), unit = product === 'dbz' ? 1 : PL.unitScale(pal.units);
 const range = product === 'dbz' ? [-40, 105] : [pal.stops[0].v - 5, pal.stops[pal.stops.length - 1].v + 5], lut = PL.lut(pal, { vmin: range[0], vmax: range[1], step: product === 'dbz' ? 0.05 : 0.1 });

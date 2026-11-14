@@ -4,6 +4,7 @@
 //   [CKPT_AT=50,60] [FROM=<in.ckpt>] node tools/severe_research/wk82_nest.mjs parent <out.ckpt> <minutes>   the parent alone to <minutes>, then its state (the restart file; CKPT_AT also writes <out>.50.ckpt and so on on the way), with the track of its strongest updraft;
 //                                                                                         FROM continues a restart file: <minutes> is then the minute to run to, counted from the storm's start (CKPT_AT likewise)
 //   node tools/severe_research/wk82_nest.mjs child  <in.ckpt> <out> <minutes>         from the restart: parent and child together for <minutes> more, the child's frames and a log
+//   node tools/severe_research/wk82_nest.mjs frame  <in.ckpt> <out.hfp>               the restart's parent box as a pack of one frame, for pack_render.mjs (nests=0 radar=x,y): the 500 m storm as the radar sees it
 // Settings are environment variables (the defaults in brackets):
 //   DAY=outbreak MOTION=23.2,45.3 (the environment of one of the editor's days at its spot, and the box's motion over the ground: see env(); the same in the parent, its restarts and the child)
 //   BUBBLE_X=42 BUBBLE_Y=42 (km, where the +3 K bubble is; the storm drifts east at 8 m/s: 26 keeps 100 minutes clear of the sponge, which starts 10 km from the east edge)
@@ -27,6 +28,7 @@ import '../../src/severe-days.js';
 import '../../src/severe-lab.js';
 import { loadSounding, bubble } from './wk82.mjs';
 import { readFileSync, writeFileSync, openSync, writeSync, closeSync, renameSync } from 'node:fs';
+import { gzipSync } from 'node:zlib';
 
 const C = globalThis.HFSevereCore, NEST = globalThis.HFSevereNest, { P0, CP, RD } = C.consts;
 const [mode, a1, a2, a3] = process.argv.slice(2);
@@ -231,4 +233,12 @@ if (mode === 'parent') {
   writeFileSync(out + '.json', JSON.stringify({ v: 1, vz: { scale: 0.25 }, nx: nxc, ny: nxc, nz: nzc, dx: CDX, dz: CDZ, times, startMinute: tStart / 60, frame: fr, motion: mot, x0, y0, parentDx: PDX, ratio: RATIO, drag: DRAG, perturb: PA ? { amp: PA, seed: PSEED } : null, env: head.env,
     corners, parent: PF ? { nx: parent.nx, ny: parent.ny, nz: parent.nz, dx: PDX, dz: DZ, track: ptrack, base: pbase } : null }));
   console.log('done (' + ((Date.now() - t0) / 1000).toFixed(0) + ' s)');
-} else { console.error('usage: wk82_nest.mjs parent <out.ckpt> <minutes> | child <in.ckpt> <out> <minutes>'); process.exit(1); }
+} else if (mode === 'frame') {
+  /* the restart's parent box as a pack of one frame (HFP1), to look at with pack_render.mjs (nests=0): what the radar sees of the 500 m storm at that minute, without a nest */
+  const { parent } = readCkpt(a1), rec = globalThis.HFSevereLab.recorder(parent)(), u = updraft(parent), b = parent.base, nx = parent.nx, per = nx * nx * NZ;
+  const header = { v: 1, nx, ny: nx, nz: NZ, dx: PDX, dz: DZ, floor: -30, times: [parent.time / 60], motion: { u: MOTION.u, v: MOTION.v }, track: [[Math.round(u.x), Math.round(u.y), +u.w.toFixed(1)]], scale: { wind: 0.5, vz: 0.25 },
+    name: (DAY || 'WK82') + ' at ' + Math.round(parent.time / 60) + ' min', scenario: { lat0: 36.74, lon0: -98.13, origin: [0, 0], radar: 'KVNX', clock: '15:00', tz: 'CDT' },
+    base: { z: Array.from(b.rhoc, (_, k) => (k + 0.5) * DZ), u: Array.from(b.ubc, (v) => +(v + MOTION.u).toFixed(3)), v: Array.from(b.vbc, (v) => +(v + MOTION.v).toFixed(3)) } };
+  const head = Buffer.from(JSON.stringify(header)), body = Buffer.alloc(4 + head.length + 5 * per); body.writeUInt32LE(head.length, 0); head.copy(body, 4); Buffer.from(rec.block.buffer, rec.block.byteOffset, rec.block.byteLength).copy(body, 4 + head.length);
+  writeFileSync(a2, Buffer.concat([Buffer.from('HFP1'), gzipSync(body)])); console.log('wrote ' + a2 + ': minute ' + Math.round(parent.time / 60) + ', the strongest updraft ' + u.w.toFixed(1) + ' m/s at (' + (u.x / 1000).toFixed(1) + ', ' + (u.y / 1000).toFixed(1) + ') km, strongest echo ' + rec.zmax + ' dBZ');
+} else { console.error('usage: wk82_nest.mjs parent <out.ckpt> <minutes> | child <in.ckpt> <out> <minutes> | frame <in.ckpt> <out.hfp>'); process.exit(1); }
