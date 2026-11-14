@@ -5,6 +5,7 @@
 //                                                                                         FROM continues a restart file: <minutes> is then the minute to run to, counted from the storm's start (CKPT_AT likewise)
 //   node tools/severe_research/wk82_nest.mjs child  <in.ckpt> <out> <minutes>         from the restart: parent and child together for <minutes> more, the child's frames and a log
 //   node tools/severe_research/wk82_nest.mjs frame  <in.ckpt> <out.hfp>               the restart's parent box as a pack of one frame, for pack_render.mjs (nests=0 radar=x,y): the 500 m storm as the radar sees it
+//   node tools/severe_research/wk82_nest.mjs frames <in.ckpt> <out.hfp> <minutes>     the parent continued from the restart, recorded as a pack for the radar page (a frame a minute: FRAME_EVERY, BOX, ZTOP, AT, SITE, CLOCK, NAME: see the code)
 // Settings are environment variables (the defaults in brackets):
 //   DAY=outbreak MOTION=23.2,45.3 (the environment of one of the editor's days at its spot, and the box's motion over the ground: see env(); the same in the parent, its restarts and the child)
 //   BUBBLE_X=42 BUBBLE_Y=42 (km, where the +3 K bubble is; the storm drifts east at 8 m/s: 26 keeps 100 minutes clear of the sponge, which starts 10 km from the east edge)
@@ -234,11 +235,37 @@ if (mode === 'parent') {
     corners, parent: PF ? { nx: parent.nx, ny: parent.ny, nz: parent.nz, dx: PDX, dz: DZ, track: ptrack, base: pbase } : null }));
   console.log('done (' + ((Date.now() - t0) / 1000).toFixed(0) + ' s)');
 } else if (mode === 'frame') {
-  /* the restart's parent box as a pack of one frame (HFP1), to look at with pack_render.mjs (nests=0): what the radar sees of the 500 m storm at that minute, without a nest */
-  const { parent } = readCkpt(a1), rec = globalThis.HFSevereLab.recorder(parent)(), u = updraft(parent), b = parent.base, nx = parent.nx, per = nx * nx * NZ;
+  /* the restart's parent box as a pack of one frame (HFP1), to look at with pack_render.mjs (nests=0): what the radar sees of the 500 m storm at that minute, without a nest (the pack's track point is the strongest updraft; the strongest rotation at 750 m is often a vortex on a gust front elsewhere) */
+  const { parent } = readCkpt(a1), rec = globalThis.HFSevereLab.recorder(parent)(), u = updraft(parent), zv = vort(parent, 1, 0, parent.nx, 0, parent.ny), b = parent.base, nx = parent.nx, per = nx * nx * NZ;
   const header = { v: 1, nx, ny: nx, nz: NZ, dx: PDX, dz: DZ, floor: -30, times: [parent.time / 60], motion: { u: MOTION.u, v: MOTION.v }, track: [[Math.round(u.x), Math.round(u.y), +u.w.toFixed(1)]], scale: { wind: 0.5, vz: 0.25 },
     name: (DAY || 'WK82') + ' at ' + Math.round(parent.time / 60) + ' min', scenario: { lat0: 36.74, lon0: -98.13, origin: [0, 0], radar: 'KVNX', clock: '15:00', tz: 'CDT' },
     base: { z: Array.from(b.rhoc, (_, k) => (k + 0.5) * DZ), u: Array.from(b.ubc, (v) => +(v + MOTION.u).toFixed(3)), v: Array.from(b.vbc, (v) => +(v + MOTION.v).toFixed(3)) } };
   const head = Buffer.from(JSON.stringify(header)), body = Buffer.alloc(4 + head.length + 5 * per); body.writeUInt32LE(head.length, 0); head.copy(body, 4); Buffer.from(rec.block.buffer, rec.block.byteOffset, rec.block.byteLength).copy(body, 4 + head.length);
-  writeFileSync(a2, Buffer.concat([Buffer.from('HFP1'), gzipSync(body)])); console.log('wrote ' + a2 + ': minute ' + Math.round(parent.time / 60) + ', the strongest updraft ' + u.w.toFixed(1) + ' m/s at (' + (u.x / 1000).toFixed(1) + ', ' + (u.y / 1000).toFixed(1) + ') km, strongest echo ' + rec.zmax + ' dBZ');
-} else { console.error('usage: wk82_nest.mjs parent <out.ckpt> <minutes> | child <in.ckpt> <out> <minutes> | frame <in.ckpt> <out.hfp>'); process.exit(1); }
+  writeFileSync(a2, Buffer.concat([Buffer.from('HFP1'), gzipSync(body)])); console.log('wrote ' + a2 + ': minute ' + Math.round(parent.time / 60) + ', the strongest updraft ' + u.w.toFixed(1) + ' m/s at (' + (u.x / 1000).toFixed(1) + ', ' + (u.y / 1000).toFixed(1) + ') km, strongest echo ' + rec.zmax + ' dBZ, the strongest rotation at 750 m ' + (zv.z * 1000).toFixed(1) + ' 1e-3/s at (' + (zv.i * PDX / 1000).toFixed(1) + ', ' + (zv.j * PDX / 1000).toFixed(1) + ') km');
+} else if (mode === 'frames') {
+  /* the parent continued from a restart file for <minutes> more, recorded as a pack for the radar page (HFP1, tools/severe_research/make_nest_pack.mjs's way of putting the box on the ground): a frame every FRAME_EVERY minutes
+     (1), the window BOX=x0,x1,y0,y1 (km of the box, whole cells outwards; all of it if not given), the levels up to ZTOP (km, 16); AT=minute:east:north (km: at that minute of the run the strongest updraft is there from the radar,
+     which fixes where the box lies on the ground: the radar stays and the box, which moves with the storm, goes by; the middle of the run, -30:25 if not given), SITE=KVNX, CLOCK=15:00 (local time at model minute 0) */
+  const { parent } = readCkpt(a1), more = +a3, FEm = E('FRAME_EVERY', 1), ZT = E('ZTOP', 16) * 1000, kz = Math.min(NZ, Math.ceil(ZT / DZ)), nxp = parent.nx;
+  const BX4 = process.env.BOX ? process.env.BOX.split(',').map(Number) : [0, L / 1000, 0, L / 1000], i0 = Math.max(0, Math.floor(BX4[0] * 1000 / PDX)), i1 = Math.min(nxp, Math.ceil(BX4[1] * 1000 / PDX)), j0 = Math.max(0, Math.floor(BX4[2] * 1000 / PDX)), j1 = Math.min(nxp, Math.ceil(BX4[3] * 1000 / PDX));
+  const ni = i1 - i0, nj = j1 - j0, perW = ni * nj * kz, perB = nxp * nxp * NZ, rec = globalThis.HFSevereLab.recorder(parent), SITES = JSON.parse(readFileSync(new URL('../../data/generated/severe-sites.json', import.meta.url), 'utf8'));
+  const siteId = process.env.SITE || 'KVNX', site = SITES[siteId]; if (!site) { console.error('no site ' + siteId); process.exit(1); }
+  const frames = [], times = [], track = [], t0 = Date.now(), nSteps = Math.round(more * 60 / DT), every = Math.round(FEm * 60 / DT);
+  const crop = (block) => { const out = new Uint8Array(5 * perW); for (let a = 0; a < 5; a++) for (let k = 0; k < kz; k++) for (let j = j0; j < j1; j++) for (let i = i0; i < i1; i++) out[a * perW + (k * nj + (j - j0)) * ni + (i - i0)] = block[a * perB + (k * nxp + j) * nxp + i]; return out; };
+  for (let n = 0; n <= nSteps; n++) {
+    if (n % every === 0) {
+      const r = rec(), u = updraft(parent); frames.push(crop(r.block)); times.push(+(parent.time / 60).toFixed(3)); track.push([Math.round(u.x - i0 * PDX), Math.round(u.y - j0 * PDX), +u.w.toFixed(1)]);
+      if (frames.length % 5 === 1) console.log('minute ' + (parent.time / 60).toFixed(1) + ': updraft ' + u.w.toFixed(1) + ' m/s at (' + (u.x / 1000).toFixed(1) + ', ' + (u.y / 1000).toFixed(1) + ') km, ' + ((Date.now() - t0) / 1000).toFixed(0) + ' s');
+    }
+    if (n < nSteps) parent.step(DT);
+  }
+  const [atMin, atE, atN] = process.env.AT ? process.env.AT.split(':').map(Number) : [], m = isFinite(atMin) ? atMin : times[Math.floor(times.length / 2)];
+  let near = 0; times.forEach((t, i) => { if (Math.abs(t - m) < Math.abs(times[near] - m)) near = i; });
+  const e = isFinite(atE) ? atE : -30, nn = isFinite(atN) ? atN : 25, tr = track[near], tm = times[near];
+  const origin = [Math.round(e * 1000 - tr[0] - MOTION.u * 60 * tm), Math.round(nn * 1000 - tr[1] - MOTION.v * 60 * tm)];                // the window's south-west corner at model minute 0, from the radar
+  const b = parent.base, header = { v: 1, nx: ni, ny: nj, nz: kz, dx: PDX, dz: DZ, floor: -30, times, motion: { u: MOTION.u, v: MOTION.v }, track, scale: { wind: 0.5, vz: 0.25 },
+    name: process.env.NAME || ((DAY || 'WK82') + ', ' + PDX + ' m cells'), scenario: { lat0: site[0], lon0: site[1], origin, radar: siteId, clock: process.env.CLOCK || '15:00', tz: process.env.TZ || 'CDT' },
+    base: { z: Array.from(b.rhoc, (_, k) => (k + 0.5) * DZ).slice(0, kz), u: Array.from(b.ubc, (v) => +(v + MOTION.u).toFixed(3)).slice(0, kz), v: Array.from(b.vbc, (v) => +(v + MOTION.v).toFixed(3)).slice(0, kz) } };
+  const head = Buffer.from(JSON.stringify(header)), body = Buffer.alloc(4 + head.length + frames.length * 5 * perW); body.writeUInt32LE(head.length, 0); head.copy(body, 4); frames.forEach((f, i) => Buffer.from(f.buffer, f.byteOffset, f.byteLength).copy(body, 4 + head.length + i * 5 * perW));
+  writeFileSync(a2, Buffer.concat([Buffer.from('HFP1'), gzipSync(body)])); console.log('wrote ' + a2 + ': ' + frames.length + ' frames of ' + ni + ' x ' + nj + ' x ' + kz + ' cells (minutes ' + times[0] + ' to ' + times[times.length - 1] + '), ' + (body.length / 1e6).toFixed(0) + ' MB raw, the radar ' + siteId + ' (' + ((Date.now() - t0) / 1000).toFixed(0) + ' s of work)');
+} else { console.error('usage: wk82_nest.mjs parent <out.ckpt> <minutes> | child <in.ckpt> <out> <minutes> | frame <in.ckpt> <out.hfp> | frames <in.ckpt> <out.hfp> <minutes>'); process.exit(1); }
