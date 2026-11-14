@@ -4,7 +4,7 @@
  *   HFSevereLab.envOf(a)                       // an environment (HFSevereSounding.fromProfile) from arrays: a = { z, theta, qv, u, v, p0, motion }: z even from 0 (m), theta (K), qv (kg/kg), the winds in the ground's frame (m/s)
  *   HFSevereLab.run(spec, hooks)               // async: runs, calls hooks.frame(rec) for every recorded frame, hooks.progress(rec) at every step of the clock, hooks.yield() now and then (an await that lets a worker hear a cancel;
  *                                              // hooks.cancelled() true stops it, a string stops it with that as the reason: the frames so far are the run's); resolves { frames, header, wall, steps, stopped, reason }
- *      spec: { env: a (see envOf), dx 2000, box 84000 (m), nz 40, dz 500, dt 10, minutes 90, frameEvery 5 (minutes), bubble 3 (K), evap 1, detail, ... }
+ *      spec: { env: a (see envOf), dx 2000, box 84000 (m), nz 40, dz 500, dt 10, minutes 90, frameEvery 5 (minutes), bubble 3 (K), evap 1, twoMoment (false: the rain's drop number is a second variable of the core, see src/severe-core.js), detail, ... }
  *      frame rec: { i, t (minutes), block (Uint8Array: the five arrays of a pack's frame, and those of the nest if it has one), track: [x, y, w], wmax, zmax, thvmin, drift: [east, north], nest (true if the block has the nest's arrays), fn (the pack's `fn` of the frame) }
  *      hooks.start(header) is called once before the first frame with the header as it is then (the grid, the scale, the motion, the base state, the nests' grids; `times`, `track`, `drift` and `fn` empty, and growing with the frames):
  *      what a page needs to play the run while it goes (HFSeverePack.live)
@@ -108,7 +108,7 @@
   async function run(spec, hooks) {
     hooks = hooks || {};
     const evap = spec.evap === undefined ? 1 : spec.evap, env = envOf(spec.env), dx = spec.dx || 2000, L = spec.box || 84000, nx = Math.round(L / dx), nz = spec.nz || 40, dz = spec.dz || 500, dt = spec.dt || 10, minutes = spec.minutes || 90, every = spec.frameEvery || 5;
-    const physics = (n, d) => ({ nx: n, ny: n, nz, dx: d, dy: d, dz, moist: true, ice: true, iceParams: { n0g: 4e6, rhog: 400, n0r: 8e6, evap }, theta: env.theta, qv: env.qv, wind: { u: env.u, v: env.v },
+    const physics = (n, d) => ({ nx: n, ny: n, nz, dx: d, dy: d, dz, moist: true, ice: true, iceParams: { n0g: 4e6, rhog: 400, n0r: 8e6, evap, twoMoment: !!spec.twoMoment }, theta: env.theta, qv: env.qv, wind: { u: env.u, v: env.v },
       visc: { kh: 500 * d / 2000, kv: 500 * d / 2000 }, damp: { top: { depth: 5000, rate: 0.003 } } });
     const core = C.create(Object.assign(physics(nx, dx), { bc: { x: 'periodic', y: 'periodic' } }));
     const S = core.S, idx = core.idx, b = core.base, xc = L / 2, yc = L / 2, sz = idx(0, 0, 1) - idx(0, 0, 0), k5 = Math.min(nz - 2, Math.floor(5250 / dz));
@@ -131,7 +131,7 @@
     };
     /* the header is made now and its frames' parts grow with them: a page that plays the run while it goes (hooks.start) has the grid, the scale, the motion and the nest's grid before the first frame */
     const header = { v: det ? 2 : 1, nx, ny: nx, nz, dx, dz, floor: -30, times: [], motion: { u: motion.u, v: motion.v }, track: [], drift: [], scale: { wind: 0.5, vz: 0.25 },
-      lab: Object.assign({ evap, bubble: spec.bubble === undefined ? 3 : spec.bubble, dt, minutes, follow }, det ? { detail: { dx: det.dx, box: cn * det.dx, from: det.from, ztop: nzr * dz, every: det.every, minUpdraft: det.minUpdraft } } : {}),     // (what the run was set to; the pack reader does not look at it)
+      lab: Object.assign({ evap, bubble: spec.bubble === undefined ? 3 : spec.bubble, dt, minutes, follow }, spec.twoMoment ? { twoMoment: true } : {}, det ? { detail: { dx: det.dx, box: cn * det.dx, from: det.from, ztop: nzr * dz, every: det.every, minUpdraft: det.minUpdraft } } : {}),     // (what the run was set to; the pack reader does not look at it)
       base: { z: Array.from(b.rhoc, (_, k) => (k + 0.5) * dz), u: Array.from(b.ubc, (v) => +(v + motion.u).toFixed(3)), v: Array.from(b.vbc, (v) => +(v + motion.v).toFixed(3)) } };
     if (det) { header.nests = [{ nx: cn, ny: cn, nz: nzr, dx: det.dx, dz, scale: { wind: 1, vz: 0.25 }, frame: { u: 0, v: 0 } }]; header.fn = []; }
     if (hooks.start) hooks.start(header);

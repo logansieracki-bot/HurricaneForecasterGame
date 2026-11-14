@@ -1,6 +1,6 @@
 /* Severe: the radar reflectivity (and the fall speed a Doppler radar adds to the wind) of a core's state, column by column.
  *
- * The Rayleigh value at 10 cm that WRF's refl10cm_lin computes: rain 720 N0 / lambda^7 (the core's own intercept); snow and graupel/hail as ice spheres of their density against water
+ * The Rayleigh value at 10 cm that WRF's refl10cm_lin computes: rain 720 N0 / lambda^7 (the core's own intercept, or with iceParams.twoMoment the intercept N0 = rho nr lambda of the drops the core counts, lambda = (pi rho_w nr / qr)^(1/3)); snow and graupel/hail as ice spheres of their density against water
  * (|K|^2 of ice over water 0.176 / 0.93, times (density / 900)^2), the ice rising to the value of water as it gets wet below the melting level (a water coat on a quarter of the mass
  * reflects like rain: the bright band, the wet hail); snow's intercept follows its temperature (2e6 exp(0.12 (273.15 - T)), at most 2e8). Without ice (Kessler) the formula of WRF's
  * module_mp_kessler: Z = 17300 (rho q in g/m3)^1.75. The fall speed of each species is the core's own core.zFall (reflectivity-weighted, m/s downward), weighted here by the echo of each.
@@ -17,7 +17,7 @@
   const dbzOf = (z) => z > 1e-3 ? 10 * Math.log10(z) : -30;                                    // z in mm6/m3 (times 1e18 for the SI value the sums below carry)
 
   function create(core) {
-    const nz = core.nz, S = core.S, idx = core.idx, b = core.base, ice = !!core.ice, P = core.iceParams || { n0g: 4e6, rhog: 400, n0r: 8e6 };
+    const nz = core.nz, S = core.S, idx = core.idx, b = core.base, ice = !!core.ice, P = core.iceParams || { n0g: 4e6, rhog: 400, n0r: 8e6 }, TWO = !!P.twoMoment && !!S.nr;
     const tcol = new Float64Array(nz);
     function column(i, j, res, vzres) {
       if (!ice) {
@@ -31,7 +31,10 @@
       for (let k = 0; k < nz; k++) {
         const o = idx(i, j, k), rho = b.rhoc[k], T = tcol[k];
         let z = 0, zv = 0;
-        if (S.qr[o] > 1e-9) { const l = lamOf(P.n0r, 1000, rho, S.qr[o]), zr = 720 * P.n0r / Math.pow(l, 7); z += zr; if (vzres) zv += zr * core.zFall.rain(S.qr[o], k); }
+        if (S.qr[o] > 1e-9) {
+          let l, n0 = P.n0r; if (TWO) { const q = S.qr[o], Ne = Math.min(Math.max(S.nr[o], q / P.xrMax), q / P.xrMin); l = Math.cbrt(Math.PI * 1000 * Ne / q); n0 = rho * Ne * l; } else l = lamOf(P.n0r, 1000, rho, S.qr[o]);
+          const zr = 720 * n0 / Math.pow(l, 7); z += zr; if (vzres) zv += zr * core.zFall.rain(S.qr[o], k, o);
+        }
         for (let s = 0; s < 2; s++) {
           const snow = s === 0, q = snow ? S.qs[o] : S.qg[o];
           if (q <= 1e-9) continue;

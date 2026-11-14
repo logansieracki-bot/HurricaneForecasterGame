@@ -486,11 +486,11 @@
     el.innerHTML = '<div class="hd"><div><b>Run a storm</b><i>' + (pl ? 'Near ' + ESC(pl.name) + ' · ' : '') + '+' + L.t + ' h · ' + timeText(L.t) + '</i></div><button class="x" id="run-x" aria-label="Close"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>' +
       envNumbers(L.ix) + '<div class="ex"><b>' + ESC(ex.mode) + '</b>' + ex.hazards.map((h) => '<span class="tag">' + ESC(h) + '</span>').join('') + '</div>' +
       '<h3>Run for</h3><div class="mini sp" id="run-len">' + [45, 60, 90, 120].map((m) => '<button data-m="' + m + '" aria-pressed="' + (m === LAB.minutes) + '">' + (m < 60 ? m + ' min' : m / 60 + ' h') + '</button>').join('') + '</div>' +
-      '<h3>Quality</h3><div class="mini sp" id="run-det"><button data-d="1" aria-pressed="' + LAB.detail + '">Fine, 500 m</button><button data-d="0" aria-pressed="' + !LAB.detail + '">Fast, 2 km</button></div>' +
+      '<h3>Quality</h3><div class="mini sp" id="run-det"><button data-d="1" aria-pressed="' + LAB.detail + '">Fine, 1 km and 500 m</button><button data-d="0" aria-pressed="' + !LAB.detail + '">Fast, 2 km</button></div>' +
       '<p class="story" id="run-story"></p>' +
       '<div class="row2"><button id="run-go" class="primary">Start</button></div>';
     const story = () => { $('run-story').innerHTML = LAB.detail ? runStoryFine(LAB.minutes) : runStoryFast(); };
-    $('run-x').addEventListener('click', closeRun); $('run-go').addEventListener('click', () => { runStorm({ minutes: LAB.minutes, detail: LAB.detail ? Object.assign({}, DETAIL) : undefined }).catch(() => {}); });
+    $('run-x').addEventListener('click', closeRun); $('run-go').addEventListener('click', () => { runStorm(Object.assign({ minutes: LAB.minutes }, LAB.detail ? FINE : {})).catch(() => {}); });
     el.querySelectorAll('#run-len button').forEach((b) => b.addEventListener('click', () => { LAB.minutes = +b.dataset.m; el.querySelectorAll('#run-len button').forEach((x) => x.setAttribute('aria-pressed', String(x === b))); story(); }));
     el.querySelectorAll('#run-det button').forEach((b) => b.addEventListener('click', () => {
       LAB.detail = b.dataset.d === '1'; el.querySelectorAll('#run-det button').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
@@ -499,13 +499,14 @@
     }));
     story();
   }
-  /* the fine model: cells of 500 m over 30 km from the 20th minute (src/severe-lab.js, `detail`); the work it takes, per model minute, is some sixty times that of the box (measured in Node: 0.45 s a minute for the box, 28 s with the nest) */
-  const DETAIL = { dx: 500, box: 30000, from: 20, ztop: 8000, every: 1 }, NEST_COST = 60;
+  /* the fine model (src/severe-lab.js, `detail`): the box's cells of 1 km (a step of 5 s) and, from the 20th minute, a core of cells of 500 m over 30 km inside it that stays on the storm. What it costs per model minute, measured in Node: about 10 s for the box of 1 km and 38 s with the nest
+     (the nest's 28 s on top of it): 3.8 times the box's rate. The quick model is the box of 2 km alone (0.45 s a minute). */
+  const DETAIL = { dx: 500, box: 30000, from: 20, ztop: 8000, every: 1, cost: 3.8 }, FINE = { dx: 1000, dt: 5, detail: DETAIL }, NEST_COST = 60;
   const runStoryFast = () => 'The real model, 2 km cells in a box 84 km wide that moves with the storm, started in the drawing\'s sounding at the spot you tapped by a warm bubble. The radar opens at once and the frames appear on its slider as they are made: the whole storm takes a few minutes on this device. A storm of 2 km cells is smooth, with no hook.';
   const runStoryFine = (min) => {
-    const work = Math.max(0, min - DETAIL.from) * 0.5 + min * 0.04, mins = Math.max(5, Math.round(work / 5) * 5);
-    return 'The same model, and from the ' + DETAIL.from + 'th minute a second one inside it: cells of ' + DETAIL.dx + ' m over ' + DETAIL.box / 1000 + ' km that stay on the storm and show its core, and the rotation in it, four times as sharply. The radar opens at once and the frames appear on its slider as they are made: the first ' + DETAIL.from + ' minutes in seconds, then about a frame every half minute, <b>about ' + mins + ' minutes</b> in all on a fast computer, much longer on a phone. ' +
-      (min < 80 ? 'A hook echo comes late in a storm, from 70 minutes on, so this run will not have one yet.' : 'You can watch it as it goes, and Stop keeps what it has made. A hook echo comes late in a storm and is weak in a core this small: the recorded storm on the Storms button has a clearer one.');
+    const work = Math.min(min, DETAIL.from) * 0.17 + Math.max(0, min - DETAIL.from) * 0.65, mins = Math.max(5, Math.round(work / 5) * 5);
+    return 'The real model with cells of 1 km, and from the ' + DETAIL.from + 'th minute a second one inside it: cells of ' + DETAIL.dx + ' m over ' + DETAIL.box / 1000 + ' km that stay on the storm and show its core finely. The radar opens at once and the frames appear on its slider as they are made: the first ' + DETAIL.from + ' minutes in about three minutes, then a frame about every half minute, <b>about ' + mins + ' minutes</b> in all on a fast computer, much longer on a phone. ' +
+      (min < 80 ? 'A hook echo comes late in a storm, from 70 minutes on, so this run will not have one yet.' : 'You can watch it as it goes, and Stop keeps what it has made. A hook echo comes late in a storm and is weaker here than in a recorded storm with all of it at 500 m (Storms, Tornado outbreak day, 500 m).');
   };
   function closeRun() { $('ed-run').hidden = true; }
   function stopRun() { if (LAB.worker) LAB.worker.postMessage({ t: 'cancel', keep: true }); }          // (the model stops at the end of its step, which with the finer model is seconds; the frames it has made stay on the radar)
@@ -528,7 +529,7 @@
   function runLeft(prog, of, detail) {
     const [t, w] = prog[prog.length - 1]; let a = prog[0]; for (const q of prog) if (q[0] <= t - 3) a = q;
     const rate = (w - a[1]) / Math.max(0.5, t - a[0]);
-    if (detail && t < detail.from + 3) { const r = w / Math.max(0.5, t); return r * Math.max(0, detail.from - t) + r * NEST_COST * (of - Math.max(t, detail.from)); }
+    if (detail && t < detail.from + 3) { const r = w / Math.max(0.5, t); return r * Math.max(0, detail.from - t) + r * (detail.cost || NEST_COST) * (of - Math.max(t, detail.from)); }
     return rate * (of - t);
   }
   /* A run is played as it is made: the radar opens with the first frame and every frame after it is added to a pack that grows (HFSeverePack.live), so that the slider fills as a radar's does. The radar site has to be chosen before the
