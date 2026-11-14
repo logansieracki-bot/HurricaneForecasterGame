@@ -501,7 +501,7 @@
   }
   /* the fine model (src/severe-lab.js, `detail`): the box's cells of 1 km (a step of 5 s) and, from the 20th minute, a core of cells of 500 m over 30 km inside it that stays on the storm. What it costs per model minute, measured in Node: about 10 s for the box of 1 km and 38 s with the nest
      (the nest's 28 s on top of it): 3.8 times the box's rate. The quick model is the box of 2 km alone (0.45 s a minute). */
-  const DETAIL = { dx: 500, box: 30000, from: 20, ztop: 8000, every: 1, cost: 3.8 }, FINE = { dx: 1000, dt: 5, detail: DETAIL }, NEST_COST = 60;
+  const DETAIL = { dx: 500, box: 30000, from: 20, ztop: 8000, every: 1, cost: 3.8, boxRate: 9 }, FINE = { dx: 1000, dt: 5, detail: DETAIL }, NEST_COST = 60;
   const runStoryFast = () => 'The real model, 2 km cells in a box 84 km wide that moves with the storm, started in the drawing\'s sounding at the spot you tapped by a warm bubble. The radar opens at once and the frames appear on its slider as they are made: the whole storm takes a few minutes on this device. A storm of 2 km cells is smooth, with no hook.';
   const runStoryFine = (min) => {
     const work = Math.min(min, DETAIL.from) * 0.17 + Math.max(0, min - DETAIL.from) * 0.65, mins = Math.max(5, Math.round(work / 5) * 5);
@@ -529,7 +529,7 @@
   function runLeft(prog, of, detail) {
     const [t, w] = prog[prog.length - 1]; let a = prog[0]; for (const q of prog) if (q[0] <= t - 3) a = q;
     const rate = (w - a[1]) / Math.max(0.5, t - a[0]);
-    if (detail && t < detail.from + 3) { const r = w / Math.max(0.5, t); return r * Math.max(0, detail.from - t) + r * (detail.cost || NEST_COST) * (of - Math.max(t, detail.from)); }
+    if (detail && t < detail.from + 3) { const r = Math.max(w / Math.max(0.5, t), detail.boxRate || 0); return r * Math.max(0, detail.from - t) + r * (detail.cost || NEST_COST) * (of - Math.max(t, detail.from)); }          // (the box's rate in the first minutes, with no storm yet, is under what it is later: `boxRate`, its mean, is the least that is taken)
     return rate * (of - t);
   }
   /* A run is played as it is made: the radar opens with the first frame and every frame after it is added to a pack that grows (HFSeverePack.live), so that the slider fills as a radar's does. The radar site has to be chosen before the

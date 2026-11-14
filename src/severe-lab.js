@@ -4,7 +4,7 @@
  *   HFSevereLab.envOf(a)                       // an environment (HFSevereSounding.fromProfile) from arrays: a = { z, theta, qv, u, v, p0, motion }: z even from 0 (m), theta (K), qv (kg/kg), the winds in the ground's frame (m/s)
  *   HFSevereLab.run(spec, hooks)               // async: runs, calls hooks.frame(rec) for every recorded frame, hooks.progress(rec) at every step of the clock, hooks.yield() now and then (an await that lets a worker hear a cancel;
  *                                              // hooks.cancelled() true stops it, a string stops it with that as the reason: the frames so far are the run's); resolves { frames, header, wall, steps, stopped, reason }
- *      spec: { env: a (see envOf), dx 2000, box 84000 (m), nz 40, dz 500, dt 10, minutes 90, frameEvery 5 (minutes), bubble 3 (K), evap 1, twoMoment (false: the rain's drop number is a second variable of the core, see src/severe-core.js), detail, ... }
+ *      spec: { env: a (see envOf), dx 2000, box 84000 (m), nz 40, dz 500, dt 10, minutes 90, frameEvery 5 (minutes), bubble 3 (K), evap 1, twoMoment (false: the rain's drop number is a second variable of the core, see src/severe-core.js), iceParams (other settings of the ice scheme: n0g, rhog, n0r, xrMin, xrMax), detail, ... }
  *      frame rec: { i, t (minutes), block (Uint8Array: the five arrays of a pack's frame, and those of the nest if it has one), track: [x, y, w], wmax, zmax, thvmin, drift: [east, north], nest (true if the block has the nest's arrays), fn (the pack's `fn` of the frame) }
  *      hooks.start(header) is called once before the first frame with the header as it is then (the grid, the scale, the motion, the base state, the nests' grids; `times`, `track`, `drift` and `fn` empty, and growing with the frames):
  *      what a page needs to play the run while it goes (HFSeverePack.live)
@@ -108,7 +108,7 @@
   async function run(spec, hooks) {
     hooks = hooks || {};
     const evap = spec.evap === undefined ? 1 : spec.evap, env = envOf(spec.env), dx = spec.dx || 2000, L = spec.box || 84000, nx = Math.round(L / dx), nz = spec.nz || 40, dz = spec.dz || 500, dt = spec.dt || 10, minutes = spec.minutes || 90, every = spec.frameEvery || 5;
-    const physics = (n, d) => ({ nx: n, ny: n, nz, dx: d, dy: d, dz, moist: true, ice: true, iceParams: { n0g: 4e6, rhog: 400, n0r: 8e6, evap, twoMoment: !!spec.twoMoment }, theta: env.theta, qv: env.qv, wind: { u: env.u, v: env.v },
+    const physics = (n, d) => ({ nx: n, ny: n, nz, dx: d, dy: d, dz, moist: true, ice: true, iceParams: Object.assign({ n0g: 4e6, rhog: 400, n0r: 8e6, evap, twoMoment: !!spec.twoMoment }, spec.iceParams || {}), theta: env.theta, qv: env.qv, wind: { u: env.u, v: env.v },
       visc: { kh: 500 * d / 2000, kv: 500 * d / 2000 }, damp: { top: { depth: 5000, rate: 0.003 } } });
     const core = C.create(Object.assign(physics(nx, dx), { bc: { x: 'periodic', y: 'periodic' } }));
     const S = core.S, idx = core.idx, b = core.base, xc = L / 2, yc = L / 2, sz = idx(0, 0, 1) - idx(0, 0, 0), k5 = Math.min(nz - 2, Math.floor(5250 / dz));
