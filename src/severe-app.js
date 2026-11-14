@@ -76,9 +76,10 @@
   const cache = new Map(), pending = new Map();
   const quickOf = () => S.dragging || S.res === 'legacy';
   const keyOf = (frame, tilt, radar, quick) => [frame, TILTS[tilt], quick ? 'L' : 'S', radar.lat.toFixed(4), radar.lon.toFixed(4), S.dealias ? 1 : 0, S.clutter ? 1 : 0].join('|');
+  /* the scan's options: 16 independent samples of the echo's speckle in a gate (a spread of 4.34 / sqrt(16) = 1.1 dB, as a real radar's average of many pulses has; the operator's own default of 2 is 3.1 dB, a grain that hides the shape of a storm) */
   function optsOf(frame, tilt, radar, quick) {
     const rb = pack.radarBox(pack.times[frame], radar.lat, radar.lon), geom = quick ? { dAz: 1, gate: 1000, nGates: 230, r0: 2500 } : { dAz: 0.5, gate: 250, nGates: 920, r0: 2125 };
-    return Object.assign(geom, { elev: TILTS[tilt], x: rb.x, y: rb.y, seed: 1 + frame * 131 + tilt, dealias: S.dealias, clutter: { ground: S.clutter ? 1 : 0, clearAir: S.clutter ? 1 : 0 } });
+    return Object.assign(geom, { elev: TILTS[tilt], x: rb.x, y: rb.y, seed: 1 + frame * 131 + tilt, n: 16, dealias: S.dealias, clutter: { ground: S.clutter ? 1 : 0, clearAir: S.clutter ? 1 : 0 } });
   }
   function want(frame, tilt, radar, prio, quick) {                            // a promise of the sweep (from the cache if it is there)
     const key = keyOf(frame, tilt, radar, quick); if (cache.has(key)) return Promise.resolve(cache.get(key));
