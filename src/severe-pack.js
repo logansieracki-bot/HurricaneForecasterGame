@@ -7,7 +7,7 @@
  * What a pack knows about the ground: the box of the model moves over the ground with `motion` (the frame in which the storm stays in the box), its south-west corner at the first frame is
  * at scenario.origin (metres east and north of (lat0, lon0) in the azimuthal equidistant plane of HFSevereGeo), so a radar on the ground has a position in the box that changes with time:
  * `radarBox(t, lat, lon)`. A recording whose box follows its storm in whole cells (the Lab's: src/severe-lab.js) has a header `drift`, for each frame the metres east and north that the box's corner is from where
- * `motion` alone puts it; `corner(t)` adds the drift of the latest frame at or before t. `volume(i)` is a frame as the radar operator takes it (winds in the ground's frame: the model's plus the motion), `sample(i, x, y, z)` the model's own values at a
+ * `motion` alone puts it; `corner(t)` adds the drift of the latest frame at or before t. `path()` (`stormPath(header)` of a bare header) says where the storm was over the ground, frame by frame, and the middle of its mature part, where a radar is to look. `volume(i)` is a frame as the radar operator takes it (winds in the ground's frame: the model's plus the motion), `sample(i, x, y, z)` the model's own values at a
  * point (the page's probe shows them beside the radar's). `frameBytes(i)` is the five arrays of a frame as one block of bytes: what the page hands a scanning worker, which makes the
  * volume with `volumeFromFrame` (so that a worker never holds the whole recording).
  * A pack of version 2 (header `v: 2`) may also carry NESTS, finer volumes of a storm that a finer run (src/severe-nest.js) made inside the box, for the frames in which it has them: the header's `nests` lists
@@ -49,6 +49,18 @@
     return vol;
   }
 
+  /* where the storm was over the ground at each frame, in metres east and north of where it started (the middle of the box at the first frame): the box's motion for the time, the drift of its corner (a box that follows its
+     storm) and the strongest updraft's place in the box less the box's middle (where the updraft is under 5 m/s there is no storm yet and its place means nothing: the box's middle, where the bubble is, is taken); and `mid`,
+     the middle of its mature part, which is where a radar is to look: the frames from 20 to 70 minutes whose updraft is 15 m/s or more (else all the frames with such an updraft, else all of them). A header with no
+     track gives the path of the uniform motion. */
+  function stormPath(h) {
+    const mo = h.motion || { u: 0, v: 0 }, half = h.nx * h.dx / 2, tr = h.track || [], dr = h.drift || null;
+    const pts = h.times.map((t, i) => { const q = tr[i], d = dr ? dr[i] : [0, 0], at = q && q[2] >= 5 ? q : [half, half, q ? q[2] : 0]; return { t, x: mo.u * 60 * t + d[0] + at[0] - half, y: mo.v * 60 * t + d[1] + at[1] - half, w: at[2] }; });
+    let use = pts.filter((p) => p.t >= 20 && p.t <= 70 && p.w >= 15); if (!use.length) use = pts.filter((p) => p.w >= 15); if (!use.length) use = pts;
+    const n = use.length;
+    return { pts, mid: { x: n ? use.reduce((a, p) => a + p.x, 0) / n : 0, y: n ? use.reduce((a, p) => a + p.y, 0) / n : 0, n } };
+  }
+
   function fromBody(u8) {
     const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength), hl = dv.getUint32(0, true), h = JSON.parse(new TextDecoder().decode(u8.subarray(4, 4 + hl))), base = 4 + hl;
     const nx = h.nx, ny = h.ny, nz = h.nz, per = nx * ny * nz, n = h.times.length, W = h.scale.wind, VZ = h.scale.vz, mo = h.motion || { u: 0, v: 0 }, sc = h.scenario;
@@ -64,6 +76,7 @@
     P.corner = (t) => { let d = [0, 0]; if (drift) { let k = 0; for (let q = 0; q < n; q++) if (h.times[q] <= t + 1e-6) k = q; d = drift[k]; } return [sc.origin[0] + mo.u * 60 * t + d[0], sc.origin[1] + mo.v * 60 * t + d[1]]; };
     P.radarBox = (t, lat, lon) => { const l = G.local(sc.lat0, sc.lon0, lat, lon), c = P.corner(t); return { x: l.x - c[0], y: l.y - c[1] }; };
     P.boxLatLon = (t, bx, by) => { const c = P.corner(t); return G.fromLocal(sc.lat0, sc.lon0, c[0] + bx, c[1] + by); };
+    P.path = () => stormPath(h);                                                    // where the storm was over the ground (stormPath)
     /* the model's values at a point of the box (x, y, z metres from the south-west corner and the ground), or null outside it: dBZ, u, v, w (ground frame), the fall speed */
     P.sample = (i, x, y, z) => {
       const ix = Math.floor(x / h.dx), iy = Math.floor(y / h.dx), iz = Math.floor(z / h.dz);
@@ -85,5 +98,5 @@
     return fromBody(body);
   }
 
-  globalThis.HFSeverePack = { gunzip, fromBody, volumeFromFrame, assemble };
+  globalThis.HFSeverePack = { gunzip, fromBody, volumeFromFrame, assemble, stormPath };
 })();

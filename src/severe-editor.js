@@ -500,8 +500,10 @@
   function closeRun() { if (LAB.busy) return cancelRun(); $('ed-run').hidden = true; }
   function cancelRun() { if (LAB.worker) LAB.worker.postMessage({ t: 'cancel' }); }
   function scenarioOf(L, header, name) {                                                                   // where the box is on the ground: the radar site that the storm's track passes best, the box so that the storm starts at the spot
-    const sp = E.spot, m = header.motion, mid = G.fromLocal(lat0(), lon0(), sp.x * 1000 + m.u * 3000, sp.y * 1000 + m.v * 3000), S = geo.points.site; let best = -1, bd = Infinity;
-    for (let i = 0; i < S.n; i++) { if (Math.abs(S.lat[i] - mid.lat) > 2 || Math.abs(S.lon[i] - mid.lon) > 2.6) continue; const d = G.distBearing(mid.lat, mid.lon, S.lat[i], S.lon[i]).d; if (d >= 25000 && d < bd) { bd = d; best = i; } }
+    /* the storm's own path (its updraft's place with the box's drift: a storm that does not move as Bunkers' estimate says is not where the nominal motion puts it: the dryline day's is 32 km off at 50 minutes): the site nearest the middle of its mature part that is at least 25 km from it and 15 km from every frame's place, not in the cone of silence */
+    const sp = E.spot, sPath = HFSeverePack.stormPath(header), at = (p) => G.fromLocal(lat0(), lon0(), sp.x * 1000 + p.x, sp.y * 1000 + p.y), mid = at(sPath.mid), pl = sPath.pts.map(at), S = geo.points.site; let best = -1, bd = Infinity;
+    const clear = (i) => pl.every((q) => G.distBearing(q.lat, q.lon, S.lat[i], S.lon[i]).d >= 15000);
+    for (let i = 0; i < S.n; i++) { if (Math.abs(S.lat[i] - mid.lat) > 2 || Math.abs(S.lon[i] - mid.lon) > 2.6) continue; const d = G.distBearing(mid.lat, mid.lon, S.lat[i], S.lon[i]).d; if (d >= 25000 && d < bd && clear(i)) { bd = d; best = i; } }
     if (best < 0) for (let i = 0; i < S.n; i++) { const d = G.distBearing(mid.lat, mid.lon, S.lat[i], S.lon[i]).d; if (d < bd) { bd = d; best = i; } }
     const site = { id: S.names[best], lat: S.lat[best], lon: S.lon[best] }, here = G.fromLocal(lat0(), lon0(), sp.x * 1000, sp.y * 1000), l = G.local(site.lat, site.lon, here.lat, here.lon), half = header.nx * header.dx / 2;
     const mm = Math.round(720 + L.t * 60), tz = here.lon > -85 ? 'EDT' : here.lon > -101 ? 'CDT' : here.lon > -115 ? 'MDT' : 'PDT';

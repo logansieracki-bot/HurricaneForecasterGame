@@ -58,6 +58,19 @@ const arrays = (nz = 41, dz = 500) => { const z = Array.from({ length: nz }, (_,
   check('clear air is -30 dBZ everywhere with no fall speed (' + Array.from(new Int8Array(clear.block.buffer, 0, per)).every((x) => x === -30) + ', ' + Array.from(new Uint8Array(clear.block.buffer, per, per)).every((x) => x === 0) + ') and the strongest echo of the frame is -30 (' + clear.zmax + ')', Array.from(new Int8Array(clear.block.buffer, 0, per)).every((x) => x === -30) && Array.from(new Uint8Array(clear.block.buffer, per, per)).every((x) => x === 0) && clear.zmax === -30);
 }
 
+/* 6b. Where the storm was over the ground (what picks the radar site): a header's path, from numbers that can be worked out by hand. */
+{
+  /* where the storm was over the ground (what picks the radar site): the box's motion for the time, the drift of its corner and the updraft's place in the box less the box's middle; where there is no updraft of 5 m/s yet, the box's middle */
+  const syn = P.stormPath({ nx: 10, dx: 1000, motion: { u: 10, v: -5 }, times: [0, 10, 20, 30, 80], track: [[500, 500, 0], [5500, 5500, 4.9], [6500, 4500, 15], [7500, 5500, 30], [5500, 5500, 40]], drift: [[0, 0], [0, 0], [0, 0], [1000, -2000], [3000, 1000]] });
+  const want = [[0, 0], [6000, -3000], [13500, -6500], [21500, -10500], [51500, -22500]];
+  check('the storm\'s path over the ground, from a header of 5 frames (a motion of 10 east and 5 south, a drift, an updraft place in a box of 10 km: ' + syn.pts.map((p) => p.x + ',' + p.y).join(' ') + '): the box\'s motion for the time plus the drift plus the updraft less the box\'s middle (5 km), and where the updraft is under 5 m/s the box\'s middle (the first two frames); the middle of the mature part is that of the frames of 20 and 30 minutes, whose updraft is 15 m/s or more, but not that of 80 (' + JSON.stringify(syn.mid) + ')',
+    syn.pts.every((p, i) => p.x === want[i][0] && p.y === want[i][1] && p.t === [0, 10, 20, 30, 80][i]) && syn.mid.x === 17500 && syn.mid.y === -8500 && syn.mid.n === 2 && syn.pts[2].w === 15);
+  const sh = (times, w) => ({ nx: 10, dx: 1000, motion: { u: 0, v: 0 }, times, track: w.map((q, i) => [5000 + 1000 * (i + 1), 5000, q]) });         // (frame i's updraft is 1000 (i + 1) m east of the middle)
+  const q1 = P.stormPath(sh([19, 20, 70, 71], [20, 20, 20, 20])).mid, q2 = P.stormPath(sh([20, 30, 100], [14.9, 14.9, 20])).mid, q3 = P.stormPath(sh([20, 30, 40], [15, 10, 10])).mid, q4 = P.stormPath(sh([10, 90], [20, 20])).mid, q5 = P.stormPath(sh([20, 30, 40], [3, 4, 4.9])).mid, q6 = P.stormPath(sh([20, 30], [5, 4.9])).pts.map((p) => p.x), q7 = P.stormPath(sh([10, 90, 95], [15, 14, 14])).mid;
+  check('the middle of the mature part is that of the frames from 20 to 70 minutes (inclusive) with an updraft of 15 m/s or more: of 19, 20, 70 and 71 minutes the 20 and the 70 (' + JSON.stringify(q1) + '); with none of them (14.9 m/s) the frames with one at any time (' + JSON.stringify(q2) + '); 15 is enough (' + JSON.stringify(q3) + '); two strong frames outside the window both count (' + JSON.stringify(q4) + '), and one of 15 with two of 14 beside it is the only one (' + JSON.stringify(q7) + '); with no storm, all the frames, at the box\'s middle (' + JSON.stringify(q5) + '); 5 m/s is a storm, 4.9 is not (' + q6.join(', ') + ')',
+    q1.x === 2500 && q1.n === 2 && q2.x === 3000 && q2.n === 1 && q3.x === 1000 && q3.n === 1 && q4.x === 1500 && q4.n === 2 && q7.x === 1000 && q7.n === 1 && q5.x === 0 && q5.n === 3 && q6[0] === 1000 && q6[1] === 0);
+}
+
 /* 4. A short run: frames, header, hooks, cancel, blow-up. */
 {
   const a = arrays(41, 500), spec = { env: a, dx: 6000, box: 48000, nz: 20, dz: 1000, dt: 15, minutes: 3, frameEvery: 1 }, got = { frames: [], progress: 0, yields: 0 };
@@ -186,6 +199,10 @@ const arrays = (nz = 41, dz = 500) => { const z = Array.from({ length: nz }, (_,
     near(c4m[0], 1000 + mo.u * 1200 + dr[4][0], 1e-6) && near(c4m[1], 2000 + mo.v * 1200 + dr[4][1], 1e-6) && c0m[0] === 1000 && c0m[1] === 2000 && near(cb[0], 1000 + mo.u * 60 * (fol.header.times[4] + 2.5) + dr[4][0], 1e-6) && near(cb[1], 2000 + mo.v * 60 * (fol.header.times[4] + 2.5) + dr[4][1], 1e-6));
   const pk0 = P.assemble(Object.assign({}, hd, { drift: undefined }), non.frames.map((f) => f.block)), cn = pk0.corner(non.header.times[4]);
   check('a pack with no drift is the old one: the corner is the origin plus the motion (' + cn.map((v) => v.toFixed(0)).join(', ') + ')', near(cn[0], 1000 + mo.u * 1200, 1e-6) && near(cn[1], 2000 + mo.v * 1200, 1e-6));
+
+  const pf = P.stormPath(fol.header), pn = P.stormPath(non.header), both2 = pf.pts.map((p, i) => i).filter((i) => pf.pts[i].w >= 5 && pn.pts[i].w >= 5), pgap = Math.max(...both2.map((i) => Math.max(Math.abs(pf.pts[i].x - pn.pts[i].x), Math.abs(pf.pts[i].y - pn.pts[i].y))));
+  check('the path of the run whose box follows its storm is the path of the run whose box does not (the dryline day for 30 minutes, ' + both2.length + ' frames with an updraft of 5 m/s or more: the worst difference is ' + pgap + ' m; at the end ' + Math.round(pf.pts[pf.pts.length - 1].x) + ', ' + Math.round(pf.pts[pf.pts.length - 1].y) + ' m and ' + Math.round(pn.pts[pn.pts.length - 1].x) + ', ' + Math.round(pn.pts[pn.pts.length - 1].y) + '), the pack says the same (' + (JSON.stringify(pk.path()) === JSON.stringify(P.stormPath(hd))) + '), and the middle of its mature part is where the nominal motion does not put it (' + Math.round(pf.mid.x) + ', ' + Math.round(pf.mid.y) + ' m from ' + pf.mid.n + ' frames, against ' + Math.round(mo.u * 3000) + ', ' + Math.round(mo.v * 3000) + ' at 50 minutes)',
+    both2.length >= 4 && pgap <= 3000 && JSON.stringify(pk.path()) === JSON.stringify(P.stormPath(hd)) && pf.mid.n >= 2 && Math.hypot(pf.mid.x - mo.u * 3000, pf.mid.y - mo.v * 3000) > 5000 && pf.pts[0].x === 0 && pf.pts[0].y === 0 && near(pf.pts[1].x, mo.u * 300, 1) && near(pf.pts[1].y, mo.v * 300, 1));
 }
 
 /* 6. The assembler on its own: small known blocks, the refusal of a block of the wrong size. */
