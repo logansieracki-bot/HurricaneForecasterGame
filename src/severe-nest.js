@@ -14,6 +14,7 @@
  *   const nest = HFSevereNest.create({ parent, child, ratio, x0, y0, frame: { u, v } });
  *   nest.init();            // the child's state from the parent's
  *   nest.step(dt);          // the parent by dt, the child by ratio steps of dt / ratio
+ *   nest.edge(w);           // after the child's state was moved by whole cells: the cells within w of its sides again from the parent (the rest as it is)
  *
  * A classic script that sets `globalThis.HFSevereNest`; it needs nothing but the two cores.
  */
@@ -66,18 +67,28 @@
     }
     function blend(f) { for (const n of names) { const t = T[n], a = B0[n], b = B1[n]; for (let m = 0; m < M; m++) t[Zx[m]] = a[m] + f * (b[m] - a[m]); } }
 
-    /* the child's state from the parent's, over the whole child grid (cells, and the faces up to the last), at the parent's time now */
-    nest.init = function () {
-      const t = P.time; nest.time = t;
+    /* the child's state from the parent's, over the whole child grid (cells, and the faces up to the last), at the parent's time now; with `skip` > 0 only over the cells within `skip` of its sides (what `edge` is);
+       (the vertical wind on the ground and at the lid is set to zero by the fill that follows) */
+    function fromParent(skip) {
+      const t = P.time;
       for (const n of names) {
         const kd = KIND[kindOf(n)], a = P.S[n], b = C.S[n], off = n === 'u' ? fr.u : n === 'v' ? fr.v : 0;
         const ni = n === 'u' ? nx + 1 : nx, nj = n === 'v' && ny > 1 ? ny + 1 : ny, nk = n === 'w' ? nz + 1 : nz;
-        for (let k = 0; k < nk; k++) for (let j = 0; j < nj; j++) for (let i = 0; i < ni; i++)
+        for (let k = 0; k < nk; k++) for (let j = 0; j < nj; j++) for (let i = 0; i < ni; i++) {
+          if (skip > 0 && i >= skip && i < ni - skip && j >= skip && j < nj - skip) continue;
           b[C.idx(i, j, k)] = trilinear(a, kd[0], kd[1], kd[2], posX(i, kd[0], t), posY(j, kd[1], t), posZ(k, kd[2])) - off;
+        }
       }
-      for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) { C.S.w[C.idx(i, j, 0)] = 0; C.S.w[C.idx(i, j, nz)] = 0; }
-      sample(B0, t); blend(0); C.fill();
+    }
+    nest.init = function () {
+      const t = P.time; nest.time = t;
+      fromParent(0); sample(B0, t); blend(0); C.fill();
       C.time = t;
+    };
+    /* the child's state from the parent's over the cells within `w` of its sides (at least the outermost one), the rest left as it is, and the targets taken again from the parent as it is now (for the halos and the faces on the
+       sides, and for the next step's start): for a child that was moved by whole cells (its state rolled, as the Lab's is when its parent's box follows the storm), whose cells that came round its edge are not the parent's */
+    nest.edge = function (w) {
+      fromParent(Math.max(1, Math.round(w))); sample(B0, P.time); blend(0); C.fill();
     };
 
     /* the parent by dt, the child by `ratio` steps of dt / ratio, with the targets blended between the parent's state at the start and at the end */

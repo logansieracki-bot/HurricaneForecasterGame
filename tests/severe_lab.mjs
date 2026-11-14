@@ -4,13 +4,14 @@
 import '../src/severe-core.js';
 import '../src/severe-sounding.js';
 import '../src/severe-refl.js';
+import '../src/severe-nest.js';
 import '../src/severe-analysis.js';
 import '../src/severe-days.js';
 import '../src/severe-geo.js';
 import '../src/severe-pack.js';
 import '../src/severe-lab.js';
 
-const C = globalThis.HFSevereCore, S = globalThis.HFSevereSounding, L = globalThis.HFSevereLab, P = globalThis.HFSeverePack;
+const C = globalThis.HFSevereCore, S = globalThis.HFSevereSounding, L = globalThis.HFSevereLab, P = globalThis.HFSeverePack, NEST = globalThis.HFSevereNest;
 let failed = 0, passed = 0;
 function check(name, cond) { if (cond) { passed++; console.log('ok   ' + name); } else { failed++; console.log('FAIL ' + name); if (process.env.FAILFAST) process.exit(1); } }      // (FAILFAST=1: the mutant tool stops at the first check that fails)
 const near = (a, b, tol) => Math.abs(a - b) <= tol;
@@ -98,6 +99,8 @@ const arrays = (nz = 41, dz = 500) => { const z = Array.from({ length: nz }, (_,
   const five = await L.run(Object.assign({}, spec, { minutes: 7, frameEvery: 5, dt: 10 }), {});
   check('frames come every `frameEvery` minutes (5: at ' + five.header.times.join(' and ') + ' of a 7 minute run)', JSON.stringify(five.header.times) === '[0,5]');
   let asked = 0; const c = await L.run(Object.assign({}, spec, { minutes: 30 }), { yield: async () => { await new Promise((res) => setTimeout(res, 0)); }, cancelled: () => ++asked >= 1 });
+  let askedK = 0; const kept = await L.run(Object.assign({}, spec, { minutes: 30 }), { yield: async () => { await new Promise((res) => setTimeout(res, 0)); }, cancelled: () => (++askedK >= 3 ? 'stopped by hand' : false) });
+  check('a stop that gives a reason (the page\'s "show what it has") ends the run in the same way with that reason, the frames it had and a header for them (' + kept.stopped + ', "' + kept.reason + '", ' + kept.frames.length + ' of 31 frames, ' + kept.header.times.length + ' times)', kept.stopped && kept.reason === 'stopped by hand' && kept.frames.length >= 1 && kept.frames.length < 31 && kept.header.times.length === kept.frames.length && kept.frames.length >= c.frames.length);
   check('a cancel stops it at its next breath, with the frames it had (' + c.frames.length + ' of 31) and says so (' + c.stopped + ', "' + c.reason + '")', c.stopped && c.reason === 'cancelled' && c.frames.length >= 1 && c.frames.length < 31 && c.header.times.length === c.frames.length);
   const x = await L.run(Object.assign({}, spec, { bubble: 3000, minutes: 3 }), {});
   check('a model that blows up stops with a reason and the frames before it (' + x.stopped + ', "' + x.reason + '", ' + x.frames.length + ' frames)', x.stopped && /blew up/.test(x.reason) && x.frames.length >= 1 && x.frames.length < 4);
@@ -217,7 +220,179 @@ const arrays = (nz = 41, dz = 500) => { const z = Array.from({ length: nz }, (_,
   check('a point of the box is the cell\'s own values (x 1500 m, y 500 m, z 600 m: cell (1, 0, 1): dBZ ' + (sm && sm.dbz) + ')', sm && sm.dbz === blocks[1][(1 * 2 + 0) * 3 + 1] && near(sm.u, blocks[1][2 * per + (1 * 2 + 0) * 3 + 1] * 0.5 + 10, 1e-5));
   let err = ''; try { P.assemble(h, [blocks[0], blocks[1].subarray(0, 50)]); } catch (e) { err = e.message; }
   check('a block of the wrong size is refused and says which (' + err + ')', /frame 1 has 50 bytes, not 60/.test(err));
+  check('a pack of version 1 has no offsets in its header (they are for the packs whose frames are not all as long: ' + JSON.stringify(pk.h.offsets) + ')', pk.h.offsets === undefined && pk.h.nests === undefined);
+  /* a pack with a nest that is not square (2 cells east, 3 north, 1 level), in the second frame only: the block of that frame is the box's 60 bytes and the nest's 30, the offsets are made from what the blocks measure */
+  const h2 = Object.assign({}, h, { v: 2, nests: [{ nx: 2, ny: 3, nz: 1, dx: 500, dz: 500, scale: { wind: 1, vz: 0.25 }, frame: { u: 1, v: 2 } }], fn: [[], [[0, 1000, 500]]] });
+  const b2 = [blocks[0], Uint8Array.from({ length: 5 * per + 30 }, (_, i) => (i * 5 + 11) & 127)], pk2 = P.assemble(h2, b2), v2 = pk2.volume(1), nn = v2.nests && v2.nests[0], nv = nn && nn.vol;
+  let e2 = ''; try { P.assemble(h2, [blocks[0], blocks[1]]); } catch (e) { e2 = e.message; }
+  let e3 = ''; try { P.assemble(h2, [Uint8Array.from({ length: 5 * per + 30 }), b2[1]]); } catch (e) { e3 = e.message; }
+  check('a pack whose second frame has a nest of 2 x 3 x 1 cells has offsets from the lengths of the blocks (' + JSON.stringify(pk2.h.offsets) + ', for 0, 60 and 150), the frame\'s bytes are its block (' + pk2.frameBytes(1).length + '), the first frame has no nest and the second has it at (1000, 500) with its grid, its winds in whole metres plus the box\'s motion and its own frame\'s (' + (nv && nv.u[0]) + ' for ' + (b2[1][5 * per + 2 * 6] + 10 + 1) + '), and a frame without the nest\'s bytes, or one with them that has no nest, is refused (' + e2 + '; ' + e3 + ')',
+    JSON.stringify(pk2.h.offsets) === '[0,60,150]' && pk2.frameBytes(1).length === 90 && pk2.volume(0).nests === undefined && nn && nn.x === 1000 && nn.y === 500 && nv.nx === 2 && nv.ny === 3 && nv.nz === 1 && nv.dx === 500 && nv.dy === 500 && nv.dbz.length === 6 && Array.from(nv.dbz).every((x, i) => x === b2[1][5 * per + i])
+    && near(nv.u[0], b2[1][5 * per + 12] * 1 + 10 + 1, 1e-5) && near(nv.v[5], b2[1][5 * per + 3 * 6 + 5] * 1 - 4 + 2, 1e-5) && near(nv.w[4], b2[1][5 * per + 4 * 6 + 4] * 1, 1e-5) && /frame 1 has 60 bytes, not 90/.test(e2) && /frame 0 has 90 bytes, not 60/.test(e3));
 }
+
+/* 8. The detail nest (docs/severe-plan.md 6.8): a finer core in the middle of the box from a minute on. The recorder's options, the box moved with its nest, a run that makes one (the box records what it records without it, the nest has the box's time, follows
+      the storm and is in the pack, the finer core is what a replay by hand makes of it), and the refusals. */
+{
+  const dryEnv = () => {
+    const d = globalThis.HFSevereDays.get('dryline'), A = globalThis.HFSevereAnalysis.create(d.drawing), sp = d.spot, env = A.sounding(sp.x, sp.y, sp.t, { dz: 100, top: 20000 }), tb = env.table;
+    return { z: Array.from(tb.z), theta: Array.from(tb.theta), qv: Array.from(tb.qv), u: Array.from(tb.z, (z) => env.uG(z)), v: Array.from(tb.z, (z) => env.vG(z)), p0: 1000, motion: env.motion };
+  };
+  const eqBytes = (a, b) => { if (a.length !== b.length) return false; for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false; return true; };
+
+  /* 8a. The recorder's options: the wind step, the levels kept, a place in a block to write to. */
+  {
+    const nx = 6, ny = 5, nz = 8, a = arrays(nz + 1, 500), e = L.envOf(a);
+    const core = C.create({ nx, ny, nz, dx: 1000, dy: 1000, dz: 500, moist: true, ice: true, theta: e.theta, qv: e.qv, wind: { u: e.u, v: e.v }, bc: { x: 'periodic', y: 'periodic' } });
+    const st = core.S, idx = core.idx, sy = idx(0, 1, 0) - idx(0, 0, 0), sz = idx(0, 0, 1) - idx(0, 0, 0), per = nx * ny * nz, at = (k, j, i) => (k * ny + j) * nx + i;
+    core.fill(); st.u.fill(0); st.v.fill(0); st.w.fill(0);
+    const o = idx(2, 3, 1); st.qr[o] = 2e-3; st.u[o] = 9; st.u[o + 1] = 11; st.v[o] = -3; st.v[o + sy] = -3; st.w[o] = 70; st.w[o + sz] = 70;
+    const o2 = idx(4, 1, 2); st.u[o2] = 200; st.u[o2 + 1] = 200; st.v[o2] = -200; st.v[o2 + sy] = -200;
+    const r1 = L.recorder(core, { wind: 1 })(), r5 = L.recorder(core)(), a1 = (r, c) => new Int8Array(r.block.buffer, c * per, per);
+    check('with `wind: 1` the winds are in whole metres per second (10, -3 and 70 m/s in the cell: ' + a1(r1, 2)[at(1, 3, 2)] + ', ' + a1(r1, 3)[at(1, 3, 2)] + ', ' + a1(r1, 4)[at(1, 3, 2)] + ') and held at 127 (200 m/s: ' + a1(r1, 2)[at(2, 1, 4)] + ', ' + a1(r1, -1 + 4)[at(2, 1, 4)] + '), where the half-metre steps of the default have 20, -6 and the 70 m/s held at 127 (' + a1(r5, 2)[at(1, 3, 2)] + ', ' + a1(r5, 3)[at(1, 3, 2)] + ', ' + a1(r5, 4)[at(1, 3, 2)] + ')',
+      a1(r1, 2)[at(1, 3, 2)] === 10 && a1(r1, 3)[at(1, 3, 2)] === -3 && a1(r1, 4)[at(1, 3, 2)] === 70 && a1(r1, 2)[at(2, 1, 4)] === 127 && a1(r1, 3)[at(2, 1, 4)] === -127 && a1(r5, 2)[at(1, 3, 2)] === 20 && a1(r5, 3)[at(1, 3, 2)] === -6 && a1(r5, 4)[at(1, 3, 2)] === 127);
+    st.qr[idx(1, 1, 6)] = 8e-3;
+    const full = L.recorder(core)(), win = L.recorder(core, { nz: 3 })(), p3 = nx * ny * 3;
+    const slice = (r, p, c) => new Int8Array(r.block.buffer, c * p, p);
+    check('`nz: 3` keeps the lowest three levels of each of the five arrays (' + win.block.length + ' bytes for ' + 5 * p3 + ', each array the first third of the whole frame\'s), and the strongest echo is still that of all the levels (' + win.zmax + ' dBZ from level 6, for the whole frame\'s ' + full.zmax + ', and the window\'s own ' + Math.max(...slice(win, p3, 0)) + ')',
+      win.block.length === 5 * p3 && [0, 1, 2, 3, 4].every((c) => eqBytes(slice(win, p3, c), new Int8Array(full.block.buffer, c * per, p3))) && win.zmax === full.zmax && full.zmax > Math.max(...slice(win, p3, 0)) + 3 && Math.max(...slice(win, p3, 0)) > -30);
+    const big = new Uint8Array(37 + 5 * per + 11).fill(255), rb = L.recorder(core)(big, 37), plain = L.recorder(core)();
+    check('`record(into, at)` writes the frame into the block given from the byte `at` and returns that block, touching no other byte (' + (rb.block === big) + ', the 37 before and the 11 after are 255: ' + (big.subarray(0, 37).every((x) => x === 255) && big.subarray(37 + 5 * per).every((x) => x === 255)) + ', the frame is the one a new block has: ' + eqBytes(big.subarray(37, 37 + 5 * per), plain.block) + ', the strongest echo ' + rb.zmax + ' for ' + plain.zmax + ')',
+      rb.block === big && big.subarray(0, 37).every((x) => x === 255) && big.subarray(37 + 5 * per).every((x) => x === 255) && eqBytes(big.subarray(37, 37 + 5 * per), plain.block) && rb.zmax === plain.zmax);
+    const whole = new Uint8Array(3 + 20 + 5 * per + 9).fill(255), sub = new Uint8Array(whole.buffer, 3, 20 + 5 * per + 9), rs = L.recorder(core)(sub, 20), tail = whole;
+    check('a block that is a view into a larger buffer is written at its own start plus `at` (the frame is at the 20th byte of the view: ' + eqBytes(new Uint8Array(sub.buffer, 3 + 20, 5 * per), plain.block) + '; the 3 bytes before the view, the 20 in front of the frame and the 9 after it are untouched: ' + (tail.subarray(0, 23).every((x) => x === 255) && tail.subarray(23 + 5 * per).every((x) => x === 255)) + ')',
+      rs.block === sub && eqBytes(new Uint8Array(sub.buffer, 3 + 20, 5 * per), plain.block) && tail.subarray(0, 23).every((x) => x === 255) && tail.subarray(23 + 5 * per).every((x) => x === 255));
+  }
+
+  /* 8b. The box moved with its nest: a parent of 16 x 16 cells of 3 km with a nest of 8 x 8 of them as 24 x 24 cells of 1 km, both in a storm of their own, moved by (1, -2), (-3, 0) and (0, 1) cells of the box. The box is moved as it is without a nest;
+         the nest by 3 times as many cells, so that what is in it is where it was in the box's frame; the cells within 3 times the larger shift of its sides are the box's again, as a nest made at that moment has them. */
+  {
+    const a = arrays(11, 500), e = L.envOf(a), RATIO = 3, PNX = 16, PC = 8, CN = PC * RATIO, X0 = 12000, NZ = 10, md = (v, n) => ((v % n) + n) % n;
+    const popt = { nx: PNX, ny: PNX, nz: NZ, dx: 3000, dy: 3000, dz: 500, moist: true, ice: true, iceParams: { n0g: 4e6, rhog: 400, n0r: 8e6, evap: 1 }, theta: e.theta, qv: e.qv, wind: { u: e.u, v: e.v }, bc: { x: 'periodic', y: 'periodic' }, visc: { kh: 1500, kv: 1500 }, damp: { top: { depth: 3000, rate: 0.003 } } };
+    const copt = Object.assign({}, popt, { nx: CN, ny: CN, dx: 1000, dy: 1000, visc: { kh: 125, kv: 125 }, bc: { x: 'driven', y: 'driven' }, relax: { width: 6 } });
+    const build = () => {
+      const parent = C.create(popt), child = C.create(copt), pi = parent.idx;
+      for (let k = 0; k < NZ; k++) for (let j = 0; j < PNX; j++) for (let i = 0; i < PNX; i++) { const o = pi(i, j, k); parent.S.th[o] = L.bubble((i + 0.5) * 3000, (j + 0.5) * 3000, (k + 0.5) * 500, 24000, 24000, 4); parent.S.u[o] = parent.base.ubc[k]; parent.S.v[o] = parent.base.vbc[k]; }
+      parent.fill(); const nest = NEST.create({ parent, child, ratio: RATIO, x0: X0, y0: X0 }); nest.init(); for (let s = 0; s < 8; s++) nest.step(10);
+      return { parent, child, nest };
+    };
+    const trial = (sx, sy) => {
+      const { parent, child, nest } = build(), before = child.getState(), twinP = C.create(popt); twinP.setState(parent.getState()); L.roll(twinP, sx, sy);
+      L.rollNested(parent, nest, RATIO, sx, sy);
+      const W = RATIO * Math.max(Math.abs(sx), Math.abs(sy)), twinC = C.create(copt), nest2 = NEST.create({ parent, child: twinC, ratio: RATIO, x0: X0, y0: X0 }); nest2.init();
+      let pd = 0, inner = 0, innerBad = 0, band = 0, bandBad = 0, moved = 0;
+      for (const n of parent.names) for (let q = 0; q < parent.N; q++) pd = Math.max(pd, Math.abs(parent.S[n][q] - twinP.S[n][q]));
+      for (const n of child.names) {
+        const ni = n === 'u' ? CN + 1 : CN, nj = n === 'v' ? CN + 1 : CN, nk = n === 'w' ? NZ + 1 : NZ;
+        for (let k = 0; k < nk; k++) for (let j = 0; j < nj; j++) for (let i = 0; i < ni; i++) {
+          const q = child.idx(i, j, k);
+          if (i < W || i >= ni - W || j < W || j >= nj - W) { band++; if (child.S[n][q] !== twinC.S[n][q]) bandBad++; }
+          else { inner++; const was = before.f[n][child.idx(md(i - RATIO * sx, CN), md(j - RATIO * sy, CN), k)]; if (child.S[n][q] !== was) innerBad++; moved = Math.max(moved, Math.abs(was - before.f[n][q])); }
+        }
+      }
+      return { W, pd, inner, innerBad, band, bandBad, moved };
+    };
+    const rs = [[1, -2], [-3, 0], [0, 1]].map(([sx, sy]) => [sx, sy, trial(sx, sy)]);
+    check('the box and its nest moved together: the box as it is moved with no nest (differences ' + rs.map(([x, y, r]) => r.pd).join(', ') + '), the nest\'s cells beyond 3 times the larger shift of its sides are what was 3 times the shift away (wrong: ' + rs.map(([x, y, r]) => r.innerBad + ' of ' + r.inner).join(', ') + ' for (1, -2), (-3, 0), (0, 1): bands of ' + rs.map(([x, y, r]) => r.W).join(', ') + ' cells), those within it the box\'s, as a nest made at that moment has them (wrong: ' + rs.map(([x, y, r]) => r.bandBad + ' of ' + r.band).join(', ') + ')',
+      rs.every(([x, y, r]) => r.pd === 0 && r.innerBad === 0 && r.bandBad === 0 && r.inner > 3000 && r.band > 3000 && r.moved > 1e-6) && rs[0][2].W === 6 && rs[1][2].W === 9 && rs[2][2].W === 3);
+    const { parent: p1, child: c1, nest: n1 } = build(), p2 = C.create(popt), p3 = C.create(popt), keep = c1.getState(); p2.setState(p1.getState()); p3.setState(p1.getState());
+    L.rollNested(p2, null, RATIO, 1, -2); L.roll(p3, 1, -2); let nd = 0; for (const n of p2.names) for (let q = 0; q < p2.N; q++) nd = Math.max(nd, Math.abs(p2.S[n][q] - p3.S[n][q]));
+    L.rollNested(p1, n1, RATIO, 0, 0); let zd = 0; for (const n of c1.names) for (let q = 0; q < c1.N; q++) zd = Math.max(zd, Math.abs(c1.S[n][q] - keep.f[n][q]));
+    check('with no nest the box alone is moved (' + nd + '), and a move by nothing leaves the nest as it is, to the last bit (' + zd + ')', nd === 0 && zd === 0);
+  }
+
+  /* 8c. A run with a nest, the dryline day's storm at 3 km with a nest of 1 km cells over 18 km from the 15th minute: the box records what it records without the nest (the nest never reaches back), the nest is in the frames after that and keeps
+         the box's time, follows the storm as the box does, is a pack of version 2 that reads back, and is what a replay by hand makes of it (every setting of the finer core, the order of the moves and the recording). */
+  const ar = dryEnv(), base = { env: ar, dx: 3000, box: 60000, dt: 10, minutes: 30, frameEvery: 5 }, DET = { dx: 1000, box: 18000, from: 15, ztop: 6000, every: 5 };
+  const plain = await L.run(base, {}), seen = []; let late = 0, before = 0, after = 0;
+  const det = await L.run(Object.assign({}, base, { detail: DET }), { nest: (n) => seen.push(n), frame: (rec) => { if (rec.nest && Math.abs(seen[0].child.time - rec.t * 60) > 1e-6) late++; }, progress: (p) => { if (seen.length) after++; else before++; } });
+  const per5 = 5 * 20 * 20 * 40, cper = 5 * 18 * 18 * 12, hd = det.header;
+  check('a run with a nest makes a pack of version 2: its grid (18 x 18 x 12 cells of 1000 x 500 m, 1 m/s steps of wind), its place (21000, 21000 in the box, the middle of it) in the frames after the 15th minute and in none before, a block that long, and what it was set to (' + JSON.stringify(hd.lab.detail) + '); the nest was made once (' + seen.length + ') and kept the box\'s time (' + late + ' frames out)',
+    hd.v === 2 && JSON.stringify(hd.nests) === JSON.stringify([{ nx: 18, ny: 18, nz: 12, dx: 1000, dz: 500, scale: { wind: 1, vz: 0.25 }, frame: { u: 0, v: 0 } }]) && JSON.stringify(hd.fn) === JSON.stringify([[], [], [], [], [[0, 21000, 21000]], [[0, 21000, 21000]], [[0, 21000, 21000]]])
+    && JSON.stringify(hd.lab.detail) === JSON.stringify(Object.assign({}, DET, { minUpdraft: 10 })) && det.frames.map((f) => f.block.length).join() === [per5, per5, per5, per5, per5 + cper, per5 + cper, per5 + cper].join() && det.frames.map((f) => f.nest).join() === 'false,false,false,false,true,true,true' && seen.length === 1 && seen[0].child.nx === 18 && seen[0].nest.x0 === 21000 && late === 0);
+  check('the run says how far it has got every 6 steps (a model minute) until the nest is made and at every step after it, a step of the finer model being long (' + before + ' times in the first 15 minutes, ' + after + ' in the next 15)', before === 15 && after === 91);
+  check('a run without one is a pack of version 1 as before: no nests, no `fn`, frames of the box\'s five arrays (' + plain.header.v + ', ' + (plain.header.nests === undefined) + ', ' + (plain.header.fn === undefined) + ', detail ' + plain.header.lab.detail + ')', plain.header.v === 1 && plain.header.nests === undefined && plain.header.fn === undefined && plain.header.lab.detail === undefined && plain.frames.every((f) => !f.nest && f.block.length === per5));
+  let same = plain.frames.length === det.frames.length; plain.frames.forEach((f, i) => { if (same && !eqBytes(det.frames[i].block.subarray(0, per5), f.block)) same = false; });
+  check('the box records what it records without the nest, bit for bit, all ' + plain.frames.length + ' frames, with the same times, track and drift of its corner (the nest is one way, and moves with the box): ' + same, same && JSON.stringify(plain.header.drift) === JSON.stringify(det.header.drift) && JSON.stringify(plain.header.track) === JSON.stringify(det.header.track) && JSON.stringify(plain.header.times) === JSON.stringify(det.header.times) && det.header.drift[6].join() !== det.header.drift[4].join());
+  /* the nest sees the storm where the box does: the middle of the echo (30 dBZ or more, 0.5 to 3.5 km, by power) of the nest and of the box's cells under it */
+  const cent = (dbz, nx, i0, i1, j0, j1, dxm, ox) => { let W = 0, cx = 0, cy = 0; for (let k = 1; k <= 7; k++) for (let j = j0; j < j1; j++) for (let i = i0; i < i1; i++) { const d = dbz[(k * nx + j) * nx + i]; if (d < 30) continue; const w = Math.pow(10, d / 10); W += w; cx += w * (ox + (i - i0 + 0.5) * dxm); cy += w * (ox + (j - j0 + 0.5) * dxm); } return W > 0 ? [cx / W, cy / W] : null; };
+  const gaps = [4, 5, 6].map((i) => { const f = det.frames[i], b = new Int8Array(f.block.buffer, f.block.byteOffset, 20 * 20 * 40), c = new Int8Array(f.block.buffer, f.block.byteOffset + per5, 18 * 18 * 12), cb = cent(b, 20, 7, 13, 7, 13, 3000, 21000), cc = cent(c, 18, 0, 18, 0, 18, 1000, 21000); return cb && cc ? Math.max(Math.abs(cb[0] - cc[0]), Math.abs(cb[1] - cc[1])) : -1; });
+  check('the echo of the nest is where the echo of the box under it is, at each frame with a nest (the middles of their power differ by ' + gaps.map((g) => Math.round(g)).join(', ') + ' m)', gaps.every((g) => g >= 0 && g < 1500));
+  const hdr = Object.assign({}, det.header, { name: 'T', scenario: { lat0: 36, lon0: -98, origin: [0, 0], radar: 'KVNX', clock: '15:00', tz: 'CDT' } }), pk = P.assemble(hdr, det.frames.map((f) => f.block)), v3 = pk.volume(3), v5 = pk.volume(5), nv = v5.nests && v5.nests[0];
+  const cdb = new Int8Array(det.frames[5].block.buffer, det.frames[5].block.byteOffset + per5, 18 * 18 * 12), cu = new Int8Array(det.frames[5].block.buffer, det.frames[5].block.byteOffset + per5 + 2 * 18 * 18 * 12, 18 * 18 * 12);
+  let ud = 0; if (nv) for (let q = 0; q < cu.length; q++) ud = Math.max(ud, Math.abs(nv.vol.u[q] - (cu[q] + pk.motion.u)));
+  check('the pack reads back: offsets of the frames as long as their blocks (' + pk.h.offsets.join(', ') + '), no nest in frame 3 and one in frame 5 at (21000, 21000) with its grid, its reflectivity the block\'s, its winds in whole metres plus the box\'s motion (' + ud.toExponential(1) + ' off)',
+    pk.h.offsets.join() === [0, per5, 2 * per5, 3 * per5, 4 * per5, 4 * per5 + per5 + cper, 4 * per5 + 2 * (per5 + cper), 4 * per5 + 3 * (per5 + cper)].join() && v3.nests === undefined && v5.nests.length === 1 && nv.x === 21000 && nv.y === 21000 && nv.vol.nx === 18 && nv.vol.nz === 12 && nv.vol.dx === 1000 && nv.vol.dz === 500 && eqBytes(nv.vol.dbz, cdb) && ud < 1e-4 && cu.some((x) => x !== 0));
+  /* the replay: the same run by hand, with the box moved by what the header's drift says and the nest made and moved as the Lab's text says it is */
+  {
+    const env = L.envOf(ar), phys = (n, d) => ({ nx: n, ny: n, nz: 40, dx: d, dy: d, dz: 500, moist: true, ice: true, iceParams: { n0g: 4e6, rhog: 400, n0r: 8e6, evap: 1 }, theta: env.theta, qv: env.qv, wind: { u: env.u, v: env.v }, visc: { kh: 500 * d / 2000, kv: 500 * d / 2000 }, damp: { top: { depth: 5000, rate: 0.003 } } });
+    const par = C.create(Object.assign(phys(20, 3000), { bc: { x: 'periodic', y: 'periodic' } })), b = par.base;
+    for (let k = 0; k < 40; k++) for (let j = 0; j < 20; j++) for (let i = 0; i < 20; i++) { const o = par.idx(i, j, k); par.S.th[o] = L.bubble((i + 0.5) * 3000, (j + 0.5) * 3000, (k + 0.5) * 500, 30000, 30000); par.S.u[o] = b.ubc[k]; par.S.v[o] = b.vbc[k]; }
+    par.fill(); let kid = null, nst = null, rec = null; const dr = det.header.drift, shift = (f) => [-(dr[f + 1][0] - dr[f][0]) / 3000, -(dr[f + 1][1] - dr[f][1]) / 3000], mine = [];
+    for (let f = 0; f <= 5; f++) {                                           // (frame f is at 5 f minutes: record it, make the move its block asked for, make the nest after the 15th minute's move, and take the 30 steps of 10 s to the next frame)
+      if (f >= 4) mine[f] = rec().block;
+      if (f === 5) break;
+      const [sx, sy] = shift(f); if (sx || sy) L.rollNested(par, nst, 3, sx, sy);
+      if (f === 3) { kid = C.create(Object.assign(phys(18, 1000), { bc: { x: 'driven', y: 'driven' }, relax: { width: 6 } })); nst = NEST.create({ parent: par, child: kid, ratio: 3, x0: 21000, y0: 21000 }); nst.init(); rec = L.recorder(kid, { wind: 1, nz: 12 }); }
+      for (let s = 0; s < 30; s++) { if (nst) nst.step(10); else par.step(10); }
+    }
+    const ok = [4, 5].map((f) => mine[f] && eqBytes(mine[f], det.frames[f].block.subarray(per5)));
+    check('a replay by hand of the run (the box moved by the header\'s drift, the nest of 18 x 18 x 40 cells of 1 km made after the 15th minute\'s move, 30 steps of 10 s between frames, the lowest 12 levels recorded in 1 m/s steps) gives the frames 4 and 5 of the nest bit for bit: ' + ok.join(', '), ok.every(Boolean));
+  }
+
+  /* 8d. What is refused, the nest's size and place, the frames' times, and a nest that blows up on its own. */
+  {
+    const fail = async (spec) => { try { await L.run(spec, {}); return ''; } catch (e) { return e.message; } };
+    const tiny = { env: arrays(21, 500), dx: 4000, box: 40000, nz: 20, dz: 500, dt: 10, minutes: 2, frameEvery: 1 };
+    const e1 = await fail(Object.assign({}, tiny, { follow: false, detail: { dx: 1000 } })), e2 = await fail(Object.assign({}, tiny, { detail: { dx: 1500 } })), e3 = await fail(Object.assign({}, tiny, { detail: { dx: 4000 } }));
+    const keep = globalThis.HFSevereNest; delete globalThis.HFSevereNest; const e4 = await fail(Object.assign({}, tiny, { detail: { dx: 1000 } })); globalThis.HFSevereNest = keep;
+    check('a nest is refused with a box that does not follow its storm (' + e1 + '), with cells that are not a whole fraction of the box\'s (' + e2 + '), with cells as large as the box\'s (' + e3 + ') and without the nest module (' + e4 + ')',
+      /follow/.test(e1) && /whole fraction/.test(e2) && /1500/.test(e2) && /whole fraction/.test(e3) && /needs HFSevereNest/.test(e4));
+    const size = async (d) => { const r = await L.run(Object.assign({}, tiny, { minutes: 2, detail: Object.assign({ dx: 1000, from: 0, every: 1, minUpdraft: 0 }, d) }), {}); return { n: r.header.nests[0], at: r.header.fn[r.header.fn.length - 1][0], lab: r.header.lab.detail }; };
+    const s1 = await size({ box: 16000 }), s2 = await size({ box: 1e6 }), s3 = await size({ box: 1000 }), s4 = await size({ ztop: 4100 }), s5 = await size({ ztop: 100 }), s6 = await size({ ztop: 1e6 }), s7 = await size({ box: 20000 }), s8 = await size({ box: 17000 }), s9 = await size({ box: 19000 }), s0 = await size({ ztop: 0 });
+    check('the nest\'s box is a whole number of the box\'s cells, in its middle: 16 km is 4 cells (16 of 1 km, the corner at 12000), 20 km is 5 (20 of 1 km, the corner at 12000: 10 cells less 5 is 5, half of it 2.5, which is 3 cells in), a box too large is 4 cells less than the box (24, at 8000) and one too small is 4 cells (16): '
+      + [s1, s7, s2, s3].map((s) => s.n.nx + ' at ' + s.at[1]).join(', ') + '; its depth is the levels that hold `ztop` (8000 m, the default, is 16, 4100 m 9, 100 m 1, any more all 20): ' + [s1.n.nz, s4.n.nz, s5.n.nz, s6.n.nz, s2.n.nz].join(', '),
+      s1.n.nx === 16 && s1.at[1] === 12000 && s1.at[2] === 12000 && s7.n.nx === 20 && s7.at[1] === 12000 && s2.n.nx === 24 && s2.at[1] === 8000 && s3.n.nx === 16 && s4.n.nz === 9 && s5.n.nz === 1 && s6.n.nz === 20 && s1.n.nz === 16 && s1.lab.ztop === 8000 && s2.n.nz === 16);
+    check('a box that is not a whole number of cells is rounded to the nearest (17 km is 4.25 cells of 4 km: ' + s8.n.nx / 4 + ' cells; 19 km is 4.75: ' + s9.n.nx / 4 + ' cells) and the header says what it came to (box ' + s8.lab.box + ' and ' + s9.lab.box + ' m, ztop ' + s4.lab.ztop + ' m for the 4100 asked, ' + s0.n.nz + ' level for none)',
+      s8.n.nx === 16 && s9.n.nx === 20 && s8.lab.box === 16000 && s9.lab.box === 20000 && s4.lab.ztop === 4500 && s0.n.nz === 1 && s0.lab.ztop === 500);
+    const t1 = await L.run(Object.assign({}, tiny, { minutes: 6, frameEvery: 2, detail: { dx: 1000, from: 2, every: 1, minUpdraft: 0 } }), {}), t2 = await L.run(Object.assign({}, tiny, { minutes: 6, frameEvery: 2, detail: { dx: 1000, from: 3, every: 1, minUpdraft: 0 } }), {});
+    check('the nest is made at the first frame at or after `from` and the frames are `every` minutes apart from then on: from 2 with frames every 2 and then every 1: ' + t1.header.times.join(', ') + ' with the nest in the frames after the 2nd minute (' + t1.header.fn.map((f) => f.length).join('') + '); from 3: ' + t2.header.times.join(', ') + ' (' + t2.header.fn.map((f) => f.length).join('') + ')',
+      t1.header.times.join() === '0,2,3,4,5,6' && t1.header.fn.map((f) => f.length).join('') === '001111' && t2.header.times.join() === '0,2,4,5,6' && t2.header.fn.map((f) => f.length).join('') === '00011');
+    const none = await L.run(Object.assign({}, tiny, { minutes: 2, detail: { dx: 1000, from: 100 } }), {});
+    check('a run in which the nest is never made (it was to start at the 100th minute of 2) is a pack of version 1 as any other, and says what it was set to (' + none.header.v + ', ' + (none.header.nests === undefined) + ', ' + (none.header.fn === undefined) + ', ' + JSON.stringify(none.header.lab.detail) + ')',
+      none.header.v === 1 && none.header.nests === undefined && none.header.fn === undefined && none.frames.every((f) => !f.nest) && none.header.lab.detail.from === 100 && none.header.lab.detail.dx === 1000);
+    const dead = await L.run(Object.assign({}, tiny, { minutes: 3, detail: { dx: 1000, from: 0, every: 1 } }), {}), z0 = await L.run(Object.assign({}, tiny, { minutes: 2, detail: { dx: 1000, from: 0, every: 1, minUpdraft: 0 } }), {});
+    check('a day with no storm gets no nest: with the updraft the nest needs (10 m/s, by default) at no frame of a quiet run (the updrafts of ' + dead.frames.map((f) => f.wmax).join(', ') + ' m/s) it is never made and the pack is of version 1 (' + dead.header.v + ', ' + dead.header.times.join(',') + ', ' + JSON.stringify(dead.header.lab.detail) + '); with none needed it is made at the first frame at or after `from`, an updraft of 0 being enough (the nest in the frames after 0: ' + z0.header.fn.map((f) => f.length).join('') + ')',
+      dead.header.v === 1 && dead.header.nests === undefined && dead.header.lab.detail.minUpdraft === 10 && dead.frames.every((f) => f.wmax < 10) && z0.header.fn.map((f) => f.length).join('') === '011' && z0.header.lab.detail.minUpdraft === 0);
+    const w15 = plain.frames[3].wmax, late = await L.run(Object.assign({}, base, { minutes: 25, detail: Object.assign({}, DET, { minUpdraft: w15 + 0.2 }) }), {});
+    check('the nest waits for the storm: with an updraft needed of 0.2 m/s more than the box has at the 15th minute (' + w15 + ' m/s) it is made after the 20th (the nest in the frames of 0 to 25 minutes: ' + late.header.fn.map((f) => f.length).join('') + ')', late.header.fn.map((f) => f.length).join('') === '000001' && plain.frames[4].wmax > w15 + 0.2);
+    /* the run as the page plays it while it goes: the header comes first, the frames bring their own part of it, and a pack that grows with them is the pack that is made of the whole run */
+    {
+      const spec = Object.assign({}, tiny, { minutes: 3, frameEvery: 1, detail: { dx: 1000, box: 16000, ztop: 4000, from: 0, every: 1, minUpdraft: 0 } }); let started = 0, snap = null, atStart = -1; const got = [];
+      const r = await L.run(spec, { start: (h) => { started++; atStart = got.length; snap = JSON.parse(JSON.stringify(h)); }, frame: (f) => got.push({ t: f.t, i: f.i, nest: f.nest, fn: f.fn, track: f.track, drift: f.drift, block: f.block }) });
+      const h = r.header, per = 5 * 10 * 10 * 20, nper = 5 * 16 * 16 * 8;
+      check('the header is given once, before the first frame (' + started + ' time, after ' + atStart + ' frames), with the grid, the scale, the motion, the base state, what the run was set to and the nest\'s grid, and with no frame\'s part of it yet (' + snap.times.length + ' times, ' + snap.track.length + ' tracks, ' + snap.drift.length + ' drifts, ' + snap.fn.length + ' fns)',
+        started === 1 && atStart === 0 && snap.v === 2 && snap.nx === 10 && snap.ny === 10 && snap.nz === 20 && snap.dx === 4000 && snap.dz === 500 && snap.floor === -30 && snap.scale.wind === 0.5 && snap.scale.vz === 0.25 && snap.motion.u === 8 && snap.motion.v === 3 && snap.base.z.length === 20 && snap.lab.detail.dx === 1000 && snap.lab.dt === 10
+        && snap.nests.length === 1 && snap.nests[0].nx === 16 && snap.nests[0].nz === 8 && snap.nests[0].scale.wind === 1 && snap.times.length === 0 && snap.track.length === 0 && snap.drift.length === 0 && snap.fn.length === 0);
+      check('each frame brings its own part of the header (its fn: no nest in the first, the nest at (12000, 12000) in the others; its track and the drift of the box\'s corner) and the header ends with all of them: ' + JSON.stringify(h.fn) + ' for the frames at ' + h.times.join(', ') + ' minutes',
+        got.length === 4 && got.every((f, i) => f.i === i && f.t === h.times[i] && JSON.stringify(f.fn) === JSON.stringify(h.fn[i]) && JSON.stringify(f.track) === JSON.stringify(h.track[i]) && JSON.stringify(f.drift) === JSON.stringify(h.drift[i]) && f.nest === (i > 0) && f.block.length === (i > 0 ? per + nper : per))
+        && JSON.stringify(h.fn) === '[[],[[0,12000,12000]],[[0,12000,12000]],[[0,12000,12000]]]' && h.times.join() === '0,1,2,3' && h.track.length === 4 && h.drift.length === 4 && h.v === 2);
+      const sc = { lat0: 36, lon0: -98, origin: [1000, 2000], radar: 'KVNX', clock: '15:00', tz: 'CDT' }, lv = P.live(Object.assign({}, snap, { name: 'T', scenario: sc }));
+      const empty = lv.n === 0 && lv.corner(5)[0] === 1000 + 8 * 300 && lv.corner(5)[1] === 2000 + 3 * 300 && lv.live === true && lv.times.length === 0;
+      const idx = got.map((f) => lv.append(f, f.block)), asm = P.assemble(Object.assign({}, h, { name: 'T', scenario: sc }), got.map((f) => f.block));
+      let vs = true; for (let i = 0; i < 4; i++) { const a = lv.volume(i), b = asm.volume(i); vs = vs && eqBytes(a.dbz, b.dbz) && a.u.every((x, q) => x === b.u[q]) && (a.nests ? a.nests.length : 0) === (b.nests ? b.nests.length : 0) && (!a.nests || (a.nests[0].x === b.nests[0].x && a.nests[0].vol.u.every((x, q) => x === b.nests[0].vol.u[q]))) && eqBytes(lv.frameBytes(i), asm.frameBytes(i)); }
+      check('a live pack made from that header and fed those frames is the pack that is made of the whole run: nothing before the first frame (and a corner already, from the motion), then ' + lv.n + ' frames (' + idx.join(', ') + '), their volumes, the nest\'s and the bytes of each frame the same, and the box\'s corner, the clock and the path the same too',
+        empty && lv.n === 4 && idx.join() === '0,1,2,3' && vs && lv.corner(2).join() === asm.corner(2).join() && lv.clock(3).text === asm.clock(3).text && JSON.stringify(lv.path()) === JSON.stringify(asm.path()) && lv.times === lv.h.times && lv.track === lv.h.track && lv.h.fn.length === 4 && lv.h.drift.length === 4 && lv.h.track.length === 4 && JSON.stringify(lv.h.fn) === JSON.stringify(asm.h.fn));
+      let e1 = '', e2 = '', e3 = ''; try { lv.append({ t: 3, track: [0, 0, 0], fn: [[0, 12000, 12000]] }, got[3].block); } catch (e) { e1 = e.message; } try { lv.append({ t: 4, track: [0, 0, 0], fn: [] }, got[3].block); } catch (e) { e2 = e.message; } try { lv.append({ t: 2.5, track: [0, 0, 0], fn: [[0, 12000, 12000]] }, got[3].block); } catch (e) { e3 = e.message; }
+      const none = P.live(Object.assign({}, snap, { nests: undefined, name: 'T', scenario: sc })); none.append({ t: 0, track: [0, 0, 0] }, got[0].block); none.append({ t: 1, track: [0, 0, 1], drift: [1000, 2000] }, got[0].block);
+      check('a frame that is not after the one before, or has not the bytes of its box and the nests its fn lists, is refused and the pack does not change (' + e1 + '; ' + e2 + '; ' + e3 + '; ' + lv.n + ' frames); a pack with no nests has no fn, and a frame with no drift has none (' + JSON.stringify(none.h.drift) + ', fn ' + none.h.fn + ')',
+        /frame 4 is at minute 3, not after minute 3/.test(e1) && /frame 4 has \d+ bytes, not \d+/.test(e2) && /frame 4 is at minute 2\.5, not after minute 3/.test(e3) && lv.n === 4 && none.h.fn === undefined && JSON.stringify(none.h.drift) === '[[0,0],[1000,2000]]' && none.n === 2);
+    }
+    const bl = await L.run(Object.assign({}, base, { minutes: 15, detail: Object.assign({}, DET, { from: 10, minUpdraft: 0 }) }), { nest: ({ child }) => { child.S.w[child.idx(4, 4, 4)] = NaN; } });
+    check('a nest that blows up on its own (the box is fine) stops the run at the next frame with a reason and the frames before it (' + bl.stopped + ', "' + bl.reason + '", ' + bl.frames.length + ' frames)', bl.stopped && /blew up at 15\.0 min/.test(bl.reason) && bl.frames.length === 3);
+  }
+}
+
 
 console.log('\n' + passed + ' passed, ' + failed + ' failed (' + ((Date.now() - t0) / 1000).toFixed(1) + ' s)');
 process.exit(failed ? 1 : 0);

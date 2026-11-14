@@ -4,6 +4,9 @@
  * a recorded storm (src/severe-pack.js), scanned in Workers at display time so that the radar can be moved and the tilt changed after the run; one or two linked panes, a floating dock with
  * the site, product, tilt, transport, frame interval and speed, a frame slider, a colour bar read from the palette itself, a probe that shows the radar's value and the model's truth, and a
  * measuring tool. Everything on screen that is weather comes out of the model: there is no painted echo anywhere.
+ * A run that the model is still making (the editor's Run a storm) is played as it comes: `SEVERE.live.begin(pack, { of, stop })` with the first frame of a pack made by HFSeverePack.live, `frame()` after each frame
+ * the editor appends to it, `progress(minute, secondsLeft)` and `end({ stopped, reason })`. The slider is then the whole run, with what is loaded lit on it as a player's buffer is; on the newest frame the page goes on
+ * to each new one, off it it stays where it is put; a line above the slider says how far the model is, with a Stop.
  * `window.SEVERE` is what the tests drive.
  */
 (function () {
@@ -27,11 +30,11 @@
   const saved = (() => { try { return JSON.parse(localStorage.getItem(LS)) || {}; } catch (e) { return {}; } })();
   const S = Object.assign({ theme: 'dark', units: 'imperial', speed: 2, interval: 5, panes: 1, dealias: false, clutter: true, res: 'super',
     layers: { county: true, state: true, road: true, river: true, place: true, site: true, rings: true } }, saved);
-  Object.assign(S, { t: 0, frame: 0, playing: false, loop: true, tool: 'none', active: 0, dragging: false, radar: null, probe: null, measure: [] });
+  Object.assign(S, { t: 0, frame: 0, playing: false, loop: true, tool: 'none', active: 0, dragging: false, radar: null, probe: null, measure: [], live: null, follow: false });
   const save = () => { try { localStorage.setItem(LS, JSON.stringify({ theme: S.theme, units: S.units, speed: S.speed, interval: S.interval, panes: S.panes, dealias: S.dealias, clutter: S.clutter, res: S.res, layers: S.layers })); } catch (e) { /* none */ } };
   S.layers = Object.assign({ county: true, state: true, road: true, river: true, place: true, site: true, rings: true }, S.layers);
 
-  let geo, pack, scanner, pals, luts, panes = [], pack0 = null, runPack = null, stormBusy = false;
+  let geo, pack, scanner, pals, luts, panes = [], pack0 = null, runPack = null, liveRun = null, stormBusy = false;
   S.storm = 'wk82-1km';
   const b64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
   const toast = (msg, ms) => { const t = $('toast'); t.textContent = msg; t.hidden = false; clearTimeout(toast.k); toast.k = setTimeout(() => { t.hidden = true; }, ms || 2600); };
@@ -43,7 +46,7 @@
     function pump() {
       while (queue.length && (workers.length ? idle.length : !fallback.busy)) {
         queue.sort((a, b) => a.prio - b.prio); const j = queue.shift(); inflight.set(j.id, j);
-        if (workers.length) { const w = idle.shift(); w.job = j.id; const bytes = pack.frameBytes(j.frame).slice().buffer; w.postMessage({ t: 'scan', id: j.id, frame: j.frame, bytes, opts: j.opts }, [bytes]); }
+        if (workers.length) { const w = idle.shift(); w.job = j.id; const bytes = pack.frameBytes(j.frame).slice().buffer; w.postMessage({ t: 'scan', id: j.id, frame: j.frame, bytes, opts: j.opts, fn: pack.h.fn ? pack.h.fn[j.frame] : undefined }, [bytes]); }          // (a run that is still being made: the worker's header does not have this frame's nests yet)
         else { fallback.busy = true; setTimeout(() => { try { done(j.id, fallback.sc.scan(j.frame, j.opts)); } catch (e) { done(j.id, null, String(e)); } fallback.busy = false; pump(); }, 0); }
       }
     }
@@ -91,8 +94,13 @@
   const hasEvery = (iv) => { let gap = Infinity; for (let i = 1; i < pack.times.length; i++) gap = Math.min(gap, pack.times[i] - pack.times[i - 1]); return iv >= gap - 1e-9 && pack.times.filter((t) => Math.abs(t / iv - Math.round(t / iv)) < 1e-6).length >= 2; };      // a chip is on if the recording has frames that close together
   function frames() { const iv = S.interval, a = []; pack.times.forEach((t, i) => { if (Math.abs(t / iv - Math.round(t / iv)) < 1e-6) a.push(i); }); return a.length ? a : pack.times.map((_, i) => i); }
   function frameAt(t) { const f = frames(); let r = f[0]; for (const i of f) if (pack.times[i] <= t + 1e-6) r = i; return r; }
-  const tSpan = () => { const f = frames(); return [pack.times[f[0]], pack.times[f[f.length - 1]]]; };
-  function setT(t, quiet) { const [a, b] = tSpan(); S.t = Math.min(b, Math.max(a, t)); const f = frameAt(S.t); if (f !== S.frame) { S.frame = f; frameChanged(); } else if (!quiet) syncDock(); syncSlider(); }
+  const tSpan = () => { const f = frames(); return [pack.times[f[0]], pack.times[f[f.length - 1]]]; };               // what can be played: the frames there are
+  const tRange = () => { const [a, b] = tSpan(); return [a, S.live && !S.live.done ? Math.max(b, S.live.of) : b]; };         // what the slider shows: the whole of a run that is still being made, the frames of one that is whole
+  function setT(t, quiet) {
+    const [a, b] = tSpan(); S.t = Math.min(b, Math.max(a, t)); const f = frameAt(S.t);
+    if (S.live && !S.live.done) { const fl = frames(); S.follow = f === fl[fl.length - 1]; }                                    // (on the newest frame of a run that is going the page goes on to each new frame; off it, it stays where it is put)
+    if (f !== S.frame) { S.frame = f; frameChanged(); } else if (!quiet) syncDock(); syncSlider();
+  }
   function step(dir) { const f = frames(), i = f.indexOf(S.frame), n = Math.min(f.length - 1, Math.max(0, i + dir)); if (n === i && dir > 0 && S.loop && S.playing) { setT(pack.times[f[0]]); return; } setT(pack.times[f[n]]); }
   function setPlaying(on) { S.playing = on; $('ic-play').hidden = on; $('ic-pause').hidden = !on; $('t-play').setAttribute('aria-label', on ? 'Pause' : 'Play'); if (on && S.t >= tSpan()[1] - 1e-6) setT(tSpan()[0]); }
   function frameChanged() { refresh(); syncDock(); syncSlider(); }
@@ -304,16 +312,17 @@
 
   /* ---- the dock ---- */
   function syncSlider() {
-    const [a, b] = tSpan(), f = b > a ? (S.t - a) / (b - a) : 0, el = $('slider'); el.value = Math.round(f * 1000); el.style.setProperty('--p', (f * 100) + '%');
+    const [a, b] = tSpan(), e = tRange()[1], f = e > a ? (S.t - a) / (e - a) : 0, l = S.live && !S.live.done && e > a ? (b - a) / (e - a) : f, el = $('slider');
+    el.value = Math.round(f * 1000); el.style.setProperty('--p', (f * 100) + '%'); el.style.setProperty('--l', (Math.max(f, l) * 100) + '%');          // (the track is lit to the thumb, then dimmer to the newest frame, then not at all)
     document.querySelectorAll('#ticks span').forEach((s) => s.classList.toggle('on', +s.dataset.i === S.frame));
   }
   function buildTicks() {
-    const [a, b] = tSpan(), box = $('ticks'); box.innerHTML = ''; for (const i of frames()) { const s = document.createElement('span'); s.dataset.i = i; s.style.left = (b > a ? (pack.times[i] - a) / (b - a) * 100 : 0) + '%'; box.appendChild(s); }
+    const [a] = tSpan(), e = tRange()[1], box = $('ticks'); box.innerHTML = ''; for (const i of frames()) { const s = document.createElement('span'); s.dataset.i = i; s.style.left = (e > a ? (pack.times[i] - a) / (e - a) * 100 : 0) + '%'; box.appendChild(s); }
   }
   function syncDock() {
     const p = act(), R0 = S.radar; $('site-id').textContent = R0.id || 'Virtual'; $('site-nm').textContent = R0.custom ? R0.lat.toFixed(2) + '°N ' + Math.abs(R0.lon).toFixed(2) + '°W' : R0.name;
     $('prod-nm').textContent = PRODUCTS[p.product].name; $('tilt-v').textContent = TILTS[p.tilt].toFixed(1) + '°'; $('tilt-dn').disabled = p.tilt === 0; $('tilt-up').disabled = p.tilt === TILTS.length - 1;
-    document.querySelectorAll('#int button').forEach((b) => { const iv = +b.dataset.i, on = hasEvery(iv); b.disabled = !on; b.title = on ? 'A frame every ' + iv + ' minutes' : 'This recording has a frame every 5 minutes; 1 and 3 come with live runs'; b.setAttribute('aria-pressed', iv === S.interval ? 'true' : 'false'); });
+    document.querySelectorAll('#int button').forEach((b) => { const iv = +b.dataset.i, on = hasEvery(iv); b.disabled = !on; b.title = on ? 'A frame every ' + iv + ' minutes' : 'This storm has frames 5 minutes apart; the fine model (Run a storm, Fine) makes them a minute apart'; b.setAttribute('aria-pressed', iv === S.interval ? 'true' : 'false'); });
     $('speed').textContent = '×' + SPEEDS[S.speed]; const t = pack.times[S.frame], tm = pack.clock(t).text; $('clk').textContent = tm; const sw = p.sweep; $('clk-sub').textContent = sw && sw.frame !== S.frame ? 'Loading…' : 'Updated ' + tm;
     panes.forEach(title);
   }
@@ -335,18 +344,49 @@
   }
 
   /* ---- another storm: the page plays the pack it is given (the Lab's, or a file's) ---- */
-  const focusOf = (p, i) => { const h = p.h, f = h.nests && h.fn && h.fn[i]; if (f && f.length) { const nh = h.nests[f[0][0]]; return [f[0][1] + nh.nx * nh.dx / 2, f[0][2] + nh.ny * nh.dx / 2]; } return p.track[i]; };      // where to look: the middle of the first nest of the frame, else the strongest updraft
+  const focusOf = (p, i) => { const h = p.h, f = h.nests && h.fn && h.fn[i]; if (f && f.length) { const nh = h.nests[f[0][0]]; return [f[0][1] + nh.nx * nh.dx / 2, f[0][2] + nh.ny * nh.dx / 2]; } const q = p.track[i]; return p.live && q[2] < 5 ? [p.nx * p.dx / 2, p.ny * p.dx / 2] : q; };      // (a run's first frames have no storm yet: the middle of the box, where its bubble is)      // where to look: the middle of the first nest of the frame, else the strongest updraft
   async function setPack(p, o) {
     o = o || {}; setPlaying(false); if ((o.id || 'run') === 'run') runPack = p;
+    S.live = liveRun && liveRun.pack === p && !liveRun.done ? liveRun : null; S.follow = !!S.live;
     const old = scanner; pack = p; cache.clear(); pending.clear();
     scanner = await makeScanner(); if (old && old.dispose) old.dispose();
     const sc = pack.scenario, i0 = geo.points.site.names.indexOf(sc.radar); if (i0 < 0) throw new Error('no radar ' + sc.radar);
     const s0 = siteInfo(i0); S.radar = { id: s0.id, custom: false, name: s0.name, lat: s0.lat, lon: s0.lon };
     if (o.interval && hasEvery(o.interval)) S.interval = o.interval; else if (!hasEvery(S.interval)) S.interval = [5, 10, 3, 1].find(hasEvery) || 5;
-    const want = o.t === undefined ? 60 : o.t, near = pack.times.reduce((b, t, i) => (Math.abs(t - want) < Math.abs(pack.times[b] - want) ? i : b), 0); S.t = pack.times[near]; S.frame = frameAt(S.t);
+    const want = o.t === undefined ? 60 : o.t, near = S.live && o.t === undefined ? pack.times.length - 1 : pack.times.reduce((b, t, i) => (Math.abs(t - want) < Math.abs(pack.times[b] - want) ? i : b), 0); S.t = pack.times[near]; S.frame = frameAt(S.t);          // (a run that is still going opens on its newest frame)
     const tr0 = focusOf(pack, S.frame), fo = o.focus || [0, 0], tr = [tr0[0] + fo[0] * 1000, tr0[1] + fo[1] * 1000], c = pack.boxLatLon(pack.times[S.frame], tr[0], tr[1]), mid = o.zoom ? c : { lat: (c.lat + S.radar.lat) / 2, lon: (c.lon + S.radar.lon) / 2 };      // (close up: on the storm; else between the storm and the radar)
     for (const pn of panes) { pn.map.activeSite = S.radar.id; pn.map.setView({ cx: G.mercX(mid.lon), cy: G.mercY(mid.lat), mpp: G.mppOf(o.zoom || 8.9) }); pn.sweep = null; pn.key = ''; }
-    S.storm = o.id || 'run'; buildTicks(); refresh(); syncSlider(); syncDock();
+    S.storm = o.id || 'run'; buildTicks(); refresh(); syncSlider(); syncDock(); syncLive();
+  }
+  /* ---- a run that is still being made: the page plays it as its frames come. The editor makes the pack (HFSeverePack.live), appends each frame to it and tells the page (begin after the first, frame after each,
+     progress with the model's clock and the time left, end). On the newest frame the page goes on to each new one, as a radar does; the slider is the whole run and what is loaded is lit on it. ---- */
+  async function liveBegin(p, o) {
+    o = o || {}; setPlaying(false); S.liveAuto = true; runPack = p; liveRun = { pack: p, of: o.of, done: false, time: 0, left: null, stop: o.stop || null, stopped: false, reason: '' }; S.live = liveRun; S.follow = true;
+    const old = scanner; pack = p; cache.clear(); pending.clear(); scanner = await makeScanner(); if (old && old.dispose) old.dispose();
+    const sc = pack.scenario, i0 = geo.points.site.names.indexOf(sc.radar); if (i0 < 0) throw new Error('no radar ' + sc.radar);
+    const s0 = siteInfo(i0); S.radar = { id: s0.id, custom: false, name: s0.name, lat: s0.lat, lon: s0.lon }; if (!hasEvery(S.interval)) S.interval = 5;
+    S.t = pack.times[0]; S.frame = frameAt(S.t);
+    const tr = focusOf(pack, S.frame), c = pack.boxLatLon(pack.times[S.frame], tr[0], tr[1]), mid = { lat: (c.lat + S.radar.lat) / 2, lon: (c.lon + S.radar.lon) / 2 };
+    for (const pn of panes) { pn.map.activeSite = S.radar.id; pn.map.setView({ cx: G.mercX(mid.lon), cy: G.mercY(mid.lat), mpp: G.mppOf(o.zoom || 8.9) }); pn.sweep = null; pn.key = ''; }
+    const b = $('live-stop'); b.disabled = false; b.textContent = 'Stop';
+    S.storm = 'run'; buildTicks(); refresh(); syncSlider(); syncDock(); syncLive();
+  }
+  function liveFrame() {
+    if (!S.live || S.live.pack !== pack) return;                                                              // (another storm is on show: the run's pack grows without it)
+    if (S.liveAuto) { const iv = [1, 3, 5, 10].find(hasEvery); if (iv && iv !== S.interval) S.interval = iv; }               // (until a chip is chosen the run is played at the finest interval that it has frames for: the fine model's frames come a minute apart)
+    const f = frames(), last = f[f.length - 1]; buildTicks();
+    if (S.follow && last !== S.frame && !S.dragging) { S.frame = last; S.t = pack.times[last]; frameChanged(); } else { syncSlider(); syncDock(); }
+    syncLive();
+  }
+  function liveProgress(time, left) { if (!liveRun) return; liveRun.time = time; liveRun.left = left === undefined ? null : left; syncLive(); }
+  function liveEnd(info) {
+    if (!liveRun) return; info = info || {}; liveRun.done = true; liveRun.stopped = !!info.stopped; liveRun.reason = info.reason || '';
+    if (S.live === liveRun && pack === liveRun.pack) { buildTicks(); syncSlider(); syncDock(); } syncLive();
+  }
+  function syncLive() {
+    const el = $('live'), L = S.live; if (!L || L.done || L.pack !== pack) { el.hidden = true; return; }
+    const m = Math.max(L.time, tSpan()[1]), left = L.left;
+    $('live-t').textContent = 'The model is running: ' + Math.floor(m) + ' of ' + L.of + ' minutes made' + (left == null ? '' : ', about ' + (left > 90 ? Math.round(left / 60) + ' min' : Math.round(left / 5) * 5 + ' s') + ' to go'); el.hidden = false;
   }
   function fetchBytes(url, onProgress) {                                       // XMLHttpRequest, not fetch: it reads a file beside a page that was opened from disk (the browser's setting permitting) and says how far it is
     return new Promise((resolve, reject) => {
@@ -383,8 +423,9 @@
     const on = (id, f) => $(id).addEventListener('click', f);
     on('t-play', () => setPlaying(!S.playing)); on('t-first', () => { setPlaying(false); setT(tSpan()[0]); }); on('t-last', () => { setPlaying(false); setT(tSpan()[1]); });
     on('t-prev', () => { setPlaying(false); step(-1); }); on('t-next', () => { setPlaying(false); step(1); });
-    $('slider').addEventListener('input', (e) => { setPlaying(false); const [a, b] = tSpan(); setT(a + (e.target.value / 1000) * (b - a)); });
-    document.querySelectorAll('#int button').forEach((b) => b.addEventListener('click', () => { S.interval = +b.dataset.i; buildTicks(); setT(S.t); save(); syncDock(); }));
+    $('slider').addEventListener('input', (e) => { setPlaying(false); const a = tSpan()[0], z = tRange()[1]; setT(a + (e.target.value / 1000) * (z - a)); });          // (a thumb put beyond the newest frame of a run that is going stops at it)
+    on('live-stop', () => { const b = $('live-stop'); if (S.live && !S.live.done && S.live.stop && !b.disabled) { b.disabled = true; b.textContent = 'Stopping…'; S.live.stop(); } });
+    document.querySelectorAll('#int button').forEach((b) => b.addEventListener('click', () => { S.interval = +b.dataset.i; S.liveAuto = false; buildTicks(); setT(S.t); save(); syncDock(); }));
     on('speed', (e) => openSpeed(e.currentTarget)); on('prod', (e) => openProductMenu(e.currentTarget)); on('site', (e) => openSiteMenu(e.currentTarget));
     on('tilt-dn', () => setTilt(act(), act().tilt - 1)); on('tilt-up', () => setTilt(act(), act().tilt + 1));
     on('b-probe', () => setTool('probe')); on('b-measure', () => setTool('measure'));
@@ -426,7 +467,7 @@
   }
 
   const api = { S, TILTS, SPEEDS, PRODUCTS, STORMS, toast, setPack, showStorm, fetchBytes, get runPack() { return runPack; }, get panes() { return panes; }, get pack() { return pack; }, get geo() { return geo; }, get cache() { return cache; }, get scanner() { return scanner; }, ready: false,
-    setT, step, setPlaying, setPaneCount, setTheme, setTool, setProduct, setTilt, setRadar, frames, keyOf, probeAt, tapPane, refresh, UNITS, siteInfo,
+    setT, step, setPlaying, setPaneCount, setTheme, setTool, setProduct, setTilt, setRadar, frames, keyOf, probeAt, tapPane, refresh, UNITS, siteInfo, tRange, live: { begin: liveBegin, frame: liveFrame, progress: liveProgress, end: liveEnd },
     async whenIdle() { for (let i = 0; i < 600; i++) { if (!scanner.busy() && !panes.some((p) => p.busy)) { await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))); if (!scanner.busy() && !panes.some((p) => p.busy)) return true; } await new Promise((r) => setTimeout(r, 50)); } return false; } };
   window.SEVERE = api;
   boot().catch((e) => { console.error(e); toast('The radar could not start: ' + e.message, 12000); window.SEVERE.error = String(e && e.stack || e); });

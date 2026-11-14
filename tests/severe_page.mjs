@@ -88,6 +88,20 @@ await ev(pg, 'SEVERE.setT(60)'); await idle(pg);
 await pg.fill('#slider', '500'); await idle(pg);
 check('dragging the slider to the middle shows the 3:45 PM frame (45 minutes of 90)', await ev(pg, "document.getElementById('clk').textContent") === '3:45 PM');
 await ev(pg, 'SEVERE.setT(60)'); await idle(pg);
+/* the slider follows a drag that wanders off its track, and the drag, a double click on the clock and a drag over the dock's text highlight nothing (an app, not a document: the user reported a slider that stopped working because the text beside it was selected) */
+{
+  const sb = await ev(pg, "(() => { const r = document.getElementById('slider').getBoundingClientRect(), c = document.getElementById('clk').getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height, cx: c.left + c.width / 2, cy: c.top + c.height / 2, cl: c.left }; })()"), y = sb.y + sb.h / 2;
+  await ev(pg, 'SEVERE.setT(0)'); await idle(pg);
+  await pg.mouse.move(sb.x + 9, y); await pg.mouse.down(); await pg.mouse.move(sb.x + sb.w * 0.5, y + 5, { steps: 6 }); await pg.mouse.move(sb.x + sb.w * 0.7, y + 80, { steps: 8 }); await pg.mouse.move(sb.x + sb.w * 0.9, y - 140, { steps: 8 });
+  const during = await ev(pg, "+document.getElementById('slider').value"); await pg.mouse.up();
+  const v = await ev(pg, "+document.getElementById('slider').value"), sel1 = await ev(pg, 'String(getSelection())');
+  await pg.mouse.dblclick(sb.cx, sb.cy); const sel2 = await ev(pg, 'String(getSelection())');
+  await pg.mouse.move(sb.cl - 120, sb.cy); await pg.mouse.down(); await pg.mouse.move(sb.cl + 80, sb.cy + 2, { steps: 8 }); await pg.mouse.up(); const sel3 = await ev(pg, 'String(getSelection())');
+  const css = await ev(pg, "(() => { const i = document.createElement('input'); i.type = 'text'; document.body.appendChild(i); const u = getComputedStyle(i).userSelect; i.remove(); return { body: getComputedStyle(document.body).userSelect, input: u, slider: getComputedStyle(document.getElementById('slider')).touchAction, h: Math.round(document.getElementById('slider').getBoundingClientRect().height) }; })()");
+  check('a drag on the slider that leaves its track still moves it (' + during + ' while dragging, ' + v + ' of 1000 after), and nothing on the page is highlighted by it, by a double click on the clock or by a drag over the dock (selected: "' + sel1 + '", "' + sel2 + '", "' + sel3 + '"); the page does not allow selecting text (' + css.body + ') except in a field that is typed into (' + css.input + '), the slider is as high as its row (' + css.h + ' px) and takes no touch gestures (' + css.slider + ')',
+    during >= 800 && v >= 800 && sel1 === '' && sel2 === '' && sel3 === '' && css.body === 'none' && css.input === 'text' && css.h >= 24 && css.slider === 'none');
+  await ev(pg, 'SEVERE.setT(60)'); await idle(pg);
+}
 
 /* 5. The keyboard */
 await pg.keyboard.press('ArrowRight'); await idle(pg); const kf = await ev(pg, 'SEVERE.S.frame'); await pg.keyboard.press('ArrowLeft'); await idle(pg); await pg.keyboard.press('ArrowUp'); await idle(pg);
@@ -202,6 +216,50 @@ check('the outbreak day\'s storm is shown: ' + ob.n + ' frames from minute ' + o
 check('and the view is on the hook: ' + Math.round(ob.mpp) + ' m a pixel, the point 20 km west and 8 km south of the strongest updraft at ' + Math.round(ob.sx) + ', ' + Math.round(ob.sy) + ' of a pane of ' + Math.round(ob.w) + ' x ' + Math.round(ob.h), ob.mpp < 110 && ob.sx > 0.3 * ob.w && ob.sx < 0.7 * ob.w && ob.sy > 0.3 * ob.h && ob.sy < 0.7 * ob.h);
 const obGpu = await ev(hp, () => SEVERE.panes.map((p) => { p.gl.draw(p.map.view, p.sweep.radar); const g = p.gl.read(); let n = 0; for (let i = 3; i < g.length; i += 64) if (g[i] > 0) n++; return n; }));
 check('both panes draw the storm on the GPU (' + obGpu.join(' and ') + ' sampled pixels)', obGpu[0] > 2000 && obGpu[1] > 2000);
+/* 13. A run that is still being made (the Lab's, as the editor hands it over): a pack that grows frame by frame, the slider that is the whole run with its loaded part lit, the radar that goes on to each new frame while it is on the newest,
+       the interval that follows the frames, a line that says how far the model is and a Stop. Made from the recorded 1 km storm's own frames, so that it is deterministic and quick. */
+const LV = await open(1280, 800), lp = LV.page;
+await ev(lp, () => {
+  const S = SEVERE, src = S.pack, lv = HFSeverePack.live(Object.assign({}, src.h, { name: 'A run', scenario: src.scenario })), t = { stops: 0 };
+  window.LVT = { src, lv, t, add: (i, tm) => lv.append({ t: tm === undefined ? src.times[i] : tm, track: src.track[i], drift: [0, 0], fn: [] }, src.frameBytes(i).slice()) };
+});
+await ev(lp, async () => { LVT.add(0); await SEVERE.live.begin(LVT.lv, { of: 90, stop: () => { LVT.t.stops++; } }); });
+await idle(lp);
+const lvs = () => ev(lp, () => { const S = SEVERE, sl = document.getElementById('slider'), f = S.frames(), last = f[f.length - 1]; return { n: S.pack.n, live: S.pack.live === true, storm: S.S.storm, frame: S.S.frame, last, t: S.S.t, follow: S.S.follow, range: S.tRange(), l: parseFloat(sl.style.getPropertyValue('--l')), p: parseFloat(sl.style.getPropertyValue('--p')), value: +sl.value, ticks: document.querySelectorAll('#ticks span').length, pill: !document.getElementById('live').hidden, text: document.getElementById('live-t').textContent, stop: document.getElementById('live-stop').textContent, stopOff: document.getElementById('live-stop').disabled, interval: S.S.interval, chips: [...document.querySelectorAll('#int button')].map((b) => b.disabled ? 0 : 1).join(''), stops: LVT.t.stops, sweep: !!S.panes[0].sweep, sub: document.getElementById('clk-sub').textContent, clk: document.getElementById('clk').textContent }; });
+const l0 = await lvs();
+check('a run opens with its first frame: the page has a pack that is still being made (' + l0.live + ', ' + l0.n + ' frame), the slider is the whole run (' + JSON.stringify(l0.range) + ') with one tick and nothing loaded beyond it (' + l0.ticks + ', ' + l0.l.toFixed(1) + ' %), a line says how far the model is ("' + l0.text + '") with a Stop (' + l0.stop + '), and the storm is the run (' + l0.storm + ')',
+  l0.live && l0.n === 1 && l0.range[0] === 0 && l0.range[1] === 90 && l0.ticks === 1 && l0.l === 0 && l0.p === 0 && l0.pill && l0.text === 'The model is running: 0 of 90 minutes made' && l0.stop === 'Stop' && !l0.stopOff && l0.storm === 'run' && l0.follow === true);
+await ev(lp, () => { for (const i of [1, 2, 3]) { LVT.add(i); SEVERE.live.frame(); } }); await idle(lp); const l1 = await lvs();
+check('the frames that come are added to it: ' + l1.n + ' frames and ticks, the track lit to the newest at ' + l1.t + ' of 90 minutes (' + l1.l.toFixed(1) + ' %), and the radar went on to each (frame ' + l1.frame + ', the newest ' + l1.last + ', following ' + l1.follow + ') and shows its sweep (' + l1.sweep + ', clock ' + l1.clk + ')',
+  l1.n === 4 && l1.ticks === 4 && Math.abs(l1.l - 15 / 90 * 100) < 0.2 && l1.frame === 3 && l1.last === 3 && l1.follow && l1.t === 15 && l1.sweep && Math.abs(l1.p - l1.l) < 0.2 && /of 90 minutes made/.test(l1.text) && l1.text.startsWith('The model is running: 15 of'));
+await ev(lp, () => SEVERE.setT(0)); await idle(lp); const l2 = await lvs();
+await ev(lp, () => { LVT.add(4); SEVERE.live.frame(); }); await idle(lp); const l3 = await lvs();
+check('put back on the first frame it stays there when another comes (following ' + l2.follow + ', frame ' + l3.frame + ' of ' + l3.n + ', the thumb at ' + l3.value + ', the track lit to it and then dimmer to the newest: ' + l3.p.toFixed(1) + ' and ' + l3.l.toFixed(1) + ' %)', l2.follow === false && l3.n === 5 && l3.frame === 0 && l3.t === 0 && l3.value === 0 && l3.p === 0 && Math.abs(l3.l - 20 / 90 * 100) < 0.2 && l3.ticks === 5);
+await ev(lp, () => document.getElementById('t-last').click()); await idle(lp); const l4 = await lvs();
+check('the last-frame button goes to the newest and the page follows again (frame ' + l4.frame + ', ' + l4.follow + ')', l4.frame === 4 && l4.follow === true && l4.t === 20);
+await ev(lp, () => SEVERE.setT(0)); await lp.fill('#slider', '1000'); await idle(lp); const l5 = await lvs();
+check('a thumb pushed to the end of the slider stops at the newest frame, not at the end of the run (' + l5.t + ' of ' + l5.range[1] + ' minutes, following ' + l5.follow + ')', l5.t === 20 && l5.follow === true && l5.frame === 4 && l5.value === Math.round(20 / 90 * 1000));
+await ev(lp, () => SEVERE.live.progress(27.4, 130)); const l6 = await lvs();
+check('the line says how far the model is and how long it has to go ("' + l6.text + '")', l6.text === 'The model is running: 27 of 90 minutes made, about 2 min to go');
+await ev(lp, () => SEVERE.live.progress(60, 40)); const l6b = await lvs();
+check('under a minute and a half to go it counts in seconds, to five ("' + l6b.text + '")', l6b.text === 'The model is running: 60 of 90 minutes made, about 40 s to go');
+await lp.click('#live-stop'); await lp.click('#live-stop', { force: true }); const l7 = await lvs();                 // (a second press while it says Stopping…: the button is off, the click does nothing)
+check('Stop asks the model to stop once and says so (' + l7.stops + ' ask, "' + l7.stop + '", off ' + l7.stopOff + ')', l7.stops === 1 && l7.stop === 'Stopping…' && l7.stopOff === true);
+await ev(lp, () => SEVERE.live.end({ stopped: true, reason: 'stopped early' })); const l8 = await lvs();
+check('when it is over the line goes, the slider is the frames there are (' + JSON.stringify(l8.range) + ') and no band is left lit beyond the thumb (' + l8.l.toFixed(1) + ' and ' + l8.p.toFixed(1) + ' %)', !l8.pill && l8.range[1] === 20 && Math.abs(l8.l - l8.p) < 0.2 && l8.p === 100);
+/* the interval: a run played at the finest interval its frames allow until a chip is chosen */
+await ev(lp, async () => {
+  const src = SEVERE.pack, base = LVT.src;
+  LVT.lv = HFSeverePack.live(Object.assign({}, base.h, { name: 'A second run', scenario: base.scenario })); LVT.add = (i, tm) => LVT.lv.append({ t: tm, track: base.track[i], drift: [0, 0], fn: [] }, base.frameBytes(i).slice());
+  LVT.add(0, 0); await SEVERE.live.begin(LVT.lv, { of: 60, stop: () => {} }); for (const [i, tm] of [[1, 5], [2, 10]]) { LVT.add(i, tm); SEVERE.live.frame(); }
+});
+await idle(lp); const q1 = await lvs();
+await ev(lp, () => { for (const [i, tm] of [[3, 11], [4, 12]]) { LVT.add(i, tm); SEVERE.live.frame(); } }); await idle(lp); const q2 = await lvs();
+await lp.click('#int [data-i="5"]'); await ev(lp, () => { LVT.add(5, 13); SEVERE.live.frame(); }); await idle(lp); const q3 = await lvs();
+check('a run is played at the finest interval its frames allow (5 minutes at first: ' + q1.interval + ', chips ' + q1.chips + '; with frames a minute apart: ' + q2.interval + ', chips ' + q2.chips + ') until a chip is chosen, and then at that (' + q3.interval + ')', q1.interval === 5 && q1.chips === '0011' && q2.interval === 1 && q2.chips === '1111' && q2.last === 4 && q3.interval === 5 && q3.n === 6);
+check('the page did not complain (' + LV.log.errors.length + ' errors, ' + LV.log.requests.length + ' requests)', LV.log.errors.length === 0 && LV.log.requests.length === 0);
+await LV.ctx.close();
+
 await H.ctx.close();
 await browser.close();
 

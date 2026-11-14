@@ -1,7 +1,7 @@
 // Mutation testing of what a finer storm stands on (the driven sides and the relaxation zone, the drag of the ground and the saving of a state in src/severe-core.js, and the nest of
 // src/severe-nest.js): each mutant changes one expression, and tests/severe_nest.mjs runs against the copy.
 // A mutant that the tests let through ("survived") is a place where they do not look.
-//   node tools/severe_nest_mutants.mjs [name-filter] [jobs=4]
+//   node tools/severe_nest_mutants.mjs [name-filter] [jobs=4]     (DRY=1: only look for the text of each mutant, once, in its file)
 // Each copy goes to its own temporary directory with the test and the data it reads beside it, so nothing in the repository is touched and the copies run side by side.
 import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, copyFileSync, rmSync } from 'node:fs';
 import { spawn } from 'node:child_process';
@@ -70,6 +70,25 @@ const M = [
   ['trilinear-z-weight', 'nest', '* (1 - wz) + (c01 * (1 - wy1) + c11 * wy1) * wz', '* (1 - wz) + (c01 * (1 - wy1) + c11 * wy1) * (1 - wz)'],
   ['trilinear-y-weight', 'nest', 'return (c00 * (1 - wy1) + c10 * wy1)', 'return (c00 * wy1 + c10 * (1 - wy1))'],
   ['trilinear-x-weight', 'nest', 'const c00 = a[o] * (1 - wx) + a[o + psx] * wx,', 'const c00 = a[o] * wx + a[o + psx] * (1 - wx),'],
+  // `edge`: the child's sides taken again from the parent
+  ['edge-w-not-at-least-one', 'nest', 'fromParent(Math.max(1, Math.round(w)));', 'fromParent(Math.round(w));'],
+  ['edge-w-floor', 'nest', 'fromParent(Math.max(1, Math.round(w)));', 'fromParent(Math.max(1, Math.floor(w)));'],
+  ['edge-w-ceil', 'nest', 'fromParent(Math.max(1, Math.round(w)));', 'fromParent(Math.max(1, Math.ceil(w)));'],
+  ['edge-takes-all', 'nest', 'if (skip > 0 && i >= skip && i < ni - skip && j >= skip && j < nj - skip) continue;', 'if (false) continue;'],
+  ['edge-west-one-wide', 'nest', 'if (skip > 0 && i >= skip && i < ni - skip', 'if (skip > 0 && i > skip && i < ni - skip'],
+  ['edge-east-one-wide', 'nest', 'if (skip > 0 && i >= skip && i < ni - skip && j', 'if (skip > 0 && i >= skip && i < ni - skip - 1 && j'],
+  ['edge-south-one-wide', 'nest', 'i < ni - skip && j >= skip && j < nj - skip) continue;', 'i < ni - skip && j > skip && j < nj - skip) continue;'],
+  ['edge-north-one-wide', 'nest', 'j >= skip && j < nj - skip) continue;', 'j >= skip && j < nj - skip - 1) continue;'],
+  ['edge-west-one-narrow', 'nest', 'if (skip > 0 && i >= skip && i < ni - skip', 'if (skip > 0 && i >= skip - 1 && i < ni - skip'],
+  ['edge-east-one-narrow', 'nest', 'if (skip > 0 && i >= skip && i < ni - skip && j', 'if (skip > 0 && i >= skip && i < ni - skip + 1 && j'],
+  ['edge-south-one-narrow', 'nest', 'i < ni - skip && j >= skip && j < nj - skip) continue;', 'i < ni - skip && j >= skip - 1 && j < nj - skip) continue;'],
+  ['edge-north-one-narrow', 'nest', 'j >= skip && j < nj - skip) continue;', 'j >= skip && j < nj - skip + 1) continue;'],
+  ['edge-targets-not-sampled', 'nest', 'fromParent(Math.max(1, Math.round(w))); sample(B0, P.time); blend(0); C.fill();', 'fromParent(Math.max(1, Math.round(w))); blend(0); C.fill();'],
+  ['edge-targets-not-blended', 'nest', 'fromParent(Math.max(1, Math.round(w))); sample(B0, P.time); blend(0); C.fill();', 'fromParent(Math.max(1, Math.round(w))); sample(B0, P.time); C.fill();'],
+  ['edge-halo-not-filled', 'nest', 'fromParent(Math.max(1, Math.round(w))); sample(B0, P.time); blend(0); C.fill();', 'fromParent(Math.max(1, Math.round(w))); sample(B0, P.time); blend(0);'],
+  ['edge-sampled-at-creation-time', 'nest', 'fromParent(Math.max(1, Math.round(w))); sample(B0, P.time);', 'fromParent(Math.max(1, Math.round(w))); sample(B0, T0);'],
+  ['init-no-fill', 'nest', 'fromParent(0); sample(B0, t); blend(0); C.fill();', 'fromParent(0); sample(B0, t); blend(0);'],
+  ['fromparent-clock-creation', 'nest', 'function fromParent(skip) {\n      const t = P.time;', 'function fromParent(skip) {\n      const t = T0;'],
   ['depth-unchecked', 'nest', 'if (P.nz * P.dz !== C.nz * C.dz) throw', 'if (false) throw'],
   ['driven-unchecked', 'nest', 'if (!C.target) throw', 'if (false) throw'],
   ['field-unchecked', 'nest', 'if (!pn.has(n)) throw', 'if (false) throw'],
@@ -93,6 +112,10 @@ const run = (name, file, text) => new Promise((resolve) => {
 });
 
 const main = async () => {
+  if (process.env.DRY) {
+    let bad = 0; for (const [name, file, a] of M) { const n = SRC[file].split(a).length - 1; if (n !== 1) { bad++; console.log('??   ' + name + ': the text to change occurs ' + n + ' times'); } }
+    console.log(M.length + ' mutants, ' + bad + ' with text that is not there exactly once'); rmSync(base, { recursive: true, force: true }); process.exit(bad ? 1 : 0);
+  }
   const b = await run('original', 'core', SRC.core);
   if (b.killed) { console.log('the unmutated copy fails:', b.by); process.exit(2); }
   const todo = [];

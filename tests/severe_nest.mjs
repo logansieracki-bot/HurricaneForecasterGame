@@ -3,6 +3,7 @@
 //   - the nest: a state at rest stays at rest, a uniform wind passes through, the parent's fields reach the child's grid with the right staggering (a field that is linear in each
 //     direction is exact on u, v, w and the centres), a child whose frame moves over the parent sees the parent's field move by exactly that, a tracer carried across the child's
 //     sides agrees with the parent's, and a warm thermal that rises in the parent rises in the child as it does in the parent;
+//   - `edge`: a child whose state was moved by whole cells has the cells within w of its sides taken again from the parent, as `init` takes them, and the rest left as it is, with the targets of the parent as it is now;
 //   - the driven side and its relaxation: the outermost cells are the target and the taper reaches the inside, whatever the child does;
 //   - the drag: a uniform wind over the ground slows at the rate of cd U^2 / dz, in the frame in which the ground moves, and only on the lowest level;
 //   - a state saved and restored runs on bit for bit.
@@ -235,6 +236,64 @@ const pair = (extra = {}, childExtra = {}, popt = {}) => {
   check('a nest of a child with walls, of a child of another depth, of a field the parent does not have, and a boundary of a kind that does not exist are all refused (and walls have no target arrays)',
     thrown(() => N.create({ parent, child: walls, ratio: 2, x0: 5000, y0: 5000 })) && thrown(() => N.create({ parent, child: deep, ratio: 2, x0: 5000, y0: 5000 })) && thrown(() => N.create({ parent, child: withQ, ratio: 2, x0: 5000, y0: 5000 }))
     && thrown(() => C.create(Object.assign({}, PAR, { bc: { x: 'open', y: 'wall' } }))) && walls.target === null && !!C.create(Object.assign({}, CHD, { bc: { x: 'driven', y: 'driven' } })).target);
+}
+
+/* 11. `edge`: a child that was moved by whole cells (the Lab rolls its state when its parent's box follows the storm) has the cells within w of its sides taken again from the parent, as `init` takes them, and the rest left as it is.
+       A child with a different number in every cell of every field (the halo too), and a twin of the same grid that `init` fills from the same parent; the parent has moved on since the nest was made (its clock 120 s later, every field
+       changed, each linear in position) and the frame moves at (3, -2) m/s. After `edge(w)` every cell within w of a side (and the halo, and the faces on the sides) is the twin's, bit for bit, and is the linear field at the place the
+       child's cell has now (the frame's motion over the 120 s in it), every cell inside is what it was, and the targets are the twin's; w is rounded and is at least 1 (a w of 0 does not take the whole child). */
+{
+  const X0 = 5200, Y0 = 4700, T = 120;
+  const fresh = () => {
+    const parent = C.create(Object.assign({}, PAR, { bc: { x: 'wall', y: 'wall' }, tracers: ['q'] }));
+    const child = C.create(Object.assign({}, CHD, { bc: { x: 'driven', y: 'driven' }, tracers: ['q'] }));
+    return { parent, child, nest: N.create({ parent, child, ratio: 2, x0: X0, y0: Y0, frame: { u: 3, v: -2 } }) };
+  };
+  const field = (f, q, x, y, z) => f * (1 + q + 0.001 * x + 0.002 * y + 0.0005 * z);        // field number q, at a place of the parent's plane
+  const moveOn = (parent, f) => {                         // the parent as it is later: every field linear in the position it lives at, different for every field
+    parent.names.forEach((n, q) => { for (let k = -3; k < PAR.nz + 3; k++) for (let j = -3; j < PAR.ny + 3; j++) for (let i = -3; i < PAR.nx + 3; i++)
+      parent.S[n][parent.idx(i, j, k)] = field(f, q, (i + (n === 'u' ? 0 : 0.5)) * PAR.dx, (j + (n === 'v' ? 0 : 0.5)) * PAR.dy, (k + (n === 'w' ? 0 : 0.5)) * PAR.dz); });
+  };
+  const trial = (w) => {
+    const a = fresh(), b = fresh(); moveOn(a.parent, 1); moveOn(b.parent, 1);
+    a.nest.init();
+    let seq = 0; for (const n of a.child.names) for (let m = 0; m < a.child.N; m++) a.child.S[n][m] = 1000 + (seq++);
+    const before = {}; for (const n of a.child.names) before[n] = a.child.S[n].slice();
+    moveOn(a.parent, 2.5); moveOn(b.parent, 2.5); a.parent.time = T; b.parent.time = T;
+    a.nest.edge(w); b.nest.init();
+    const W = Math.max(1, Math.round(w)), H = a.child.halo; let band = 0, inner = 0, bad = 0, wbad = 0, tbad = 0, lin = 0;
+    a.child.names.forEach((n, q) => {
+      const ni = n === 'u' ? CHD.nx + 1 : CHD.nx, nj = n === 'v' ? CHD.ny + 1 : CHD.ny, nk = n === 'w' ? CHD.nz + 1 : CHD.nz;
+      for (let k = 0; k < nk; k++) for (let j = -H; j < nj + H; j++) for (let i = -H; i < ni + H; i++) {
+        const o = a.child.idx(i, j, k);
+        if (n === 'w' && (k === 0 || k === CHD.nz)) { if (a.child.S.w[o] !== 0) wbad++; continue; }                // (the ground and the lid: zero, everywhere)
+        const out = i < 0 || i >= ni || j < 0 || j >= nj;
+        if (out || i < W || i >= ni - W || j < W || j >= nj - W) {
+          band++; if (a.child.S[n][o] !== b.child.S[n][o]) bad++;
+          if (!out) lin = Math.max(lin, Math.abs(a.child.S[n][o] - (field(2.5, q, X0 + 3 * T + (i + (n === 'u' ? 0 : 0.5)) * CHD.dx, Y0 - 2 * T + (j + (n === 'v' ? 0 : 0.5)) * CHD.dy, (k + (n === 'w' ? 0 : 0.5)) * CHD.dz) - (n === 'u' ? 3 : n === 'v' ? -2 : 0))));
+        } else { inner++; if (a.child.S[n][o] !== before[n][o]) bad++; }
+      }
+      for (let m = 0; m < a.child.N; m++) if (a.child.target[n][m] !== b.child.target[n][m]) tbad++;
+    });
+    return { W, band, inner, bad, wbad, tbad, lin };
+  };
+  const rs = [0, 1, 2.4, 2.6, 4].map((w) => [w, trial(w)]);
+  check('after `edge(w)` the cells within w of the sides (the halo and the faces on the sides too) are the parent\'s as `init` takes them and the cells inside are as they were: w = ' + rs.map(([w, r]) => w + ' -> ' + r.W + ' cells (' + r.band + ' taken, ' + r.inner + ' left, ' + r.bad + ' wrong)').join(', '),
+    rs.every(([w, r]) => r.bad === 0 && r.wbad === 0 && r.W === Math.max(1, Math.round(w)) && r.band > 40000 && r.inner > 15000) && rs[0][1].W === 1 && rs[1][1].W === 1 && rs[2][1].W === 2 && rs[3][1].W === 3 && rs[0][1].inner > rs[4][1].inner);
+  check('the cells taken are the parent\'s field at the place they have after the 120 s of the frame\'s motion, with the frame\'s wind taken off (largest error ' + Math.max(...rs.map(([w, r]) => r.lin)).toExponential(1) + '), and the targets are the twin\'s (' + rs.map(([w, r]) => r.tbad).join(', ') + ' differ)',
+    rs.every(([w, r]) => r.lin < 1e-9 && r.tbad === 0));
+  /* and the nest goes on from there: a uniform tracer, 1 in the parent and the child, a step, then the parent and the child both 5 (as a roll of a state that is the same everywhere leaves them), `edge` and a step: the same child, bit for bit,
+     as a nest made with 5 everywhere and stepped (a step that took the targets of the step before would pull the sides towards 1 for half of it) */
+  const go = (edge) => {
+    const x = fresh(); x.parent.S.q.fill(1); x.child.S.q.fill(1); x.nest.init(); x.nest.step(6);
+    x.parent.S.q.fill(5); x.child.S.q.fill(5);
+    if (edge) x.nest.edge(3); else x.nest.init();
+    x.nest.step(6); return x.child;
+  };
+  const e = go(true), r = go(false); let dq = 0, off = 0;
+  for (const n of e.names) for (let m = 0; m < e.N; m++) dq = Math.max(dq, Math.abs(e.S[n][m] - r.S[n][m]));
+  for (let k = 0; k < CHD.nz; k++) for (let j = 0; j < CHD.ny; j++) for (let i = 0; i < CHD.nx; i++) off = Math.max(off, Math.abs(e.S.q[e.idx(i, j, k)] - 5));
+  check('a step after `edge` takes the parent as it is: the child is the one a nest made at that state has (largest difference ' + dq.toExponential(1) + ', the tracer ' + off.toExponential(1) + ' from 5)', dq === 0 && off < 1e-12);
 }
 
 console.log('\n' + passed + ' passed, ' + failed + ' failed (' + ((Date.now() - t0) / 1000).toFixed(1) + ' s)');

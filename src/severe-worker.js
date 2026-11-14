@@ -2,7 +2,7 @@
  * from a Blob cannot import them), so that a scan (about half a second of arithmetic for one tilt at 1 km) never stops the page.
  *   -> { t: 'init', header }        the pack's header (grid, winds' scale, the box's motion, the base state): a worker never holds the recording, only the frames it is asked about
  *   <- { t: 'ready' }
- *   -> { t: 'scan', id, frame, bytes, opts }  the frame's block of bytes (an ArrayBuffer, pack.frameBytes: the five arrays of the box and those of its nests) and opts as HFSevereRadar.scan takes them (elev, x, y, seed, velocity, dealias, ...)
+ *   -> { t: 'scan', id, frame, bytes, opts, fn }  the frame's block of bytes (an ArrayBuffer, pack.frameBytes: the five arrays of the box and those of its nests; `fn`, the header's list of them for the frame, if the pack is still being made) and opts as HFSevereRadar.scan takes them (elev, x, y, seed, velocity, dealias, ...)
  *   <- { t: 'sweep', id, meta, dbz, vel, sw }   Int16Arrays of the values in half units (NaN: -32768), nRad rows of nGates; meta: nRad, nGates, dAz, gate, r0, elev, antenna, nyquist
  * `HFSevereScanner` is the same thing without a worker (the page's fallback, and what the tests use): scan(frame, opts) -> the message above.
  */
@@ -32,6 +32,7 @@
       if (m.t === 'init') { header = m.header; sc = make({ volume: (frame) => globalThis.HFSeverePack.volumeFromFrame(header, frames.get(frame), frame) }); self.postMessage({ t: 'ready' }); }
       else if (m.t === 'scan') {
         try {
+          if (m.fn !== undefined && header.fn) header.fn[m.frame] = m.fn;                                              // (a run that is still being made: the header the worker was given has no nests for the frames that came after)
           frames.set(m.frame, new Uint8Array(m.bytes)); if (frames.size > 4) frames.delete(frames.keys().next().value);
           const r = sc.scan(m.frame, m.opts); self.postMessage({ t: 'sweep', id: m.id, meta: r.meta, dbz: r.dbz, vel: r.vel, sw: r.sw }, [r.dbz.buffer, r.vel.buffer, r.sw.buffer]);
         } catch (err) { self.postMessage({ t: 'error', id: m.id, message: String(err && err.message || err) }); }

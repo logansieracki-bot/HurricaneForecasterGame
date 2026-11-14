@@ -469,75 +469,113 @@
   }
 
   /* ---- the Lab: a storm in the drawing's environment at the spot, run in a Worker, played by the radar ---- */
-  const LAB = { worker: null, busy: false, minutes: 90, blocks: [], t0: 0 };
+  const LAB = { worker: null, busy: false, minutes: 90, t0: 0, detail: true, prog: [] };          // (detail: the fine model, a nest of 500 m cells inside the 2 km box, is what a run is unless Fast is chosen)
   function labEnv() {
     const sp = E.spot, t = E.spotT === undefined ? E.day.spot.t : E.spotT, env = E.A.sounding(sp.x, sp.y, t, { dz: 100, top: 20000 }), tb = env.table;
     return { env, ix: SND.indices(env), t, arr: { z: Array.from(tb.z), theta: Array.from(tb.theta), qv: Array.from(tb.qv), u: Array.from(tb.z, (z) => env.uG(z)), v: Array.from(tb.z, (z) => env.vG(z)), p0: 1000, motion: { u: env.motion.u, v: env.motion.v } } };
   }
   function labWorker() {
-    const src = ['src-core', 'src-sounding', 'src-refl', 'src-lab', 'src-labworker'].map((id) => document.getElementById(id).textContent).join('\n;\n');
+    const src = ['src-core', 'src-sounding', 'src-refl', 'src-nest', 'src-lab', 'src-labworker'].map((id) => document.getElementById(id).textContent).join('\n;\n');
     return new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
-  }
-  const DBZ_STOPS = [[5, 70, 120, 200], [15, 60, 190, 190], [25, 70, 200, 90], [35, 240, 230, 60], [45, 250, 150, 40], [55, 235, 60, 50], [65, 235, 70, 220], [75, 255, 255, 255]];
-  function dbzRgb(d) { if (d < 5) return null; for (let i = 1; i < DBZ_STOPS.length; i++) if (d <= DBZ_STOPS[i][0]) { const a = DBZ_STOPS[i - 1], b = DBZ_STOPS[i], f = (d - a[0]) / (b[0] - a[0]); return [a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f, a[3] + (b[3] - a[3]) * f]; } return DBZ_STOPS[DBZ_STOPS.length - 1].slice(1); }
-  function drawThumb(cv, block, nx, ny, nz) {
-    const c = cv.getContext('2d'), img = c.createImageData(nx, ny), dbz = new Int8Array(block.buffer, block.byteOffset, nx * ny * nz);
-    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) { let m = -30; for (let k = 0; k < nz; k++) { const d = dbz[(k * ny + j) * nx + i]; if (d > m) m = d; } const rgb = dbzRgb(m), q = ((ny - 1 - j) * nx + i) * 4; if (rgb) { img.data[q] = rgb[0]; img.data[q + 1] = rgb[1]; img.data[q + 2] = rgb[2]; img.data[q + 3] = 255; } else img.data[q + 3] = 0; }
-    c.clearRect(0, 0, cv.width, cv.height); const tmp = document.createElement('canvas'); tmp.width = nx; tmp.height = ny; tmp.getContext('2d').putImageData(img, 0, 0); c.imageSmoothingEnabled = false; c.drawImage(tmp, 0, 0, cv.width, cv.height);
   }
   const envNumbers = (ix) => '<div class="env"><div><b>' + Math.round(ix.mlcape) + '</b><span>CAPE J/kg</span></div><div><b>' + fmtSpeed(ix.shear06) + '</b><span>shear 0-6 km</span></div><div><b>' + Math.round(ix.srh01) + '</b><span>helicity 0-1 km</span></div><div><b>' + Math.round(ix.mllcl) + ' m</b><span>cloud base</span></div></div>';
   function openRun() {
-    if (!E.spot || LAB.busy) return; const L = labEnv(), ex = GD.expect(L.ix), ll = G.fromLocal(lat0(), lon0(), E.spot.x * 1000, E.spot.y * 1000), pl = nearestPlace(ll.lat, ll.lon), el = $('ed-run');
+    if (LAB.busy) return toast('A storm is running: it is on the radar, and Stop ends it', 3500);
+    if (!E.spot) return; const L = labEnv(), ex = GD.expect(L.ix), ll = G.fromLocal(lat0(), lon0(), E.spot.x * 1000, E.spot.y * 1000), pl = nearestPlace(ll.lat, ll.lon), el = $('ed-run');
     closeSheet(); el.hidden = false;
     el.innerHTML = '<div class="hd"><div><b>Run a storm</b><i>' + (pl ? 'Near ' + ESC(pl.name) + ' · ' : '') + '+' + L.t + ' h · ' + timeText(L.t) + '</i></div><button class="x" id="run-x" aria-label="Close"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>' +
       envNumbers(L.ix) + '<div class="ex"><b>' + ESC(ex.mode) + '</b>' + ex.hazards.map((h) => '<span class="tag">' + ESC(h) + '</span>').join('') + '</div>' +
       '<h3>Run for</h3><div class="mini sp" id="run-len">' + [45, 60, 90, 120].map((m) => '<button data-m="' + m + '" aria-pressed="' + (m === LAB.minutes) + '">' + (m < 60 ? m + ' min' : m / 60 + ' h') + '</button>').join('') + '</div>' +
-      '<p class="story">The real model, 2 km cells in a box 84 km wide that moves with the storm, started in the drawing\'s sounding at the spot you tapped by a warm bubble. It takes a few minutes on this device, and then the radar plays it.</p>' +
+      '<h3>Quality</h3><div class="mini sp" id="run-det"><button data-d="1" aria-pressed="' + LAB.detail + '">Fine, 500 m</button><button data-d="0" aria-pressed="' + !LAB.detail + '">Fast, 2 km</button></div>' +
+      '<p class="story" id="run-story"></p>' +
       '<div class="row2"><button id="run-go" class="primary">Start</button></div>';
-    $('run-x').addEventListener('click', closeRun); $('run-go').addEventListener('click', () => { runStorm({ minutes: LAB.minutes }).catch(() => {}); });
-    el.querySelectorAll('#run-len button').forEach((b) => b.addEventListener('click', () => { LAB.minutes = +b.dataset.m; el.querySelectorAll('#run-len button').forEach((x) => x.setAttribute('aria-pressed', String(x === b))); }));
+    const story = () => { $('run-story').innerHTML = LAB.detail ? runStoryFine(LAB.minutes) : runStoryFast(); };
+    $('run-x').addEventListener('click', closeRun); $('run-go').addEventListener('click', () => { runStorm({ minutes: LAB.minutes, detail: LAB.detail ? Object.assign({}, DETAIL) : undefined }).catch(() => {}); });
+    el.querySelectorAll('#run-len button').forEach((b) => b.addEventListener('click', () => { LAB.minutes = +b.dataset.m; el.querySelectorAll('#run-len button').forEach((x) => x.setAttribute('aria-pressed', String(x === b))); story(); }));
+    el.querySelectorAll('#run-det button').forEach((b) => b.addEventListener('click', () => {
+      LAB.detail = b.dataset.d === '1'; el.querySelectorAll('#run-det button').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+      if (LAB.detail && LAB.minutes < 90) { LAB.minutes = 90; el.querySelectorAll('#run-len button').forEach((x) => x.setAttribute('aria-pressed', String(+x.dataset.m === 90))); }          // (a hook comes late in a storm: from 70 minutes on)
+      story();
+    }));
+    story();
   }
-  function closeRun() { if (LAB.busy) return cancelRun(); $('ed-run').hidden = true; }
-  function cancelRun() { if (LAB.worker) LAB.worker.postMessage({ t: 'cancel' }); }
-  function scenarioOf(L, header, name) {                                                                   // where the box is on the ground: the radar site that the storm's track passes best, the box so that the storm starts at the spot
+  /* the fine model: cells of 500 m over 30 km from the 20th minute (src/severe-lab.js, `detail`); the work it takes, per model minute, is some sixty times that of the box (measured in Node: 0.45 s a minute for the box, 28 s with the nest) */
+  const DETAIL = { dx: 500, box: 30000, from: 20, ztop: 8000, every: 1 }, NEST_COST = 60;
+  const runStoryFast = () => 'The real model, 2 km cells in a box 84 km wide that moves with the storm, started in the drawing\'s sounding at the spot you tapped by a warm bubble. The radar opens at once and the frames appear on its slider as they are made: the whole storm takes a few minutes on this device. A storm of 2 km cells is smooth, with no hook.';
+  const runStoryFine = (min) => {
+    const work = Math.max(0, min - DETAIL.from) * 0.5 + min * 0.04, mins = Math.max(5, Math.round(work / 5) * 5);
+    return 'The same model, and from the ' + DETAIL.from + 'th minute a second one inside it: cells of ' + DETAIL.dx + ' m over ' + DETAIL.box / 1000 + ' km that stay on the storm. Fine cells are what let the rain wrap round the rotation into a hook. The radar opens at once and the frames appear on its slider as they are made: the first ' + DETAIL.from + ' minutes in seconds, then about a frame every half minute, <b>about ' + mins + ' minutes</b> in all on a fast computer, much longer on a phone. ' +
+      (min < 80 ? 'A hook comes late in a storm, from 70 minutes on, so this run will not have one yet.' : 'You can watch it as it goes, and Stop keeps what it has made.');
+  };
+  function closeRun() { $('ed-run').hidden = true; }
+  function stopRun() { if (LAB.worker) LAB.worker.postMessage({ t: 'cancel', keep: true }); }          // (the model stops at the end of its step, which with the finer model is seconds; the frames it has made stay on the radar)
+  function scenarioOf(L, header, name, far) {                                                              // where the box is on the ground: the radar site that the storm's track passes best, the box so that the storm starts at the spot
     /* the storm's own path (its updraft's place with the box's drift: a storm that does not move as Bunkers' estimate says is not where the nominal motion puts it: the dryline day's is 32 km off at 50 minutes): the site nearest the middle of its mature part that is at least 25 km from it and 15 km from every frame's place, not in the cone of silence */
-    const sp = E.spot, sPath = HFSeverePack.stormPath(header), at = (p) => G.fromLocal(lat0(), lon0(), sp.x * 1000 + p.x, sp.y * 1000 + p.y), mid = at(sPath.mid), pl = sPath.pts.map(at), S = geo.points.site; let best = -1, bd = Infinity;
-    const clear = (i) => pl.every((q) => G.distBearing(q.lat, q.lon, S.lat[i], S.lon[i]).d >= 15000);
-    for (let i = 0; i < S.n; i++) { if (Math.abs(S.lat[i] - mid.lat) > 2 || Math.abs(S.lon[i] - mid.lon) > 2.6) continue; const d = G.distBearing(mid.lat, mid.lon, S.lat[i], S.lon[i]).d; if (d >= 25000 && d < bd && clear(i)) { bd = d; best = i; } }
-    if (best < 0) for (let i = 0; i < S.n; i++) { const d = G.distBearing(mid.lat, mid.lon, S.lat[i], S.lon[i]).d; if (d < bd) { bd = d; best = i; } }
-    const site = { id: S.names[best], lat: S.lat[best], lon: S.lon[best] }, here = G.fromLocal(lat0(), lon0(), sp.x * 1000, sp.y * 1000), l = G.local(site.lat, site.lon, here.lat, here.lon), half = header.nx * header.dx / 2;
+    const sp = E.spot, S = geo.points.site, best = pickSite(HFSeverePack.stormPath(header), far), site = { id: S.names[best], lat: S.lat[best], lon: S.lon[best] }, here = G.fromLocal(lat0(), lon0(), sp.x * 1000, sp.y * 1000), l = G.local(site.lat, site.lon, here.lat, here.lon), half = header.nx * header.dx / 2;
     const mm = Math.round(720 + L.t * 60), tz = here.lon > -85 ? 'EDT' : here.lon > -101 ? 'CDT' : here.lon > -115 ? 'MDT' : 'PDT';
     return { lat0: site.lat, lon0: site.lon, origin: [Math.round(l.x - half), Math.round(l.y - half)], radar: site.id, clock: String(Math.floor(mm / 60) % 24).padStart(2, '0') + ':' + String(mm % 60).padStart(2, '0'), tz };
   }
+  /* the radar site for a storm path (HFSeverePack.stormPath, in metres from the spot): the nearest to the middle of its mature part that is at least `far.mid` (25 km) from that and `far.path` (15 km) from every frame's place, not in the
+     cone of silence; the nearest of all if there is none */
+  function pickSite(sPath, far) {
+    far = Object.assign({ mid: 25000, path: 15000 }, far); const sp = E.spot, at = (p) => G.fromLocal(lat0(), lon0(), sp.x * 1000 + p.x, sp.y * 1000 + p.y), mid = at(sPath.mid), pl = sPath.pts.map(at), S = geo.points.site; let best = -1, bd = Infinity;
+    const clear = (i) => pl.every((q) => G.distBearing(q.lat, q.lon, S.lat[i], S.lon[i]).d >= far.path);
+    for (let i = 0; i < S.n; i++) { if (Math.abs(S.lat[i] - mid.lat) > 2 || Math.abs(S.lon[i] - mid.lon) > 2.6) continue; const d = G.distBearing(mid.lat, mid.lon, S.lat[i], S.lon[i]).d; if (d >= far.mid && d < bd && clear(i)) { bd = d; best = i; } }
+    if (best < 0) for (let i = 0; i < S.n; i++) { const d = G.distBearing(mid.lat, mid.lon, S.lat[i], S.lon[i]).d; if (d < bd) { bd = d; best = i; } }
+    return best;
+  }
+  /* the seconds left of a run from its progress so far ([model minute, seconds of work] pairs): at the rate of the last 3 model minutes or more; before the nest of the fine model has started, from the rate of the box and the cost of the nest (sixty times it per model minute) */
+  function runLeft(prog, of, detail) {
+    const [t, w] = prog[prog.length - 1]; let a = prog[0]; for (const q of prog) if (q[0] <= t - 3) a = q;
+    const rate = (w - a[1]) / Math.max(0.5, t - a[0]);
+    if (detail && t < detail.from + 3) { const r = w / Math.max(0.5, t); return r * Math.max(0, detail.from - t) + r * NEST_COST * (of - Math.max(t, detail.from)); }
+    return rate * (of - t);
+  }
+  /* A run is played as it is made: the radar opens with the first frame and every frame after it is added to a pack that grows (HFSeverePack.live), so that the slider fills as a radar's does. The radar site has to be chosen before the
+     storm exists, from the path that the sounding's own motion gives, with more room (45 km from its middle, 30 km from every place on it) than a path that is known would need; when the run is over and the storm went another
+     way, a site that it went under or far from is changed for the one that its own path asks for. */
   function runStorm(o) {
     o = Object.assign({ minutes: 90, dx: 2000, box: 84000, dt: 10 }, o);
     return new Promise((resolve, reject) => {
       if (LAB.busy) return reject(new Error('a storm is running')); if (!E.spot) return reject(new Error('no spot'));
-      const L = labEnv(), el = $('ed-run'); LAB.busy = true; LAB.blocks = []; LAB.t0 = Date.now(); el.hidden = false; let nx = Math.round(o.box / o.dx), last = null;
-      el.innerHTML = '<div class="hd"><div><b>Running the storm</b><i>' + o.minutes + ' model minutes, ' + (o.dx / 1000) + ' km cells</i></div></div><div class="live"><canvas id="run-th" width="150" height="150"></canvas><p id="run-note">Waking the model up.</p></div>' +
-        '<div class="pbar"><i id="run-bar"></i></div><div class="pt"><span id="run-time">0 of ' + o.minutes + ' min</span><span id="run-eta"></span></div><div class="row2"><button id="run-cancel" class="btn">Cancel</button></div>';
-      $('run-cancel').addEventListener('click', cancelRun);
-      let w; try { w = labWorker(); } catch (e) { LAB.busy = false; el.hidden = true; toast('This browser cannot run the model: ' + e.message, 6000); return reject(e); }
-      LAB.worker = w; const end = () => { LAB.busy = false; w.terminate(); LAB.worker = null; };
-      w.onerror = (e) => { end(); el.hidden = true; toast('The model stopped: ' + (e.message || 'worker error'), 7000); reject(new Error(e.message || 'worker error')); };
-      w.onmessage = async (ev) => {
-        const m = ev.data;
-        if (m.t === 'frame') { LAB.blocks[m.i] = new Uint8Array(m.block); last = m; const cv = $('run-th'); if (cv) drawThumb(cv, LAB.blocks[m.i], nx, nx, 40); const n = $('run-note'); if (n) n.innerHTML = 'The strongest updraft is <b>' + Math.round(m.wmax * 2.2369) + ' mph</b>, the strongest echo <b>' + m.zmax + ' dBZ</b>.'; }
-        else if (m.t === 'progress') { const bar = $('run-bar'); if (bar) bar.style.width = Math.min(100, m.time / m.of * 100) + '%'; const t = $('run-time'); if (t) t.textContent = Math.floor(m.time) + ' of ' + m.of + ' min'; const eta = $('run-eta'); if (eta && m.time > 3) { const left = m.wall * (m.of - m.time) / m.time; eta.textContent = left > 90 ? 'about ' + Math.round(left / 60) + ' min left' : 'about ' + Math.round(left) + ' s left'; } }
+      const L = labEnv(); LAB.busy = true; LAB.t0 = Date.now(); LAB.prog = []; closeSheet(); $('ed-run').hidden = true; toast('Starting the model…', 3000);
+      let w; try { w = labWorker(); } catch (e) { LAB.busy = false; toast('This browser cannot run the model: ' + e.message, 6000); return reject(e); }
+      LAB.worker = w; let pack = null, run = null, chain = Promise.resolve(), ended = false;
+      const name = (E.day.name || 'A drawn day') + ', storm run' + (o.detail ? ' with a ' + o.detail.dx + ' m nest' : '');
+      const end = () => { LAB.busy = false; w.terminate(); LAB.worker = null; };
+      const fail = (msg, err) => { if (ended) return; ended = true; end(); SEV.live.end({ stopped: true, reason: msg }); toast(msg, 7000); reject(err instanceof Error ? err : new Error(msg)); };
+      const handle = async (m) => {
+        if (ended) return;
+        if (m.t === 'start') {
+          const nominal = { nx: m.header.nx, ny: m.header.ny, dx: m.header.dx, motion: m.header.motion, times: Array.from({ length: Math.floor(o.minutes / 5) + 1 }, (_, i) => i * 5) }, sc = scenarioOf(L, nominal, name, { mid: 45000, path: 30000 });
+          pack = HFSeverePack.live(Object.assign({}, m.header, { name, scenario: sc })); run = E.lastRun = { pack, spot: Object.assign({}, E.spot), t: L.t, wall: 0, ix: L.ix, scenario: sc, stopped: false, reason: '', maxW: 0 };
+        } else if (m.t === 'frame') {
+          pack.append({ t: m.time, track: m.track, drift: m.drift, fn: m.fn }, new Uint8Array(m.block)); run.maxW = Math.max(run.maxW, m.wmax);
+          if (pack.n === 1) { await SEV.live.begin(pack, { of: o.minutes, stop: stopRun }); setMode('radar'); } else SEV.live.frame();
+        } else if (m.t === 'progress') { LAB.prog.push([m.time, m.wall]); SEV.live.progress(m.time, runLeft(LAB.prog, m.of, o.detail)); }
         else if (m.t === 'done') {
-          end();
-          if (m.stopped && m.reason === 'cancelled') { el.hidden = true; toast('The run was cancelled', 2200); return reject(new Error('cancelled')); }
-          if (LAB.blocks.length < 3) { el.hidden = true; toast('The model did not get far: ' + (m.reason || 'no frames'), 6000); return reject(new Error(m.reason || 'no frames')); }
-          try {
-            const name = (E.day.name || 'A drawn day') + ', storm run', sc = scenarioOf(L, m.header, name), header = Object.assign({}, m.header, { name, scenario: sc }), pack = HFSeverePack.assemble(header, LAB.blocks.filter(Boolean));
-            E.lastRun = { pack, spot: Object.assign({}, E.spot), t: L.t, wall: m.wall, ix: L.ix, scenario: sc, stopped: !!m.stopped, reason: m.reason || '' };
-            await SEV.setPack(pack, { t: Math.min(50, header.times[header.times.length - 1]) }); el.hidden = true; setMode('radar');
-            toast((m.stopped ? m.reason + '; ' : '') + 'The storm is on the radar: ' + header.times.length + ' frames, ' + sc.radar + ' is the radar (' + Math.round(m.wall) + ' s of work)', 6000); resolve(E.lastRun);
-          } catch (e) { el.hidden = true; toast('Could not show the storm: ' + e.message, 7000); reject(e); }
-        } else if (m.t === 'error') { end(); el.hidden = true; toast('The model stopped: ' + m.message, 7000); reject(new Error(m.message)); }
+          ended = true; end(); run.wall = m.wall; run.stopped = !!m.stopped; run.reason = m.reason || '';
+          if (!pack || pack.n < 1) { SEV.live.end({ stopped: true, reason: m.reason }); toast('The model did not get far: ' + (m.reason || 'no frames'), 6000); return reject(new Error(m.reason || 'no frames')); }
+          SEV.live.end({ stopped: m.stopped, reason: m.reason }); const swapped = handOff(pack, run);
+          const quiet = !m.stopped && run.maxW < 10;                                                         // (a day that cannot support a storm grows none: the model says so, it is not made to)
+          toast(quiet ? 'No storm grew from this day at the spot you tapped: the strongest updraft was ' + Math.round(run.maxW * 2.2369) + ' mph. The air there is too stable or too dry. Move the spot, or change the day.' : (m.stopped ? (m.reason === 'stopped early' ? 'Stopped early. ' : m.reason + '; ') : '') + 'The storm is made: ' + pack.n + ' frames, ' + (swapped ? 'now seen from ' + swapped : run.scenario.radar + ' is the radar') + ' (' + Math.round(m.wall) + ' s of work)', quiet ? 9000 : 6000); resolve(run);
+        } else if (m.t === 'error') fail('The model stopped: ' + m.message, new Error(m.message));
       };
-      w.postMessage({ t: 'run', spec: { env: L.arr, dx: o.dx, box: o.box, dt: o.dt, minutes: o.minutes, frameEvery: o.frameEvery || 5, nz: o.nz || 40, dz: o.dz || 500, bubble: o.bubble } });
+      w.onmessage = (ev) => { chain = chain.then(() => handle(ev.data)).catch((e) => fail('Could not show the storm: ' + (e && e.message || e), e)); };
+      w.onerror = (e) => fail('The model stopped: ' + (e.message || 'worker error'), new Error(e.message || 'worker error'));
+      w.postMessage({ t: 'run', spec: { env: L.arr, dx: o.dx, box: o.box, dt: o.dt, minutes: o.minutes, frameEvery: o.frameEvery || 5, nz: o.nz || 40, dz: o.dz || 500, bubble: o.bubble, detail: o.detail } });
     });
+  }
+  /* the radar the storm's own path asks for, when the one chosen at the start is not it: a storm that went within 15 km of the radar (under it, in its cone of silence) or more than 200 km from it is seen from another, as a radar network hands a storm on */
+  function handOff(pack, run) {
+    try { return handOffTo(pack, run); } catch (e) { console.warn('severe: no hand-off of the radar (' + e.message + ')'); return ''; }          // (a radar that cannot be changed never costs a run that is made)
+  }
+  function handOffTo(pack, run) {
+    if (SEV.S.storm !== 'run' || SEV.pack !== pack) return '';
+    const sPath = HFSeverePack.stormPath(pack.h), sp = E.spot, S = geo.points.site, cur = S.names.indexOf(SEV.S.radar.id); if (cur < 0 || SEV.S.radar.custom) return '';
+    const worst = sPath.pts.reduce((a, p) => { const q = G.fromLocal(lat0(), lon0(), sp.x * 1000 + p.x, sp.y * 1000 + p.y), d = G.distBearing(q.lat, q.lon, S.lat[cur], S.lon[cur]).d; return [Math.min(a[0], d), Math.max(a[1], d)]; }, [Infinity, 0]);
+    if (worst[0] >= 15000 && worst[1] <= 200000) return '';
+    const best = pickSite(sPath); if (best < 0 || best === cur) return ''; SEV.setRadar(Object.assign({ custom: false }, SEV.siteInfo(best))); run.scenario = Object.assign({}, run.scenario, { radar: S.names[best] }); return S.names[best];
   }
 
   /* ---- the mode, the map, the keys ---- */
@@ -588,7 +626,7 @@
     $('m-draw').addEventListener('click', () => setMode('draw')); $('m-radar').addEventListener('click', () => setMode('radar'));
     document.addEventListener('keydown', onKey, true);
     $('b-theme').addEventListener('click', () => { if (!map) return; map.setTheme(SEV.S.theme); E.fields = null; syncLegend(); if (E.sel >= 0 || E.probe) closeSheet(); scheduleField(0); redraw(); });
-    SEV.editor = { E, LAB, runStorm, openRun, closeRun, labEnv, scenarioOf, setMode, loadDay, setTool, setLayer, setTime, undo, redo, rebuild, commit, addObject, newObject, nearestPlace, openSheet, closeSheet, get map() { return map; }, toKm, toScreen, deleteSelected, TOOLS, PROPS, anchorOf, tipOf };
+    SEV.editor = { E, LAB, runStorm, runLeft, handOff, pickSite, openRun, closeRun, labEnv, scenarioOf, setMode, loadDay, setTool, setLayer, setTime, undo, redo, rebuild, commit, addObject, newObject, nearestPlace, openSheet, closeSheet, get map() { return map; }, toKm, toScreen, deleteSelected, TOOLS, PROPS, anchorOf, tipOf };
     if (location.hash === '#draw') setMode('draw');
   }
   if (window.SEVERE && window.SEVERE.ready) init(); else window.addEventListener('severe-ready', init);

@@ -14,7 +14,9 @@
  * their grids ({ nx, ny, nz, dx, dz, scale: { wind, vz }, frame: { u, v } the nest's motion over the box }), `fn[i]` the nests of frame i as [k, x, y] (nest k, its south-west corner in the box in metres), and
  * `offsets` the byte offsets of the frames' blocks (a block is the box's five arrays and then the five arrays of each of its nests, in the order of `fn[i]`). `volume(i)` then has `nests: [{ x, y, vol }]`,
  * which the radar operator reads (a point inside a nest is the nest's, the rest the box's). A pack of version 1 has none of this and reads as before.
- * `assemble(header, blocks)` makes the same object from a header and the frames' blocks (what the Lab of src/severe-lab.js records).
+ * `assemble(header, blocks)` makes the same object from a header and the frames' blocks (what the Lab of src/severe-lab.js records, with the nest of its detail option: a block as long as the box's five arrays and those of the nests `fn` lists).
+ * `live(header)` is a pack made as its frames come, for a run that the page plays while the model is still at it: `append(rec, block)` adds a frame (rec = { t, track, drift, fn } as the Lab's frames are), `n`, `times`, `track` and the
+ * header's `drift` and `fn` grow with it, and the rest (`volume`, `frameBytes`, `corner`, `radarBox`, `path`, `clock`) works on the frames there are.
  * A classic script that sets `globalThis.HFSeverePack`; it needs HFSevereGeo.
  */
 (function () {
@@ -61,19 +63,19 @@
     return { pts, mid: { x: n ? use.reduce((a, p) => a + p.x, 0) / n : 0, y: n ? use.reduce((a, p) => a + p.y, 0) / n : 0, n } };
   }
 
-  function fromBody(u8) {
-    const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength), hl = dv.getUint32(0, true), h = JSON.parse(new TextDecoder().decode(u8.subarray(4, 4 + hl))), base = 4 + hl;
-    const nx = h.nx, ny = h.ny, nz = h.nz, per = nx * ny * nz, n = h.times.length, W = h.scale.wind, VZ = h.scale.vz, mo = h.motion || { u: 0, v: 0 }, sc = h.scenario;
-    const off = h.offsets || null, at = (i) => (off ? off[i] : i * 5 * per);                        // where frame i's block starts in the body (a pack of version 1: five arrays of the box, frame after frame)
-    if (u8.length < base + at(n)) throw new Error('storm pack is truncated');
-    const P = { h, n, per, nx, ny, nz, dx: h.dx, dz: h.dz, times: h.times, floor: h.floor, scenario: sc, motion: mo, track: h.track, name: h.name, nests: h.nests || [] };
-    const view = (i, c, Cls) => new Cls(u8.buffer, u8.byteOffset + base + at(i) + c * per, per);
+  /* what a pack does, made from its header and a way to the bytes of a frame's block (`blockOf(i)`: the five arrays of the box and those of its nests): the frame's arrays, its volume, where the box is on the ground, the model's
+     values at a point, the clock. The number of frames and the times are read from the header when they are used, so a pack that is still being made (`live`) works as one that is whole */
+  function pack(h, blockOf) {
+    const nx = h.nx, ny = h.ny, nz = h.nz, per = nx * ny * nz, W = h.scale.wind, VZ = h.scale.vz, mo = h.motion || { u: 0, v: 0 }, sc = h.scenario;
+    const P = { h, per, nx, ny, nz, dx: h.dx, dz: h.dz, times: h.times, floor: h.floor, scenario: sc, motion: mo, track: h.track, name: h.name, nests: h.nests || [] };
+    Object.defineProperty(P, 'n', { get: () => h.times.length, enumerable: true });
+    const view = (i, c, Cls) => { const bl = blockOf(i); return new Cls(bl.buffer, bl.byteOffset + c * per, per); };
     P.frame = (i) => ({ dbz: view(i, 0, Int8Array), vz: view(i, 1, Uint8Array), u: view(i, 2, Int8Array), v: view(i, 3, Int8Array), w: view(i, 4, Int8Array) });
-    P.frameBytes = (i) => new Uint8Array(u8.buffer, u8.byteOffset + base + at(i), at(i + 1) - at(i));
+    P.frameBytes = (i) => blockOf(i);
     P.volume = (i) => volumeFromFrame(h, P.frameBytes(i), i);
     /* where the box is on the ground at model minute t: the south-west corner, metres east and north of the scenario's point */
     const drift = h.drift || null;                                                  // a recording whose box follows its storm (the Lab's) says, for each frame, how far the box's corner is from where the uniform motion puts it: it holds from that frame to the next
-    P.corner = (t) => { let d = [0, 0]; if (drift) { let k = 0; for (let q = 0; q < n; q++) if (h.times[q] <= t + 1e-6) k = q; d = drift[k]; } return [sc.origin[0] + mo.u * 60 * t + d[0], sc.origin[1] + mo.v * 60 * t + d[1]]; };
+    P.corner = (t) => { let d = [0, 0]; if (drift) { let k = 0; for (let q = 0; q < h.times.length; q++) if (h.times[q] <= t + 1e-6) k = q; d = drift[k] || d; } return [sc.origin[0] + mo.u * 60 * t + d[0], sc.origin[1] + mo.v * 60 * t + d[1]]; };
     P.radarBox = (t, lat, lon) => { const l = G.local(sc.lat0, sc.lon0, lat, lon), c = P.corner(t); return { x: l.x - c[0], y: l.y - c[1] }; };
     P.boxLatLon = (t, bx, by) => { const c = P.corner(t); return G.fromLocal(sc.lat0, sc.lon0, c[0] + bx, c[1] + by); };
     P.path = () => stormPath(h);                                                    // where the storm was over the ground (stormPath)
@@ -90,13 +92,43 @@
     return P;
   }
 
-  /* a pack from what a run made (src/severe-lab.js): the header (without `offsets`, which a version 1 pack does not have) and the blocks of the frames, each the five arrays of nz*ny*nx bytes; the same object `fromBody` makes of a file */
+  function fromBody(u8) {
+    const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength), hl = dv.getUint32(0, true), h = JSON.parse(new TextDecoder().decode(u8.subarray(4, 4 + hl))), base = 4 + hl;
+    const per = h.nx * h.ny * h.nz, n = h.times.length, off = h.offsets || null, at = (i) => (off ? off[i] : i * 5 * per);          // where frame i's block starts in the body (a pack of version 1: five arrays of the box, frame after frame)
+    if (u8.length < base + at(n)) throw new Error('storm pack is truncated');
+    return pack(h, (i) => new Uint8Array(u8.buffer, u8.byteOffset + base + at(i), at(i + 1) - at(i)));
+  }
+
+  /* a pack that is made as its frames come (the Lab's run, as the page plays it while it runs): `live(header)` takes a header with the grid, the scale, the motion, the base state and (for a run with a nest) the nests'
+     grids, and no frames; `append(rec, block)` adds a frame: rec is { t (minutes), track, drift, fn } as the Lab's frames are and block the bytes of the frame (the five arrays of the box and of the nests `fn` lists). The
+     header's `times`, `track`, `drift` and `fn` grow with it and `n` is how many there are; everything else works as on a whole pack. */
+  function live(header) {
+    const h = Object.assign({}, header, { times: [], track: [], drift: [] }), blocks = [], nests = h.nests || null; if (nests) h.fn = []; else delete h.fn;
+    const P = pack(h, (i) => blocks[i]);
+    P.live = true;
+    P.append = (rec, block) => {
+      const i = blocks.length; let want = 5 * P.per; if (nests) for (const [k] of rec.fn || []) want += 5 * nests[k].nx * nests[k].ny * nests[k].nz;
+      if (block.length !== want) throw new Error('storm pack: frame ' + i + ' has ' + block.length + ' bytes, not ' + want);
+      if (i && !(rec.t > h.times[i - 1])) throw new Error('storm pack: frame ' + i + ' is at minute ' + rec.t + ', not after minute ' + h.times[i - 1]);
+      blocks.push(block); h.times.push(rec.t); h.track.push(rec.track); h.drift.push(rec.drift || [0, 0]); if (nests) h.fn.push(rec.fn || []);
+      return i;
+    };
+    return P;
+  }
+
+  /* a pack from what a run made (src/severe-lab.js): the header and the blocks of the frames; the same object `fromBody` makes of a file. A frame's block is the five arrays of the box (nz*ny*nx bytes each) and, if the header has
+     `nests` and `fn`, the five arrays of each nest that `fn[i]` lists for the frame, so the blocks of a run with a nest are not all as long: the header's `offsets` are made here from what the blocks measure (a version 1 pack does not have them) */
   function assemble(header, blocks) {
-    const per = header.nx * header.ny * header.nz, head = new TextEncoder().encode(JSON.stringify(header)), body = new Uint8Array(4 + head.length + blocks.length * 5 * per);
+    const per = header.nx * header.ny * header.nz, nests = header.nests || null, h = Object.assign({}, header), offsets = [];
+    const want = (i) => { let n = 5 * per; if (nests && h.fn) for (const [k] of h.fn[i] || []) n += 5 * nests[k].nx * nests[k].ny * nests[k].nz; return n; };
+    let at = 0;
+    blocks.forEach((b, i) => { if (b.length !== want(i)) throw new Error('storm pack: frame ' + i + ' has ' + b.length + ' bytes, not ' + want(i)); offsets.push(at); at += b.length; });
+    offsets.push(at); if (nests) h.offsets = offsets;
+    const head = new TextEncoder().encode(JSON.stringify(h)), body = new Uint8Array(4 + head.length + at);
     new DataView(body.buffer).setUint32(0, head.length, true); body.set(head, 4);
-    blocks.forEach((b, i) => { if (b.length !== 5 * per) throw new Error('storm pack: frame ' + i + ' has ' + b.length + ' bytes, not ' + 5 * per); body.set(b, 4 + head.length + i * 5 * per); });
+    blocks.forEach((b, i) => body.set(b, 4 + head.length + offsets[i]));
     return fromBody(body);
   }
 
-  globalThis.HFSeverePack = { gunzip, fromBody, volumeFromFrame, assemble, stormPath };
+  globalThis.HFSeverePack = { gunzip, fromBody, volumeFromFrame, assemble, live, stormPath };
 })();

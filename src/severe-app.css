@@ -2,15 +2,16 @@
   --font:"Avenir Next","Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,Roboto,"Helvetica Neue",sans-serif;
   --bg:#060a12; --panel:rgba(12,19,31,.80); --panel2:rgba(22,31,47,.92); --card:rgba(255,255,255,.06); --card-h:rgba(255,255,255,.12);
   --line:rgba(255,255,255,.11); --line2:rgba(255,255,255,.24); --text:#eaf0f8; --dim:#93a0b5; --faint:#5f6b7e;
-  --acc:#72d6ff; --acc2:#4a90f5; --warn:#ff6b5e; --good:#6ee7a8; --shadow:0 18px 50px rgba(0,0,0,.45);
+  --acc:#72d6ff; --acc2:#4a90f5; --warn:#ff6b5e; --good:#6ee7a8; --shadow:0 18px 50px rgba(0,0,0,.45); --buf:rgba(114,214,255,.42);
 }
 :root[data-theme="light"]{
   --bg:#dfe7ef; --panel:rgba(255,255,255,.86); --panel2:rgba(255,255,255,.96); --card:rgba(20,32,52,.06); --card-h:rgba(20,32,52,.12);
   --line:rgba(20,32,52,.14); --line2:rgba(20,32,52,.28); --text:#162033; --dim:#566379; --faint:#8793a6;
-  --acc:#1a73d9; --acc2:#2b7de9; --warn:#d6382b; --good:#17925a; --shadow:0 14px 40px rgba(20,40,70,.22);
+  --acc:#1a73d9; --acc2:#2b7de9; --warn:#d6382b; --good:#17925a; --shadow:0 14px 40px rgba(20,40,70,.22); --buf:rgba(26,115,217,.38);
 }
 *{box-sizing:border-box}
-html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font-family:var(--font);overflow:hidden;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font-family:var(--font);overflow:hidden;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+input[type=text],input[type=search],input[type=number],textarea,[contenteditable=true]{-webkit-user-select:text;user-select:text}          /* (this is an app, not a document: a drag on a slider or a pane never highlights the text beside it; only what is typed into can be selected) */
 button{font:inherit;color:inherit;cursor:pointer;border:0;background:none;padding:0}
 button:focus-visible,input:focus-visible,a:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
 svg{display:block}
@@ -90,11 +91,20 @@ svg{display:block}
 .clock b{display:block;font-size:17px;font-variant-numeric:tabular-nums;line-height:1.1}
 .clock i{display:block;font-style:normal;font-size:11px;color:var(--dim)}
 .dk-slider{position:relative;margin:6px 2px 0;height:26px}
-#slider{position:absolute;left:0;right:0;top:4px;width:100%;height:18px;margin:0;background:transparent;-webkit-appearance:none;appearance:none;z-index:2;--p:0%}
-#slider::-webkit-slider-runnable-track{height:4px;border-radius:4px;background:linear-gradient(90deg,var(--acc2) var(--p),var(--line2) var(--p))}
-#slider::-moz-range-track{height:4px;border-radius:4px;background:linear-gradient(90deg,var(--acc2) var(--p),var(--line2) var(--p))}
+#slider{position:absolute;left:0;right:0;top:0;width:100%;height:26px;margin:0;background:transparent;-webkit-appearance:none;appearance:none;z-index:2;--p:0%;--l:0%;touch-action:none}
+#slider::-webkit-slider-runnable-track{height:4px;border-radius:4px;background:linear-gradient(90deg,var(--acc2) var(--p),var(--buf) var(--p) var(--l),var(--line2) var(--l))}
+#slider::-moz-range-track{height:4px;border-radius:4px;background:linear-gradient(90deg,var(--acc2) var(--p),var(--buf) var(--p) var(--l),var(--line2) var(--l))}
 #slider::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;border-radius:50%;background:#fff;border:2px solid var(--acc2);margin-top:-6px;box-shadow:0 2px 8px rgba(0,0,0,.45)}
 #slider::-moz-range-thumb{width:12px;height:12px;border-radius:50%;background:#fff;border:2px solid var(--acc2)}
+/* a run that is still being made: what is loaded is lit on the slider as a player's buffer is (the track from the thumb to the newest frame), and a line above says how far the model is, with a Stop */
+#live{display:flex;align-items:center;gap:9px;margin:5px 2px 0;font-size:12px;color:var(--dim);font-variant-numeric:tabular-nums}
+#live[hidden]{display:none}
+#live .pulse{flex:none;width:8px;height:8px;border-radius:50%;background:var(--acc);box-shadow:0 0 0 0 var(--buf);animation:pulse 1.6s ease-out infinite}
+#live #live-t{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media (max-width:600px){#live #live-t{white-space:normal;line-height:1.25}}
+#live .chip{height:24px;min-width:0;padding:0 11px;font-size:12px}
+#live .chip:disabled{opacity:.5;cursor:default}
+@keyframes pulse{0%{box-shadow:0 0 0 0 var(--buf)}80%,100%{box-shadow:0 0 0 8px rgba(0,0,0,0)}}
 #ticks{position:absolute;left:8px;right:8px;top:20px;height:6px;pointer-events:none}
 #ticks span{position:absolute;top:0;width:1px;height:5px;background:var(--faint);transform:translateX(-.5px)}
 #ticks span.on{background:var(--acc);height:6px}
@@ -170,7 +180,7 @@ svg{display:block}
 #ed-side>*{pointer-events:auto;flex:none}
 .lbl{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:9px 0 2px;font-size:12px;color:var(--dim)}
 .lbl b{color:var(--text);font-weight:700;font-variant-numeric:tabular-nums;font-size:12.5px}
-.rng{-webkit-appearance:none;appearance:none;width:100%;height:20px;margin:0;background:transparent;--p:0%}
+.rng{-webkit-appearance:none;appearance:none;width:100%;height:20px;margin:0;background:transparent;--p:0%;touch-action:none}
 .rng::-webkit-slider-runnable-track{height:4px;border-radius:4px;background:linear-gradient(90deg,var(--acc2) var(--p),var(--line2) var(--p))}
 .rng::-moz-range-track{height:4px;border-radius:4px;background:linear-gradient(90deg,var(--acc2) var(--p),var(--line2) var(--p))}
 .rng::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;border-radius:50%;background:#fff;border:2px solid var(--acc2);margin-top:-6px;box-shadow:0 2px 8px rgba(0,0,0,.45)}
@@ -186,6 +196,7 @@ svg{display:block}
 .row2 button,.btn{flex:1;height:34px;padding:0 12px;border-radius:11px;background:var(--card);border:1px solid var(--line);font-size:12.5px;font-weight:700}
 .row2 button:hover,.btn:hover{background:var(--card-h)}
 .row2 button.danger{color:var(--warn)}
+.row2 button:disabled,.btn:disabled{opacity:.4;cursor:default}
 .ptitle2{display:flex;align-items:center;gap:9px;margin-bottom:4px}
 .ptitle2 .dot{width:11px;height:11px;border-radius:50%;background:var(--c,var(--acc))}
 .ptitle2 b{font-size:14px}
