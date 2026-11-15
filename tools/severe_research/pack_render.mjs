@@ -1,7 +1,7 @@
 // A frame of a storm pack (make_pack.mjs, make_nest_pack.mjs) as the page reads it (src/severe-pack.js) and the radar operator takes it: one PNG, drawn with the palette. A look at what a pack holds, with its nests,
 // before it goes to the page.
 //   node tools/severe_research/pack_render.mjs <pack.hfp> <frame> <out.png> [key=value ...]
-// keys: site=KVNX (the radar: an id of data/generated/severe-sites.json, default the pack's own), radar=x,y (km, the radar's
+// keys: ground=1, clear=1 (the strength of the ground clutter and of the clear air's return, 0 to 1), site=KVNX (the radar: an id of data/generated/severe-sites.json, default the pack's own), radar=x,y (km, the radar's
 // place from the box's south-west corner at that frame, instead of the site), elev=0.5, view=auto | cx,cy,mpp,w,h (km east and north of the radar at the picture's centre, metres per pixel, pixels; `auto` (mpp=100 w=1400 h=800 set the size) centres on the
 // strongest updraft of the frame, 100 m per pixel, 1400 x 800), product=dbz | vel | sw, seed=1, n=2 (the page uses 16), edge=0 (the page uses 10000: the width in m over which the echo fades out at the box's edge), nyq=28, dealias=0, vnoise=1, nests=1 (0: the box alone, to see what the nest adds), pal=<file>.
 import '../../src/severe-geo.js';
@@ -26,7 +26,7 @@ const defPal = { dbz: 'Apocs_BR_Expert.pal', vel: 'User_BV_mph.pal', sw: 'Isobar
 const pal = PL.parse(readFileSync(opt.pal || new URL('../../data/severe/' + defPal, import.meta.url), 'utf8')), unit = product === 'dbz' ? 1 : PL.unitScale(pal.units);
 const range = product === 'dbz' ? [-40, 105] : [pal.stops[0].v - 5, pal.stops[pal.stops.length - 1].v + 5], lut = PL.lut(pal, { vmin: range[0], vmax: range[1], step: product === 'dbz' ? 0.05 : 0.1 });
 const t0 = Date.now();
-const sweep = R.scan(vol, { x: rad[0], y: rad[1], elev: +(opt.elev || 0.5), seed: +(opt.seed || 1), n: +(opt.n || 2), edge: +(opt.edge || 0), clutter: { ground: 1, clearAir: 1 },
+const sweep = R.scan(vol, { x: rad[0], y: rad[1], elev: +(opt.elev || 0.5), seed: +(opt.seed || 1), n: +(opt.n || 2), edge: +(opt.edge || 0), clutter: { ground: +(opt.ground ?? 1), clearAir: +(opt.clear ?? 1) },
                             velocity: product === 'dbz' ? false : { nyquist: +(opt.nyq || 28), dealias: opt.dealias === '1', noise: +(opt.vnoise ?? 1) } });
 const t1 = Date.now();
 const img = R.render(sweep, lut, { w: view[3], h: view[4], cx: view[0] * 1000, cy: view[1] * 1000, mpp: view[2], field: product, scale: unit, bg: [11, 13, 26, 255] });
