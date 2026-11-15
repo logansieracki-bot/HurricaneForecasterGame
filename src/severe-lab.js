@@ -4,7 +4,7 @@
  *   HFSevereLab.envOf(a)                       // an environment (HFSevereSounding.fromProfile) from arrays: a = { z, theta, qv, u, v, p0, motion }: z even from 0 (m), theta (K), qv (kg/kg), the winds in the ground's frame (m/s)
  *   HFSevereLab.run(spec, hooks)               // async: runs, calls hooks.frame(rec) for every recorded frame, hooks.progress(rec) at every step of the clock, hooks.yield() now and then (an await that lets a worker hear a cancel;
  *                                              // hooks.cancelled() true stops it, a string stops it with that as the reason: the frames so far are the run's); resolves { frames, header, wall, steps, stopped, reason }
- *      spec: { env: a (see envOf), dx 2000, box 84000 (m), nz 40, dz 500, dt 10, minutes 90, frameEvery 5 (minutes), bubble 3 (K), evap 1, twoMoment (false: the rain's drop number is a second variable of the core, see src/severe-core.js), iceParams (other settings of the ice scheme: n0g, rhog, n0r, xrMin, xrMax), seeds (the bubbles that start storms, see below), detail, ... }
+ *      spec: { env: a (see envOf), dx 2000, box 84000 (m), nz 40, dz 500, dt 10, minutes 90, frameEvery 5 (minutes), bubble 3 (K), evap 1, twoMoment (false: the rain's drop number is a second variable of the core, see src/severe-core.js), iceParams (other settings of the ice scheme: n0g, rhog, n0r, xrMin, xrMax), seeds (the bubbles that start storms, see below), drag (the ground's drag on the lowest level, the z0 of its log law in m: 0.1; 0 for none), detail, ... }
  *      frame rec: { i, t (minutes), block (Uint8Array: the five arrays of a pack's frame, and those of the nest if it has one), track: [x, y, w], wmax, zmax, thvmin, drift: [east, north], nest (true if the block has the nest's arrays), fn (the pack's `fn` of the frame) }
  *      hooks.start(header) is called once before the first frame with the header as it is then (the grid, the scale, the motion, the base state, the nests' grids; `times`, `track`, `drift` and `fn` empty, and growing with the frames):
  *      what a page needs to play the run while it goes (HFSeverePack.live)
@@ -18,6 +18,9 @@
  *      seeds (spec, one bubble in the middle at minute 0): [{ x, y (m from the box's south-west corner), t (minutes), amp (K), rx, ry (m), zc, rz (m) }]: the warm bubbles that start the storms, an initiation zone's way (docs/severe-plan.md 6.4). Those at minute 0 are in the
  *              initial state, the others are added when the clock reaches them (a run with a nest takes none of those); the box is periodic, so a bubble at an edge goes on at the other. The header's `lab.seeds` lists [x, y, t, amp] of each. A box of many storms is run with
  *              `follow: false`: nothing keeps one of them in the middle.
+ *      drag (spec, 0.1): the ground: a quadratic drag on the lowest level of the box (and of the nest), cd |V| V / dz with V the wind over the ground (the model's plus the storm's motion) and cd = (0.4 / ln(z1 / z0))^2, balanced against
+ *              the environment's own wind (src/severe-core.js `drag.balance`: only what a storm changes in the wind is slowed). Without it (0) the floor is free-slip, as every run was until version 1.30; the hook of a supercell is
+ *              sharper and curls more with it (docs/severe-research.md part 7). The header's `lab.drag` is the z0 (absent for none).
  *      follow (spec, true): the box keeps its storm in the middle. The box is periodic with nothing at its sides that knows where they are (no sponge, one sounding everywhere), so after each recorded frame the whole state is moved by whole cells to put the
  *      centre of the echo back in the middle (`centring`, `roll`), and the header's `drift` says, for each frame, how far the box's corner is from where the uniform motion would have it (HFSeverePack's corner adds it): the storm leaves no edge to be cut by.
  *      Without it a storm that moves a little differently from Bunkers' estimate (the dryline day's by 13 m/s northward) is out of a box of 84 km in an hour, and the sponge that stood at its sides made bars of echo as straight as the grid.
@@ -110,9 +113,9 @@
 
   async function run(spec, hooks) {
     hooks = hooks || {};
-    const evap = spec.evap === undefined ? 1 : spec.evap, env = envOf(spec.env), dx = spec.dx || 2000, L = spec.box || 84000, nx = Math.round(L / dx), nz = spec.nz || 40, dz = spec.dz || 500, dt = spec.dt || 10, minutes = spec.minutes || 90, every = spec.frameEvery || 5;
+    const evap = spec.evap === undefined ? 1 : spec.evap, drag = spec.drag === undefined ? 0.1 : (+spec.drag || 0), env = envOf(spec.env), dx = spec.dx || 2000, L = spec.box || 84000, nx = Math.round(L / dx), nz = spec.nz || 40, dz = spec.dz || 500, dt = spec.dt || 10, minutes = spec.minutes || 90, every = spec.frameEvery || 5;
     const physics = (n, d) => ({ nx: n, ny: n, nz, dx: d, dy: d, dz, moist: true, ice: true, iceParams: Object.assign({ n0g: 4e6, rhog: 400, n0r: 8e6, evap, twoMoment: !!spec.twoMoment }, spec.iceParams || {}), theta: env.theta, qv: env.qv, wind: { u: env.u, v: env.v },
-      visc: { kh: 500 * d / 2000, kv: 500 * d / 2000 }, damp: { top: { depth: 5000, rate: 0.003 } } });
+      visc: { kh: 500 * d / 2000, kv: 500 * d / 2000 }, damp: { top: { depth: 5000, rate: 0.003 } }, drag: drag ? { z0: drag, frame: { u: env.motion.u, v: env.motion.v }, balance: true } : null });
     const core = C.create(Object.assign(physics(nx, dx), { bc: { x: 'periodic', y: 'periodic' } }));
     const S = core.S, idx = core.idx, b = core.base, xc = L / 2, yc = L / 2, sz = idx(0, 0, 1) - idx(0, 0, 0), k5 = Math.min(nz - 2, Math.floor(5250 / dz));
     /* the bubbles that start storms (docs/severe-plan.md 6.4): `spec.seeds` is a list of { x, y (m from the box's south-west corner; the middle of the box), t (minutes; 0), amp (K; spec.bubble, 3), rx, ry (m; 10000), zc, rz (m; 1500) }, and a run
@@ -140,7 +143,7 @@
     };
     /* the header is made now and its frames' parts grow with them: a page that plays the run while it goes (hooks.start) has the grid, the scale, the motion and the nest's grid before the first frame */
     const header = { v: det ? 2 : 1, nx, ny: nx, nz, dx, dz, floor: -30, times: [], motion: { u: motion.u, v: motion.v }, track: [], drift: [], scale: { wind: 0.5, vz: 0.25 },
-      lab: Object.assign({ evap, bubble: spec.bubble === undefined ? 3 : spec.bubble, dt, minutes, follow }, spec.twoMoment ? { twoMoment: true } : {}, spec.seeds ? { seeds: seeds.map((q) => [Math.round(q.x), Math.round(q.y), q.t, q.amp === undefined ? 3 : q.amp]) } : {}, det ? { detail: { dx: det.dx, box: cn * det.dx, from: det.from, ztop: nzr * dz, every: det.every, minUpdraft: det.minUpdraft } } : {}),     // (what the run was set to; the pack reader does not look at it)
+      lab: Object.assign({ evap, bubble: spec.bubble === undefined ? 3 : spec.bubble, dt, minutes, follow }, drag ? { drag } : {}, spec.twoMoment ? { twoMoment: true } : {}, spec.seeds ? { seeds: seeds.map((q) => [Math.round(q.x), Math.round(q.y), q.t, q.amp === undefined ? 3 : q.amp]) } : {}, det ? { detail: { dx: det.dx, box: cn * det.dx, from: det.from, ztop: nzr * dz, every: det.every, minUpdraft: det.minUpdraft } } : {}),     // (what the run was set to; the pack reader does not look at it)
       base: { z: Array.from(b.rhoc, (_, k) => (k + 0.5) * dz), u: Array.from(b.ubc, (v) => +(v + motion.u).toFixed(3)), v: Array.from(b.vbc, (v) => +(v + motion.v).toFixed(3)) } };
     if (det) { header.nests = [{ nx: cn, ny: cn, nz: nzr, dx: det.dx, dz, scale: { wind: 1, vz: 0.25 }, frame: { u: 0, v: 0 } }]; header.fn = []; }
     if (hooks.start) hooks.start(header);
