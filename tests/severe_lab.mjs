@@ -319,6 +319,45 @@ const arrays = (nz = 41, dz = 500) => { const z = Array.from({ length: nz }, (_,
       rs.block === sub && eqBytes(new Uint8Array(sub.buffer, 3 + 20, 5 * per), plain.block) && tail.subarray(0, 23).every((x) => x === 255) && tail.subarray(23 + 5 * per).every((x) => x === 255));
   }
 
+  /* 8a2. The recorded window: the box's physics is all of it, the pack records its middle (`window`). The recorder keeps the columns of a window and nothing else; a run with a window is the run without it (the physics, the shifts that keep the storm in the
+         middle, read from the whole box and not from the window, the nest's place) with a pack that is the middle of the other's, and says so in its header. */
+  {
+    const nx = 8, ny = 6, nz = 5, a = arrays(nz + 1, 500), e = L.envOf(a);
+    const core = C.create({ nx, ny, nz, dx: 1000, dy: 1000, dz: 500, moist: true, ice: true, theta: e.theta, qv: e.qv, wind: { u: e.u, v: e.v }, bc: { x: 'periodic', y: 'periodic' } });
+    const st = core.S, idx = core.idx, sy = idx(0, 1, 0) - idx(0, 0, 0), sz = idx(0, 0, 1) - idx(0, 0, 0);
+    core.fill(); st.u.fill(0); st.v.fill(0); st.w.fill(0);
+    for (let k = 0; k < nz; k++) for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) { const o = idx(i, j, k); st.qr[o] = 1e-4 * (1 + i + 3 * j + k); st.u[o] = i - 3 * j + k; st.v[o] = 2 * i + j - k; st.w[o] = 1 + (i * j) % 5; }
+    st.qr[idx(0, 0, 2)] = 8e-3;                                                                                  // (the strongest echo of all is a column outside the window)
+    const full = L.recorder(core)(), win = L.recorder(core, { wx: 4, wy: 3, i0: 2, j0: 1 })(), per = nx * ny * nz, pw = 4 * 3 * nz;
+    let same = 0, tot = 0, zin = -99; const dbzF = new Int8Array(full.block.buffer, 0, per);
+    for (let c = 0; c < 5; c++) for (let k = 0; k < nz; k++) for (let j = 0; j < 3; j++) for (let i = 0; i < 4; i++) {
+      const w = (c === 1 ? new Uint8Array(win.block.buffer, c * pw, pw) : new Int8Array(win.block.buffer, c * pw, pw))[(k * 3 + j) * 4 + i], f = (c === 1 ? new Uint8Array(full.block.buffer, c * per, per) : new Int8Array(full.block.buffer, c * per, per))[(k * ny + (j + 1)) * nx + (i + 2)];
+      tot++; if (w === f) same++;
+    }
+    for (let k = 0; k < nz; k++) for (let j = 1; j < 4; j++) for (let i = 2; i < 6; i++) zin = Math.max(zin, dbzF[(k * ny + j) * nx + i]);
+    check('a recorder with a window (4 x 3 columns from the column 2, 1) keeps those columns of each of the five arrays and nothing else (' + win.block.length + ' bytes for ' + 5 * pw + '; ' + same + ' of ' + tot + ' values are the whole frame\'s at their place), and its strongest echo is the window\'s (' + win.zmax + ' dBZ, the whole frame\'s being ' + full.zmax + ' from a column outside)',
+      win.block.length === 5 * pw && same === tot && tot === 5 * nz * 12 && win.zmax === zin && full.zmax > zin + 3);
+    const dry = dryEnv(), spec = { env: dry, dx: 3000, box: 60000, dt: 10, minutes: 25, frameEvery: 5, seeds: [{ x: 14000, y: 30000 }] }, rf = await L.run(spec, {}), rw = await L.run(Object.assign({}, spec, { window: 36000 }), {});            // (the storm starts 2 km from the window's west edge: half of its echo is out of it)
+    const n0 = 20, nw0 = 12, w0 = 4, per0 = 5 * 40 * n0 * n0, perw = 5 * 40 * nw0 * nw0;
+    let ok = 0, all = 0; for (let f = 0; f < rf.frames.length; f++) for (let c = 0; c < 5; c++) for (let k = 0; k < 40; k++) for (let j = 0; j < nw0; j++) for (let i = 0; i < nw0; i++) {
+      const pf = per0 / 5, pw2 = perw / 5; all++; if (rw.frames[f].block[c * pw2 + (k * nw0 + j) * nw0 + i] === rf.frames[f].block[c * pf + (k * n0 + j + w0) * n0 + i + w0]) ok++;
+    }
+    const inW = (v) => v >= 12000 && v < 48000, tr = rf.frames.map((fr, f) => [rw.frames[f].track[0] - (fr.track[0] - w0 * 3000), rw.frames[f].track[1] - (fr.track[1] - w0 * 3000)]).filter((v, f) => rf.frames[f].track[2] > 0 && inW(rf.frames[f].track[0]) && inW(rf.frames[f].track[1]));
+    check('a run with `window: 36000` in a box of 60 km (12 of 20 cells of 3 km) records the middle of what the run without it records, byte for byte (' + ok + ' of ' + all + ' values of ' + rf.frames.length + ' frames), because the physics is the same (the drift that keeps the storm in the middle, ' + JSON.stringify(rw.header.drift) + ', is the same as ' + JSON.stringify(rf.header.drift) + ' and not zero: ' + rf.header.drift.some((d) => d[0] !== 0 || d[1] !== 0) + '), with the header saying what the pack is (nx ' + rw.header.nx + ', ny ' + rw.header.ny + ', box ' + rw.header.lab.box + ' m, window ' + rw.header.lab.window + ' m, none in the whole box\'s: ' + ('window' in rf.header.lab) + ')',
+      ok === all && all === rf.frames.length * 5 * 40 * 144 && JSON.stringify(rw.header.drift) === JSON.stringify(rf.header.drift) && rf.header.drift.some((d) => d[0] !== 0 || d[1] !== 0) && rw.header.nx === 12 && rw.header.ny === 12 && rw.header.lab.box === 60000 && rw.header.lab.window === 36000 && !('window' in rf.header.lab) && rf.header.nx === 20
+      && rw.frames.every((fr) => fr.block.length === perw) && rf.frames.every((fr) => fr.block.length === per0));
+    check('its track is the full run\'s less the window\'s corner (12000 m) wherever the updraft is in the window (' + tr.length + ' frames, differences ' + [...new Set(tr.map((v) => v.join(',')))].join(' and ') + ' m), it is always a place in the window (' + rw.frames.map((fr) => fr.track[0] + ',' + fr.track[1]).join(' ') + ' of 36000 m: the updraft that is out of it is not the window\'s), and the strongest echo of a frame is the window\'s (' + rw.frames.map((fr) => fr.zmax).join(', ') + ' dBZ against ' + rf.frames.map((fr) => fr.zmax).join(', ') + ')',
+      tr.length > 2 && tr.every((v) => Math.abs(v[0]) <= 1 && Math.abs(v[1]) <= 1) && rw.frames.every((fr) => fr.track[0] >= 0 && fr.track[0] < 36000 && fr.track[1] >= 0 && fr.track[1] < 36000) && rw.frames.every((fr, f) => fr.zmax <= rf.frames[f].zmax));
+    const tiny = { env: arrays(21, 500), dx: 4000, box: 40000, nz: 20, dz: 500, dt: 10, minutes: 2, frameEvery: 1 }, nd = { dx: 1000, from: 0, every: 1, minUpdraft: 0, box: 16000 };
+    const nf = await L.run(Object.assign({}, tiny, { detail: nd }), {}), nwn = await L.run(Object.assign({}, tiny, { detail: nd, window: 24000 }), {}), cn = nwn.header.nests[0], perN = 5 * 20 * 6 * 6 + 5 * cn.nx * cn.nx * cn.nz;
+    let nestSame = 0; for (let f = 0; f < nf.frames.length; f++) if (nf.frames[f].nest) { const a1 = nf.frames[f].block, b1 = nwn.frames[f].block, o1 = 5 * 20 * 100, o2 = 5 * 20 * 36; let s = true; for (let q = 0; q < 5 * cn.nx * cn.nx * cn.nz; q++) if (a1[o1 + q] !== b1[o2 + q]) { s = false; break; } if (s) nestSame++; }
+    check('with a nest the window moves its place in the pack (the nest\'s corner at ' + nf.header.fn[nf.header.fn.length - 1][0].join(',') + ' in the box of 40 km, ' + nwn.header.fn[nwn.header.fn.length - 1][0].join(',') + ' in the window of 24 km, 8000 m nearer the corner: the window\'s own is 6 cells of 4 km from the box\'s corner 2 cells in), a frame holds the window\'s box and the nest\'s (' + nwn.frames[nwn.frames.length - 1].block.length + ' bytes for ' + perN + '), and the nest is what it is without a window (' + nestSame + ' of ' + nf.frames.filter((fr) => fr.nest).length + ' frames with a nest)',
+      nf.header.fn[nf.header.fn.length - 1][0][1] === 12000 && nwn.header.fn[nwn.header.fn.length - 1][0][1] === 4000 && nwn.header.fn[nwn.header.fn.length - 1][0][2] === 4000 && nwn.frames[nwn.frames.length - 1].block.length === perN && nestSame === nf.frames.filter((fr) => fr.nest).length && nestSame > 0);
+    const big = await L.run(Object.assign({}, tiny, { window: 1e9 }), {}), small = await L.run(Object.assign({}, tiny, { window: 1 }), {}), odd = await L.run(Object.assign({}, tiny, { window: 13000 }), {}), odd2 = await L.run(Object.assign({}, tiny, { window: 15000 }), {});
+    check('a window as large as the box (or larger: ' + big.header.nx + ' cells of ' + big.header.dx + ' m for the box\'s 10) is the whole box and says nothing of it (' + ('window' in big.header.lab) + '), one that is smaller than 2 cells is 2 (' + small.header.nx + '), and one that is not a whole number of cells is rounded to the nearest (13 km is 3.25 cells of 4 km: ' + odd.header.nx + ' cells, ' + odd.header.lab.window + ' m; 15 km is 3.75: ' + odd2.header.nx + ' cells, ' + odd2.header.lab.window + ' m)',
+      big.header.nx === 10 && !('window' in big.header.lab) && small.header.nx === 2 && small.header.lab.window === 8000 && odd.header.nx === 3 && odd.header.lab.window === 12000 && odd2.header.nx === 4 && odd2.header.lab.window === 16000);
+  }
+
   /* 8b. The box moved with its nest: a parent of 16 x 16 cells of 3 km with a nest of 8 x 8 of them as 24 x 24 cells of 1 km, both in a storm of their own, moved by (1, -2), (-3, 0) and (0, 1) cells of the box. The box is moved as it is without a nest;
          the nest by 3 times as many cells, so that what is in it is where it was in the box's frame; the cells within 3 times the larger shift of its sides are the box's again, as a nest made at that moment has them. */
   {

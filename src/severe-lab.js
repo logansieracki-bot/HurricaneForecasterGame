@@ -18,6 +18,8 @@
  *      seeds (spec, one bubble in the middle at minute 0): [{ x, y (m from the box's south-west corner), t (minutes), amp (K), rx, ry (m), zc, rz (m) }]: the warm bubbles that start the storms, an initiation zone's way (docs/severe-plan.md 6.4). Those at minute 0 are in the
  *              initial state, the others are added when the clock reaches them (a run with a nest takes none of those); the box is periodic, so a bubble at an edge goes on at the other. The header's `lab.seeds` lists [x, y, t, amp] of each. A box of many storms is run with
  *              `follow: false`: nothing keeps one of them in the middle.
+ *      window (spec, the whole box): the width in metres of the part of the box that the pack records, in its middle (as whole cells; the box's physics is all of it). A storm in a box that holds it has no edge to be cut by or wrapped at: the Fine run's
+ *              box is 120 km and its pack 96 km, which keeps the pack's size and the work of the recording. The header's `nx`, `ny` and the nest's place are the window's; `lab.box` and `lab.window` (m) are there when it is smaller than the box.
  *      drag (spec, 0.1): the ground: a quadratic drag on the lowest level of the box (and of the nest), cd |V| V / dz with V the wind over the ground (the model's plus the storm's motion) and cd = (0.4 / ln(z1 / z0))^2 for the roughness z0 given
  *              (m; 0.1 is short grass), balanced against the environment's own wind (src/severe-core.js `drag.balance`: only what a storm changes in the wind is slowed). `drag: 0` is the free-slip floor that every run had before the ground was put in; the
  *              hook of a supercell is sharper and curls more with the ground (docs/severe-research.md part 7). The header's `lab.drag` is the z0 (absent for none).
@@ -52,20 +54,21 @@
   }
 
   /* a frame of a pack from the state: reflectivity (Int8 dBZ, -30 for none), the fall speed (Uint8, 0.25 m/s), and the winds at the cell centres in steps of `opt.wind` m/s (Int8, 0.5 unless said), each nz*ny*nx in the order level, y, x;
-     `opt.nz`: only the lowest nz levels are kept (the whole depth unless said). `record(into, at)` writes the five arrays into a given block of bytes from the byte `at` (a new block, 5 * nz * ny * nx bytes, if none is given),
+     `opt.nz`: only the lowest nz levels are kept (the whole depth unless said); `opt.wx`, `opt.wy`, `opt.i0`, `opt.j0`: only the window of wx x wy columns from the column (i0, j0) is kept (all of them unless said).
+     `record(into, at)` writes the five arrays into a given block of bytes from the byte `at` (a new block, 5 * nz * wy * wx bytes, if none is given),
      and returns { block, zmax } (the strongest echo of all the levels of the core, kept or not) */
   function recorder(core, opt) {
     opt = opt || {};
-    const nx = core.nx, ny = core.ny, nzc = core.nz, nz = Math.min(nzc, opt.nz || nzc), per = nx * ny * nz, S = core.S, idx = core.idx, sy = idx(0, 1, 0) - idx(0, 0, 0), sz = idx(0, 0, 1) - idx(0, 0, 0), step = opt.wind || 0.5;
+    const nx = core.nx, ny = core.ny, nzc = core.nz, nz = Math.min(nzc, opt.nz || nzc), wx = opt.wx || nx, wy = opt.wy || ny, i0 = opt.i0 || 0, j0 = opt.j0 || 0, per = wx * wy * nz, S = core.S, idx = core.idx, sy = idx(0, 1, 0) - idx(0, 0, 0), sz = idx(0, 0, 1) - idx(0, 0, 0), step = opt.wind || 0.5;
     const col = new Float64Array(nzc), vzc = new Float64Array(nzc), dbzColumn = RF.create(core).column, c8 = (v) => Math.max(-127, Math.min(127, Math.round(v / step)));
     return function record(into, at) {
       const block = into || new Uint8Array(5 * per), o0 = block.byteOffset + (into ? at || 0 : 0), dbz = new Int8Array(block.buffer, o0, per), vz = new Uint8Array(block.buffer, o0 + per, per), uu = new Int8Array(block.buffer, o0 + 2 * per, per), vv = new Int8Array(block.buffer, o0 + 3 * per, per), ww = new Int8Array(block.buffer, o0 + 4 * per, per);
       let zmax = -30;
-      for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+      for (let j = j0; j < j0 + wy; j++) for (let i = i0; i < i0 + wx; i++) {
         dbzColumn(i, j, col, vzc);
         for (let k = 0; k < nzc; k++) if (col[k] > zmax) zmax = col[k];
         for (let k = 0; k < nz; k++) {
-          const o = idx(i, j, k), at = (k * ny + j) * nx + i;
+          const o = idx(i, j, k), at = (k * wy + (j - j0)) * wx + (i - i0);
           dbz[at] = Math.max(-30, Math.min(120, Math.round(col[k]))); vz[at] = col[k] > -29 ? Math.max(0, Math.min(255, Math.round(4 * vzc[k]))) : 0;
           uu[at] = c8(0.5 * (S.u[o] + S.u[o + 1])); vv[at] = c8(0.5 * (S.v[o] + S.v[o + sy])); ww[at] = c8(0.5 * (S.w[o] + S.w[o + sz]));
         }
@@ -113,7 +116,7 @@
 
   async function run(spec, hooks) {
     hooks = hooks || {};
-    const evap = spec.evap === undefined ? 1 : spec.evap, drag = spec.drag === undefined ? 0.1 : (+spec.drag || 0), env = envOf(spec.env), dx = spec.dx || 2000, L = spec.box || 84000, nx = Math.round(L / dx), nz = spec.nz || 40, dz = spec.dz || 500, dt = spec.dt || 10, minutes = spec.minutes || 90, every = spec.frameEvery || 5;
+    const evap = spec.evap === undefined ? 1 : spec.evap, drag = spec.drag === undefined ? 0.1 : (+spec.drag || 0), env = envOf(spec.env), dx = spec.dx || 2000, L = spec.box || 84000, nx = Math.round(L / dx), nw = Math.min(nx, Math.max(2, Math.round((spec.window || L) / dx))), w0 = Math.floor((nx - nw) / 2), win = nw < nx, nz = spec.nz || 40, dz = spec.dz || 500, dt = spec.dt || 10, minutes = spec.minutes || 90, every = spec.frameEvery || 5;
     const physics = (n, d) => ({ nx: n, ny: n, nz, dx: d, dy: d, dz, moist: true, ice: true, iceParams: Object.assign({ n0g: 4e6, rhog: 400, n0r: 8e6, evap, twoMoment: !!spec.twoMoment }, spec.iceParams || {}), theta: env.theta, qv: env.qv, wind: { u: env.u, v: env.v },
       visc: { kh: 500 * d / 2000, kv: 500 * d / 2000 }, damp: { top: { depth: 5000, rate: 0.003 } }, drag: drag ? { z0: drag, frame: { u: env.motion.u, v: env.motion.v }, balance: true } : null });
     const core = C.create(Object.assign(physics(nx, dx), { bc: { x: 'periodic', y: 'periodic' } }));
@@ -125,7 +128,7 @@
     const timed = seeds.filter((q) => q.t > 0); let nextSeed = 0;
     for (let k = 0; k < nz; k++) for (let j = 0; j < nx; j++) for (let i = 0; i < nx; i++) { const o = idx(i, j, k); let th = 0; for (const q of seeds) if (!(q.t > 0)) th += warmth(q, i, j, k); S.th[o] = th; S.u[o] = b.ubc[k]; S.v[o] = b.vbc[k]; }
     core.fill();
-    const record = recorder(core), frames = [], t0 = Date.now(), motion = env.motion, nSteps = Math.round(minutes * 60 / dt), follow = spec.follow !== false, cum = [0, 0];
+    const record = recorder(core, win ? { wx: nw, wy: nw, i0: w0, j0: w0 } : {}), nzCen = Math.min(nz, Math.floor(3500 / dz) + 1), cenRec = win ? recorder(core, { nz: nzCen }) : null, frames = [], t0 = Date.now(), motion = env.motion, nSteps = Math.round(minutes * 60 / dt), follow = spec.follow !== false, cum = [0, 0];
     /* the detail nest: from the first recorded frame at or after `from` minutes a finer core (cells of `dx`, a box of `box` metres as whole cells of the box's, in its middle) lies in the middle of the box, driven at its sides by the box's own state
        (src/severe-nest.js), and every frame carries its lowest `ztop` metres beside the box's. It stays where it is in the box, which follows the storm, and is moved with the box when that is moved. */
     const NEST = globalThis.HFSevereNest, det = spec.detail ? Object.assign({ dx: 500, box: 40000, from: 20, ztop: 8000, every: 1, minUpdraft: 10 }, spec.detail) : null;
@@ -142,8 +145,8 @@
       nest = NEST.create({ parent: core, child, ratio, x0: cx0, y0: cy0 }); nest.init(); crec = recorder(child, { wind: 1, nz: nzr });
     };
     /* the header is made now and its frames' parts grow with them: a page that plays the run while it goes (hooks.start) has the grid, the scale, the motion and the nest's grid before the first frame */
-    const header = { v: det ? 2 : 1, nx, ny: nx, nz, dx, dz, floor: -30, times: [], motion: { u: motion.u, v: motion.v }, track: [], drift: [], scale: { wind: 0.5, vz: 0.25 },
-      lab: Object.assign({ evap, bubble: spec.bubble === undefined ? 3 : spec.bubble, dt, minutes, follow }, drag ? { drag } : {}, spec.twoMoment ? { twoMoment: true } : {}, spec.seeds ? { seeds: seeds.map((q) => [Math.round(q.x), Math.round(q.y), q.t, q.amp === undefined ? 3 : q.amp]) } : {}, det ? { detail: { dx: det.dx, box: cn * det.dx, from: det.from, ztop: nzr * dz, every: det.every, minUpdraft: det.minUpdraft } } : {}),     // (what the run was set to; the pack reader does not look at it)
+    const header = { v: det ? 2 : 1, nx: nw, ny: nw, nz, dx, dz, floor: -30, times: [], motion: { u: motion.u, v: motion.v }, track: [], drift: [], scale: { wind: 0.5, vz: 0.25 },
+      lab: Object.assign({ evap, bubble: spec.bubble === undefined ? 3 : spec.bubble, dt, minutes, follow }, win ? { box: L, window: nw * dx } : {}, drag ? { drag } : {}, spec.twoMoment ? { twoMoment: true } : {}, spec.seeds ? { seeds: seeds.map((q) => [Math.round(q.x), Math.round(q.y), q.t, q.amp === undefined ? 3 : q.amp]) } : {}, det ? { detail: { dx: det.dx, box: cn * det.dx, from: det.from, ztop: nzr * dz, every: det.every, minUpdraft: det.minUpdraft } } : {}),     // (what the run was set to; the pack reader does not look at it)
       base: { z: Array.from(b.rhoc, (_, k) => (k + 0.5) * dz), u: Array.from(b.ubc, (v) => +(v + motion.u).toFixed(3)), v: Array.from(b.vbc, (v) => +(v + motion.v).toFixed(3)) } };
     if (det) { header.nests = [{ nx: cn, ny: cn, nz: nzr, dx: det.dx, dz, scale: { wind: 1, vz: 0.25 }, frame: { u: 0, v: 0 } }]; header.fn = []; }
     if (hooks.start) hooks.start(header);
@@ -151,12 +154,12 @@
     for (let step = 0; step <= nSteps; step++) {
       const t = step * dt;
       if (t >= nextFrame - 1e-9) {
-        const d = core.diag(), dc = nest ? child.diag() : null, per5 = 5 * nx * nx * nz, { block, zmax } = record(nest ? new Uint8Array(per5 + 5 * cn * cn * nzr) : null, 0); let wm = -1, wx = 0, wy = 0;
+        const d = core.diag(), dc = nest ? child.diag() : null, per5 = 5 * nw * nw * nz, { block, zmax } = record(nest ? new Uint8Array(per5 + 5 * cn * cn * nzr) : null, 0); let wm = -1, wx = 0, wy = 0;
         if (nest) crec(block, per5);
-        for (let j = 0; j < nx; j++) for (let i = 0; i < nx; i++) { const o = idx(i, j, k5), w = 0.5 * (S.w[o] + S.w[o + sz]); if (w > wm) { wm = w; wx = (i + 0.5) * dx; wy = (j + 0.5) * dx; } }
-        const rec = { i: frames.length, t: t / 60, block, track: [Math.round(wx), Math.round(wy), +wm.toFixed(1)], wmax: +d.wmax.toFixed(1), zmax: Math.round(zmax), thvmin: +d.thvmin.toFixed(2), drift: [cum[0], cum[1]], nest: !!nest, fn: nest ? [[0, cx0, cy0]] : [] };
+        for (let j = w0; j < w0 + nw; j++) for (let i = w0; i < w0 + nw; i++) { const o = idx(i, j, k5), w = 0.5 * (S.w[o] + S.w[o + sz]); if (w > wm) { wm = w; wx = (i - w0 + 0.5) * dx; wy = (j - w0 + 0.5) * dx; } }
+        const rec = { i: frames.length, t: t / 60, block, track: [Math.round(wx), Math.round(wy), +wm.toFixed(1)], wmax: +d.wmax.toFixed(1), zmax: Math.round(zmax), thvmin: +d.thvmin.toFixed(2), drift: [cum[0], cum[1]], nest: !!nest, fn: nest ? [[0, cx0 - w0 * dx, cy0 - w0 * dx]] : [] };
         if (!Number.isFinite(d.wmax) || d.wmax > 150 || (dc && (!Number.isFinite(dc.wmax) || dc.wmax > 150))) { stopped = true; reason = 'the model blew up at ' + (t / 60).toFixed(1) + ' min'; break; }
-        const c = follow ? centring(block, nx, nx, nz, dz) : null;                                         // (looked at before the hook: a worker hands the block over to the page and it is gone from here)
+        const c = follow ? (win ? centring(cenRec().block, nx, nx, nzCen, dz) : centring(block, nx, nx, nz, dz)) : null;          // (a window is not periodic: the echo's place is read from the whole box; looked at before the hook: a worker hands the block over to the page and it is gone from here)
         frames.push(rec); header.times.push(rec.t); header.track.push(rec.track); header.drift.push(rec.drift); if (det) header.fn.push(rec.fn); if (hooks.frame) hooks.frame(rec);
         if (c && (c.sx || c.sy)) { rollNested(core, nest, ratio, c.sx, c.sy); cum[0] -= c.sx * dx; cum[1] -= c.sy * dx; }       // (the storm is back in the middle, the box's corner is where the storm's drift has taken it)
         if (det && !nest && t >= det.from * 60 - 1e-9 && d.wmax >= det.minUpdraft) { startNest(); if (hooks.nest) hooks.nest({ child, nest }); }

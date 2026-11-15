@@ -510,7 +510,7 @@
       '<p class="story" id="run-story"></p>' +
       '<div class="row2"><button id="run-go" class="primary">Start</button></div>';
     const story = () => { $('run-story').innerHTML = zn ? runStoryZone(zn, LAB.minutes) : LAB.detail ? runStoryFine(LAB.minutes) : runStoryFast(); };
-    $('run-x').addEventListener('click', closeRun); $('run-go').addEventListener('click', () => { runStorm(Object.assign({ minutes: LAB.minutes }, zn ? zoneRun(zn) : LAB.detail ? FINE : {})).catch(() => {}); });
+    $('run-x').addEventListener('click', closeRun); $('run-go').addEventListener('click', () => { runStorm(Object.assign({ minutes: LAB.minutes }, zn ? zoneRun(zn) : LAB.detail ? FINE : FAST)).catch(() => {}); });
     el.querySelectorAll('#run-len button').forEach((b) => b.addEventListener('click', () => { LAB.minutes = +b.dataset.m; el.querySelectorAll('#run-len button').forEach((x) => x.setAttribute('aria-pressed', String(x === b))); story(); }));
     el.querySelectorAll('#run-det button').forEach((b) => b.addEventListener('click', () => {
       LAB.detail = b.dataset.d === '1'; el.querySelectorAll('#run-det button').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
@@ -519,13 +519,14 @@
     }));
     story();
   }
-  /* the fine model (src/severe-lab.js, `detail`): the box's cells of 1 km (a step of 5 s) and, from the 20th minute, a core of cells of 500 m over 30 km inside it that stays on the storm. What it costs per model minute, measured in Node: about 10 s for the box of 1 km and 38 s with the nest
-     (the nest's 28 s on top of it): 3.8 times the box's rate. The quick model is the box of 2 km alone (0.45 s a minute). */
-  const DETAIL = { dx: 500, box: 30000, from: 20, ztop: 8000, every: 1, cost: 3.8, boxRate: 9 }, FINE = { dx: 1000, dt: 5, detail: DETAIL }, NEST_COST = 60;
-  const runStoryFast = () => 'The real model, 2 km cells in a box 84 km wide that moves with the storm, started in the drawing\'s sounding at the spot you tapped by a warm bubble. The radar opens at once and the frames appear on its slider as they are made: the whole storm takes a few minutes on this device. A storm of 2 km cells is smooth, with no hook.';
+  /* the fine model (src/severe-lab.js, `detail`): the box's cells of 1 km (a step of 5 s) and, from the 20th minute, a core of cells of 500 m over 30 km inside it that stays on the storm. What it costs per model minute, measured in Node (15 Nov, the box of 108 km, its middle of 96 km recorded):
+     about 16 s for the box in the first minutes and 37 s with the nest, in a mature storm 48 s (3800 s for the 90 minutes: 3.1 times the box's first rate); the box of 84 km was 10 and 38 s (2984 s) and had the storm meet its edges after 50 minutes.
+     The quick model is the box of 128 km at 2 km alone (about 1 s a minute). */
+  const DETAIL = { dx: 500, box: 30000, from: 20, ztop: 8000, every: 1, cost: 3.1, boxRate: 15 }, FINE = { dx: 1000, dt: 5, box: 108000, window: 96000, detail: DETAIL }, FAST = { box: 128000 }, NEST_COST = 60;
+  const runStoryFast = () => 'The real model, 2 km cells in a box 128 km wide that moves with the storm, started in the drawing\'s sounding at the spot you tapped by a warm bubble. The radar opens at once and the frames appear on its slider as they are made: the whole storm takes a few minutes on this device. A storm of 2 km cells is smooth, with no hook.';
   const runStoryFine = (min) => {
-    const work = Math.min(min, DETAIL.from) * 0.17 + Math.max(0, min - DETAIL.from) * 0.65, mins = Math.max(5, Math.round(work / 5) * 5);
-    return 'The real model with cells of 1 km, and from the ' + DETAIL.from + 'th minute a second one inside it: cells of ' + DETAIL.dx + ' m over ' + DETAIL.box / 1000 + ' km that stay on the storm and show its core finely. The radar opens at once and the frames appear on its slider as they are made: the first ' + DETAIL.from + ' minutes in about three minutes, then a frame about every half minute, <b>about ' + mins + ' minutes</b> in all on a fast computer, much longer on a phone. ' +
+    const work = Math.min(min, DETAIL.from) * 0.3 + Math.max(0, min - DETAIL.from) * 0.82, mins = Math.max(5, Math.round(work / 5) * 5);
+    return 'The real model with cells of 1 km, and from the ' + DETAIL.from + 'th minute a second one inside it: cells of ' + DETAIL.dx + ' m over ' + DETAIL.box / 1000 + ' km that stay on the storm and show its core finely. The radar opens at once and the frames appear on its slider as they are made: the first ' + DETAIL.from + ' minutes in about six minutes, then a frame about every minute, <b>about ' + mins + ' minutes</b> in all on a fast computer, much longer on a phone. ' +
       (min < 70 ? 'A hook echo comes late in a storm, from about 60 minutes on, so this run will not have one yet.' : 'You can watch it as it goes, and Stop keeps what it has made. A hook echo comes late in a storm, from about 60 minutes on, and is weaker here than in a recorded storm with all of it at 500 m (Storms, Tornado outbreak day, 500 m).');
   };
   /* a run with an initiation zone (src/severe-zone.js): a box that holds the zone and 40 km round it, cells of 2 km, a warm bubble at each place and time the zone's draw gives, the box following no storm, no nest. What it costs is the Fast model's
@@ -563,7 +564,7 @@
      storm exists, from the path that the sounding's own motion gives, with more room (45 km from its middle, 30 km from every place on it) than a path that is known would need; when the run is over and the storm went another
      way, a site that it went under or far from is changed for the one that its own path asks for. */
   function runStorm(o) {
-    o = Object.assign({ minutes: 90, dx: 2000, box: 84000, dt: 10 }, o);
+    o = Object.assign({ minutes: 90, dx: 2000, box: 128000, dt: 10 }, o);
     return new Promise((resolve, reject) => {
       if (LAB.busy) return reject(new Error('a storm is running')); if (!E.spot) return reject(new Error('no spot'));
       const L = labEnv(); LAB.busy = true; LAB.t0 = Date.now(); LAB.prog = []; closeSheet(); $('ed-run').hidden = true; toast('Starting the model…', 3000);
@@ -591,7 +592,7 @@
       };
       w.onmessage = (ev) => { chain = chain.then(() => handle(ev.data)).catch((e) => fail('Could not show the storm: ' + (e && e.message || e), e)); };
       w.onerror = (e) => fail('The model stopped: ' + (e.message || 'worker error'), new Error(e.message || 'worker error'));
-      w.postMessage({ t: 'run', spec: { env: L.arr, dx: o.dx, box: o.box, dt: o.dt, minutes: o.minutes, frameEvery: o.frameEvery || 5, nz: o.nz || 40, dz: o.dz || 500, bubble: o.bubble, detail: o.detail, seeds: o.seeds, follow: o.follow } });
+      w.postMessage({ t: 'run', spec: { env: L.arr, dx: o.dx, box: o.box, dt: o.dt, minutes: o.minutes, frameEvery: o.frameEvery || 5, nz: o.nz || 40, dz: o.dz || 500, bubble: o.bubble, detail: o.detail, seeds: o.seeds, follow: o.follow, window: o.window } });
     });
   }
   /* the radar the storm's own path asks for, when the one chosen at the start is not it: a storm that went within 15 km of the radar (under it, in its cone of silence) or more than 200 km from it is seen from another, as a radar network hands a storm on */
