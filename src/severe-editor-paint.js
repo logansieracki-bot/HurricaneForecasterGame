@@ -3,7 +3,7 @@
  *
  *   HFSevereEditorPaint.LAYERS                 // the maps: [{ id, field, name, unit(s), range, stops }]
  *   HFSevereEditorPaint.fieldColor(layer, v)   // [r, g, b, a] (a from 0 to 1) of a value on a map; a value that is not a number is transparent
- *   HFSevereEditorPaint.drawObject(c, o, ctx)  // an object of the drawing; ctx: { P: (x, y) => [px, py], th, selected, speedText, pressureText, kmToPx }
+ *   HFSevereEditorPaint.drawObject(c, o, ctx)  // an object of the drawing; ctx: { P: (x, y) => [px, py], th, selected, speedText, pressureText, kmToPx, seeds ([[x, y] km] of an initiation zone), zoneText }
  *   HFSevereEditorPaint.drawArrow / drawBarb / drawHandle / drawLegend / drawSkewT / drawHodograph
  *
  * A classic script that sets `globalThis.HFSevereEditorPaint`; it needs HFSevereDraw first (the geometry).
@@ -35,9 +35,9 @@
 
   /* ---- the colours of the objects ---- */
   const OBJ = {
-    dark: { cold: '#55a8ff', warm: '#ff6256', occluded: '#b98aff', dryline: '#f3a73f', trough: '#d9a56a', outflow: '#8fd0ff', moisture: '#52d894', jet: '#c99cff', llj: '#ffa24f', utrough: '#ff7fbd', low: '#ff6a5c', high: '#5aaeff',
+    dark: { cold: '#55a8ff', warm: '#ff6256', occluded: '#b98aff', dryline: '#f3a73f', trough: '#d9a56a', outflow: '#8fd0ff', moisture: '#52d894', jet: '#c99cff', llj: '#ffa24f', utrough: '#ff7fbd', low: '#ff6a5c', high: '#5aaeff', zone: '#ff8ad8',
       sel: '#ffffff', arrow: 'rgba(255,255,255,.88)', iso: 'rgba(238,243,250,.58)', isoText: '#f1f5fb', halo: 'rgba(6,9,15,.92)', barb: 'rgba(240,245,252,.88)', disc: 'rgba(10,15,24,.86)', text: '#f3f6fb' },
-    light: { cold: '#1b6fd6', warm: '#d43a30', occluded: '#7d4fd0', dryline: '#c97a0c', trough: '#9b6a35', outflow: '#2a86c9', moisture: '#14a064', jet: '#8a52d6', llj: '#d2761c', utrough: '#d0408a', low: '#d43a30', high: '#1b6fd6',
+    light: { cold: '#1b6fd6', warm: '#d43a30', occluded: '#7d4fd0', dryline: '#c97a0c', trough: '#9b6a35', outflow: '#2a86c9', moisture: '#14a064', jet: '#8a52d6', llj: '#d2761c', utrough: '#d0408a', low: '#d43a30', high: '#1b6fd6', zone: '#c2349a',
       sel: '#10131a', arrow: 'rgba(20,28,44,.85)', iso: 'rgba(28,40,60,.55)', isoText: '#16202f', halo: 'rgba(255,255,255,.92)', barb: 'rgba(24,34,52,.88)', disc: 'rgba(255,255,255,.92)', text: '#161d2a' },
   };
   const colorOf = (o, T) => (o.type === 'front' ? T[o.kind === 'stationary' ? 'cold' : (o.kind || 'cold')] : T[o.type] || T.cold);
@@ -125,6 +125,12 @@
       else if (o.type === 'trough') stroke(c, px, 2.6, color, [11, 7]);
       else if (o.type === 'outflow') { stroke(c, px, 2.2, color, [4, 5]); symbols(c, px, o, color, T); }
       else if (o.type === 'moisture') { c.globalAlpha = .26; stroke(c, px, 16, color); c.globalAlpha = 1; stroke(c, px, 2.2, color, [2, 9]); }
+      else if (o.type === 'zone') {                                                                          // an initiation zone: the band the bubbles may go in, its middle line, and the bubbles themselves
+        c.globalAlpha = .2; stroke(c, px, Math.max(12, (o.width === undefined ? 20 : o.width) * (g.kmToPx || 0.5)), color); c.globalAlpha = 1; stroke(c, px, 2.4, color, [12, 6]);
+        (g.seeds || []).forEach((q) => { const p = P(q[0], q[1]); c.beginPath(); c.arc(p[0], p[1], 8, 0, TAU); c.fillStyle = T.disc; c.fill(); c.lineWidth = 2.2; c.strokeStyle = color; c.stroke(); c.beginPath(); c.arc(p[0], p[1], 3, 0, TAU); c.fillStyle = color; c.fill(); });
+        const m = DR.along(px, 0.5); c.textAlign = 'center'; c.textBaseline = 'middle';
+        halo(c, 'Initiation zone' + (g.zoneText ? ' · ' + g.zoneText : ''), m.x + 24 * Math.sin(m.ang), m.y - 24 * Math.cos(m.ang), T, '700 11px ' + FONT);
+      }
       else if (o.type === 'jet' || o.type === 'llj') {
         c.globalAlpha = .2; stroke(c, px, o.type === 'jet' ? 20 : 15, color); c.globalAlpha = 1; stroke(c, px, 2.6, color);
         DR.symbolsAlong(px, 170, 85).forEach((s) => head(c, s.x, s.y, s.ang, 12, color));

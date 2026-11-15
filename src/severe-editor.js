@@ -11,6 +11,9 @@
   const G = globalThis.HFSevereGeo, MAP = globalThis.HFSevereMap, DR = globalThis.HFSevereDraw, AN = globalThis.HFSevereAnalysis, SND = globalThis.HFSevereSounding, DAYS = globalThis.HFSevereDays, GD = globalThis.HFSevereGuide, PT = globalThis.HFSevereEditorPaint;
   if (!(G && MAP && DR && AN && SND && DAYS && GD && PT && document.getElementById('editor'))) return;
   const $ = (id) => document.getElementById(id), DEG = Math.PI / 180, KMH = 3.6, LS = 'hf-severe-draft', STAMP = 'HYPOTHETICAL from Isobar Severe Simulator';
+  const ZN = globalThis.HFSevereZone;
+  /* the initiation zone is behind a switch until it is turned on for everyone: the address with `?zone` (or localStorage hf-zone = 1) has its tool */
+  const ZONE_ON = (() => { try { return /[?&#]zone\b/.test(String(location.search) + String(location.hash)) || localStorage.getItem('hf-zone') === '1'; } catch (e) { return false; } })();
   const ESC = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
 
@@ -29,6 +32,7 @@
     jet: '<path d="M3 12h15.500M13 6.500l5.500 5.500-5.500 5.500"/>',
     llj: '<path d="M3.500 17c5 0 7-5 12.500-5"/><path d="M12.500 8l4 4-4 4"/><path d="M3.500 20.500h17" stroke-dasharray="2 3"/>',
     utrough: '<circle cx="12" cy="12" r="8" stroke-dasharray="3 2.600"/><path d="M12 8.200a3.800 3.800 0 1 0 3.800 3.800"/><path class="fl" d="M17.800 11.400l-2.300 2.800-2.300-2.800z"/>',
+    zone: '<path d="M3 15h18" stroke-dasharray="5 3"/><circle cx="7" cy="15" r="2.600"/><circle cx="13" cy="15" r="2.600"/><circle cx="19" cy="15" r="2.600"/><path d="M7 9.500v2M13 7v4M19 9.500v2"/>',
     probe: '<circle cx="12" cy="12" r="5.200"/><path d="M12 2.500v5M12 16.500v5M2.500 12h5M16.500 12h5"/>',
   };
   const TOOLS = [
@@ -49,6 +53,7 @@
     { id: 'jet', key: 'j', type: 'jet', name: 'Jet stream', c: '#c99cff', hint: 'Sketch the jet in the way the wind blows' },
     { id: 'llj', key: 'k', type: 'llj', name: 'Low-level jet', c: '#ffa24f', hint: 'Sketch the low-level jet in the way the wind blows' },
     { id: 'utrough', key: 'u', type: 'utrough', name: 'Upper low', c: '#ff7fbd', hint: 'Tap the map to place a circulation aloft', point: true },
+    ...(ZONE_ON ? ['gap', { id: 'zone', key: 'z', type: 'zone', name: 'Initiation zone', c: '#ff8ad8', hint: 'Sketch the line along which storms start: warm bubbles go off along it and the day decides what they become' }] : []),
     'gap',
     { id: 'probe', key: 'p', name: 'Sounding at a spot', hint: 'Tap a spot for its skew-T, its hodograph and what storms to expect' },
   ];
@@ -66,9 +71,10 @@
     jet: [['speed', 'Speed', 'speed', 5, 60, 1, 25], ['width', 'Width', 'dist', 100, 500, 10, 250]],
     llj: [['speed', 'Speed', 'speed', 5, 40, 1, 18], ['width', 'Width', 'dist', 60, 300, 10, 150]],
     utrough: [['speed', 'Strength', 'speed', 5, 50, 1, 25], ['size', 'Size', 'dist', 200, 900, 10, 500]],
+    zone: [['width', 'Width', 'dist', 5, 60, 1, 20], ['density', 'Density', 'per 100 km', 1, 10, 0.5, 3], ['strength', 'Warming', 'K', 1, 6, 0.5, 3], ['from', 'Start after', 'min', 0, 60, 5, 0], ['over', 'Spread over', 'min', 0, 60, 5, 30]],
   };
   const FRONT_DEF = { cold: { contrast: 12, width: 40 }, warm: { contrast: 10, width: 60 }, stationary: { contrast: 8, width: 50 }, occluded: { contrast: 8, width: 50 } };
-  const NAME = { low: 'Low pressure', high: 'High pressure', trough: 'Surface trough', dryline: 'Dryline', outflow: 'Outflow boundary', moisture: 'Moist tongue', jet: 'Jet stream', llj: 'Low-level jet', utrough: 'Upper low',
+  const NAME = { low: 'Low pressure', high: 'High pressure', trough: 'Surface trough', dryline: 'Dryline', outflow: 'Outflow boundary', moisture: 'Moist tongue', jet: 'Jet stream', llj: 'Low-level jet', utrough: 'Upper low', zone: 'Initiation zone',
     cold: 'Cold front', warm: 'Warm front', stationary: 'Stationary front', occluded: 'Occluded front' };
   const nameOf = (o) => (o.type === 'front' ? NAME[o.kind || 'cold'] : NAME[o.type]);
   const COLOR = (o) => { const t = toolById(o.type === 'front' ? (o.kind || 'cold') : o.type); return (t && t.c) || '#72d6ff'; };
@@ -100,7 +106,7 @@
     E.ver++; E.pgrid = null; E.barbs = null; E.fields = null; E.warns = GD.warnings(E.drawing); dirtyField = performance.now(); redraw(); syncWarn(); scheduleField(); return true;
   }
   function commit() { E.hist.push(snap()); syncUndo(); saveDraft(); }
-  function restore(json) { E.drawing = JSON.parse(json); if (E.sel >= E.drawing.objects.length) E.sel = -1; E.build = null; rebuild(); syncAll(); saveDraft(); }
+  function restore(json) { E.drawing = JSON.parse(json); if (E.sel >= E.drawing.objects.length) E.sel = -1; E.build = null; syncZoneSpot(); rebuild(); syncAll(); saveDraft(); }
   function undo() { if (E.hist.canUndo()) restore(E.hist.undo()); }
   function redo() { if (E.hist.canRedo()) restore(E.hist.redo()); }
   function saveDraft() { try { localStorage.setItem(LS, JSON.stringify({ v: 1, day: { id: E.day.id, name: E.day.name, place: E.day.place, lat: E.day.lat, lon: E.day.lon, story: E.day.story, spot: E.day.spot }, drawing: E.drawing })); } catch (e) { /* none */ } }
@@ -132,10 +138,22 @@
     else if (o.type === 'trough') { o.depth = 4; o.motion = { u: 8, v: 0 }; }
     else if (o.type === 'moisture') { o.amount = 3; o.motion = { u: 0, v: 0 }; }
     else if (o.type === 'jet') { o.speed = 25; o.motion = { u: 12, v: 0 }; } else if (o.type === 'llj') { o.speed = 18; o.motion = { u: 8, v: 0 }; }
+    else if (o.type === 'zone') { o.width = 20; o.density = 3; o.strength = 3; o.from = 0; o.over = 30; o.seed = 1; }
     return o;
   }
   const canEdit = () => E.t === 0;
-  function addObject(o) { E.drawing.objects.push(o); E.sel = E.drawing.objects.length - 1; commit(); rebuild(); syncAll(); }
+  const zoneOf = () => E.drawing.objects.find((o) => o.type === 'zone') || null;
+  /* the zone as the module takes it (m, minutes) and the bubbles it draws */
+  const zoneSpec = (z) => ({ kind: 'line', pts: z.pts.map((p) => [p[0] * 1000, p[1] * 1000]), width: (z.width === undefined ? 20 : z.width) * 1000, density: z.density === undefined ? 3 : z.density, strength: z.strength === undefined ? 3 : z.strength, window: [z.from || 0, (z.from || 0) + (z.over === undefined ? 30 : z.over)], seed: z.seed || 1 });
+  function zoneSeeds(z) { const key = JSON.stringify(zoneSpec(z)); if (E.zk !== key) { try { E.zs = ZN.draw(zoneSpec(z)); } catch (e) { E.zs = []; } E.zk = key; } return E.zs; }
+  function zonePlan(z) { return ZN.plan(zoneSpec(z), { dx: 2000 }); }
+  /* the drawing's sounding is taken at one place, and a zone's is its middle: while there is a zone the storm's spot is the middle of its bounding box */
+  function syncZoneSpot() {
+    const z = zoneOf(); if (!z || !z.pts || z.pts.length < 2) return; let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+    for (const p of z.pts) { x0 = Math.min(x0, p[0]); x1 = Math.max(x1, p[0]); y0 = Math.min(y0, p[1]); y1 = Math.max(y1, p[1]); }
+    E.spot = { x: Math.round((x0 + x1) / 2), y: Math.round((y0 + y1) / 2) }; syncStart();
+  }
+  function addObject(o) { if (o.type === 'zone') E.drawing.objects = E.drawing.objects.filter((q) => q.type !== 'zone'); E.drawing.objects.push(o); E.sel = E.drawing.objects.length - 1; syncZoneSpot(); commit(); rebuild(); syncAll(); }
 
   /* ---- the anchor of an object (where its arrow starts) and the tip of the arrow ---- */
   function anchorOf(o) { if (o.pts) { const a = DR.along(o.pts, 0.5); return [a.x, a.y]; } return [o.x, o.y]; }
@@ -195,13 +213,14 @@
       const kp = (a) => { const q = P(a[0] + 100, a[1]), q0 = P(a[0], a[1]); return Math.hypot(q[0] - q0[0], q[1] - q0[1]) / 100; };
       void p;
       let pressureText = ''; if (o.type === 'low' || o.type === 'high') pressureText = Math.round(E.A.pressure(o.x, o.y, E.t)) + ' hPa';
-      PT.drawObject(c, o, { P, th, selected: sel, activePoint: sel ? E.activePoint : -1, speedText: o.speed !== undefined ? fmtSpeed(o.speed) : '', pressureText, kmToPx: kp(anchorOf(o)) });
+      const zs = o.type === 'zone' ? zoneSeeds(o) : null;
+      PT.drawObject(c, o, { P, th, selected: sel, activePoint: sel ? E.activePoint : -1, speedText: o.speed !== undefined ? fmtSpeed(o.speed) : '', pressureText, kmToPx: kp(anchorOf(o)), seeds: zs ? zs.map((q) => [q.x / 1000, q.y / 1000]) : undefined, zoneText: zs ? zs.length + (zs.length === 1 ? ' bubble' : ' bubbles') : '' });
       if (E.show.arrow && sp > 0.2) { const a = anchorOf(o), t = tipOf(o), A0 = P(a[0], a[1]), A1 = P(t[0], t[1]); PT.drawArrow(c, A0[0], A0[1], A1[0], A1[1], T, fmtSpeed(sp), sel); }
-      if (sel && canEdit()) { const t = tipOf(o), q = P(t[0], t[1]); PT.drawHandle(c, q[0], q[1], T, E.activePoint === 'tip'); }
+      if (sel && canEdit() && o.type !== 'zone') { const t = tipOf(o), q = P(t[0], t[1]); PT.drawHandle(c, q[0], q[1], T, E.activePoint === 'tip'); }
     });
     if (E.build) { const px = E.build.pts.map((p) => P(p[0], p[1])); if (E.hover && E.build.pts.length) px.push(E.hover); c.lineWidth = 2.6; c.strokeStyle = E.build.color; c.setLineDash([7, 5]); c.beginPath(); px.forEach((p, i) => (i ? c.lineTo(p[0], p[1]) : c.moveTo(p[0], p[1]))); c.stroke(); c.setLineDash([]); E.build.pts.forEach((p) => { const q = P(p[0], p[1]); PT.drawHandle(c, q[0], q[1], T, false); }); }
     if (E.sketch) { c.lineWidth = 3; c.strokeStyle = E.sketch.color; c.lineJoin = 'round'; c.beginPath(); E.sketch.px.forEach((p, i) => (i ? c.lineTo(p[0], p[1]) : c.moveTo(p[0], p[1]))); c.stroke(); }
-    if (E.spot) paintSpot(c, view, T, P);
+    if (E.spot && !zoneOf()) paintSpot(c, view, T, P);
     if (E.probe) paintProbe(c, view, T, P);
     c.restore();
   }
@@ -245,7 +264,7 @@
   function tolKm(x, y) { return kmPerPx(map.view, x, y) * 16; }
   function hit(x, y) {
     const km = toKm(map.view, x, y), tol = tolKm(x, y);
-    if (E.sel >= 0 && canEdit()) { const o = hourMoved(E.drawing.objects[E.sel]), t = tipOf(o); if (Math.hypot(t[0] - km[0], t[1] - km[1]) <= tol) return { index: E.sel, part: 'tip' }; }
+    if (E.sel >= 0 && canEdit() && E.drawing.objects[E.sel].type !== 'zone') { const o = hourMoved(E.drawing.objects[E.sel]), t = tipOf(o); if (Math.hypot(t[0] - km[0], t[1] - km[1]) <= tol) return { index: E.sel, part: 'tip' }; }
     return DR.pick(E.drawing.objects, km[0], km[1], tol, E.t);
   }
   function dragHandler(x, y) {
@@ -264,7 +283,7 @@
           else { o.x = orig.x + dx; o.y = orig.y + dy; }
           rebuildLight();
         },
-        end() { E.drag = null; if (moved) { if (o.pts) o.pts = o.pts.map((p) => [Math.round(p[0]), Math.round(p[1])]); if (o.x !== undefined) { o.x = Math.round(o.x); o.y = Math.round(o.y); } commit(); rebuild(); syncProps(); } E.activePoint = -1; redraw(); },
+        end() { E.drag = null; if (moved) { if (o.pts) o.pts = o.pts.map((p) => [Math.round(p[0]), Math.round(p[1])]); if (o.x !== undefined) { o.x = Math.round(o.x); o.y = Math.round(o.y); } if (o.type === 'zone') syncZoneSpot(); commit(); rebuild(); syncProps(); } E.activePoint = -1; redraw(); },
       };
     }
     /* a drawing tool */
@@ -433,8 +452,8 @@
     const flip = o.type === 'front' || o.type === 'dryline' || o.type === 'outflow' ? '<button id="p-flip"' + disabled + '>Flip sides</button>' : '';
     el.classList.toggle('fold', !!E.fold.props);
     el.innerHTML = '<div class="ptitle2 fh" data-f="props" style="--c:' + COLOR(o) + '"><span class="dot"></span><b>' + ESC(nameOf(o)) + '</b><i></i></div><div class="body">' + kindSel + rows +
-      slider('p-speed', 'Moves at', sp * U.k, 0, 30 * U.k, 1, Math.round(sp * U.k) + ' ' + U.speed) + slider('p-head', 'Heading', hd, 0, 359, 1, Math.round(hd) + '° (' + compass(hd) + ')') +
-      '<div class="row2">' + flip + '<button id="p-dup"' + disabled + '>Duplicate</button><button id="p-del" class="danger"' + disabled + '>Delete</button></div></div>';
+      (o.type === 'zone' ? '' : slider('p-speed', 'Moves at', sp * U.k, 0, 30 * U.k, 1, Math.round(sp * U.k) + ' ' + U.speed) + slider('p-head', 'Heading', hd, 0, 359, 1, Math.round(hd) + '° (' + compass(hd) + ')')) +
+      '<div class="row2">' + flip + (o.type === 'zone' ? '<button id="p-shuffle"' + disabled + '>Shuffle</button>' : '<button id="p-dup"' + disabled + '>Duplicate</button>') + '<button id="p-del" class="danger"' + disabled + '>Delete</button></div></div>';
     el.querySelector('.fh').addEventListener('click', () => { E.fold.props = !E.fold.props; el.classList.toggle('fold', E.fold.props); });
     if (!canEdit()) el.querySelectorAll('input').forEach((i) => { i.disabled = true; });
     el.querySelectorAll('#p-kind button').forEach((b) => b.addEventListener('click', () => { o.kind = b.dataset.k; const F = FRONT_DEF[o.kind]; if (o.contrast === undefined || [8, 10, 12].includes(o.contrast)) o.contrast = F.contrast; commit(); rebuild(); syncProps(); }));
@@ -443,6 +462,7 @@
     wireSlider('p-speed', () => setMotion(), (v) => Math.round(v) + ' ' + U.speed); wireSlider('p-head', () => setMotion(), (v) => Math.round(v) + '° (' + compass(v) + ')');
     const f = $('p-flip'); if (f) f.addEventListener('click', () => { const key = o.type === 'dryline' ? 'dry' : o.type === 'outflow' ? 'cool' : 'cold', cur = o[key] || 'left'; o[key] = opp(cur); if (o.motion && o.type !== 'dryline' && o.type !== 'outflow') { o.motion = { u: o.motion.u, v: o.motion.v }; } commit(); rebuild(); syncProps(); });
     const dup = $('p-dup'); if (dup) dup.addEventListener('click', () => { const c = JSON.parse(JSON.stringify(o)); if (c.pts) c.pts = c.pts.map((p) => [p[0] + 80, p[1] - 60]); else { c.x += 80; c.y -= 60; } E.drawing.objects.push(c); E.sel = E.drawing.objects.length - 1; commit(); rebuild(); syncProps(); });
+    const shuf = $('p-shuffle'); if (shuf) shuf.addEventListener('click', () => { o.seed = (o.seed || 1) + 1; commit(); rebuild(); syncProps(); redraw(); });
     const del = $('p-del'); if (del) del.addEventListener('click', deleteSelected);
   }
   function refreshMotion() { /* the sliders are what the user is moving: nothing to redraw in the card */ }
@@ -481,16 +501,16 @@
   const envNumbers = (ix) => '<div class="env"><div><b>' + Math.round(ix.mlcape) + '</b><span>CAPE J/kg</span></div><div><b>' + fmtSpeed(ix.shear06) + '</b><span>shear 0-6 km</span></div><div><b>' + Math.round(ix.srh01) + '</b><span>helicity 0-1 km</span></div><div><b>' + Math.round(ix.mllcl) + ' m</b><span>cloud base</span></div></div>';
   function openRun() {
     if (LAB.busy) return toast('A storm is running: it is on the radar, and Stop ends it', 3500);
-    if (!E.spot) return; const L = labEnv(), ex = GD.expect(L.ix), ll = G.fromLocal(lat0(), lon0(), E.spot.x * 1000, E.spot.y * 1000), pl = nearestPlace(ll.lat, ll.lon), el = $('ed-run');
+    if (!E.spot) return; const L = labEnv(), ex = GD.expect(L.ix), ll = G.fromLocal(lat0(), lon0(), E.spot.x * 1000, E.spot.y * 1000), pl = nearestPlace(ll.lat, ll.lon), el = $('ed-run'), zn = zoneOf();
     closeSheet(); el.hidden = false;
     el.innerHTML = '<div class="hd"><div><b>Run a storm</b><i>' + (pl ? 'Near ' + ESC(pl.name) + ' · ' : '') + '+' + L.t + ' h · ' + timeText(L.t) + '</i></div><button class="x" id="run-x" aria-label="Close"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>' +
       envNumbers(L.ix) + '<div class="ex"><b>' + ESC(ex.mode) + '</b>' + ex.hazards.map((h) => '<span class="tag">' + ESC(h) + '</span>').join('') + '</div>' +
       '<h3>Run for</h3><div class="mini sp" id="run-len">' + [45, 60, 90, 120].map((m) => '<button data-m="' + m + '" aria-pressed="' + (m === LAB.minutes) + '">' + (m < 60 ? m + ' min' : m / 60 + ' h') + '</button>').join('') + '</div>' +
-      '<h3>Quality</h3><div class="mini sp" id="run-det"><button data-d="1" aria-pressed="' + LAB.detail + '">Fine, 1 km and 500 m</button><button data-d="0" aria-pressed="' + !LAB.detail + '">Fast, 2 km</button></div>' +
+      (zn ? '' : '<h3>Quality</h3><div class="mini sp" id="run-det"><button data-d="1" aria-pressed="' + LAB.detail + '">Fine, 1 km and 500 m</button><button data-d="0" aria-pressed="' + !LAB.detail + '">Fast, 2 km</button></div>') +
       '<p class="story" id="run-story"></p>' +
       '<div class="row2"><button id="run-go" class="primary">Start</button></div>';
-    const story = () => { $('run-story').innerHTML = LAB.detail ? runStoryFine(LAB.minutes) : runStoryFast(); };
-    $('run-x').addEventListener('click', closeRun); $('run-go').addEventListener('click', () => { runStorm(Object.assign({ minutes: LAB.minutes }, LAB.detail ? FINE : {})).catch(() => {}); });
+    const story = () => { $('run-story').innerHTML = zn ? runStoryZone(zn, LAB.minutes) : LAB.detail ? runStoryFine(LAB.minutes) : runStoryFast(); };
+    $('run-x').addEventListener('click', closeRun); $('run-go').addEventListener('click', () => { runStorm(Object.assign({ minutes: LAB.minutes }, zn ? zoneRun(zn) : LAB.detail ? FINE : {})).catch(() => {}); });
     el.querySelectorAll('#run-len button').forEach((b) => b.addEventListener('click', () => { LAB.minutes = +b.dataset.m; el.querySelectorAll('#run-len button').forEach((x) => x.setAttribute('aria-pressed', String(x === b))); story(); }));
     el.querySelectorAll('#run-det button').forEach((b) => b.addEventListener('click', () => {
       LAB.detail = b.dataset.d === '1'; el.querySelectorAll('#run-det button').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
@@ -507,6 +527,13 @@
     const work = Math.min(min, DETAIL.from) * 0.17 + Math.max(0, min - DETAIL.from) * 0.65, mins = Math.max(5, Math.round(work / 5) * 5);
     return 'The real model with cells of 1 km, and from the ' + DETAIL.from + 'th minute a second one inside it: cells of ' + DETAIL.dx + ' m over ' + DETAIL.box / 1000 + ' km that stay on the storm and show its core finely. The radar opens at once and the frames appear on its slider as they are made: the first ' + DETAIL.from + ' minutes in about three minutes, then a frame about every half minute, <b>about ' + mins + ' minutes</b> in all on a fast computer, much longer on a phone. ' +
       (min < 80 ? 'A hook echo comes late in a storm, from 70 minutes on, so this run will not have one yet.' : 'You can watch it as it goes, and Stop keeps what it has made. A hook echo comes late in a storm and is weaker here than in a recorded storm with all of it at 500 m (Storms, Tornado outbreak day, 500 m).');
+  };
+  /* a run with an initiation zone (src/severe-zone.js): a box that holds the zone and 40 km round it, cells of 2 km, a warm bubble at each place and time the zone's draw gives, the box following no storm, no nest. What it costs is the Fast model's
+     (about 1.7 s of work a model minute in an 84 km box, on a fast computer) times the box's area. */
+  function zoneRun(z) { const plan = zonePlan(z); return { dx: 2000, box: plan.box.L, seeds: plan.seeds, follow: false }; }
+  const runStoryZone = (z, min) => {
+    const plan = zonePlan(z), work = 1.7 * min * Math.pow(plan.box.L / 84000, 2) / 60 * 1.3, q = work > 12 ? 5 : 1, mins = Math.max(2, Math.round(work / q) * q), n = plan.seeds.length;
+    return 'The real model, 2 km cells, in a box ' + Math.round(plan.box.L / 1000) + ' km wide that holds your zone and does not follow any one storm, started in the drawing\'s sounding at the middle of the zone. <b>' + n + (n === 1 ? ' warm bubble goes' : ' warm bubbles go') + ' off</b> along it' + (z.over > 0 || z.from > 0 ? ', from the ' + (z.from || 0) + 'th to the ' + ((z.from || 0) + (z.over || 0)) + 'th minute' : '') + ', and the day decides what each becomes: a supercell, a cluster, a line, or nothing. The radar opens at once and the frames appear on its slider as they are made; a box this wide takes <b>about ' + mins + ' minutes</b> on a fast computer, longer on a phone. Storms of 2 km cells are smooth, with no hook.';
   };
   function closeRun() { $('ed-run').hidden = true; }
   function stopRun() { if (LAB.worker) LAB.worker.postMessage({ t: 'cancel', keep: true }); }          // (the model stops at the end of its step, which with the finer model is seconds; the frames it has made stay on the radar)
@@ -542,7 +569,7 @@
       const L = labEnv(); LAB.busy = true; LAB.t0 = Date.now(); LAB.prog = []; closeSheet(); $('ed-run').hidden = true; toast('Starting the model…', 3000);
       let w; try { w = labWorker(); } catch (e) { LAB.busy = false; toast('This browser cannot run the model: ' + e.message, 6000); return reject(e); }
       LAB.worker = w; let pack = null, run = null, chain = Promise.resolve(), ended = false;
-      const name = (E.day.name || 'A drawn day') + ', storm run' + (o.detail ? ' with a ' + o.detail.dx + ' m nest' : '');
+      const name = (E.day.name || 'A drawn day') + ', storm run' + (o.detail ? ' with a ' + o.detail.dx + ' m nest' : o.seeds ? ' with an initiation zone' : '');
       const end = () => { LAB.busy = false; w.terminate(); LAB.worker = null; };
       const fail = (msg, err) => { if (ended) return; ended = true; end(); SEV.live.end({ stopped: true, reason: msg }); toast(msg, 7000); reject(err instanceof Error ? err : new Error(msg)); };
       const handle = async (m) => {
@@ -564,7 +591,7 @@
       };
       w.onmessage = (ev) => { chain = chain.then(() => handle(ev.data)).catch((e) => fail('Could not show the storm: ' + (e && e.message || e), e)); };
       w.onerror = (e) => fail('The model stopped: ' + (e.message || 'worker error'), new Error(e.message || 'worker error'));
-      w.postMessage({ t: 'run', spec: { env: L.arr, dx: o.dx, box: o.box, dt: o.dt, minutes: o.minutes, frameEvery: o.frameEvery || 5, nz: o.nz || 40, dz: o.dz || 500, bubble: o.bubble, detail: o.detail } });
+      w.postMessage({ t: 'run', spec: { env: L.arr, dx: o.dx, box: o.box, dt: o.dt, minutes: o.minutes, frameEvery: o.frameEvery || 5, nz: o.nz || 40, dz: o.dz || 500, bubble: o.bubble, detail: o.detail, seeds: o.seeds, follow: o.follow } });
     });
   }
   /* the radar the storm's own path asks for, when the one chosen at the start is not it: a storm that went within 15 km of the radar (under it, in its cone of silence) or more than 200 km from it is seen from another, as a radar network hands a storm on */
@@ -627,7 +654,7 @@
     $('m-draw').addEventListener('click', () => setMode('draw')); $('m-radar').addEventListener('click', () => setMode('radar'));
     document.addEventListener('keydown', onKey, true);
     $('b-theme').addEventListener('click', () => { if (!map) return; map.setTheme(SEV.S.theme); E.fields = null; syncLegend(); if (E.sel >= 0 || E.probe) closeSheet(); scheduleField(0); redraw(); });
-    SEV.editor = { E, LAB, runStorm, runLeft, handOff, pickSite, openRun, closeRun, labEnv, scenarioOf, setMode, loadDay, setTool, setLayer, setTime, undo, redo, rebuild, commit, addObject, newObject, nearestPlace, openSheet, closeSheet, get map() { return map; }, toKm, toScreen, deleteSelected, TOOLS, PROPS, anchorOf, tipOf };
+    SEV.editor = { E, LAB, runStorm, runLeft, handOff, pickSite, openRun, closeRun, labEnv, scenarioOf, setMode, loadDay, setTool, setLayer, setTime, undo, redo, rebuild, commit, addObject, newObject, nearestPlace, openSheet, closeSheet, get map() { return map; }, toKm, toScreen, deleteSelected, TOOLS, PROPS, anchorOf, tipOf, zoneOf, zoneSpec, zoneSeeds, zonePlan, zoneRun, ZN };
     if (location.hash === '#draw') setMode('draw');
   }
   if (window.SEVERE && window.SEVERE.ready) init(); else window.addEventListener('severe-ready', init);

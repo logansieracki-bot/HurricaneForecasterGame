@@ -170,6 +170,9 @@ const north = (x) => [[x, -3000], [x, 3000]];                                   
   const d = { lat: 35, objects: [{ type: 'low', x: 0, y: 0 }, { type: 'front', kind: 'cold', pts: [[0, 0], [10, 10]], motion: { u: 5, v: 1 } }] }, before = JSON.stringify(d), a = A.create(d), b = A.create(d);
   a.sounding(30, 5, 2); a.fields(1, { nx: 2, ny: 2 });
   check('building and using an analysis leaves the drawing as it was, and the same drawing gives the same numbers twice (' + a.surface(30, 5, 2).T.toFixed(6) + ')', JSON.stringify(d) === before && a.surface(30, 5, 2).T === b.surface(30, 5, 2).T && a.pressure(3, 4, 1) === b.pressure(3, 4, 1));
+  const withZone = { lat: 35, objects: d.objects.concat([{ type: 'zone', kind: 'line', pts: [[0, 0]], width: 20 }, { type: 'zone', pts: [[3, 4], [30, 40]] }]) }, z = A.create(withZone), zs = z.sounding(30, 5, 2), bs = a.sounding(30, 5, 2);
+  check('an initiation zone drawn among the objects (one with a single point: nothing of it is looked at) is not part of the air: the sounding, the surface and the pressure are those of the drawing without it (' + z.surface(30, 5, 2).T.toFixed(6) + ' K, ' + z.pressure(3, 4, 1).toFixed(6) + ' hPa), and it is left as it was',
+    z.surface(30, 5, 2).T === a.surface(30, 5, 2).T && z.pressure(3, 4, 1) === a.pressure(3, 4, 1) && JSON.stringify(zs.table.theta) === JSON.stringify(bs.table.theta) && JSON.stringify(zs.table.qv) === JSON.stringify(bs.table.qv) && withZone.objects.length === 4 && withZone.objects[2].pts.length === 1);
   const lat0 = A.create({ lat: 0, objects: [{ type: 'low', x: 0, y: 0, depth: 10, size: 300 }] }), w = lat0.geostrophic(300, 0, 0);
   check('at the equator the Coriolis parameter is kept from vanishing (' + lat0.f + ') and the wind stays finite (' + Math.hypot(w.u, w.v).toFixed(1) + ' m/s)', lat0.f === 2e-5 && Number.isFinite(w.v) && w.v > 0);
 }

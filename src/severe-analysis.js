@@ -20,6 +20,7 @@
  *   moisture { pts, amount 3, width 200 }: a moist tongue: the dew point higher by `amount` K along the line, in the lowest 2 km;
  *   jet { pts, speed 25, width 250 }: wind added to the flow aloft along the line (the direction it is drawn), at 9.5 km; llj { pts, speed 18, width 150 }: the low-level jet at 1.5 km;
  *   utrough { x, y, speed 25, size 500 }: a cyclonic circulation aloft added to the flow (Vmax at the radius `size`, at 8 km): southwesterly flow ahead of it.
+ *   zone { ... }: an initiation zone (src/severe-zone.js, drawn by the editor beside the fronts) is not part of the air and is left out here: the day's sounding is the same with it and without it.
  * The day always has the flow aloft of `drawing.aloft` ({ speed 30, from 255 degrees }), which rises with height as (z / 10 km)^0.8; the jets and the circulation are added to it.
  *
  * This is not a forecast model: the drawing is the large-scale truth of a hypothetical day, and a profile is blended from four air masses the sounding generator makes (warm and moist: the tornado
@@ -75,7 +76,7 @@
                   occluded: { slope: 1 / 100, contrast: 8, width: 50, air: 'cold' } };
 
   function create(drawing, options) {
-    const D = drawing || {}, objs = (D.objects || []).map((o) => Object.assign({}, o)), opts = Object.assign({ dz: 100, top: 20000, fade: 200 }, options);
+    const D = drawing || {}, objs = (D.objects || []).filter((o) => o.type !== 'zone').map((o) => Object.assign({}, o)), opts = Object.assign({ dz: 100, top: 20000, fade: 200 }, options);
     const lat = D.lat === undefined ? 36.7 : D.lat, f = Math.max(2e-5, 2 * OMEGA * Math.sin(lat * DEG)), pBase = D.base === undefined ? 1015 : D.base;
     const aloft = Object.assign({ speed: 30, from: 255 }, D.aloft), bg = { u: -aloft.speed * Math.sin(aloft.from * DEG), v: -aloft.speed * Math.cos(aloft.from * DEG) };
     const KNOWN = ['low', 'high', 'trough', 'front', 'dryline', 'outflow', 'moisture', 'jet', 'llj', 'utrough'];

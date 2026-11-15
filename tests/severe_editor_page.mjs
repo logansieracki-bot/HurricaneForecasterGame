@@ -20,7 +20,7 @@ async function open(w, h, opts = {}) {
   const ctx = opts.ctx || await browser.newContext({ viewport: { width: w, height: h }, colorScheme: opts.scheme || 'dark', hasTouch: w < 800, acceptDownloads: true }), page = await ctx.newPage(), log = { errors: [], requests: [] };
   page.on('console', (m) => { if ((m.type() === 'error' || m.type() === 'warning') && !/willReadFrequently/.test(m.text())) log.errors.push(m.type() + ': ' + m.text()); });             // (the warning about reading a canvas back often is for this test's own pixel counts) page.on('pageerror', (e) => log.errors.push('pageerror: ' + e));
   if (!opts.ctx) await ctx.route('**/*', (route) => { const u = route.request().url(); if (/^(file|blob|data):/.test(u)) route.continue(); else { log.requests.push(u); route.abort(); } });
-  await page.goto(pathToFileURL(FILE).href + '#draw');
+  await page.goto(pathToFileURL(FILE).href + (opts.query || '') + '#draw');
   await page.waitForFunction('window.SEVERE && (window.SEVERE.ready === true || window.SEVERE.error) && window.SEVERE.editor && window.SEVERE.editor.E.ready', null, { timeout: 120000 });
   return { page, ctx, log };
 }
@@ -266,6 +266,57 @@ await pr.keyboard.press('t'); await pr.waitForFunction("(() => { const c = docum
 const lum = await ev(pr, "(() => { const c = document.querySelector('#ed-pane .cv-base'), g = c.getContext('2d'), d = g.getImageData(c.width - 60, c.height - 60, 1, 1).data; return d[0] + d[1] + d[2]; })()");
 check('the key T switches to the light theme and the map follows (the corner of the map is ' + lum + ' of 765 bright; the page says ' + await ev(pr, "document.documentElement.dataset.theme") + ')', await ev(pr, "document.documentElement.dataset.theme") === 'light' && lum > 450);
 await pr.screenshot({ path: join(tmp, 'light.png') }); await pr.keyboard.press('t'); await settle(pr);
+/* 12. The initiation zone (behind `?zone` until it is turned on for everyone): its tool, the line sketched with the mouse, its card, the spot that goes to its middle, the bubbles it draws, one zone at most, undo, the sounding that it leaves as it was,
+   the card of a run with a zone and a run with the seeds it makes. */
+const noZone = await ev(pg, "document.querySelectorAll('#ed-tools [data-id=\"zone\"]').length");
+const ZZ = await open(1440, 900, { query: '?zone' }), zp = ZZ.page;
+{
+const zt = await ev(zp, "document.querySelectorAll('#ed-tools [data-id=\"zone\"]').length"), tl = await ev(zp, "document.querySelectorAll('#ed-tools .tl').length");
+check('the zone tool is only there when the address asks for it (' + noZone + ' tools without `?zone`, ' + zt + ' with it: ' + tl + ' tools in all), with its key z and a name', noZone === 0 && zt === 1 && tl === 16 && await ev(zp, "SEVERE.editor.TOOLS.find((t) => t.id === 'zone').key") === 'z' && /Initiation zone/.test(await ev(zp, "SEVERE.editor.TOOLS.find((t) => t.id === 'zone').name")));
+const zBefore = await E(zp, 'E.drawing.objects.length'), T0 = await E(zp, 'E.A.surface(0, 0, 0).T'), P0 = await E(zp, 'E.A.pressure(40, 10, 0)'), spot0 = await E(zp, '({ x: E.spot.x, y: E.spot.y })');
+await sketch(zp, 'zone', [[120, -90], [130, -10], [125, 70]]); await settle(zp);
+let zo = await objs(zp), z1 = zo[zo.length - 1];
+check('a line sketched with the zone tool is a zone object with its defaults, and the storm\'s spot has gone to the middle of its box (' + zo.length + ' objects of ' + zBefore + '; ' + z1.type + ' of ' + z1.pts.length + ' points, width ' + z1.width + ', density ' + z1.density + ', warming ' + z1.strength + ', starts after ' + z1.from + ', over ' + z1.over + ', seed ' + z1.seed + '; the spot ' + JSON.stringify(await E(zp, 'E.spot')) + ')',
+  zo.length === zBefore + 1 && z1.type === 'zone' && z1.pts.length >= 2 && z1.width === 20 && z1.density === 3 && z1.strength === 3 && z1.from === 0 && z1.over === 30 && z1.seed === 1 && z1.motion === undefined
+  && (await E(zp, 'E.spot.x')) === Math.round((Math.min(...z1.pts.map((q) => q[0])) + Math.max(...z1.pts.map((q) => q[0]))) / 2) && (await E(zp, 'E.spot.y')) === Math.round((Math.min(...z1.pts.map((q) => q[1])) + Math.max(...z1.pts.map((q) => q[1]))) / 2) && (await E(zp, 'E.sel')) === zo.length - 1);
+check('a zone is not part of the air: the temperature at the ground and the pressure of the drawing are what they were without it (' + (await E(zp, 'E.A.surface(0, 0, 0).T')).toFixed(6) + ' K and ' + (await E(zp, 'E.A.pressure(40, 10, 0)')).toFixed(6) + ' hPa), and the sounding is still made at the spot', (await E(zp, 'E.A.surface(0, 0, 0).T')) === T0 && (await E(zp, 'E.A.pressure(40, 10, 0)')) === P0 && !(await ev(zp, "document.getElementById('ed-start').disabled")));
+const card = await ev(zp, "(() => { const c = document.getElementById('ed-props'); return { hidden: c.hidden, title: (c.querySelector('.ptitle2 b') || {}).textContent, sliders: [...c.querySelectorAll('input[type=range]')].map((i) => i.id), shuffle: !!document.getElementById('p-shuffle'), dup: !!document.getElementById('p-dup'), del: !!document.getElementById('p-del'), speed: !!document.getElementById('p-speed') }; })()");
+check('its card has the width, the density, the warming, when it starts and how long it goes on, a Shuffle and a Delete, and none of what a front has: no arrow, no duplicate (' + card.title + ': ' + card.sliders.join(', ') + ')', !card.hidden && card.title === 'Initiation zone' && card.sliders.join() === 'p-width,p-density,p-strength,p-from,p-over' && card.shuffle && card.del && !card.dup && !card.speed);
+const seeds1 = await ev(zp, "SEVERE.editor.zoneSeeds(SEVERE.editor.zoneOf()).map((q) => [Math.round(q.x), Math.round(q.y), +q.t.toFixed(2), +q.amp.toFixed(2)])");
+const rawLen = await ev(zp, "SEVERE.editor.ZN.length(SEVERE.editor.zoneOf().pts.map((p) => [p[0] * 1000, p[1] * 1000]))");
+check('the zone shows the bubbles that its draw gives (' + seeds1.length + ' for a line of ' + (rawLen / 1000).toFixed(0) + ' km at 3 to every 100 km: ' + Math.max(1, Math.round(3 * rawLen / 100000)) + '), each inside the band along it, 12 km from the next, going off in the first 30 minutes', seeds1.length === Math.max(1, Math.round(3 * rawLen / 100000)) && seeds1.length >= 2 && seeds1.every((q) => q[2] >= 0 && q[2] <= 30));
+await slide(zp, 'p-density', 6); await settle(zp);
+const dens = (await objs(zp)).slice(-1)[0], seeds2 = await ev(zp, "SEVERE.editor.zoneSeeds(SEVERE.editor.zoneOf()).length");
+await slide(zp, 'p-over', 0); await slide(zp, 'p-strength', 5); await settle(zp);
+const tm = (await objs(zp)).slice(-1)[0], seeds3 = await ev(zp, "SEVERE.editor.zoneSeeds(SEVERE.editor.zoneOf()).map((q) => [q.t, q.amp])");
+check('the sliders change the zone and the bubbles it draws (a density of 6 gives ' + seeds2 + ' bubbles, not ' + seeds1.length + '; spread over 0 minutes and 5 K: every bubble at minute 0 and 4 to 6 K: ' + seeds3.map((q) => q[0] + ' min ' + q[1].toFixed(1) + ' K').join(', ') + ')', dens.density === 6 && seeds2 > seeds1.length && tm.over === 0 && tm.strength === 5 && seeds3.every((q) => q[0] === 0 && q[1] >= 4 && q[1] <= 6));
+const sp1 = JSON.stringify(await ev(zp, "SEVERE.editor.zoneSeeds(SEVERE.editor.zoneOf()).map((q) => [q.x, q.y])"));
+await zp.click('#p-shuffle'); await settle(zp);
+const sp2 = JSON.stringify(await ev(zp, "SEVERE.editor.zoneSeeds(SEVERE.editor.zoneOf()).map((q) => [q.x, q.y])"));
+check('Shuffle draws the same number of bubbles in other places (seed ' + (await objs(zp)).slice(-1)[0].seed + ': ' + (sp1 === sp2 ? 'the same places' : 'other places') + ')', (await objs(zp)).slice(-1)[0].seed === 2 && sp1 !== sp2 && JSON.parse(sp1).length === JSON.parse(sp2).length);
+const painted = await ev(zp, "(() => { const c = document.querySelector('#ed-pane .cv-top'); if (!c) return -1; const x = c.getContext('2d'), w = c.width, h = c.height, d = x.getImageData(0, 0, w, h).data; let n = 0; for (let i = 0; i < d.length; i += 4) if (d[i] > 180 && d[i + 1] < 170 && d[i + 2] > 150 && d[i + 3] > 200) n++; return n; })()");
+check('the zone is painted on the map in pink: its band, its dashed line, its bubbles and its name (' + painted + ' pink pixels on the drawing\'s layer)', painted > 400);
+// a second zone replaces the first
+await sketch(zp, 'zone', [[-180, 80], [-120, 120], [-60, 130]]); await settle(zp);
+zo = await objs(zp); const zs = zo.filter((o) => o.type === 'zone');
+check('there is one zone at most: a second one sketched replaces the first (' + zs.length + ' zone, at ' + zs[0].pts[0].map(Math.round).join(', ') + ' and on, the spot moved to ' + JSON.stringify(await E(zp, 'E.spot')) + ')', zs.length === 1 && zs[0].pts[0][0] < 0 && (await E(zp, 'E.spot.x')) < 0 && zs[0].seed === 1);
+await zp.keyboard.press('Control+z'); await settle(zp);
+zo = await objs(zp); const back = zo.filter((o) => o.type === 'zone');
+check('undo brings the first zone back, with its settings (' + back.length + ' zone, density ' + (back[0] && back[0].density) + ', seed ' + (back[0] && back[0].seed) + '), and the spot with it (' + (await E(zp, 'E.spot.x')) + ')', back.length === 1 && back[0].pts[0][0] > 0 && back[0].density === 6 && back[0].seed === 2 && (await E(zp, 'E.spot.x')) > 0);
+await slide(zp, 'p-density', 3); await slide(zp, 'p-over', 30); await slide(zp, 'p-strength', 3); await settle(zp);
+await zp.click('#ed-start'); await zp.waitForSelector('#run-go', { timeout: 5000 });
+const rc = await ev(zp, "(() => ({ quality: document.querySelectorAll('#run-det button').length, len: document.querySelectorAll('#run-len button').length, story: document.getElementById('run-story').textContent, bold: [...document.querySelectorAll('#run-story b')].map((b) => b.textContent) }))()"), plan = await ev(zp, "(() => { const p = SEVERE.editor.zonePlan(SEVERE.editor.zoneOf()); return { L: p.box.L, n: p.seeds.length }; })()");
+check('the card of a run with a zone has no choice of quality (the box is too wide for the fine model), says how wide the box is (' + plan.L / 1000 + ' km), how many bubbles go off and when, and what the model will make of them, and how long it takes (' + rc.bold.join(' | ') + ')',
+  rc.quality === 0 && rc.len === 4 && new RegExp('a box ' + plan.L / 1000 + ' km wide').test(rc.story) && new RegExp(plan.n + ' warm bubbles? goes? off').test(rc.story) && /from the 0th to the 30th minute/.test(rc.story) && /the day decides what each becomes/.test(rc.story) && /about \d+ minutes/.test(rc.story) && /no hook/.test(rc.story));
+await zp.click('#run-x'); await settle(zp);
+const zrun = zp.evaluate(() => { const E = SEVERE.editor, z = E.zoneOf(), pl = E.ZN.plan(Object.assign(E.zoneSpec(z), { pts: [[0, 0], [0, 40000]], density: 6 }), { dx: 6000, margin: 12000, min: 48000, max: 48000 }); return E.runStorm({ minutes: 6, dx: 6000, box: pl.box.L, dt: 30, frameEvery: 2, seeds: pl.seeds, follow: false }).then((r) => ({ ok: true, n: r.pack.n, times: r.pack.times, name: r.pack.name, nx: r.pack.h.nx, lab: r.pack.h.lab, planSeeds: pl.seeds.length, maxW: r.maxW })).catch((e) => ({ ok: false, e: String(e.message || e) })); });
+const zr = await zrun;
+check('a run with the seeds of a zone of 40 km (a box of 48 km of cells of 6 km: 6 minutes) makes a pack whose header says what they were and that the box followed no storm (' + (zr.ok ? zr.n + ' frames at ' + zr.times.join(', ') + '; ' + zr.lab.seeds.length + ' seeds listed of ' + zr.planSeeds + '; follow ' + zr.lab.follow + '; "' + zr.name + '"' : zr.e) + ')',
+  zr.ok && zr.n === 4 && zr.nx === 8 && zr.lab.follow === false && zr.lab.seeds.length === zr.planSeeds && zr.planSeeds === 2 && /initiation zone/.test(zr.name) && zr.lab.seeds.every((q) => q.length === 4 && q[2] >= 0 && q[2] <= 30));
+await zp.keyboard.press('Escape'); await settle(zp); await zp.keyboard.press('Delete'); await settle(zp);
+check('Delete takes the zone away (' + (await objs(zp)).filter((o) => o.type === 'zone').length + ' zones of ' + (await objs(zp)).length + ' objects), the storm\'s marker is painted again where the spot was left, and the card is gone', (await objs(zp)).filter((o) => o.type === 'zone').length === 0 && (await objs(zp)).length === zBefore && await ev(zp, "document.getElementById('ed-props').hidden"));
+
+}
 const ph = await open(390, 800), pp = ph.page;
 const lay = await ev(pp, "(() => { const r = (id) => document.getElementById(id).getBoundingClientRect(), t = r('ed-tools'), d = r('ed-dock'), s = r('ed-side'); return { sw: document.documentElement.scrollWidth, iw: innerWidth, tools: [t.left, t.top, t.right, t.bottom], dock: [d.left, d.top, d.right, d.bottom], side: [s.left, s.top, s.right, s.bottom], toolsRow: getComputedStyle(document.getElementById('ed-tools')).flexDirection }; })()");
 check('on a phone (390 x 800) the page does not scroll sideways (' + lay.sw + ' for ' + lay.iw + '), the tools are a row above the dock and not over it (tools bottom ' + Math.round(lay.tools[3]) + ', dock top ' + Math.round(lay.dock[1]) + '), the dock and the day card are inside the window',
@@ -274,7 +325,7 @@ await pp.click('#ed-tools [data-id="cold"]'); const ps = [await px(pp, -150, -10
 check('a finger sketches a front on the phone too (' + (await objs(pp)).length + ' objects: ' + (await objs(pp)).slice(-1)[0].kind + ' front of ' + (await objs(pp)).slice(-1)[0].pts.length + ' points)', (await objs(pp)).length === 9 && (await objs(pp)).slice(-1)[0].kind === 'cold');
 await pp.screenshot({ path: join(tmp, 'phone.png') });
 
-check('through all of it: no console error or warning and no request outside file:, blob: and data: (' + [A, reload, ph].reduce((s, x) => s + x.log.errors.length, 0) + ' errors: ' + [A, reload, ph].flatMap((x) => x.log.errors).slice(0, 2).join(' | ') + '; ' + [A, reload, ph].reduce((s, x) => s + x.log.requests.length, 0) + ' requests)', [A, reload, ph].every((x) => x.log.errors.length === 0 && x.log.requests.length === 0));
+check('through all of it: no console error or warning and no request outside file:, blob: and data: (' + [A, reload, ZZ, ph].reduce((s, x) => s + x.log.errors.length, 0) + ' errors: ' + [A, reload, ZZ, ph].flatMap((x) => x.log.errors).slice(0, 2).join(' | ') + '; ' + [A, reload, ZZ, ph].reduce((s, x) => s + x.log.requests.length, 0) + ' requests)', [A, reload, ZZ, ph].every((x) => x.log.errors.length === 0 && x.log.requests.length === 0));
 
 await browser.close();
 if (process.env.KEEP_SHOTS) console.log('screenshots in ' + tmp); else rmSync(tmp, { recursive: true, force: true });

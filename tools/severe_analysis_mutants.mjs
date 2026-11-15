@@ -13,6 +13,10 @@ const FILES = { core: 'severe-core.js', snd: 'severe-sounding.js', ana: 'severe-
 const SRC = Object.fromEntries(Object.entries(FILES).map(([k, f]) => [k, readFileSync(join(root, 'src/' + f), 'utf8')]));
 // [name, file, the text to find (once), its replacement]
 const M = [
+  // an initiation zone among the objects is left out
+  ['zone-not-left-out', 'ana', ".filter((o) => o.type !== 'zone')", ''],
+  ['zone-kept-for-other-kinds', 'ana', ".filter((o) => o.type !== 'zone')", ".filter((o) => o.type !== 'zone' && o.type !== 'trough')"],
+  ['zone-named-differently', 'ana', ".filter((o) => o.type !== 'zone')", ".filter((o) => o.type !== 'zones')"],
   // columns: the numbers at a list of points
   ['columns-x-y', 'ana', 'const x = points[q][0], y = points[q][1];', 'const x = points[q][1], y = points[q][0];'],
   ['columns-hour', 'ana', 'const env = sounding(x, y, t, { dz, top: 16000 }), ix = SND.indices(env), tb = env.table, w = windAt(x, y, 10, t), p = pressure(x, y, t);\n        out.mslp[q] = p; out.T[q]', 'const env = sounding(x, y, 0, { dz, top: 16000 }), ix = SND.indices(env), tb = env.table, w = windAt(x, y, 10, t), p = pressure(x, y, t);\n        out.mslp[q] = p; out.T[q]'],
