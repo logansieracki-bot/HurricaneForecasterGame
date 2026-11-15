@@ -14,8 +14,8 @@ const SRC = Object.fromEntries(Object.entries(FILES).map(([k, f]) => [k, readFil
 // The echo's centre read after the frame hook instead of before it (a worker hands the block over to the page in the hook and it is gone): from the line with the centring through the hook's, moved behind it.
 // Built from the source because the comment between them is long.
 const AFTER_HOOK = (() => {
-  const s = SRC.lab, hook = 'frames.push(rec); header.times.push(rec.t); header.track.push(rec.track); header.drift.push(rec.drift); if (det) header.fn.push(rec.fn); if (hooks.frame) hooks.frame(rec);', c0 = s.indexOf('const c = follow ? centring('), h0 = s.indexOf(hook), h1 = h0 + hook.length;
-  return c0 < 0 || h0 < c0 ? ['(not found)', ''] : [s.slice(c0, h1), hook + '\n        const c = follow ? centring(block, nx, nx, nz, dz) : null;'];
+  const s = SRC.lab, hook = 'frames.push(rec); header.times.push(rec.t); header.track.push(rec.track); header.drift.push(rec.drift); if (det) header.fn.push(rec.fn); if (hooks.frame) hooks.frame(rec);', c0 = s.indexOf('const c = follow ? (win ? centring('), h0 = s.indexOf(hook), h1 = h0 + hook.length;
+  return c0 < 0 || h0 < c0 ? ['(not found)', ''] : [s.slice(c0, h1), hook + '\n        const c = follow ? (win ? centring(cenRec().block, nx, nx, nzCen, dz) : centring(block, nx, nx, nz, dz)) : null;'];
 })();
 // The nest made before the frame's move instead of after it (the child would be moved at the frame at which it is made): the line of the move through the line of the nest, with the two in the other order.
 const NEST_BEFORE_ROLL = (() => {
@@ -48,8 +48,8 @@ const M = [
   ['rec-wind-step', 'lab', 'Math.round(v / step)', 'Math.round(v / (2 * step))'],
   ['rec-wind-clamp', 'lab', 'Math.max(-127, Math.min(127, Math.round(v / step)))', 'Math.max(-100, Math.min(100, Math.round(v / step)))'],
   ['rec-fall-speed-step', 'lab', 'Math.round(4 * vzc[k])', 'Math.round(2 * vzc[k])'],
-  ['rec-layout', 'lab', 'at = (k * ny + j) * nx + i;', 'at = (j * nz + k) * nx + i;'],
-  ['rec-layout-x-y', 'lab', 'at = (k * ny + j) * nx + i;', 'at = (k * ny + i) * nx + j;'],
+  ['rec-layout', 'lab', 'at = (k * wy + (j - j0)) * wx + (i - i0);', 'at = ((j - j0) * nz + k) * wx + (i - i0);'],
+  ['rec-layout-x-y', 'lab', 'at = (k * wy + (j - j0)) * wx + (i - i0);', 'at = (k * wy + (i - i0)) * wx + (j - j0);'],
   ['rec-u-centre', 'lab', 'uu[at] = c8(0.5 * (S.u[o] + S.u[o + 1]));', 'uu[at] = c8(S.u[o]);'],
   ['rec-v-centre', 'lab', 'vv[at] = c8(0.5 * (S.v[o] + S.v[o + sy]));', 'vv[at] = c8(S.v[o]);'],
   ['rec-w-centre', 'lab', 'ww[at] = c8(0.5 * (S.w[o] + S.w[o + sz]));', 'ww[at] = c8(S.w[o]);'],
@@ -69,8 +69,8 @@ const M = [
   ['run-steps', 'lab', 'nSteps = Math.round(minutes * 60 / dt), follow', 'nSteps = Math.round(minutes * 30 / dt), follow'],
   ['run-first-frame', 'lab', 'if (t >= nextFrame - 1e-9) {', 'if (t > nextFrame) {'],
   ['run-track-level', 'lab', 'k5 = Math.min(nz - 2, Math.floor(5250 / dz));', 'k5 = Math.min(nz - 2, Math.floor(3000 / dz));'],
-  ['run-track-x', 'lab', 'wx = (i + 0.5) * dx;', 'wx = i * dx;'],
-  ['run-track-y', 'lab', 'wy = (j + 0.5) * dx; } }', 'wy = j * dx; } }'],
+  ['run-track-x', 'lab', 'wx = (i - w0 + 0.5) * dx;', 'wx = (i - w0) * dx;'],
+  ['run-track-y', 'lab', 'wy = (j - w0 + 0.5) * dx; } }', 'wy = (j - w0) * dx; } }'],
   ['run-track-updraft', 'lab', 'const o = idx(i, j, k5), w = 0.5 * (S.w[o] + S.w[o + sz]); if (w > wm)', 'const o = idx(i, j, k5), w = -0.5 * (S.w[o] + S.w[o + sz]); if (w > wm)'],
   ['run-track-strength', 'lab', 'track: [Math.round(wx), Math.round(wy), +wm.toFixed(1)]', 'track: [Math.round(wx), Math.round(wy), +d.wmax.toFixed(1)]'],
   ['run-blow-up', 'lab', "if (!Number.isFinite(d.wmax) || d.wmax > 150 || (dc && (!Number.isFinite(dc.wmax) || dc.wmax > 150))) { stopped = true; reason = 'the model blew up at '", "if (false) { stopped = true; reason = 'the model blew up at '"],
@@ -142,6 +142,18 @@ const M = [
   ['core-graupel-density', 'lab', 'rhog: 400,', 'rhog: 900,'],
   ['core-rain-intercept', 'lab', 'n0r: 8e6, evap, twoMoment', 'n0r: 4e6, evap, twoMoment'],
   // the ground
+  ['run-visc-ignored', 'lab', '? +spec.visc : 1,', '? 1 : 1,'],
+  ['run-visc-default', 'lab', '? +spec.visc : 1,', '? +spec.visc : 0.5,'],
+  ['run-visc-zero-refused', 'lab', '&& +spec.visc >= 0 ?', '&& +spec.visc > 0 ?'],
+  ['run-visc-negative-allowed', 'lab', '&& +spec.visc >= 0 ?', '?'],
+  ['run-visc-infinite-allowed', 'lab', 'Number.isFinite(+spec.visc) &&', ''],
+  ['run-visc-kh-only', 'lab', 'kh: 500 * d / 2000 * vf, kv: 500 * d / 2000 * vf }', 'kh: 500 * d / 2000 * vf, kv: 500 * d / 2000 }'],
+  ['run-visc-kv-only', 'lab', 'kh: 500 * d / 2000 * vf, kv: 500 * d / 2000 * vf }', 'kh: 500 * d / 2000, kv: 500 * d / 2000 * vf }'],
+  ['run-visc-box-only', 'lab', 'kh: 500 * d / 2000 * vf, kv: 500 * d / 2000 * vf }', 'kh: 500 * d / 2000 * (n === nx ? vf : 1), kv: 500 * d / 2000 * (n === nx ? vf : 1) }'],
+  ['run-visc-nest-only', 'lab', 'kh: 500 * d / 2000 * vf, kv: 500 * d / 2000 * vf }', 'kh: 500 * d / 2000 * (n !== nx ? vf : 1), kv: 500 * d / 2000 * (n !== nx ? vf : 1) }'],
+  ['run-visc-header-left-out', 'lab', 'vf !== 1 ? { visc: vf } : {}, spec.twoMoment', '{}, spec.twoMoment'],
+  ['run-visc-header-always', 'lab', 'vf !== 1 ? { visc: vf } : {}, spec.twoMoment', '{ visc: vf }, spec.twoMoment'],
+  ['run-visc-header-value', 'lab', 'vf !== 1 ? { visc: vf } : {}, spec.twoMoment', 'vf !== 1 ? { visc: 1 } : {}, spec.twoMoment'],
   ['run-drag-default-off', 'lab', 'drag = spec.drag === undefined ? 0.1 :', 'drag = spec.drag === undefined ? 0 :'],
   ['run-drag-default-rough', 'lab', 'drag = spec.drag === undefined ? 0.1 :', 'drag = spec.drag === undefined ? 0.5 :'],
   ['run-drag-cannot-be-off', 'lab', '(+spec.drag || 0)', '(+spec.drag || 0.1)'],
@@ -152,9 +164,9 @@ const M = [
   ['run-drag-balance', 'lab', 'frame: { u: env.motion.u, v: env.motion.v }, balance: true }', 'frame: { u: env.motion.u, v: env.motion.v }, balance: false }'],
   ['run-drag-box-only', 'lab', 'drag: drag ? { z0: drag,', 'drag: drag && n === nx ? { z0: drag,'],
   ['run-drag-nest-only', 'lab', 'drag: drag ? { z0: drag,', 'drag: drag && n !== nx ? { z0: drag,'],
-  ['run-drag-header-left-out', 'lab', 'drag ? { drag } : {}, spec.twoMoment', '{}, spec.twoMoment'],
-  ['run-drag-header-always', 'lab', 'drag ? { drag } : {}, spec.twoMoment', '{ drag }, spec.twoMoment'],
-  ['run-drag-header-value', 'lab', 'drag ? { drag } : {}, spec.twoMoment', 'drag ? { drag: 0.1 } : {}, spec.twoMoment'],
+  ['run-drag-header-left-out', 'lab', 'drag ? { drag } : {}, vf !== 1', '{}, vf !== 1'],
+  ['run-drag-header-always', 'lab', 'drag ? { drag } : {}, vf !== 1', '{ drag }, vf !== 1'],
+  ['run-drag-header-value', 'lab', 'drag ? { drag } : {}, vf !== 1', 'drag ? { drag: 0.1 } : {}, vf !== 1'],
   ['core-two-moment-asked-for', 'lab', 'twoMoment: !!spec.twoMoment }', 'twoMoment: false }'],
   ['core-two-moment-always', 'lab', 'twoMoment: !!spec.twoMoment }', 'twoMoment: !spec.twoMoment }'],
   ['core-ice-settings-win', 'lab', 'iceParams: Object.assign({ n0g: 4e6, rhog: 400, n0r: 8e6, evap, twoMoment: !!spec.twoMoment }, spec.iceParams || {}),', 'iceParams: Object.assign(spec.iceParams || {}, { n0g: 4e6, rhog: 400, n0r: 8e6, evap, twoMoment: !!spec.twoMoment }),'],
@@ -164,8 +176,8 @@ const M = [
   ['core-moist', 'lab', 'moist: true, ice: true, iceParams', 'moist: true, ice: false, iceParams'],
   ['core-bc-x', 'lab', "Object.assign(physics(nx, dx), { bc: { x: 'periodic', y: 'periodic' } })", "Object.assign(physics(nx, dx), { bc: { x: 'wall', y: 'periodic' } })"],
   ['core-bc-y', 'lab', "Object.assign(physics(nx, dx), { bc: { x: 'periodic', y: 'periodic' } })", "Object.assign(physics(nx, dx), { bc: { x: 'periodic', y: 'wall' } })"],
-  ['core-viscosity', 'lab', 'visc: { kh: 500 * d / 2000, kv: 500 * d / 2000 }', 'visc: { kh: 500, kv: 500 }'],
-  ['core-viscosity-vertical', 'lab', 'kv: 500 * d / 2000 }', 'kv: 250 * d / 2000 }'],
+  ['core-viscosity', 'lab', 'visc: { kh: 500 * d / 2000 * vf, kv: 500 * d / 2000 * vf }', 'visc: { kh: 500, kv: 500 }'],
+  ['core-viscosity-vertical', 'lab', 'kv: 500 * d / 2000 * vf }', 'kv: 250 * d / 2000 * vf }'],
   ['core-rayleigh', 'lab', 'top: { depth: 5000, rate: 0.003 }', 'top: { depth: 3000, rate: 0.003 }'],
   ['core-rayleigh-rate', 'lab', 'top: { depth: 5000, rate: 0.003 }', 'top: { depth: 5000, rate: 0.03 }'],
   // the recorded window (the middle of a bigger box)
@@ -259,7 +271,7 @@ const M = [
   ['follow-default-off', 'lab', 'follow = spec.follow !== false,', 'follow = spec.follow === true,'],
   ['follow-ignored', 'lab', 'follow = spec.follow !== false,', 'follow = true,'],
   ['detail-nest-before-the-move', 'lab', NEST_BEFORE_ROLL[0], NEST_BEFORE_ROLL[1]],
-  ['follow-late', 'lab', 'const c = follow ? centring(', 'const c = follow && frames.length >= 4 ? centring('],
+  ['follow-late', 'lab', 'const c = follow ? (win ? centring(', 'const c = follow && frames.length >= 4 ? (win ? centring('],
   ['follow-never-rolls', 'lab', 'if (c && (c.sx || c.sy)) { rollNested(core, nest, ratio, c.sx, c.sy);', 'if (c && (c.sx || c.sy)) { '],
   ['drift-sign-east', 'lab', 'cum[0] -= c.sx * dx;', 'cum[0] += c.sx * dx;'],
   ['drift-sign-north', 'lab', 'cum[1] -= c.sy * dx;', 'cum[1] += c.sy * dx;'],
@@ -356,7 +368,7 @@ const M = [
   ['detail-child-sides', 'lab', "physics(cn, det.dx), { bc: { x: 'driven', y: 'driven' }, relax", "physics(cn, det.dx), { bc: { x: 'driven', y: 'periodic' }, relax"],
   ['detail-child-relax', 'lab', 'relax: { width: 6 } }));', 'relax: { width: 4 } }));'],
   ['detail-child-cell', 'lab', 'physics(cn, det.dx)', 'physics(cn, dx)'],
-  ['detail-child-viscosity-of-the-box', 'lab', 'physics = (n, d) => ({ nx: n, ny: n, nz, dx: d, dy: d, dz, moist: true, ice: true, iceParams: Object.assign({ n0g: 4e6, rhog: 400, n0r: 8e6, evap, twoMoment: !!spec.twoMoment }, spec.iceParams || {}), theta: env.theta, qv: env.qv, wind: { u: env.u, v: env.v },\n      visc: { kh: 500 * d / 2000, kv: 500 * d / 2000 }', 'physics = (n, d) => ({ nx: n, ny: n, nz, dx: d, dy: d, dz, moist: true, ice: true, iceParams: Object.assign({ n0g: 4e6, rhog: 400, n0r: 8e6, evap, twoMoment: !!spec.twoMoment }, spec.iceParams || {}), theta: env.theta, qv: env.qv, wind: { u: env.u, v: env.v },\n      visc: { kh: 500 * (n === nx ? d : dx) / 2000, kv: 500 * (n === nx ? d : dx) / 2000 }'],
+  ['detail-child-viscosity-of-the-box', 'lab', 'physics = (n, d) => ({ nx: n, ny: n, nz, dx: d, dy: d, dz, moist: true, ice: true, iceParams: Object.assign({ n0g: 4e6, rhog: 400, n0r: 8e6, evap, twoMoment: !!spec.twoMoment }, spec.iceParams || {}), theta: env.theta, qv: env.qv, wind: { u: env.u, v: env.v },\n      visc: { kh: 500 * d / 2000 * vf, kv: 500 * d / 2000 * vf }', 'physics = (n, d) => ({ nx: n, ny: n, nz, dx: d, dy: d, dz, moist: true, ice: true, iceParams: Object.assign({ n0g: 4e6, rhog: 400, n0r: 8e6, evap, twoMoment: !!spec.twoMoment }, spec.iceParams || {}), theta: env.theta, qv: env.qv, wind: { u: env.u, v: env.v },\n      visc: { kh: 500 * (n === nx ? d : dx) / 2000 * vf, kv: 500 * (n === nx ? d : dx) / 2000 * vf }'],
   ['detail-nest-ratio', 'lab', 'NEST.create({ parent: core, child, ratio, x0: cx0, y0: cy0 })', 'NEST.create({ parent: core, child, ratio: ratio + 1, x0: cx0, y0: cy0 })'],
   ['detail-nest-x', 'lab', 'x0: cx0, y0: cy0 }); nest.init();', 'x0: cx0 + 1000, y0: cy0 }); nest.init();'],
   ['detail-nest-y', 'lab', 'x0: cx0, y0: cy0 }); nest.init();', 'x0: cx0, y0: cy0 + 1000 }); nest.init();'],
@@ -390,9 +402,9 @@ const M = [
   ['detail-header-nest-depth', 'lab', 'header.nests = [{ nx: cn, ny: cn, nz: nzr,', 'header.nests = [{ nx: cn, ny: cn, nz,'],
   ['detail-header-nest-size', 'lab', 'header.nests = [{ nx: cn, ny: cn,', 'header.nests = [{ nx: cn + 1, ny: cn,'],
   ['detail-header-nest-cell', 'lab', 'nz: nzr, dx: det.dx, dz, scale', 'nz: nzr, dx, dz, scale'],
-  ['detail-header-fn-always', 'lab', 'nest: !!nest, fn: nest ? [[0, cx0, cy0]] : [] };', 'nest: !!nest, fn: [[0, cx0, cy0]] };'],
-  ['detail-header-fn-corner', 'lab', 'fn: nest ? [[0, cx0, cy0]] : [] };', 'fn: nest ? [[0, cx0 + 1000, cy0]] : [] };'],
-  ['detail-header-fn-nest-number', 'lab', 'fn: nest ? [[0, cx0, cy0]] : [] };', 'fn: nest ? [[1, cx0, cy0]] : [] };'],
+  ['detail-header-fn-always', 'lab', 'nest: !!nest, fn: nest ? [[0, cx0 - w0 * dx, cy0 - w0 * dx]] : [] };', 'nest: !!nest, fn: [[0, cx0 - w0 * dx, cy0 - w0 * dx]] };'],
+  ['detail-header-fn-corner', 'lab', 'fn: nest ? [[0, cx0 - w0 * dx, cy0 - w0 * dx]] : [] };', 'fn: nest ? [[0, cx0 - w0 * dx + 1000, cy0 - w0 * dx]] : [] };'],
+  ['detail-header-fn-nest-number', 'lab', 'fn: nest ? [[0, cx0 - w0 * dx, cy0 - w0 * dx]] : [] };', 'fn: nest ? [[1, cx0 - w0 * dx, cy0 - w0 * dx]] : [] };'],
   ['detail-header-fn-not-grown', 'lab', ' if (det) header.fn.push(rec.fn);', ''],
   ['start-hook-not-called', 'lab', 'if (hooks.start) hooks.start(header);', ''],
   ['start-hook-after-start', 'lab', 'if (hooks.start) hooks.start(header);\n    let nextFrame = 0,', 'let nextFrame = 0,'],
