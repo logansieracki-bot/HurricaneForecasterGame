@@ -30,8 +30,10 @@
  *
  *  A nest (src/severe-nest.js): a core with bc { x: 'driven', y: 'driven' } takes what is across its sides from the arrays of core.target (the parent puts its own state there,
  *  interpolated in space and time) and, after every step, pulls the outer `relax.width` cells (6) towards them, fully at the edge and with a cos^2 taper inwards.
- *  Drag: o.drag = { cd or z0, frame: { u, v } } puts a quadratic drag on the lowest level, cd |V| V / dz with V the wind over the ground (the model's winds plus `frame`, the velocity
- *  of the model's frame over the ground) and cd = (0.4 / ln(z1 / z0))^2 for the height z1 of the lowest level (z0 = 0.1 m unless given).
+ *  Drag: o.drag = { cd or z0, frame: { u, v }, balance } puts a quadratic drag on the lowest level, cd |V| V / dz with V the wind over the ground (the model's winds plus `frame`, the velocity
+ *  of the model's frame over the ground) and cd = (0.4 / ln(z1 / z0))^2 for the height z1 of the lowest level (z0 = 0.1 m unless given). With `balance` the drag of the environment's own
+ *  wind at the lowest level (the base state's, plus the frame) is given back as a steady push (what a pressure gradient and the mixing from above do in the real air), so that an environment
+ *  that nothing disturbs keeps its wind and only what a storm changes in it is slowed.
  *  core.getState() and core.setState(s) copy the whole state out and back (for a restart).
  *
  *  Pure JavaScript, no DOM. A classic script that sets `globalThis.HFSevereCore`.
@@ -173,6 +175,7 @@
       }
     }
     const DR = o.drag ? { cd: o.drag.cd || Math.pow(0.4 / Math.log(0.5 * dz / (o.drag.z0 || 0.1)), 2), fu: (o.drag.frame && o.drag.frame.u) || 0, fv: (o.drag.frame && o.drag.frame.v) || 0 } : null;
+    if (DR && o.drag.balance) { const u0 = ubc[0] + DR.fu, v0 = vbc[0] + DR.fv, V0 = Math.sqrt(u0 * u0 + v0 * v0); DR.bu = DR.cd / dz * V0 * u0; DR.bv = DR.cd / dz * V0 * v0; } else if (DR) { DR.bu = 0; DR.bv = 0; }
 
     /* ---- advection: out = -(u.grad psi) at the points of psi; tp: 0 centre, 1 u face, 2 v face, 3 w face ---- */
     function advect(out, psi, tp, U, V, W) {
@@ -288,8 +291,8 @@
       if (DR) for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {                    // the drag of the ground on the lowest level
         const o = idx(i, j, 0), cdz = DR.cd / dz;
         const vu = (ny > 1 ? 0.25 * (X.v[o - 1] + X.v[o] + X.v[o - 1 + sy] + X.v[o + sy]) : 0) + DR.fv, ug = X.u[o] + DR.fu;
-        R.u[o] -= cdz * Math.sqrt(ug * ug + vu * vu) * ug;
-        if (ny > 1) { const uv = 0.25 * (X.u[o] + X.u[o + 1] + X.u[o - sy] + X.u[o + 1 - sy]) + DR.fu, vg = X.v[o] + DR.fv; R.v[o] -= cdz * Math.sqrt(uv * uv + vg * vg) * vg; }
+        R.u[o] -= cdz * Math.sqrt(ug * ug + vu * vu) * ug; R.u[o] += DR.bu;
+        if (ny > 1) { const uv = 0.25 * (X.u[o] + X.u[o + 1] + X.u[o - sy] + X.u[o + 1 - sy]) + DR.fu, vg = X.v[o] + DR.fv; R.v[o] -= cdz * Math.sqrt(uv * uv + vg * vg) * vg; R.v[o] += DR.bv; }
       }
     }
 

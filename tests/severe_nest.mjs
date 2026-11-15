@@ -212,6 +212,22 @@ const pair = (extra = {}, childExtra = {}, popt = {}) => {
   const ue = e.S.u[e.idx(3, 3, 0)], ve = e.S.v[e.idx(3, 3, 0)], cdlog = Math.pow(0.4 / Math.log(50 / 0.1), 2);
   check('the drag takes its speed from both components (6 and 8 m/s: the wind turns not at all, u/v ' + ((ue + 6) / (ve + 8)).toFixed(4) + ' against 0.75, and slows by ' + (10 - Math.hypot(ue + 6, ve + 8)).toFixed(4) + ') and its default cd is the log law\'s ' + cdlog.toFixed(5),
     Math.abs((ue + 6) / (ve + 8) - 0.75) < 1e-6 && Math.abs(e.drag.cd - cdlog) < 1e-12 && Math.hypot(ue + 6, ve + 8) < 10 && Math.hypot(ue + 6, ve + 8) > 9.5);
+  /* the balance: the drag of the environment's own wind is given back as a steady push, so an environment that nothing disturbs keeps its wind (to the last bit) and what a storm changes in it is slowed as dW/dt = -(cd / dz) (W^2 - V0^2),
+     W the speed over the ground and V0 that of the environment, which integrates to (W - V0) / (W + V0) = ((W0 - V0) / (W0 + V0)) exp(-2 V0 cd t / dz) */
+  const bal = (u, v, fu, fv, balance) => {
+    const c = C.create({ nx: 8, ny: 8, nz: 8, dx: 500, dy: 500, dz, wind: { u: () => u, v: () => v }, bc: { x: 'periodic', y: 'periodic' }, drag: { cd, frame: { u: fu, v: fv }, balance } });
+    for (let k = 0; k < 8; k++) for (let j = 0; j < 8; j++) for (let i = 0; i < 8; i++) { const o = c.idx(i, j, k); c.S.u[o] = c.base.ubc[k]; c.S.v[o] = c.base.vbc[k]; }
+    c.fill(); return c;                                                                                  // (the winds start as the environment's: the model's state is the whole wind)
+  };
+  const quiet = (c) => { for (let m = 0; m < 600; m++) c.step(1); let d = 0; for (let k = 0; k < 8; k++) for (let j = 0; j < 8; j++) for (let i = 0; i < 8; i++) { const o = c.idx(i, j, k); d = Math.max(d, Math.abs(c.S.u[o] - c.base.ubc[k]), Math.abs(c.S.v[o] - c.base.vbc[k])); } return d; };
+  const q1 = bal(0, 0, 10, 0, true), q2 = bal(3, 4, 3, 4, true), q3 = bal(3, 4, 3, 4, false), c1 = quiet(q1), c2 = quiet(q2), c3 = quiet(q3);
+  check('a balanced environment keeps its wind (after 600 s: the largest change ' + c1.toExponential(1) + ' m/s of a wind of 10 over the ground, ' + c2.toExponential(1) + ' of a wind of (6, 8) that is partly the model\'s and partly the frame\'s), and without the balance the same environment slows (the model\'s wind of (3, 4) is (' + q3.S.u[q3.idx(3, 3, 0)].toFixed(3) + ', ' + q3.S.v[q3.idx(3, 3, 0)].toFixed(3) + ') after 600 s)',
+    c1 < 1e-12 && c2 < 1e-12 && c3 > 1 && q3.S.v[q3.idx(3, 3, 0)] < 3.9 && q3.S.u[q3.idx(3, 3, 0)] < 2.9);
+  const p1 = bal(0, 0, 10, 0, true), o1 = p1.idx(3, 3, 0), V0 = 10, W0 = 12, k = cd / dz, r = ((W0 - V0) / (W0 + V0)) * Math.exp(-2 * V0 * k * 600), Wt = V0 * (1 + r) / (1 - r);
+  for (let j = 0; j < 8; j++) for (let i = 0; i < 8; i++) p1.S.u[p1.idx(i, j, 0)] = 2;
+  for (let m = 0; m < 600; m++) p1.step(1);
+  check('a change in a balanced environment is slowed by the difference of the two drags (a wind of 2 m/s more than the environment\'s 10, after 600 s: ' + (p1.S.u[o1] + 10).toFixed(4) + ' m/s over the ground against ' + Wt.toFixed(4) + ' by the formula, the next level up ' + Math.abs(p1.S.u[p1.idx(3, 3, 1)]).toExponential(1) + ' from 0, and the other component ' + Math.abs(p1.S.v[o1]).toExponential(1) + ' from 0)',
+    Math.abs(p1.S.u[o1] + 10 - Wt) < 2e-3 && Math.abs(p1.S.u[p1.idx(3, 3, 1)]) < 1e-12 && Math.abs(p1.S.v[o1]) < 1e-12 && p1.S.u[o1] + 10 < 11.9 && p1.S.u[o1] + 10 > 11.2);
 }
 
 /* 9. A state saved and restored runs on bit for bit: a small moist storm with ice, ten steps, saved, ten more, and the same ten more from the copy. */
