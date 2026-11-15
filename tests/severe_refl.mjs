@@ -2,7 +2,7 @@
 //   - no water, no echo (-30 dBZ and no fall speed), in a column of ice and of Kessler's warm rain;
 //   - rain: Z = 720 N0 / lambda^7 with lambda = (pi rho_w N0 / (rho q))^(1/4), and the intercept N0 is the core's own (a tenth of it is +7.5 dB: Z goes as N0^(-3/4));
 //   - dry snow and graupel in cold air: the dielectric factor 0.176 / 0.93 of ice against water and (density / 900)^2; snow's intercept follows its temperature (2e6 exp(0.12 (273.15 - T)),
-//     at most 2e8), graupel's is the core's;
+//     at most the core's iceParams.n0smax, WSM6's 1e11), graupel's is the core's;
 //   - wet ice: with nothing at the reference level the ice that is above freezing reflects like water; with some, the water fraction is the share of the mass that has gone since it
 //     (at least 0.5 %, at most 99 %), and a quarter of the mass as water is enough for the value of water;
 //   - several species add in Z, and the fall speed is the mean of theirs weighted by the echo of each (core.zFall: it is what a Doppler radar adds to the wind);
@@ -68,11 +68,16 @@ const cold = (core, i, j) => { for (let k = 0; k < NZ; k++) setT(core, i, j, k, 
     const c = make(); for (let k = 0; k < NZ; k++) setT(c, 1, 1, k, 250); c.S.qg[c.idx(1, 1, 4)] = 1e-6; c.S.qs[c.idx(1, 1, 7)] = 1e-6; const d = column(c, 1, 1).d;
     check('1e-6 of graupel and of snow show (' + d[4].toFixed(1) + ', ' + d[7].toFixed(1) + ' dBZ): the closed forms', near(d[4], dB(KICE * Math.pow(400 / 900, 2) * zOf(4e6, 400, c.base.rhoc[4], 1e-6)), 1e-9) && near(d[7], dB(KICE * Math.pow(100 / 900, 2) * zOf(Math.min(2e8, 2e6 * Math.exp(0.12 * (T0 - 250))), 100, c.base.rhoc[7], 1e-6)), 1e-9) && d[4] > -30 && d[7] > -30);
   }
-  for (const T of [250, 268, 200]) {                                          // snow's intercept follows the cold; at 200 K it is the cap
+  for (const T of [250, 268, 200, 150]) {                                     // snow's intercept follows the cold; at 150 K it is the cap
     const c = make(); for (let k = 0; k < NZ; k++) setT(c, 1, 1, k, T); c.S.qs[c.idx(1, 1, 6)] = 0.002;
-    const n0 = Math.min(2e8, 2e6 * Math.exp(0.12 * Math.max(0, T0 - T)));
+    const n0 = Math.min(1e11, 2e6 * Math.exp(0.12 * Math.max(0, T0 - T)));
     const d = column(c, 1, 1), want = dB(KICE * Math.pow(100 / 900, 2) * zOf(n0, 100, c.base.rhoc[6], 0.002));
     check('dry snow at ' + T + ' K: intercept ' + n0.toExponential(2) + ' m-4, ' + d.d[6].toFixed(2) + ' dBZ', near(d.d[6], want, 1e-9) && near(d.v[6], c.zFall.snow(0.002, 6, c.idx(1, 1, 6)), 1e-9));
+  }
+  for (const [T, cap] of [[200, 1e11], [200, 5e8], [230, 1e11], [250, 5e8]]) {   // the cap is the core's own setting (iceParams.n0smax: the scheme's microphysics and the echo agree on the snow's size)
+    const c = make({ iceParams: { n0smax: cap } }); for (let k = 0; k < NZ; k++) setT(c, 1, 1, k, T); c.S.qs[c.idx(1, 1, 6)] = 0.002;
+    const n0 = Math.min(cap, 2e6 * Math.exp(0.12 * Math.max(0, T0 - T))), d = column(c, 1, 1), want = dB(KICE * Math.pow(100 / 900, 2) * zOf(n0, 100, c.base.rhoc[6], 0.002));
+    check('with iceParams.n0smax of ' + cap.toExponential(0) + ' dry snow at ' + T + ' K has the intercept ' + n0.toExponential(2) + ' m-4: ' + d.d[6].toFixed(2) + ' dBZ', near(d.d[6], want, 1e-9) && near(d.v[6], c.zFall.snow(0.002, 6, c.idx(1, 1, 6)), 1e-9));
   }
 }
 

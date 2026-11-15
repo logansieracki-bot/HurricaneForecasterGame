@@ -1,7 +1,6 @@
 // zone_run.mjs <day> <minutes> <out.hfp>: the Lab's run of an editor day with an initiation zone (src/severe-zone.js: seeds along a drawn line or over an area, in a box that holds it, no nest, the box not following any storm), as a pack for
-// tools/severe_research/pack_render.mjs. ZONE (JSON, the zone of HFSevereZone: kind, pts in m, density, strength, window; default a line of 120 km north-south, 4 seeds to 100 km, 3 K, over the first 30 minutes), DX=2000 DT=10 EVAP=1.
+// tools/severe_research/pack_render.mjs. ZONE (JSON, the zone of HFSevereZone: kind, pts in m, density, strength, window; default a line of 120 km north-south, 4 seeds to 100 km, 3 K, over the first 30 minutes), DX=2000 DT=10 EVAP=1 DRAG (the ground's roughness in m: the Lab's own, 0.1, unless it is given; DRAG=0 is the free-slip floor of the run in docs/severe-research.md part 7).
 //   node tools/severe_research/zone_run.mjs outbreak 90 /tmp/zone.hfp
-// lab_detail_run.mjs <day> <minutes> <from> <boxKm> <every> <out.hfp>: the Lab's run of an editor day with the detail nest, written as a pack (HFP2) that tools/severe_research/pack_render.mjs reads
 import { writeFileSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
 const R = new URL('../../src/', import.meta.url).pathname;
@@ -13,6 +12,7 @@ const ar = { z: Array.from(tb.z), theta: Array.from(tb.theta), qv: Array.from(tb
 const zone = JSON.parse(process.env.ZONE || '{"kind":"line","pts":[[0,-60000],[0,60000]],"density":4,"strength":3,"window":[0,30]}'), plan = Z.plan(zone, { dx: +process.env.DX || 2000 });
 console.log('zone box', plan.box.L / 1000, 'km,', plan.seeds.length, 'seeds, dropped', plan.dropped, plan.seeds.map((q) => '(' + (q.x / 1000).toFixed(0) + ',' + (q.y / 1000).toFixed(0) + ' t' + q.t.toFixed(0) + ')').join(' '));
 const spec = { env: ar, dx: +process.env.DX || 2000, box: plan.box.L, dt: +process.env.DT || 10, minutes: +minutes, frameEvery: 5, follow: false, evap: process.env.EVAP === undefined ? 1 : +process.env.EVAP, seeds: plan.seeds };
+if (process.env.DRAG !== undefined) spec.drag = +process.env.DRAG;
 let last = -1; const t0 = Date.now();
 const r = await L.run(spec, { progress: (p) => { if (Math.floor(p.t) !== last && Math.floor(p.t) % 5 === 0) { last = Math.floor(p.t); console.log('t=' + last + ' min  wall ' + Math.round(p.wall) + ' s'); } }, nest: () => console.log('nest made') });
 console.log('done', r.frames.length, 'frames', r.stopped ? 'stopped: ' + r.reason : '', 'wall', Math.round(r.wall), 's; drift', JSON.stringify(r.header.drift[r.frames.length - 1]));

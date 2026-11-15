@@ -373,17 +373,17 @@
 
     /* ---- ice microphysics: a single-moment scheme of the Lin et al. (1983) / Rutledge & Hobbs (1984) class with five water species: cloud water, rain, cloud ice, snow and
        graupel or hail. Rain, snow and graupel have exponential size distributions N0 exp(-lambda D) (rain N0 = 8e6 m-4; snow N0 = 2e6 exp(0.12 (T0 - T)), density 100 kg/m3, as in
-       WSM6; graupel N0 = 4e6 m-4 and density 400 kg/m3 by default, the graupel of Lin et al.; the rain intercept is iceParams.n0r (8e6 m-4) and iceParams.evap (1) scales the rain's evaporation (Kessler's formula, which does not depend on the intercept: the cooling of a cold pool is the knob of the tornado work); the "hail" setting of Lin et al. is iceParams { n0g: 4e4, rhog: 900 }, which makes
+       WSM6; graupel N0 = 4e6 m-4 and density 400 kg/m3 by default, the graupel of Lin et al.; the rain intercept is iceParams.n0r (8e6 m-4), iceParams.qi0 (1e-3 kg/kg, Lin's: the cloud ice above which it becomes snow; the scheme had 5e-4 until 15 Nov) and iceParams.n0smax (1e11 m-4, WSM6's: the cap of snow's intercept; it had 2e8) are settings (docs/severe-research.md part 3, the audit: neither changes the echo of the outbreak storm), and iceParams.evap (1) scales the rain's evaporation (Kessler's formula, which does not depend on the intercept: the cooling of a cold pool is the knob of the tornado work); the "hail" setting of Lin et al. is iceParams { n0g: 4e4, rhog: 900 }, which makes
        reflectivities about 14 dB higher in a Weisman-Klemp storm than the real storms measured by radar, docs/severe-research.md part 3); cloud ice has the number of Rutledge & Hobbs.
        Every process moves mass between species with its latent heat (condensation Lv, freezing and melting Lf, deposition and sublimation Ls = Lv + Lf), so water and the moist enthalpy
        cp T + Lv qv - Lf (qi + qs + qg) are conserved by construction. The processes are applied one after the other, each limited by what it can take. ---- */
     const T0 = 273.15, LF = 3.34e5, LV = KS.XLV, LS = LV + LF, RVAP = 461.5, lvK = LV / CP, lfK = LF / CP, lsK = LS / CP;
-    const IPAR = Object.assign({ n0g: 4e6, rhog: 400, n0r: 8e6, evap: 1, xrMin: 2.6e-10, xrMax: 5e-6 }, o.iceParams || {}), RHO0 = rhoc[0];
+    const IPAR = Object.assign({ n0g: 4e6, rhog: 400, n0r: 8e6, evap: 1, xrMin: 2.6e-10, xrMax: 5e-6, qi0: 1e-3, n0smax: 1e11 }, o.iceParams || {}), RHO0 = rhoc[0];
     const N0R = IPAR.n0r, RHOW = 1000, RHOS = 100, N0S0 = 2e6, VRa = 842, VRb = 0.8, VSa = 11.72, VSb = 0.41, VGa = Math.sqrt(4 * G * IPAR.rhog / (3 * 0.6 * RHO0)), VGb = 0.5;   // fall speed a D^b (rain: Liu & Orville; snow: Locatelli & Hobbs; hail: drag law with C_D = 0.6)
     const gvent = (b) => gammaF((b + 5) / 2), gmass = (b) => gammaF(4 + b) / 6, gcoll = (b) => gammaF(3 + b);
     const GR = { vent: gvent(VRb), mass: gmass(VRb), coll: gcoll(VRb) }, GS = { vent: gvent(VSb), mass: gmass(VSb), coll: gcoll(VSb) }, GG = { vent: gvent(VGb), mass: gmass(VGb), coll: gcoll(VGb) };
     const lamOf = (n0, rhox, rho, q) => Math.pow(Math.PI * rhox * n0 / (rho * q), 0.25);
-    const n0sOf = (T) => Math.min(2e8, N0S0 * Math.exp(0.12 * Math.max(0, T0 - T)));
+    const n0sOf = (T) => Math.min(IPAR.n0smax, N0S0 * Math.exp(0.12 * Math.max(0, T0 - T)));
     const vbar = (a, b, mass, rho, l) => a * Math.sqrt(RHO0 / rho) * mass / Math.pow(l, b);                                   // mass-weighted fall speed of an exponential distribution
     const collSmall = (E, n0, a, b, coll, rho, l) => E * Math.PI / 4 * n0 * a * Math.sqrt(RHO0 / rho) * coll / Math.pow(l, 3 + b);   // 1/s: what a species sweeps out of small particles at rest
     // What x collects of y (kg/m3/s): the integral of the collision kernel (pi/4) (Dx + Dy)^2 |Vx - Vy| m(Dy) N(Dx) N(Dy) over both exponential distributions. Expanding (Dx + Dy)^2 gives three
@@ -519,7 +519,7 @@
           if (qi > 1e-12) {                                 // snow and graupel collect cloud ice
             if (hasS) { const d = qi * (1 - Math.exp(-collSmall(Math.exp(0.025 * (T - T0)), n0s, VSa, VSb, GS.coll, rho, lS) * dt)); qi -= d; qs += d; }
             if (hasG) { const d = qi * (1 - Math.exp(-collSmall(0.1, IPAR.n0g, VGa, VGb, GG.coll, rho, lG) * dt)); qi -= d; qg += d; }
-            const d = Math.min(qi, Math.max(0, 1e-3 * Math.exp(0.025 * (T - T0)) * dt * (qi - 5e-4))); qi -= d; qs += d;                                // ice becomes snow above 0.5 g/kg
+            const d = Math.min(qi, Math.max(0, 1e-3 * Math.exp(0.025 * (T - T0)) * dt * (qi - IPAR.qi0))); qi -= d; qs += d;                                // ice becomes snow above 1 g/kg (iceParams.qi0, Lin's)
           }
           { const d = Math.min(qs, Math.max(0, 1e-3 * Math.exp(0.09 * (T - T0)) * dt * (qs - 6e-4))); qs -= d; qg += d; }                               // heavy snow becomes graupel
         }

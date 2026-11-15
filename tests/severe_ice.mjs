@@ -275,5 +275,21 @@ const P = pK();
   check('the water budget with ice closes to 0.3 % (' + rel.toExponential(1) + '), and little is clipped (' + (core.stat.clipped / (Math.abs(w0) || 1)).toExponential(1) + ' of the water)', Math.abs(rel) < 3e-3 && core.stat.clipped < 1e-3 * w0);
 }
 
+/* 7. Two constants of the scheme that are not Lin's (the audit of docs/severe-research.md part 3) are settings: `iceParams.qi0`, the cloud ice above which it becomes snow (1e-3 kg/kg, Lin's; the scheme had 5e-4 until 15 Nov: the rate is
+   1e-3 exp(0.025 T) times what is above it), and `iceParams.n0smax`, the cap of the snow's intercept (1e11 m-4, WSM6's; it had 2e8). The defaults are the references'; the settings are what the formulas give. */
+{
+  const T = T0 - 20, qi = 2e-3, conv = (core0) => { const o = setCell(core0, 1, { T, qv: qsi(T, P), qi }); run(core0, 10, 1); return read(core0, o).qs; };
+  const alpha = 1e-3 * Math.exp(0.025 * (T - T0)), want = (q0) => alpha * Math.max(0, qi - q0) * 10;
+  const s0 = conv(mk()), s1 = conv(mk({ iceParams: { qi0: 5e-4 } })), s2 = conv(mk({ iceParams: { qi0: 3e-3 } })), s3 = conv(mk({ iceParams: { qi0: 1e-3 } }));
+  check('cloud ice of 2 g/kg at -20 C becomes snow at 1e-3 exp(0.025 T) times what is above the threshold: ' + f2(1e6 * s0, 2) + ' mg/kg of snow in 10 s by default (' + f2(1e6 * want(1e-3), 2) + ' by hand), ' + f2(1e6 * s1, 2) + ' for iceParams.qi0 of 0.5 g/kg (' + f2(1e6 * want(5e-4), 2) + '), none above the cloud ice (' + s2 + ') and the default is Lin\'s 1 g/kg (' + f2(1e6 * s3, 2) + ')',
+        Math.abs(s0 / want(1e-3) - 1) < 0.03 && Math.abs(s1 / want(5e-4) - 1) < 0.03 && s2 === 0 && s3 === s0 && s1 > s0);
+  const core = mk(), rho = core.base.rhoc[K], rho0 = core.base.rhoc[0], Tc = T0 - 60, q = 1e-3;
+  const vz = (n0) => { const l = Math.pow(Math.PI * 100 * n0 / (rho * q), 0.25); return 11.72 * Math.sqrt(rho0 / rho) * gam(7.41) / 720 / Math.pow(l, 0.41); }, n0free = 2e6 * Math.exp(0.12 * 60);
+  const a = mk(), oa = setCell(a, 1, { T: Tc, qv: qsi(Tc, P) * 0.9, qs: q }), b = mk({ iceParams: { n0smax: 2e8 } }), ob = setCell(b, 1, { T: Tc, qv: qsi(Tc, P) * 0.9, qs: q }), c = mk({ iceParams: { n0smax: 5e8 } }), oc = setCell(c, 1, { T: Tc, qv: qsi(Tc, P) * 0.9, qs: q });
+  const ga = a.zFall.snow(q, K, oa), gb = b.zFall.snow(q, K, ob), gc = c.zFall.snow(q, K, oc);
+  check('the snow of the anvil at -60 C has the intercept of 2e6 exp(0.12 T) = ' + n0free.toExponential(1) + ' m-4, not capped by default (WSM6 caps it at 1e11: the echo-weighted fall speed of 1 g/kg ' + f2(ga, 3) + ' m/s, ' + f2(vz(n0free), 3) + ' by the formula), capped at 2e8 as the scheme had it until 15 Nov (' + f2(gb, 3) + ', ' + f2(vz(2e8), 3) + ') and at 5e8 (' + f2(gc, 3) + ', ' + f2(vz(5e8), 3) + '): more and smaller flakes fall slower',
+        Math.abs(ga / vz(n0free) - 1) < 0.003 && Math.abs(gb / vz(2e8) - 1) < 0.003 && Math.abs(gc / vz(5e8) - 1) < 0.003 && ga < gc && gc < gb);
+}
+
 console.log(`\n${passed} passed, ${failed} failed (${lap()})`);
 process.exit(failed ? 1 : 0);

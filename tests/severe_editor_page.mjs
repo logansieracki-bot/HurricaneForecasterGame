@@ -268,7 +268,7 @@ check('the key T switches to the light theme and the map follows (the corner of 
 await pr.screenshot({ path: join(tmp, 'light.png') }); await pr.keyboard.press('t'); await settle(pr);
 /* 12. The initiation zone (behind `?zone` until it is turned on for everyone): its tool, the line sketched with the mouse, its card, the spot that goes to its middle, the bubbles it draws, one zone at most, undo, the sounding that it leaves as it was,
    the card of a run with a zone and a run with the seeds it makes. */
-const noZone = await ev(pg, "document.querySelectorAll('#ed-tools [data-id=\"zone\"]').length");
+const noZone = await ev(pr, "document.querySelectorAll('#ed-tools [data-id=\"zone\"]').length");
 const ZZ = await open(1440, 900, { query: '?zone' }), zp = ZZ.page;
 {
 const zt = await ev(zp, "document.querySelectorAll('#ed-tools [data-id=\"zone\"]').length"), tl = await ev(zp, "document.querySelectorAll('#ed-tools .tl').length");
@@ -307,13 +307,13 @@ await slide(zp, 'p-density', 3); await slide(zp, 'p-over', 30); await slide(zp, 
 await zp.click('#ed-start'); await zp.waitForSelector('#run-go', { timeout: 5000 });
 const rc = await ev(zp, "(() => ({ quality: document.querySelectorAll('#run-det button').length, len: document.querySelectorAll('#run-len button').length, story: document.getElementById('run-story').textContent, bold: [...document.querySelectorAll('#run-story b')].map((b) => b.textContent) }))()"), plan = await ev(zp, "(() => { const p = SEVERE.editor.zonePlan(SEVERE.editor.zoneOf()); return { L: p.box.L, n: p.seeds.length }; })()");
 check('the card of a run with a zone has no choice of quality (the box is too wide for the fine model), says how wide the box is (' + plan.L / 1000 + ' km), how many bubbles go off and when, and what the model will make of them, and how long it takes (' + rc.bold.join(' | ') + ')',
-  rc.quality === 0 && rc.len === 4 && new RegExp('a box ' + plan.L / 1000 + ' km wide').test(rc.story) && new RegExp(plan.n + ' warm bubbles? goes? off').test(rc.story) && /from the 0th to the 30th minute/.test(rc.story) && /the day decides what each becomes/.test(rc.story) && /about \d+ minutes/.test(rc.story) && /no hook/.test(rc.story));
+  rc.quality === 0 && rc.len === 4 && new RegExp('a box ' + plan.L / 1000 + ' km wide').test(rc.story) && new RegExp(plan.n + ' warm bubbles? go(es)? off').test(rc.story) && /from the 0th to the 30th minute/.test(rc.story) && /the day decides what each becomes/.test(rc.story) && /about \d+ minutes/.test(rc.story) && /no hook/.test(rc.story));
 await zp.click('#run-x'); await settle(zp);
 const zrun = zp.evaluate(() => { const E = SEVERE.editor, z = E.zoneOf(), pl = E.ZN.plan(Object.assign(E.zoneSpec(z), { pts: [[0, 0], [0, 40000]], density: 6 }), { dx: 6000, margin: 12000, min: 48000, max: 48000 }); return E.runStorm({ minutes: 6, dx: 6000, box: pl.box.L, dt: 30, frameEvery: 2, seeds: pl.seeds, follow: false }).then((r) => ({ ok: true, n: r.pack.n, times: r.pack.times, name: r.pack.name, nx: r.pack.h.nx, lab: r.pack.h.lab, planSeeds: pl.seeds.length, maxW: r.maxW })).catch((e) => ({ ok: false, e: String(e.message || e) })); });
 const zr = await zrun;
 check('a run with the seeds of a zone of 40 km (a box of 48 km of cells of 6 km: 6 minutes) makes a pack whose header says what they were and that the box followed no storm (' + (zr.ok ? zr.n + ' frames at ' + zr.times.join(', ') + '; ' + zr.lab.seeds.length + ' seeds listed of ' + zr.planSeeds + '; follow ' + zr.lab.follow + '; "' + zr.name + '"' : zr.e) + ')',
   zr.ok && zr.n === 4 && zr.nx === 8 && zr.lab.follow === false && zr.lab.seeds.length === zr.planSeeds && zr.planSeeds === 2 && /initiation zone/.test(zr.name) && zr.lab.seeds.every((q) => q.length === 4 && q[2] >= 0 && q[2] <= 30));
-await zp.keyboard.press('Escape'); await settle(zp); await zp.keyboard.press('Delete'); await settle(zp);
+await zp.click('#m-draw'); await settle(zp); await zp.keyboard.press('Delete'); await settle(zp);                  // (the run put the page on the radar: Draw brings the editor back with the zone still the selected object, and its key deletes it)
 check('Delete takes the zone away (' + (await objs(zp)).filter((o) => o.type === 'zone').length + ' zones of ' + (await objs(zp)).length + ' objects), the storm\'s marker is painted again where the spot was left, and the card is gone', (await objs(zp)).filter((o) => o.type === 'zone').length === 0 && (await objs(zp)).length === zBefore && await ev(zp, "document.getElementById('ed-props').hidden"));
 
 }

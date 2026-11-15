@@ -2,7 +2,7 @@
  *
  * The Rayleigh value at 10 cm that WRF's refl10cm_lin computes: rain 720 N0 / lambda^7 (the core's own intercept, or with iceParams.twoMoment the intercept N0 = rho nr lambda of the drops the core counts, lambda = (pi rho_w nr / qr)^(1/3)); snow and graupel/hail as ice spheres of their density against water
  * (|K|^2 of ice over water 0.176 / 0.93, times (density / 900)^2), the ice rising to the value of water as it gets wet below the melting level (a water coat on a quarter of the mass
- * reflects like rain: the bright band, the wet hail); snow's intercept follows its temperature (2e6 exp(0.12 (273.15 - T)), at most 2e8). Without ice (Kessler) the formula of WRF's
+ * reflects like rain: the bright band, the wet hail); snow's intercept follows its temperature (2e6 exp(0.12 (273.15 - T)), at most the core's iceParams.n0smax: WSM6's 1e11 unless it says otherwise). Without ice (Kessler) the formula of WRF's
  * module_mp_kessler: Z = 17300 (rho q in g/m3)^1.75. The fall speed of each species is the core's own core.zFall (reflectivity-weighted, m/s downward), weighted here by the echo of each.
  *
  *   const R = HFSevereRefl.create(core);        // the settings (the rain's and graupel's intercepts and the graupel's density) are the core's own (core.iceParams)
@@ -38,7 +38,7 @@
         for (let s = 0; s < 2; s++) {
           const snow = s === 0, q = snow ? S.qs[o] : S.qg[o];
           if (q <= 1e-9) continue;
-          const n0 = snow ? Math.min(2e8, 2e6 * Math.exp(0.12 * Math.max(0, T0 - T))) : P.n0g, rx = snow ? 100 : P.rhog, mref = snow ? msRef : mgRef, l = lamOf(n0, rx, rho, q);
+          const n0 = snow ? Math.min(P.n0smax || 1e11, 2e6 * Math.exp(0.12 * Math.max(0, T0 - T))) : P.n0g, rx = snow ? 100 : P.rhog, mref = snow ? msRef : mgRef, l = lamOf(n0, rx, rho, q);
           let wet = 0;                                                                          // water fraction: from what has melted since the freezing level (WRF)
           if (T > T0) wet = mref > 0 ? Math.max(0.005, Math.min(1 - rho * q / mref, 0.99)) : 0.99;
           const kk = KICE + (1 - KICE) * Math.min(1, wet / 0.25);                               // a water coat on a quarter of the mass reflects like rain

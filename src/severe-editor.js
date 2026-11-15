@@ -514,7 +514,7 @@
     el.querySelectorAll('#run-len button').forEach((b) => b.addEventListener('click', () => { LAB.minutes = +b.dataset.m; el.querySelectorAll('#run-len button').forEach((x) => x.setAttribute('aria-pressed', String(x === b))); story(); }));
     el.querySelectorAll('#run-det button').forEach((b) => b.addEventListener('click', () => {
       LAB.detail = b.dataset.d === '1'; el.querySelectorAll('#run-det button').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
-      if (LAB.detail && LAB.minutes < 90) { LAB.minutes = 90; el.querySelectorAll('#run-len button').forEach((x) => x.setAttribute('aria-pressed', String(+x.dataset.m === 90))); }          // (a hook comes late in a storm: from 70 minutes on)
+      if (LAB.detail && LAB.minutes < 90) { LAB.minutes = 90; el.querySelectorAll('#run-len button').forEach((x) => x.setAttribute('aria-pressed', String(+x.dataset.m === 90))); }          // (a hook comes late in a storm: from about 60 minutes on)
       story();
     }));
     story();
@@ -526,7 +526,7 @@
   const runStoryFine = (min) => {
     const work = Math.min(min, DETAIL.from) * 0.17 + Math.max(0, min - DETAIL.from) * 0.65, mins = Math.max(5, Math.round(work / 5) * 5);
     return 'The real model with cells of 1 km, and from the ' + DETAIL.from + 'th minute a second one inside it: cells of ' + DETAIL.dx + ' m over ' + DETAIL.box / 1000 + ' km that stay on the storm and show its core finely. The radar opens at once and the frames appear on its slider as they are made: the first ' + DETAIL.from + ' minutes in about three minutes, then a frame about every half minute, <b>about ' + mins + ' minutes</b> in all on a fast computer, much longer on a phone. ' +
-      (min < 80 ? 'A hook echo comes late in a storm, from 70 minutes on, so this run will not have one yet.' : 'You can watch it as it goes, and Stop keeps what it has made. A hook echo comes late in a storm and is weaker here than in a recorded storm with all of it at 500 m (Storms, Tornado outbreak day, 500 m).');
+      (min < 70 ? 'A hook echo comes late in a storm, from about 60 minutes on, so this run will not have one yet.' : 'You can watch it as it goes, and Stop keeps what it has made. A hook echo comes late in a storm, from about 60 minutes on, and is weaker here than in a recorded storm with all of it at 500 m (Storms, Tornado outbreak day, 500 m).');
   };
   /* a run with an initiation zone (src/severe-zone.js): a box that holds the zone and 40 km round it, cells of 2 km, a warm bubble at each place and time the zone's draw gives, the box following no storm, no nest. What it costs is the Fast model's
      (about 1.7 s of work a model minute in an 84 km box, on a fast computer) times the box's area. */

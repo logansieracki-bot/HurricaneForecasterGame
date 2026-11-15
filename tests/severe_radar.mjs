@@ -543,5 +543,50 @@ const median = (a) => { const s = Float64Array.from(a).sort(); return s[s.length
   check('every pixel of a picture takes the colour of the gate it is in, found independently from its range and azimuth (' + ok + ' of ' + tot + ' pixels), the hole of the cone of silence and the sky beyond the last gate being background', ok === tot);
 }
 
+/* 14. The edge of the box: the model has nothing beyond its box, so an echo that goes on is cut dead straight there (and comes back on the far side of a periodic box); `edge` fades it out over a width of 0.5 to 1.5 times
+   that many metres (a smooth noise of the place), by 20 log10 (0.5 - 0.5 cos (pi t)) for t the distance from the edge over the width: nothing at the edge itself, nothing changed beyond the width, never louder, all four sides,
+   a nest's own edge never faded, and with no `edge` bit for bit what it was. */
+{
+  const nx = 30, ny = 20, nz = 4, dx = 2000, dy = 2000, dz = 1000, Lx = nx * dx, Ly = ny * dy, E = 10000, z = 1500;
+  const vol = { nx, ny, nz, dx, dy, dz, dbz: new Float32Array(nx * ny * nz).fill(40) }, s0 = R.volumeSampler(vol), s1 = R.volumeSampler(vol, E, 1);
+  const fadeDb = (t) => t >= 1 ? 0 : 20 * Math.log10(Math.max(0.5 - 0.5 * Math.cos(Math.PI * Math.max(t, 0)), 1e-9));
+  let n = 0, inB = 0, raised = 0, interior = 0, interiorOk = 0, exact = 0, off = 0, fl = 0;
+  const s5 = R.volumeSampler(vol, 0, 5);
+  for (let x = 250; x < Lx; x += 500) for (let y = 250; y < Ly; y += 500) {
+    const de = Math.min(x, Lx - x, y, Ly - y), d1 = s1(x, y, z), d0 = s0(x, y, z); n++;
+    if (d1 >= Math.max(-30, 40 + fadeDb(de / (1.5 * E))) - 1e-3 && d1 <= 40 + fadeDb(de / (0.5 * E)) + 1e-3) inB++;
+    if (d1 > d0 + 1e-6) raised++;
+    if (de >= 1.5 * E) { interior++; if (d1 === 40) interiorOk++; }
+    const w = E * (0.5 + R.vnoise(22, x / 8000, y / 8000)); if (Math.abs(d1 - Math.max(-30, 40 + fadeDb(de / w))) < 1e-3) exact++;
+    if (s5(x, y, z) === d0) off++;
+  }
+  const low = R.volumeSampler({ nx, ny, nz, dx, dy, dz, dbz: new Float32Array(nx * ny * nz).fill(-30) }, E, 1); for (let x = 250; x < Lx; x += 2500) if (low(x, 20000, z) === -30) fl++;
+  check('at the edge of a box of 60 x 40 km with echo of 40 dBZ everywhere the fade is as it is written: ' + inB + ' of ' + n + ' places are inside the bounds that a width of 0.5 to 1.5 times ' + E / 1000 + ' km allows, and ' + exact + ' are what the formula gives for the width the noise of the place gives',
+        inB === n && exact === n && n > 1500);
+  check('and it is never louder than without it (' + raised + ' places), nothing changes at 15 km and more from every side (' + interiorOk + ' of ' + interior + ' places read 40 exactly), with no edge or an edge of 0 the sampler is the same (' + off + ' of ' + n + '), and a volume with no echo has none (' + fl + ' of ' + Math.ceil((Lx - 250) / 2500) + ')',
+        raised === 0 && interior > 500 && interiorOk === interior && off === n && fl === Math.ceil((Lx - 250) / 2500));
+  const sides = [[3000, 20000], [Lx - 3000, 20000], [40000, 3000], [40000, Ly - 3000]].map(([x, y]) => s1(x, y, z)), at = [s1(0, 20000, z), s1(1, 20000, z), s1(Lx, 20000, z), s1(30000, 0, z), s1(30000, Ly, z), s1(-100, 20000, z), s1(0.5 * Lx, -300, z)];
+  check('all four sides fade, each a different width of the same place (3 km from the west, east, south and north edges: ' + sides.map((v) => v.toFixed(1)).join(', ') + ' dBZ, all under 40 - 3), and at the edge itself and beyond there is no echo (' + at.join(', ') + ')',
+        sides.every((v) => v < 37 && v >= -30) && at.every((v) => v === -30));
+  const west = []; for (let y = 2000; y < Ly - 2000; y += 500) west.push(s1(4000, y, z));
+  const other = R.volumeSampler(vol, E, 2), west2 = []; for (let y = 2000; y < Ly - 2000; y += 500) west2.push(other(4000, y, z));
+  check('the width is not a constant: 4 km from the west edge the echo is between ' + Math.min(...west).toFixed(1) + ' and ' + Math.max(...west).toFixed(1) + ' dBZ along it, so that the fade is not a straight line, the same again for the same seed and not for another (' + west.some((v, i) => v !== west2[i]) + ')',
+        Math.max(...west) - Math.min(...west) > 0.5 && west.every((v, i) => v === s1(4000, 2000 + 500 * i, z)) && west.some((v, i) => v !== west2[i]));
+  /* the box with a nest in its south-west corner, scanned from inside the nest: what is in the nest is not faded, what is in the box near its edge is */
+  const nb = 30, big = { nx: nb, ny: nb, nz: 4, dx: 2000, dy: 2000, dz: 1000, dbz: new Float32Array(nb * nb * 4).fill(40) }, nest = { nx: 12, ny: 12, nz: 4, dx: 1000, dy: 1000, dz: 1000, dbz: new Float32Array(12 * 12 * 4).fill(40) };
+  big.nests = [{ x: 0, y: 0, vol: nest }];
+  const o = { x: 6000, y: 3000, elev: 0.5, seed: 3, n: 64, clutter: { ground: 0, clearAir: 0 }, nGates: 60 }, A0 = R.scan(big, Object.assign({ edge: 0 }, o)), A1 = R.scan(big, Object.assign({ edge: 10000 }, o)), A2 = R.scan(big, o);
+  let same = 0, nin = 0, plain = 0; for (let g = 0; g <= 11; g++) { nin++; if (A1.dbz[180 * 60 + g] === A0.dbz[180 * 60 + g] && A0.dbz[180 * 60 + g] > 30) same++; }
+  for (let i = 0; i < A0.dbz.length; i++) if (A2.dbz[i] === A0.dbz[i] || (A2.dbz[i] !== A2.dbz[i] && A0.dbz[i] !== A0.dbz[i])) plain++;
+  const gFar = 47, dFar = A1.dbz[180 * 60 + gFar] - A0.dbz[180 * 60 + gFar];
+  check('a scan with a nest in the corner and the radar in it: the gates inside the nest are the same with the edge and without (' + same + ' of ' + nin + ' to 5 km), the one 14 km out in the box, 2.9 km from its south edge, is ' + dFar.toFixed(1) + ' dB lower with it, and with no `edge` the scan is bit for bit the scan with `edge: 0` (' + plain + ' of ' + A0.dbz.length + ' gates)',
+        same === nin && dFar < -3 && plain === A0.dbz.length);
+  /* the edge is the same in every frame and tilt (the speckle's seed does not move it) and another `edgeSeed` makes another edge */
+  const fadeOf = (extra) => { const a0 = R.scan(big, Object.assign({}, o, extra, { edge: 0 })), a1 = R.scan(big, Object.assign({}, o, extra, { edge: 10000 })); return Array.from({ length: 20 }, (_, i) => a1.dbz[180 * 60 + 40 + i] - a0.dbz[180 * 60 + 40 + i]); };
+  const fA = fadeOf({ seed: 3 }), fB = fadeOf({ seed: 4 }), fC = fadeOf({ seed: 3, edgeSeed: 5 });
+  check('the fade of the 20 gates 12 to 17 km out is the same for another seed of the speckle (the largest difference ' + Math.max(...fA.map((v, i) => Math.abs(v - fB[i]))).toFixed(2) + ' dB, the data go in steps of 0.5 dB), and not the same for another `edgeSeed` (' + Math.max(...fA.map((v, i) => Math.abs(v - fC[i]))).toFixed(1) + ' dB) : the edge does not flicker from frame to frame',
+        fA.every((v, i) => Math.abs(v - fB[i]) <= 1.01) && fA.some((v, i) => Math.abs(v - fC[i]) > 1.5) && fA.every((v) => v < -3));
+}
+
 console.log(`\n${passed} passed, ${failed} failed (${lap()})`);
 process.exit(failed ? 1 : 0);

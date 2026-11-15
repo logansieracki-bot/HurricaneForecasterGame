@@ -31,7 +31,12 @@ const M = [
   ['graupel-rain-no-heat', 'qr -= d; qg += d; T += lfK * d; }     // graupel collects rain', 'qr -= d; qg += d; }     // graupel collects rain'],
   ['graupel-collects-rain-off', 'if (hasG && lR > 0 && qr > 1e-12) {', 'if (false && hasG && lR > 0 && qr > 1e-12) {'],
   ['ice-collection-efficiency', 'Math.exp(0.025 * (T - T0)), n0s, VSa', '0.0, n0s, VSa'],
-  ['ice-to-snow-threshold', '(qi - 5e-4)', '(qi - 5e-2)'],
+  ['ice-to-snow-threshold', '(qi - IPAR.qi0)', '(qi - 5e-2)'],
+  ['ice-to-snow-qi0-ignored', '(qi - IPAR.qi0)', '(qi - 1e-3)'],
+  ['snow-intercept-cap-ignored', 'Math.min(IPAR.n0smax, N0S0', 'Math.min(2e8, N0S0'],
+  ['snow-intercept-uncapped', 'Math.min(IPAR.n0smax, N0S0 * Math.exp(0.12 * Math.max(0, T0 - T)))', '(N0S0 * Math.exp(0.12 * Math.max(0, T0 - T)))'],
+  ['snow-intercept-cap-default', 'n0g: 4e6, rhog: 400, n0r: 8e6, evap: 1, xrMin: 2.6e-10, xrMax: 5e-6, qi0: 1e-3, n0smax: 1e11', 'n0g: 4e6, rhog: 400, n0r: 8e6, evap: 1, xrMin: 2.6e-10, xrMax: 5e-6, qi0: 1e-3, n0smax: 2e8'],
+  ['ice-to-snow-qi0-default', 'n0g: 4e6, rhog: 400, n0r: 8e6, evap: 1, xrMin: 2.6e-10, xrMax: 5e-6, qi0: 1e-3, n0smax: 1e11', 'n0g: 4e6, rhog: 400, n0r: 8e6, evap: 1, xrMin: 2.6e-10, xrMax: 5e-6, qi0: 5e-4, n0smax: 1e11'],
   ['snow-to-graupel-threshold', '(qs - 6e-4)', '(qs - 6e-2)'],
   // deposition and sublimation
   ['dep-heat-is-Lv', 'qv -= dep; T += lsK * dep;', 'qv -= dep; T += lvK * dep;'],

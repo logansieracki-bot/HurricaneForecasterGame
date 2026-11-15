@@ -54,9 +54,11 @@
     return a + (b - a) * sx + (c - a) * sy + (a - b - c + d) * sx * sy;
   }
 
-  /* ---- the volume: sampling it (trilinear in dBZ, so that echo edges are smooth; no echo outside it) ---- */
-  function volumeSampler(vol) {
-    const { nx, ny, nz, dx, dy, dz, dbz } = vol, floor = vol.floor !== undefined ? vol.floor : -30, nxy = nx * ny;
+  /* ---- the volume: sampling it (trilinear in dBZ, so that echo edges are smooth; no echo outside it). `edge` (m, 0: none) is the width over which the echo fades out at the volume's outer edge, where the model has nothing
+     beyond and an echo that goes on would be cut dead straight (and, in a periodic box, would come back on the far side): the dBZ falls by 20 log10 (0.5 - 0.5 cos (pi t)) for t = the distance from the edge over the width, nothing
+     at the edge itself; the width runs from 0.5 to 1.5 times `edge` with a smooth noise of the place (`seed`), so that the fade is not a straight line. A presentation of the model's limit, not weather. ---- */
+  function volumeSampler(vol, edge, seed) {
+    const { nx, ny, nz, dx, dy, dz, dbz } = vol, floor = vol.floor !== undefined ? vol.floor : -30, nxy = nx * ny, lx = nx * dx, ly = ny * dy, fade = edge > 0 ? edge : 0, sd = (seed || 0) + 21;
     return function (x, y, z) {                             // dBZ at (x, y, z) metres from the volume's south-west corner and the ground
       const fx = x / dx - 0.5, fy = y / dy - 0.5, fz = z / dz - 0.5;
       if (fx < -0.5 || fy < -0.5 || fx > nx - 0.5 || fy > ny - 0.5 || z < 0 || fz > nz - 0.5) return floor;
@@ -68,8 +70,12 @@
       const o = k * nxy + j * nx + i;
       const c000 = dbz[o], c100 = dbz[o + 1], c010 = dbz[o + nx], c110 = dbz[o + nx + 1], c001 = dbz[o + nxy], c101 = dbz[o + nxy + 1], c011 = dbz[o + nxy + nx], c111 = dbz[o + nxy + nx + 1];
       const x0 = c000 + (c100 - c000) * tx, x1 = c010 + (c110 - c010) * tx, x2 = c001 + (c101 - c001) * tx, x3 = c011 + (c111 - c011) * tx;
-      const y0 = x0 + (x1 - x0) * ty, y1 = x2 + (x3 - x2) * ty;
-      return y0 + (y1 - y0) * tz;
+      const y0 = x0 + (x1 - x0) * ty, y1 = x2 + (x3 - x2) * ty, d = y0 + (y1 - y0) * tz;
+      if (fade > 0 && d > floor) {
+        const de = Math.min(x, lx - x, y, ly - y), w = fade * (0.5 + vnoise(sd, x / 8000, y / 8000));
+        if (de < w) { const t = de > 0 ? de / w : 0, c = 0.5 - 0.5 * Math.cos(Math.PI * t), f = d + 20 * Math.log10(Math.max(c, 1e-9)); return f > floor ? f : floor; }
+      }
+      return d;
     };
   }
 
@@ -134,7 +140,7 @@
           noise: { z1: the noise floor in dBZ at 1 km (-41.8), atten: the air's attenuation corrected for, dB per km (0.019), thr: the threshold in dB over the noise for a gate to be reported (2.5),
                    n: samples of the noise (16), sparse: the share of gates with an isolated weak target (0.0008) };
           clutter: { ground: 0..1 (strength, 1), clearAir: 0..1 (1) }; clear: { mean: the clear air's dBZ at the antenna (2; real radars range from -5 on a dull day to +5 on a day of insects), top: the boundary layer's top (m, 1300, with a soft edge of 200) };
-          quant: dBZ step of the data (0.5); beamBlock: off;
+          quant: dBZ step of the data (0.5); beamBlock: off; edge: the width in metres over which the echo of the volume's box fades out at its outer edge (0: it is cut there; a nest's edge is never faded; see volumeSampler), edgeSeed: the seed of the noise of that width (0: not the speckle's `seed`, so that the edge is the same in every frame and tilt),
           velocity: false, or { nyquist: the Nyquist velocity in m/s (28; real sites run from 26 to 36), dealias: the true velocity, not folded into +-Nyquist (false), quant: step of the data (0.5),
                    pulses: M of the pulse-pair estimate (40), snrLoss: what the real estimator loses against the ideal one, in dB of signal (4.5), thr: the signal over the noise, in dB, a gate needs for a velocity
                    (4: 1.5 dB over what reflectivity needs), noise: 0..1 scale of the measurement error (1), fine: { storm, clear, clutter }: the white fluctuation of the wind in the gate, m/s (0.7, 0.8, 0.3),
@@ -148,7 +154,7 @@
     const elev = o.elev !== undefined ? o.elev : 0.5, dAz = o.dAz || 0.5, gate = o.gate || 250, r0 = o.r0 !== undefined ? o.r0 : 2125, nG = o.nGates || 920, antenna = o.antenna !== undefined ? o.antenna : 30;
     const seed = (o.seed === undefined ? 1 : o.seed) | 0, nS = Math.max(1, o.n || 2), nRad = Math.round(360 / dAz), quant = o.quant === undefined ? 0.5 : o.quant;
     const noise = Object.assign({ z1: -41.8, atten: 0.019, thr: 2.5, n: 16, sparse: 0.0008 }, o.noise), cl = Object.assign({ ground: 1, clearAir: 1 }, o.clutter), cla = Object.assign({}, CLEAR, o.clear);
-    const sample = vol ? withNests(vol, volumeSampler, (v) => !!v.dbz) : null, rx = o.x || 0, ry = o.y || 0, floor = vol && vol.floor !== undefined ? vol.floor : -30;
+    const sample = vol ? withNests(vol, (v) => volumeSampler(v, v === vol ? o.edge : 0, o.edgeSeed), (v) => !!v.dbz) : null, rx = o.x || 0, ry = o.y || 0, floor = vol && vol.floor !== undefined ? vol.floor : -30;
     const out = new Float32Array(nRad * nG), snrThr = Math.pow(10, 0.1 * noise.thr) - 1, nN = Math.max(1, noise.n | 0);
     const sinE = Math.sin(elev * DEG), cosE = Math.cos(elev * DEG);
     const vel = o.velocity ? Object.assign({}, VEL, o.velocity === true ? {} : o.velocity) : null;
@@ -277,5 +283,5 @@
     return img;
   }
 
-  globalThis.HFSevereRadar = { scan, render, beamHeight, groundRange, hash, gammaUnit, volumeSampler, windSampler, RE };
+  globalThis.HFSevereRadar = { scan, render, beamHeight, groundRange, hash, gammaUnit, vnoise, volumeSampler, windSampler, RE };
 })();
