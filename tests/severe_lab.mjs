@@ -112,6 +112,47 @@ const arrays = (nz = 41, dz = 500) => { const z = Array.from({ length: nz }, (_,
   check('a model that blows up stops with a reason and the frames before it (' + x.stopped + ', "' + x.reason + '", ' + x.frames.length + ' frames)', x.stopped && /blew up/.test(x.reason) && x.frames.length >= 1 && x.frames.length < 4);
 }
 
+/* 4b. The seeds of a run (an initiation zone's bubbles, docs/severe-plan.md 6.4): where each is, when it goes off, that the box is periodic for it, what the header says. The potential temperature at the start of every step of a
+   tiny box (8 x 8 x 20 cells of 6 km by 1 km, a step of 30 s) is what is looked at, against the bubble's own formula. */
+{
+  const a = arrays(41, 500), DXS = 6000, NXS = 8, LS = DXS * NXS, NZS = 20, DZS = 1000;
+  const mk = (o) => Object.assign({ env: a, dx: DXS, box: LS, nz: NZS, dz: DZS, dt: 30, minutes: 1, follow: false }, o);
+  const grab = async (o) => {                                                                                // the potential temperature at the start of each step, and the core
+    const orig = C.create; let core = null; const th = [];
+    C.create = (op) => { core = orig(op); const st = core.step; core.step = (dt) => { th.push(Float64Array.from(core.S.th)); st(dt); }; return core; };
+    try { const r = await L.run(mk(o), {}); return { r, core, th }; } finally { C.create = orig; }
+  };
+  const field = (core, q) => {                                                                               // what a seed adds, cell by cell, from the bubble's formula and the nearest of its images in the periodic box
+    const f = new Float64Array(core.S.th.length), idx = core.idx, w = (d) => d - LS * Math.round(d / LS);
+    for (let k = 0; k < NZS; k++) for (let j = 0; j < NXS; j++) for (let i = 0; i < NXS; i++) f[idx(i, j, k)] = L.bubble(w((i + 0.5) * DXS - q.x), w((j + 0.5) * DXS - q.y), (k + 0.5) * DZS, 0, 0, q.amp, q.rx, q.ry, q.zc, q.rz);
+    return f;
+  };
+  const inside = (core, f) => { let s = 0; for (let k = 0; k < NZS; k++) for (let j = 0; j < NXS; j++) for (let i = 0; i < NXS; i++) s += f[core.idx(i, j, k)]; return s; };
+  const maxDiff = (core, f, g) => { let m = 0; for (let k = 0; k < NZS; k++) for (let j = 0; j < NXS; j++) for (let i = 0; i < NXS; i++) { const o = core.idx(i, j, k); m = Math.max(m, Math.abs(f[o] - g[o])); } return m; };
+
+  const d0 = await grab({ bubble: 2 }), mid = field(d0.core, { x: LS / 2, y: LS / 2, amp: 2 });
+  check('with no seeds there is one bubble in the middle of the box at minute 0, of the amplitude of `bubble` (2 K): the potential temperature of the first step is its formula, cell by cell (the largest difference ' + maxDiff(d0.core, d0.th[0], mid).toExponential(1) + ', the sum ' + inside(d0.core, d0.th[0]).toFixed(3) + ' K)', maxDiff(d0.core, d0.th[0], mid) < 1e-12 && inside(d0.core, mid) > 3);
+  const s2 = [{ x: 12000, y: 18000, amp: 2 }, { x: 36000, y: 30000, amp: 1 }], d2 = await grab({ seeds: s2 }), f2 = field(d2.core, s2[0]), g2 = field(d2.core, s2[1]), sum2 = f2.map((v, i) => v + g2[i]);
+  check('seeds at minute 0 are all in the initial state, each at its place and amplitude, and there is none that was not asked for (the largest difference from the sum of the two bubbles ' + maxDiff(d2.core, d2.th[0], sum2).toExponential(1) + '; the cell between them holds ' + d2.th[0][d2.core.idx(4, 3, 1)].toFixed(6) + ' K)', maxDiff(d2.core, d2.th[0], sum2) < 1e-12 && inside(d2.core, f2) > 0.5 && inside(d2.core, g2) > 0.5 && d2.th[0][d2.core.idx(4, 3, 1)] === 0);
+  const t1 = await grab({ seeds: [{ x: 24000, y: 24000, t: 0.5, amp: 2 }] }), t0 = await grab({ seeds: [{ x: 24000, y: 24000, t: 100, amp: 2 }] }), ft = field(t1.core, { x: 24000, y: 24000, amp: 2 }), dd = t1.th[1].map((v, i) => v - t0.th[1][i]);
+  check('a seed with a time is not in the initial state (the first step has none: the largest potential temperature ' + Math.max(...t1.th[0].map(Math.abs)) + ') and is added at the first step at or after its time (30 s: the step at 30 s starts with it, and the box is as a run whose seed comes at the 100th minute, the bubble apart: the largest difference from its formula ' + maxDiff(t1.core, dd, ft).toExponential(1) + ')', Math.max(...t1.th[0].map(Math.abs)) === 0 && maxDiff(t1.core, dd, ft) < 1e-12 && inside(t1.core, ft) > 3);
+  const u1 = await grab({ minutes: 1, seeds: [{ x: 12000, y: 24000, t: 1, amp: 2 }, { x: 36000, y: 24000, t: 0.5, amp: 1 }] }), u2 = await grab({ minutes: 1, seeds: [{ x: 36000, y: 24000, t: 0.5, amp: 1 }] });
+  const second = field(u1.core, { x: 12000, y: 24000, amp: 2 });
+  check('seeds are taken in the order of their times whatever the order of the list: the later one (60 s) comes in at the step at 60 s and nothing else changes before it (the first 2 steps of a run with only the early seed are the same, ' + maxDiff(u1.core, u1.th[1], u2.th[1]).toExponential(1) + '), and what it adds is its own bubble (' + maxDiff(u1.core, u1.th[2].map((v, i) => v - u2.th[2][i]), second).toExponential(1) + ')',
+    maxDiff(u1.core, u1.th[1], u2.th[1]) === 0 && maxDiff(u1.core, u1.th[2].map((v, i) => v - u2.th[2][i]), second) < 1e-9 && inside(u1.core, second) > 1);
+  const e1 = await grab({ minutes: 0.5, seeds: [{ x: 3000, y: 45000, amp: 2 }] }), fe = field(e1.core, { x: 3000, y: 45000, amp: 2 }), far = e1.core.idx(NXS - 1, NXS - 1, 1), near1 = e1.core.idx(0, NXS - 1, 1);
+  check('a seed at the edge goes on at the other side, as the periodic box has it (the bubble at (3000, 45000) m reaches the cells at the east edge (' + e1.th[0][far].toFixed(4) + ' K at the north-east corner, ' + fe[far].toFixed(4) + ' by the formula) and the north: the largest difference ' + maxDiff(e1.core, e1.th[0], fe).toExponential(1) + ')', maxDiff(e1.core, e1.th[0], fe) < 1e-12 && e1.th[0][far] > 0.3 && e1.th[0][near1] > 1);
+  const ts = await grab({ minutes: 0.5, seeds: [{ x: 45000, y: 24000, t: 0.5, amp: 2 }] }), hi = ts.core.idx(-1, 3, 1), lo = ts.core.idx(NXS - 1, 3, 1), hi2 = ts.core.idx(NXS, 3, 1), lo2 = ts.core.idx(0, 3, 1);
+  check('a seed that goes off after the start leaves the halo of the box filled (the cells beyond the edges hold what the cells at the other side do: ' + ts.th[1][hi].toFixed(4) + ' and ' + ts.th[1][lo].toFixed(4) + ' at the west, ' + ts.th[1][hi2].toFixed(4) + ' and ' + ts.th[1][lo2].toFixed(4) + ' at the east)', ts.th[1][lo] > 0.5 && ts.th[1][hi] === ts.th[1][lo] && ts.th[1][hi2] === ts.th[1][lo2] && ts.th[1][lo2] > 0.1);
+  const sz = [{ x: 24000, y: 24000, amp: 1.5, rx: 20000, ry: 8000, zc: 3500, rz: 2000 }], z1 = await grab({ minutes: 0.5, seeds: sz }), fz = field(z1.core, sz[0]);
+  check('a seed has its own size and height (20 km by 8 km, 4 km deep, centred at 3.5 km): the potential temperature of the first step is the formula\'s with those, cell by cell (the largest difference ' + maxDiff(z1.core, z1.th[0], fz).toExponential(1) + '; ' + inside(z1.core, fz).toFixed(2) + ' K summed)', maxDiff(z1.core, z1.th[0], fz) < 1e-12 && inside(z1.core, fz) > 3 && z1.th[0][z1.core.idx(3, 3, 3)] > 0 && z1.th[0][z1.core.idx(3, 3, 0)] === 0);
+  const hd = await L.run(mk({ minutes: 1, seeds: [{ x: 36000, y: 12000.4, t: 0.5, amp: 1 }, { x: 12000, y: 24000 }] }), {}), no = await L.run(mk({ minutes: 0.2 }), {});
+  check('the header lists the seeds (x, y, t, amplitude) in the order of their times, the amplitude 3 K where none was given, and nothing about seeds when there are none (' + JSON.stringify(hd.header.lab.seeds) + '; ' + ('seeds' in no.header.lab) + ')', JSON.stringify(hd.header.lab.seeds) === '[[12000,24000,0,3],[36000,12000,0.5,1]]' && !('seeds' in no.header.lab));
+  const nestFail = async (o) => { try { await L.run(mk(Object.assign({ minutes: 1, detail: { dx: 3000, from: 0, every: 1, minUpdraft: 0 }, follow: true }, o)), {}); return ''; } catch (e) { return e.message; } };
+  const nf = await nestFail({ seeds: [{ t: 0.5 }] }), nok = await nestFail({ seeds: [{ x: 24000, y: 24000 }] });
+  check('a nest cannot take a seed that goes off later (it is driven at its sides only), and says so ("' + nf + '"), but takes any at minute 0 ("' + nok + '")', /does not reach a nest/.test(nf) && nok === '');
+}
+
 /* 5. A storm of the dryline day: the drawing's sounding at its spot, 20 minutes at 3 km. */
 {
   const d = globalThis.HFSevereDays.get('dryline'), A = globalThis.HFSevereAnalysis.create(d.drawing), sp = d.spot, env = A.sounding(sp.x, sp.y, sp.t, { dz: 100, top: 20000 }), tb = env.table;
