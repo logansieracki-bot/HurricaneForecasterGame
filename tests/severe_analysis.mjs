@@ -54,11 +54,37 @@ const north = (x) => [[x, -3000], [x, 3000]];                                   
     rel(e.v, V) < 0.002 && near(e.u, 0, 0.01) && rel(-n.u, V) < 0.002 && rel(-w.v, V) < 0.002 && rel(s.u, V) < 0.002 && rel(Math.hypot(m.u, m.v), Vr(200, 400, 15)) < 0.002);
   const hi = mk([{ type: 'high', x: 0, y: 0, rise: 10, size: 600 }]).geostrophic(600, 0, 0);
   check('round a high it turns clockwise: south on its east side (' + hi.v.toFixed(2) + ', and ' + Vr(600, 600, 10).toFixed(2) + ' m/s)', hi.v < 0 && rel(-hi.v, Vr(600, 600, 10)) < 0.002);
-  const g = V, z10 = a.windAt(400, 0, 10, 0), fr = 0.55 + 0.45 * (1 - Math.exp(-10 / 700)), dec = Math.exp(-10 / 3500), ang = Math.atan2(-z10[0], z10[1]) / DEG;
-  check('at the ground friction slows it to ' + (fr * dec).toFixed(4) + ' of the gradient wind and turns it ' + (28 * Math.exp(-10 / 700)).toFixed(2) + ' degrees towards the low (' + (Math.hypot(z10[0], z10[1]) / g).toFixed(4) + ', ' + ang.toFixed(2) + ' degrees, u < 0: ' + z10[0].toFixed(2) + ')',
+  const Vgr = (r, Vg) => { const q = F * r * 1000; return q / 2 * (Math.sqrt(1 + 4 * Vg / q) - 1); };                // the gradient wind round a circle of r km where the geostrophic wind is Vg: the closed form
+  const g = Vgr(400, V), z10 = a.windAt(400, 0, 10, 0), fr = 0.55 + 0.45 * (1 - Math.exp(-10 / 700)), dec = Math.exp(-10 / 3500), ang = Math.atan2(-z10[0], z10[1]) / DEG;
+  check('at the ground friction slows it to ' + (fr * dec).toFixed(4) + ' of the gradient wind (' + g.toFixed(2) + ' m/s at 400 km, not the geostrophic ' + V.toFixed(2) + ') and turns it ' + (28 * Math.exp(-10 / 700)).toFixed(2) + ' degrees towards the low (' + (Math.hypot(z10[0], z10[1]) / g).toFixed(4) + ', ' + ang.toFixed(2) + ' degrees, u < 0: ' + z10[0].toFixed(2) + ')',
     rel(Math.hypot(z10[0], z10[1]), g * fr * dec) < 0.003 && near(ang, 28 * Math.exp(-10 / 700), 0.1) && z10[0] < 0);
   const z5 = a.windAt(400, 0, 5000, 0), f5 = 0.55 + 0.45 * (1 - Math.exp(-5000 / 700));
-  check('at 5 km the gradient\'s wind is ' + (f5 * Math.exp(-5000 / 3500)).toFixed(4) + ' of the surface\'s, unturned (' + (Math.hypot(z5[0], z5[1]) / g).toFixed(4) + ', u ' + z5[0].toFixed(3) + ')', rel(Math.hypot(z5[0], z5[1]), g * f5 * Math.exp(-5000 / 3500)) < 0.003 && Math.abs(z5[0]) < 0.01 * Math.abs(z5[1]));
+  check('at 5 km the gradient wind is ' + (f5 * Math.exp(-5000 / 3500)).toFixed(4) + ' of the surface\'s, unturned (' + (Math.hypot(z5[0], z5[1]) / g).toFixed(4) + ', u ' + z5[0].toFixed(3) + ')', rel(Math.hypot(z5[0], z5[1]), g * f5 * Math.exp(-5000 / 3500)) < 0.003 && Math.abs(z5[0]) < 0.01 * Math.abs(z5[1]));
+}
+
+/* 3b. The gradient wind: round curved isobars the wind is not the geostrophic one (slower round a low, faster round a high, within 0.45 and 1.3 of it). */
+{
+  const a = mk([{ type: 'low', x: 0, y: 0, depth: 15, size: 400 }], { aloft: { speed: 0 } }), Vr = (r, R, D) => (2 * D * 100 * r * 1000 / (R * 1000) ** 2 * Math.exp(-sq(r / R))) / (RHO * F);
+  const Vgr = (r, Vg) => { const q = F * r * 1000; return q / 2 * (Math.sqrt(1 + 4 * Vg / q) - 1); };                // round a circle of r km (the isobars of a low are circles: curvature 1 / r)
+  const at = (r, deg) => [r * Math.cos(deg * DEG), r * Math.sin(deg * DEG)];
+  const rows = [[200, 0], [400, 0], [800, 0], [400, 45], [400, 200], [250, 130]].map(([r, d]) => { const [x, y] = at(r, d), b = a.balanced(x, y, 0), g = a.geostrophic(x, y, 0); return { r, d, sp: Math.hypot(b.u, b.v), want: Vgr(r, Vr(r, 400, 15)), dir: Math.atan2(b.v, b.u) - Math.atan2(g.v, g.u) }; });
+  check('round a low of 15 hPa and 400 km the wind is the gradient wind, in every direction from it: ' + rows.map((x) => x.sp.toFixed(2) + ' m/s at ' + x.r + ' km, ' + x.d + ' degrees (' + x.want.toFixed(2) + ')').join(', ') + '; it blows the way the geostrophic wind does (the geostrophic at 400 km: ' + Vr(400, 400, 15).toFixed(2) + ')',
+    rows.every((x) => rel(x.sp, x.want) < 0.003 && near(x.dir, 0, 1e-6)) && rows[1].sp < 0.7 * Vr(400, 400, 15) && rows[2].sp / Vr(800, 400, 15) < 0.97);
+  const hi = (rise) => mk([{ type: 'high', x: 0, y: 0, rise, size: 600 }]).balanced(600, 0, 0), hv = (rise) => Math.hypot(hi(rise).u, hi(rise).v), anti = (Vg) => { const q = F * 600e3; return q / 2 * (1 - Math.sqrt(Math.max(0, 1 - 4 * Vg / q))); };
+  const g5 = Vr(600, 600, 5), g10 = Vr(600, 600, 10);
+  check('round a high it is faster: ' + hv(5).toFixed(2) + ' m/s where the geostrophic wind is ' + g5.toFixed(2) + ' (the closed form ' + anti(g5).toFixed(2) + '), and no more than 1.3 times it (' + hv(10).toFixed(2) + ' against ' + g10.toFixed(2) + ' x 1.3 = ' + (1.3 * g10).toFixed(2) + ', where the closed form wants ' + anti(g10).toFixed(2) + ')',
+    rel(hv(5), anti(g5)) < 0.003 && hv(5) > 1.05 * g5 && rel(hv(10), 1.3 * g10) < 0.002 && hi(10).v < 0);
+  const tight = mk([{ type: 'low', x: 0, y: 0, depth: 40, size: 60 }], { aloft: { speed: 0 } }), tb = tight.balanced(60, 0, 0), tg = Vr(60, 60, 40);
+  check('a very tight low cannot take the wind from the closed form (' + Vgr(60, tg).toFixed(2) + ' of a geostrophic ' + tg.toFixed(1) + ' m/s is ' + (Vgr(60, tg) / tg).toFixed(2) + ' of it): it keeps 0.45 of it (' + (Math.hypot(tb.u, tb.v) / tg).toFixed(4) + ')',
+    Vgr(60, tg) / tg < 0.3 && rel(Math.hypot(tb.u, tb.v) / tg, 0.45) < 0.003);
+  const g20 = Vr(600, 600, 20), q6 = F * 600e3, h20 = hv(20);
+  check('where the pressure force is more than a steady wind round a high can balance (the geostrophic wind ' + g20.toFixed(1) + ' m/s round isobars 600 km across) the wind is the most there can be, f r / 2 = ' + (q6 / 2).toFixed(2) + ' m/s, and finite (' + h20.toFixed(2) + ')', Number.isFinite(h20) && rel(h20, q6 / 2) < 0.003);
+  const trough = mk([{ type: 'trough', pts: [[0, -4000], [0, 4000]], depth: 6, width: 150 }], { aloft: { speed: 0 } }), tr = trough.balanced(100, 0, 0), tgs = trough.geostrophic(100, 0, 0);
+  check('along straight isobars (the middle of a long trough) there is no curvature and the wind is the geostrophic one (' + Math.hypot(tr.u, tr.v).toFixed(3) + ' against ' + Math.hypot(tgs.u, tgs.v).toFixed(3) + ' m/s)', Math.hypot(tgs.u, tgs.v) > 3 && rel(Math.hypot(tr.u, tr.v), Math.hypot(tgs.u, tgs.v)) < 0.002);
+  const calm = mk([]).balanced(10, 20, 0);
+  check('with no pressure gradient there is no wind (' + calm.u + ', ' + calm.v + ')', calm.u === 0 && calm.v === 0);
+  const sf = a.surface(400, 0, 0), fr = 0.55 + 0.45 * (1 - Math.exp(-10 / 700)), dec = Math.exp(-10 / 3500);
+  check('the surface wind uses it: ' + sf.speed.toFixed(3) + ' m/s at 400 km from the low against ' + (Vgr(400, Vr(400, 400, 15)) * fr * dec).toFixed(3), rel(sf.speed, Vgr(400, Vr(400, 400, 15)) * fr * dec) < 0.003);
 }
 
 /* 4. The flow aloft, the jets and the circulation aloft. */
@@ -77,6 +103,29 @@ const north = (x) => [[x, -3000], [x, 3000]];                                   
   const u = mk([{ type: 'utrough', x: 0, y: 0, speed: 25, size: 500 }], { aloft: { speed: 0 } }), at = (x, y, z) => u.windAt(x, y, z, 0);
   check('a circulation aloft of 25 m/s at 500 km: counter-clockwise (south on its east side at 8 km ' + at(500, 0, 8000)[1].toFixed(3) + ', west on its north ' + at(0, 500, 8000)[0].toFixed(3) + ', north on its west ' + at(-500, 0, 8000)[1].toFixed(3) + '), nothing at the centre, ' + (50 * Math.exp(-1.5)).toFixed(3) + ' m/s at twice the radius (' + at(1000, 0, 8000)[1].toFixed(3) + '), 25/e at 4 km',
     near(at(500, 0, 8000)[1], 25, 1e-9) && near(at(0, 500, 8000)[0], -25, 1e-9) && near(at(-500, 0, 8000)[1], -25, 1e-9) && at(0, 0, 8000)[0] === 0 && near(at(1000, 0, 8000)[1], 50 * Math.exp(-1.5), 1e-9) && near(at(500, 0, 4000)[1], 25 / E, 1e-9));
+}
+
+/* 4b. The limit: what the lows, the jets and the flow aloft add up to is held to what weather has (a soft limit by height; 60 mph at a kilometre). */
+{
+  const nodes = [[0, 15], [500, 22], [1000, 27], [1500, 30], [3000, 32], [6000, 40], [9000, 60], [12000, 66], [20000, 45]], near3 = (z) => A.windCap(z);                        // (written out here, not read from the module)
+  check('the most the wind can be: ' + nodes.map(([z, c]) => (z / 1000) + ' km ' + c).join(', ') + ' m/s, 27 m/s (60 mph) at a kilometre, and in a straight line between them (' + near3(250).toFixed(2) + ' at 250 m, ' + near3(750).toFixed(2) + ' at 750 m, ' + near3(10500).toFixed(2) + ' at 10.5 km), the ends held beyond (' + near3(-100) + ', ' + near3(30000) + ')',
+    JSON.stringify(A.WIND_CAP) === JSON.stringify(nodes) && nodes.every(([z, c]) => near(near3(z), c, 1e-12)) && near(near3(1000), 27, 1e-12) && near(near3(250), 18.5, 1e-9) && near(near3(750), 24.5, 1e-9) && near(near3(10500), 63, 1e-9) && near3(-100) === 15 && near3(30000) === 45);
+  const k = A.KNEE * near3(1000), id = A.limit(20, 0, 1000), id2 = A.limit(-3, 4, 0);
+  check('below ' + A.KNEE + ' of the limit the wind is what the drawing gave (20 m/s at 1 km: ' + id + '; (-3, 4) at the ground: ' + id2 + ')', A.KNEE === 0.75 && id[0] === 20 && id[1] === 0 && id2[0] === -3 && id2[1] === 4);
+  const sp = (s) => Math.hypot(...A.limit(s, 0, 1000)), curve = Array.from({ length: 60 }, (_, i) => sp(5 + i * 1.5)), rising = curve.every((v, i) => i === 0 || v > curve[i - 1]);
+  check('above it the wind bends over to the limit and never passes it: ' + [24, 30, 40, 60, 150].map((s) => s + ' m/s becomes ' + sp(s).toFixed(2)).join(', ') + ' at 1 km (27 m/s); it keeps rising (' + rising + ') and joins the straight part without a kink (' + ((sp(k + 0.01) - sp(k)) / 0.01).toFixed(3) + ' just above ' + k.toFixed(2) + ')',
+    rising && curve.every((v) => v < 27) && near(sp(150), 27, 1e-9) && [24, 30, 40].every((s) => near(sp(s), k + (27 - k) * Math.tanh((s - k) / (27 - k)), 1e-9)) && (sp(k + 0.01) - sp(k)) / 0.01 > 0.99);
+  const dr = A.limit(30, 40, 3000), r = Math.hypot(30, 40);
+  check('the direction is kept (30, 40 at 3 km becomes ' + dr[0].toFixed(3) + ', ' + dr[1].toFixed(3) + ': ' + (Math.hypot(dr[0], dr[1])).toFixed(2) + ' m/s of the limit 32)', near(dr[0] / dr[1], 0.75, 1e-12) && dr[0] > 0 && dr[1] > 0 && near(Math.hypot(dr[0], dr[1]), 0.75 * 32 + 0.25 * 32 * Math.tanh((r - 24) / 8), 1e-9));
+  const big = mk([{ type: 'jet', pts: [[-1000, 0], [1000, 0]], speed: 200, width: 250 }], { aloft: { speed: 0 } }), c95 = near3(9500);
+  check('a jet drawn at 200 m/s is 200 in the sum (' + big.windRaw(0, 0, 9500, 0)[0].toFixed(1) + ') and ' + c95.toFixed(2) + ' m/s in the wind (' + big.windAt(0, 0, 9500, 0)[0].toFixed(3) + '), blowing the same way (' + big.windAt(0, 0, 9500, 0)[1].toFixed(6) + ' north), and at the ground, where it is next to nothing, ' + big.windAt(0, 0, 0, 0)[0].toFixed(4),
+    near(big.windRaw(0, 0, 9500, 0)[0], 200, 1e-9) && near(big.windAt(0, 0, 9500, 0)[0], c95, 1e-3) && big.windAt(0, 0, 9500, 0)[1] === 0 && big.windAt(0, 0, 0, 0)[0] < 0.2);
+  const deep = mk([{ type: 'low', x: 0, y: 0, depth: 60, size: 300 }], { aloft: { speed: 0 } }), sf = deep.surface(300, 0, 0), raw = deep.windRaw(300, 0, 10, 0);
+  check('a deep low (60 hPa, 300 km) would blow ' + Math.hypot(raw[0], raw[1]).toFixed(1) + ' m/s at the ground and blows ' + sf.speed.toFixed(2) + ' (the limit at 10 m is ' + near3(10).toFixed(2) + '), the direction kept',
+    Math.hypot(raw[0], raw[1]) > 20 && sf.speed < near3(10) && sf.speed > 0.75 * near3(10) && near(Math.atan2(sf.v, sf.u), Math.atan2(raw[1], raw[0]), 1e-9));
+  const mild = mk([{ type: 'low', x: 0, y: 0, depth: 15, size: 400 }, { type: 'llj', pts: [[300, -500], [300, 500]], speed: 18, width: 150 }]), wa = mild.windAt(250, -50, 1500, 0), wr = mild.windRaw(250, -50, 1500, 0), lim = A.limit(wr[0], wr[1], 1500);
+  check('a day inside the limit is as drawn at 1.5 km (the sum ' + Math.hypot(wr[0], wr[1]).toFixed(2) + ' m/s of the limit 30; the wind ' + Math.hypot(wa[0], wa[1]).toFixed(2) + ') and where it is over, the wind is the limit applied to the sum',
+    Math.hypot(wr[0], wr[1]) < 0.75 * 30 ? wa[0] === wr[0] && wa[1] === wr[1] : near(wa[0], lim[0], 1e-12) && near(wa[1], lim[1], 1e-12));
 }
 
 /* 5. The soundings: the air masses and where the lines let them in. */

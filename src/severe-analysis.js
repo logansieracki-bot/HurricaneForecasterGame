@@ -72,6 +72,20 @@
   const shifted = (pts, dx, dy) => (dx === 0 && dy === 0 ? pts : pts.map((p) => [p[0] + dx, p[1] + dy]));
   const gauss = (a) => Math.exp(-a * a);
 
+  /* ---- the most the wind can be at a height (m/s, between the nodes in a straight line): the lows, the jets and the flow aloft of a drawing add up, and a sum is held to what weather has: a severe
+          day's wind is 12 to 15 m/s at the ground, 25 to 28 in its low-level jet and 55 to 60 in the jet stream. Below KNEE of the limit the wind is what the drawing gives; above it, it bends over to the limit (tanh) and never passes it ---- */
+  const WIND_CAP = [[0, 15], [500, 22], [1000, 27], [1500, 30], [3000, 32], [6000, 40], [9000, 60], [12000, 66], [20000, 45]], KNEE = 0.75;
+  function windCap(z) {
+    if (z <= WIND_CAP[0][0]) return WIND_CAP[0][1];
+    for (let i = 1; i < WIND_CAP.length; i++) if (z <= WIND_CAP[i][0]) { const a = WIND_CAP[i - 1], b = WIND_CAP[i]; return a[1] + (b[1] - a[1]) * (z - a[0]) / (b[0] - a[0]); }
+    return WIND_CAP[WIND_CAP.length - 1][1];
+  }
+  function limit(u, v, z) {
+    const s = Math.hypot(u, v), c = windCap(z), k = KNEE * c;
+    if (s <= k) return [u, v];
+    const r = (k + (c - k) * Math.tanh((s - k) / (c - k))) / s; return [u * r, v * r];
+  }
+
   const FRONT = { cold: { slope: 1 / 80, contrast: 12, width: 40, air: 'cold' }, warm: { slope: 1 / 150, contrast: 10, width: 60, air: 'cool' }, stationary: { slope: 1 / 100, contrast: 8, width: 50, air: 'cool' },
                   occluded: { slope: 1 / 100, contrast: 8, width: 50, air: 'cold' } };
 
@@ -120,10 +134,23 @@
       const h = 3; return { gx: (pressure(x + h, y, t) - pressure(x - h, y, t)) * 100 / (2 * h * 1000), gy: (pressure(x, y + h, t) - pressure(x, y - h, t)) * 100 / (2 * h * 1000) };
     }
     const geostrophic = (x, y, t) => { const g = gradient(x, y, t); return { u: -g.gy / (RHO * f), v: g.gx / (RHO * f) }; };
+    /* the gradient wind: air that follows curved isobars is accelerated towards the centre of the curve, so round a low the pressure force has that to supply as well as the Coriolis force and the wind is slower than the
+       geostrophic one (half of it round a low a couple of hundred kilometres across), round a high it is faster (V = f / 2k (sqrt(1 + 4 k Vg / f) - 1) for the isobars' curvature k, positive towards the low; the factor is held between 0.45 and 1.3) */
+    function balanced(x, y, t) {
+      const g = geostrophic(x, y, t), vg = Math.hypot(g.u, g.v); if (vg < 0.05) return g;
+      const h = 3, P = (a, b) => pressure(a, b, t), p0 = P(x, y), c = 100 / (h * h * 1e6), px = (P(x + h, y) - P(x - h, y)) * 100 / (2 * h * 1000), py = (P(x, y + h) - P(x, y - h)) * 100 / (2 * h * 1000);
+      const pxx = (P(x + h, y) - 2 * p0 + P(x - h, y)) * c, pyy = (P(x, y + h) - 2 * p0 + P(x, y - h)) * c, pxy = (P(x + h, y + h) - P(x + h, y - h) - P(x - h, y + h) + P(x - h, y - h)) * c / 4, G = Math.hypot(px, py);
+      const k = (py * py * pxx - 2 * px * py * pxy + px * px * pyy) / (G * G * G);
+      const r = Math.abs(k) < 1e-9 ? 1 : f / (2 * k) * (Math.sqrt(Math.max(0, 1 + 4 * k * vg / f)) - 1) / vg, m = Math.max(0.45, Math.min(1.3, r));
+      return { u: g.u * m, v: g.v * m };
+    }
 
-    /* ---- the wind at a height: the gradient's, with friction, the flow aloft, the jets and the circulation aloft ---- */
+    /* ---- the wind at a height: the gradient's, with friction, the flow aloft, the jets and the circulation aloft, held to what the atmosphere has ---- */
     function windAt(x, y, z, t, g0) {
-      const g = g0 || geostrophic(x, y, t), fr = 0.55 + 0.45 * (1 - Math.exp(-z / 700)), ang = 28 * DEG * Math.exp(-z / 700), dec = Math.exp(-z / 3500), ca = Math.cos(ang), sa = Math.sin(ang);
+      const w = windSum(x, y, z, t, g0); return limit(w[0], w[1], z);
+    }
+    function windSum(x, y, z, t, g0) {
+      const g = g0 || balanced(x, y, t), fr = 0.55 + 0.45 * (1 - Math.exp(-z / 700)), ang = 28 * DEG * Math.exp(-z / 700), dec = Math.exp(-z / 3500), ca = Math.cos(ang), sa = Math.sin(ang);
       let u = dec * fr * (g.u * ca - g.v * sa), v = dec * fr * (g.u * sa + g.v * ca);
       const sh = z >= 10000 ? 1 : Math.pow(z / 10000, 0.8);
       u += bg.u * sh; v += bg.v * sh;
@@ -141,7 +168,7 @@
       return [u, v];
     }
     const WZ = [0, 250, 500, 1000, 1500, 2000, 3000, 4500, 6000, 8000, 10000, 12000, 16000, 20000];
-    function windNodes(x, y, t) { const g = geostrophic(x, y, t); return WZ.filter((z) => z <= opts.top).map((z) => { const w = windAt(x, y, z, t, g); return [z, w[0], w[1]]; }); }
+    function windNodes(x, y, t) { const g = balanced(x, y, t); return WZ.filter((z) => z <= opts.top).map((z) => { const w = windAt(x, y, z, t, g); return [z, w[0], w[1]]; }); }
 
     /* ---- the profile at a point: the warm air mass with the others let in by the lines' weights at every height ---- */
     function sounding(x, y, t, o) {
@@ -204,8 +231,8 @@
       return out;
     }
 
-    return { drawing: D, f, pressure, geostrophic, windAt, sounding, surface, columns, fields, objects: objs.length, nominal, options: opts };
+    return { drawing: D, f, pressure, geostrophic, balanced, windAt, windRaw: windSum, sounding, surface, columns, fields, objects: objs.length, nominal, options: opts };
   }
 
-  globalThis.HFSevereAnalysis = { create, polyNear, dewpointC, AIR_SPEC, FRONT };
+  globalThis.HFSevereAnalysis = { create, polyNear, dewpointC, AIR_SPEC, FRONT, WIND_CAP, KNEE, windCap, limit };
 })();

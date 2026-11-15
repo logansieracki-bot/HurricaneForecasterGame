@@ -317,6 +317,39 @@ await zp.click('#m-draw'); await settle(zp); await zp.keyboard.press('Delete'); 
 check('Delete takes the zone away (' + (await objs(zp)).filter((o) => o.type === 'zone').length + ' zones of ' + (await objs(zp)).length + ' objects), the storm\'s marker is painted again where the spot was left, and the card is gone', (await objs(zp)).filter((o) => o.type === 'zone').length === 0 && (await objs(zp)).length === zBefore && await ev(zp, "document.getElementById('ed-props').hidden"));
 
 }
+/* 13. The outflow boundary looks the way the day's flow aloft goes (east or north-east on most days) however it is drawn, the heading turns its ticks, and flipping it turns its arrow with them */
+const OB = await open(1440, 900), ob = OB.page;
+await ev(ob, "SEVERE.editor.loadDay(HFSevereDays.blank(36, -98))"); await settle(ob);
+const heading = (m) => (Math.atan2(m.u, m.v) * 180 / Math.PI + 360) % 360, flowTo = (255 + 180) % 360;
+await sketch(ob, 'outflow', [[0, -150], [3, -50], [0, 60], [-2, 150]]); await sketch(ob, 'outflow', [[120, 150], [117, 60], [121, -50], [120, -150]]);
+await sketch(ob, 'outflow', [[-150, -200], [0, -205], [150, -195]]); await sketch(ob, 'outflow', [[-300, -100], [-250, -50], [-200, 0]]); await sketch(ob, 'outflow', [[-200, 100], [-250, 50], [-300, 0]]);
+let ofs = await objs(ob);
+check('an outflow boundary sketched from south to north (' + ofs[0].cool + ' cold air, going ' + Math.round(heading(ofs[0].motion)) + ' degrees) and one sketched from north to south (' + ofs[1].cool + ', ' + Math.round(heading(ofs[1].motion)) + ') both have their cold air to the west and go east, the way the flow aloft from 255 degrees carries a storm (' + flowTo + ' degrees), whichever way the line was drawn, at 5 m/s (' + Math.hypot(ofs[0].motion.u, ofs[0].motion.v).toFixed(1) + ')',
+  ofs.length === 5 && ofs.every((q) => q.type === 'outflow') && ofs[0].cool === 'left' && ofs[1].cool === 'right' && near(heading(ofs[0].motion), 90, 2) && near(heading(ofs[1].motion), 90, 2) && near(Math.hypot(ofs[0].motion.u, ofs[0].motion.v), 5, 0.2));
+check('one drawn along the east-west line goes north, the side the flow has a part towards, from either end (' + Math.round(heading(ofs[2].motion)) + ' degrees with the cold air ' + ofs[2].cool + '), and one on a south-west to north-east line goes south-east, the side that looks down-flow, drawn either way (' + Math.round(heading(ofs[3].motion)) + ' and ' + Math.round(heading(ofs[4].motion)) + ' degrees)',
+  (near(heading(ofs[2].motion), 0, 3) || near(heading(ofs[2].motion), 360, 3)) && ofs[2].cool === 'right' && near(heading(ofs[3].motion), 135, 2) && near(heading(ofs[4].motion), 135, 2) && ofs[3].cool === 'left' && ofs[4].cool === 'right');
+await ob.keyboard.press('Escape'); await ob.mouse.click(...await px(ob, 3, -50)); await settle(ob);
+check('a tap on the first one selects it and the card says Heading ' + await ev(ob, "document.getElementById('p-head-v').textContent") + ' (selected ' + await E(ob, 'E.sel') + ')', await E(ob, 'E.sel') === 0 && /^90° \(E\)$/.test(await ev(ob, "document.getElementById('p-head-v').textContent")));
+await slide(ob, 'p-head', 300); await settle(ob); ofs = await objs(ob);
+check('turning the heading to 300 degrees (west-north-west) puts its cold air on the east, the ticks on the side it goes (' + ofs[0].cool + ', the arrow ' + JSON.stringify(ofs[0].motion) + '), as it must: the cold air is always behind it',
+  ofs[0].cool === 'right' && near(heading(ofs[0].motion), 300, 1.5) && !(await E(ob, 'E.warns.length')));
+await slide(ob, 'p-head', 45); await settle(ob); ofs = await objs(ob);
+check('and back to 45 degrees (north-east) the cold air is on the west again (' + ofs[0].cool + ', ' + JSON.stringify(ofs[0].motion) + '), the speed kept (' + Math.hypot(ofs[0].motion.u, ofs[0].motion.v).toFixed(1) + ' m/s), and the card says ' + await ev(ob, "document.getElementById('p-head-v').textContent"),
+  ofs[0].cool === 'left' && near(heading(ofs[0].motion), 45, 1.5) && near(Math.hypot(ofs[0].motion.u, ofs[0].motion.v), 5, 0.3));
+await slide(ob, 'p-head', 0); await settle(ob); ofs = await objs(ob);
+check('along its own line (a heading of 0 on a line that runs north) it keeps the side it had, since it goes neither way (' + ofs[0].cool + ' with ' + JSON.stringify(ofs[0].motion) + ')', ofs[0].cool === 'left' && ofs[0].motion.u === 0);
+await slide(ob, 'p-head', 45); await settle(ob); const flipFrom = (await objs(ob))[0];
+await ob.click('#p-flip'); await settle(ob); ofs = await objs(ob);
+check('flipping its sides turns its arrow with its ticks: the cold air to the east (' + ofs[0].cool + ') and the arrow to the north-west (' + JSON.stringify(ofs[0].motion) + ' for ' + JSON.stringify(flipFrom.motion) + '), the part along the line kept, the heading in the card (' + await ev(ob, "document.getElementById('p-head-v').textContent") + '), and nothing to warn of',
+  flipFrom.cool === 'left' && ofs[0].cool === 'right' && near(ofs[0].motion.u, -flipFrom.motion.u, 0.11) && near(ofs[0].motion.v, flipFrom.motion.v, 0.11) && /^315° \(NW\)$/.test(await ev(ob, "document.getElementById('p-head-v').textContent")) && !(await E(ob, 'E.warns.length')));
+await ob.click('#ed-undo'); await settle(ob);
+check('undo puts the flip back with the arrow (' + (await objs(ob))[0].cool + ', ' + JSON.stringify((await objs(ob))[0].motion) + ')', (await objs(ob))[0].cool === 'left' && JSON.stringify((await objs(ob))[0].motion) === JSON.stringify(flipFrom.motion));
+await sketch(ob, 'cold', [[-300, 200], [-290, 280], [-300, 340]]); await settle(ob); const cf = (await objs(ob)).slice(-1)[0], cm = JSON.stringify(cf.motion);
+await slide(ob, 'p-head', 270); await settle(ob); const cf2 = (await objs(ob)).slice(-1)[0];
+check('a cold front is not an outflow boundary: its heading does not move its cold air (' + cf.cold + ' before, ' + cf2.cold + ' after turning it to 270 degrees), the page warns that it goes into its cold air (' + await E(ob, 'E.warns.length') + ')', cf.type === 'front' && cf.cold === cf2.cold && JSON.stringify(cf2.motion) !== cm && (await E(ob, 'E.warns.length')) === 1);
+await ev(ob, "(() => { const E = SEVERE.editor.E, o = E.drawing.objects[0]; o.motion = { u: -5, v: 0 }; })()"); await ev(ob, "SEVERE.editor.rebuild && SEVERE.editor.rebuild()");
+const flipWarn = await E(ob, 'E.warns.map((w) => w.text)');
+check('an outflow boundary whose arrow was set against its ticks (in a drawing from a file, say) is warned about, the cold air west and the arrow west (' + flipWarn.filter((t) => /outflow/.test(t)).length + ' warning: ' + (flipWarn.filter((t) => /outflow/.test(t))[0] || '').slice(0, 70) + '...)', flipWarn.filter((t) => /outflow boundary moves back into its own cold air/.test(t)).length === 1);
 const ph = await open(390, 800), pp = ph.page;
 const lay = await ev(pp, "(() => { const r = (id) => document.getElementById(id).getBoundingClientRect(), t = r('ed-tools'), d = r('ed-dock'), s = r('ed-side'); return { sw: document.documentElement.scrollWidth, iw: innerWidth, tools: [t.left, t.top, t.right, t.bottom], dock: [d.left, d.top, d.right, d.bottom], side: [s.left, s.top, s.right, s.bottom], toolsRow: getComputedStyle(document.getElementById('ed-tools')).flexDirection }; })()");
 check('on a phone (390 x 800) the page does not scroll sideways (' + lay.sw + ' for ' + lay.iw + '), the tools are a row above the dock and not over it (tools bottom ' + Math.round(lay.tools[3]) + ', dock top ' + Math.round(lay.dock[1]) + '), the dock and the day card are inside the window',
@@ -325,7 +358,7 @@ await pp.click('#ed-tools [data-id="cold"]'); const ps = [await px(pp, -150, -10
 check('a finger sketches a front on the phone too (' + (await objs(pp)).length + ' objects: ' + (await objs(pp)).slice(-1)[0].kind + ' front of ' + (await objs(pp)).slice(-1)[0].pts.length + ' points)', (await objs(pp)).length === 9 && (await objs(pp)).slice(-1)[0].kind === 'cold');
 await pp.screenshot({ path: join(tmp, 'phone.png') });
 
-check('through all of it: no console error or warning and no request outside file:, blob: and data: (' + [A, reload, ZZ, ph].reduce((s, x) => s + x.log.errors.length, 0) + ' errors: ' + [A, reload, ZZ, ph].flatMap((x) => x.log.errors).slice(0, 2).join(' | ') + '; ' + [A, reload, ZZ, ph].reduce((s, x) => s + x.log.requests.length, 0) + ' requests)', [A, reload, ZZ, ph].every((x) => x.log.errors.length === 0 && x.log.requests.length === 0));
+check('through all of it: no console error or warning and no request outside file:, blob: and data: (' + [A, reload, ZZ, OB, ph].reduce((s, x) => s + x.log.errors.length, 0) + ' errors: ' + [A, reload, ZZ, OB, ph].flatMap((x) => x.log.errors).slice(0, 2).join(' | ') + '; ' + [A, reload, ZZ, OB, ph].reduce((s, x) => s + x.log.requests.length, 0) + ' requests)', [A, reload, ZZ, OB, ph].every((x) => x.log.errors.length === 0 && x.log.requests.length === 0));
 
 await browser.close();
 if (process.env.KEEP_SHOTS) console.log('screenshots in ' + tmp); else rmSync(tmp, { recursive: true, force: true });

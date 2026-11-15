@@ -122,6 +122,7 @@
   function side(pts, pref) { const n = GD.sideNormal(pts, 'left'); return n && n[0] * pref[0] + n[1] * pref[1] < 0 ? 'right' : 'left'; }
   function arrowToward(pts, sd, speed) { const n = GD.sideNormal(pts, sd) || [0, 0]; return { u: Math.round(n[0] * speed * 10) / 10, v: Math.round(n[1] * speed * 10) / 10 }; }
   const opp = (s) => (s === 'left' ? 'right' : 'left');
+  const flowToward = () => { const a = E.drawing && E.drawing.aloft, f = (a && a.from !== undefined ? a.from : 255) * DEG; return [-Math.sin(f), -Math.cos(f)]; };           // the way the day's flow aloft carries its storms (east or north-east on most days): an outflow boundary goes that way
   function newObject(tool, pts) {
     const o = { type: tool.type };
     if (tool.point) {
@@ -134,7 +135,7 @@
       o.kind = tool.kind; const nw = tool.kind === 'cold' || tool.kind === 'occluded' ? [-1, 1] : [0, 1]; o.cold = side(o.pts, nw); o.contrast = FRONT_DEF[o.kind].contrast;
       o.motion = o.kind === 'cold' ? arrowToward(o.pts, opp(o.cold), 10) : o.kind === 'occluded' ? arrowToward(o.pts, opp(o.cold), 6) : o.kind === 'warm' ? arrowToward(o.pts, o.cold, 4) : { u: 0, v: 0 };
     } else if (o.type === 'dryline') { o.dry = side(o.pts, [-1, 0]); o.contrast = 12; o.motion = arrowToward(o.pts, opp(o.dry), 3); }
-    else if (o.type === 'outflow') { o.cool = side(o.pts, [0, 1]); o.contrast = 4; o.motion = arrowToward(o.pts, opp(o.cool), 5); }
+    else if (o.type === 'outflow') { const to = GD.faceSide(o.pts, flowToward()); o.cool = opp(to); o.contrast = 4; o.motion = arrowToward(o.pts, to, 5); }                // (its ticks and its arrow look the way the flow aloft goes: the cold air is behind)
     else if (o.type === 'trough') { o.depth = 4; o.motion = { u: 8, v: 0 }; }
     else if (o.type === 'moisture') { o.amount = 3; o.motion = { u: 0, v: 0 }; }
     else if (o.type === 'jet') { o.speed = 25; o.motion = { u: 12, v: 0 }; } else if (o.type === 'llj') { o.speed = 18; o.motion = { u: 8, v: 0 }; }
@@ -458,9 +459,9 @@
     if (!canEdit()) el.querySelectorAll('input').forEach((i) => { i.disabled = true; });
     el.querySelectorAll('#p-kind button').forEach((b) => b.addEventListener('click', () => { o.kind = b.dataset.k; const F = FRONT_DEF[o.kind]; if (o.contrast === undefined || [8, 10, 12].includes(o.contrast)) o.contrast = F.contrast; commit(); rebuild(); syncProps(); }));
     spec.forEach(([k, , kind, lo, hi, step, def]) => wireSlider('p-' + k, (v) => { o[k] = kind === 'speed' ? v / U.k : kind === 'dist' ? v * U.m / 1000 : v; }, (v) => (kind === 'speed' ? Math.round(v) + ' ' + U.speed : kind === 'dist' ? Math.round(v) + ' ' + U.dist : (Math.abs(v) < 10 && step < 1 ? v.toFixed(1) : Math.round(v)) + ' ' + kind)));
-    const setMotion = () => { const s = +$('p-speed').value / U.k, h = +$('p-head').value, v = DR.velocity(s, h); o.motion = { u: Math.round(v.u * 10) / 10, v: Math.round(v.v * 10) / 10 }; };
+    const setMotion = () => { const s = +$('p-speed').value / U.k, h = +$('p-head').value, v = DR.velocity(s, h); o.motion = { u: Math.round(v.u * 10) / 10, v: Math.round(v.v * 10) / 10 }; if (o.type === 'outflow') { const to = GD.sideOfMotion(o.pts, o.motion); if (to) o.cool = opp(to); } };      // (an outflow boundary's cold air is always behind it: the heading turns its ticks too)
     wireSlider('p-speed', () => setMotion(), (v) => Math.round(v) + ' ' + U.speed); wireSlider('p-head', () => setMotion(), (v) => Math.round(v) + '° (' + compass(v) + ')');
-    const f = $('p-flip'); if (f) f.addEventListener('click', () => { const key = o.type === 'dryline' ? 'dry' : o.type === 'outflow' ? 'cool' : 'cold', cur = o[key] || 'left'; o[key] = opp(cur); if (o.motion && o.type !== 'dryline' && o.type !== 'outflow') { o.motion = { u: o.motion.u, v: o.motion.v }; } commit(); rebuild(); syncProps(); });
+    const f = $('p-flip'); if (f) f.addEventListener('click', () => { const key = o.type === 'dryline' ? 'dry' : o.type === 'outflow' ? 'cool' : 'cold', cur = o[key] || 'left'; o[key] = opp(cur); if (o.type === 'outflow' && o.motion) o.motion = GD.reflectMotion(o.pts, o.motion); commit(); rebuild(); syncProps(); });      // (an outflow boundary that is flipped looks the other way: its arrow goes with its ticks)
     const dup = $('p-dup'); if (dup) dup.addEventListener('click', () => { const c = JSON.parse(JSON.stringify(o)); if (c.pts) c.pts = c.pts.map((p) => [p[0] + 80, p[1] - 60]); else { c.x += 80; c.y -= 60; } E.drawing.objects.push(c); E.sel = E.drawing.objects.length - 1; commit(); rebuild(); syncProps(); });
     const shuf = $('p-shuffle'); if (shuf) shuf.addEventListener('click', () => { o.seed = (o.seed || 1) + 1; commit(); rebuild(); syncProps(); redraw(); });
     const del = $('p-del'); if (del) del.addEventListener('click', deleteSelected);

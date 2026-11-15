@@ -127,7 +127,7 @@
     return Math.sqrt(-2 * Math.log(1 - hash(seed, a, b, 2000 + 2 * k))) * Math.cos(2 * Math.PI * hash(seed, a, b, 2001 + 2 * k));
   }
 
-  const CLEAR = { mean: 2, fall: 1.5, top: 1300, soft: 200, std: [3.2, 1.6], scale: [9000, 2800] }, CLUTTER = { low: -10, span: 30, prob: 0.3, scale: 12 };  // clear air: the mean dBZ at the antenna, its fall per km of beam height, the layer's top and the softness of its edge (m), the spread (dB) and the size (m) of its two scales of patches; clutter: dBZ of the weakest and the spread, the share of gates at the radar, its range scale (km)
+  const CLEAR = { mean: 2, fall: 1.5, top: 1300, soft: 200, std: [3.2, 1.6], scale: [9000, 2800] }, CLUTTER = { low: -10, span: 22, prob: 0.3, scale: 12 };  // clear air: the mean dBZ at the antenna, its fall per km of beam height, the layer's top and the softness of its edge (m), the spread (dB) and the size (m) of its two scales of patches; clutter: dBZ of the weakest and the spread, the share of gates at the radar, its range scale (km)
   const NODES = [];                                                                                      // nine points up the beam from -2 to +2 sigmas (0.5 apart) with Gaussian weights
   for (let t = -2; t <= 2.0001; t += 0.5) NODES.push([t, Math.exp(-0.5 * t * t)]);
   let SW0 = 0, SW2 = 0; for (const nd of NODES) { SW0 += nd[1]; SW2 += nd[1] * nd[0] * nd[0]; }
@@ -140,7 +140,7 @@
           noise: { z1: the noise floor in dBZ at 1 km (-41.8), atten: the air's attenuation corrected for, dB per km (0.019), thr: the threshold in dB over the noise for a gate to be reported (2.5),
                    n: samples of the noise (16), sparse: the share of gates with an isolated weak target (0.0008) };
           clutter: { ground: 0..1 (strength, 1), clearAir: 0..1 (1) }; clear: { mean: the clear air's dBZ at the antenna (2; real radars range from -5 on a dull day to +5 on a day of insects), top: the boundary layer's top (m, 1300, with a soft edge of 200) };
-          quant: dBZ step of the data (0.5); beamBlock: off; edge: the width in metres over which the echo of the volume's box fades out at its outer edge (0: it is cut there; a nest's edge is never faded; see volumeSampler), edgeSeed: the seed of the noise of that width (0: not the speckle's `seed`, so that the edge is the same in every frame and tilt),
+          quant: dBZ step of the data (0.5); beamBlock: off; edge: the width in metres over which the echo of the volume's box fades out at its outer edge and the clear air's wind turns into the base state's (0: they are cut there; a nest's edge is never faded; see volumeSampler), edgeSeed: the seed of the noise of that width (0: not the speckle's `seed`, so that the edge is the same in every frame and tilt),
           velocity: false, or { nyquist: the Nyquist velocity in m/s (28; real sites run from 26 to 36), dealias: the true velocity, not folded into +-Nyquist (false), quant: step of the data (0.5),
                    pulses: M of the pulse-pair estimate (40), snrLoss: what the real estimator loses against the ideal one, in dB of signal (4.5), thr: the signal over the noise, in dB, a gate needs for a velocity
                    (4: 1.5 dB over what reflectivity needs), noise: 0..1 scale of the measurement error (1), fine: { storm, clear, clutter }: the white fluctuation of the wind in the gate, m/s (0.7, 0.8, 0.3),
@@ -216,8 +216,15 @@
             const patch = (vnoise(seed + 11, px / cla.scale[0], py / cla.scale[0]) - 0.5) * cla.std[0] / 0.21 + (vnoise(seed + 12, px / cla.scale[1], py / cla.scale[1]) - 0.5) * cla.std[1] / 0.21;
             zcl = cl.clearAir * inLayer * Math.pow(10, 0.1 * (cla.mean - cla.fall * Math.max(h - antenna, 0) / 1000 + patch));
             zs += zcl;
-            if (vel) {                                                                                // insects and birds drift with the air: the model's wind inside its box, the base state's outside
-              if (wsamp && wsamp(px, py, h, wv)) vcl = wv[0] * ue + wv[1] * ve; else { wenv(h, we); vcl = we[0] * ue + we[1] * ve; }
+            if (vel) {                                                                                // insects and birds drift with the air: the model's wind inside its box (turning into the base state's over the width of `edge` at the box's outer edge, as the echo fades there, so that the two do not meet in a straight line), the base state's outside
+              if (wsamp && wsamp(px, py, h, wv)) {
+                let wu = wv[0], wn = wv[1];
+                if (o.edge > 0) {
+                  const de = Math.min(px, lx - px, py, ly - py), wd = o.edge * (0.5 + vnoise((o.edgeSeed || 0) + 21, px / 8000, py / 8000));      // (the same width as the echo's)
+                  if (de < wd) { wenv(h, we); const c = de > 0 ? 0.5 - 0.5 * Math.cos(Math.PI * de / wd) : 0; wu = we[0] + (wu - we[0]) * c; wn = we[1] + (wn - we[1]) * c; }
+                }
+                vcl = wu * ue + wn * ve;
+              } else { wenv(h, we); vcl = we[0] * ue + we[1] * ve; }
             }
           }
         }

@@ -18,6 +18,23 @@ const t0 = Date.now();
   check('a side that is not "right" is the left (' + G.sideNormal([[0, 0], [0, 100]]) + ')', G.sideNormal([[0, 0], [0, 100]])[0] === -1 && G.sideNormal([[0, 0], [0, 100]], 'x')[0] === -1);
 }
 
+/* 1b. Which side of a line looks where, and what flipping a line's sides does to its arrow. */
+{
+  const N = [[0, -100], [0, 100]], S = [[0, 100], [0, -100]], E = [[-100, 0], [100, 0]], D = [[0, 0], [100, -100]];                                        // drawn north (its left is west), south (its left is east), east (its left is north), and to the south-east (its left is north-east)
+  const east = [1, 0.34], f = (pts, d) => G.faceSide(pts, d);
+  check('the side that looks east: the right of a line drawn north (' + f(N, east) + '), the left of one drawn south (' + f(S, east) + '); looking east-north-east at a line drawn east it is the left, the north (' + f(E, east) + '), at one drawn south-east the left, the north-east (' + f(D, east) + ')',
+    f(N, east) === 'right' && f(S, east) === 'left' && f(E, east) === 'left' && f(D, east) === 'left' && f(N, [-1, 0]) === 'left' && f(E, [0, -1]) === 'right' && f(E, [0, 1]) === 'left');
+  check('a direction square to the line has no side that looks along it, and the left is the answer, as for a line of no length (' + f(E, [1, 0]) + ', ' + f([[5, 5], [5, 5]], [0, 1]) + ', ' + f([[5, 5]], [1, 0]) + ')', f(E, [1, 0]) === 'left' && f([[5, 5], [5, 5]], [0, 1]) === 'left' && f(E, [0, 0]) === 'left');
+  const m = (pts, u, v) => G.sideOfMotion(pts, { u, v });
+  check('the side a motion carries a line towards: east takes a line drawn north to its right (' + m(N, 5, 0) + ') and west to its left (' + m(N, -5, 0) + '), south takes a line drawn east to its right (' + m(E, 0, -3) + '); a slide along the line is neither (' + m(N, 0, 7) + ') and neither is standing still (' + m(N, 0, 0) + ', ' + G.sideOfMotion(N, {}) + ')',
+    m(N, 5, 0) === 'right' && m(N, -5, 0) === 'left' && m(E, 0, -3) === 'right' && m(E, 0, 3) === 'left' && m(N, 0, 7) === null && m(N, 0, 0) === null && G.sideOfMotion(N, {}) === null && m(N, 0.001, 0) === 'right' && G.sideOfMotion([[5, 5], [5, 5]], { u: 1, v: 1 }) === null);
+  const r = (pts, u, v) => G.reflectMotion(pts, { u, v }), r1 = r(N, 5, 2), r2 = r(D, 6, 0), r3 = r(E, 0, -5);
+  check('flipping a line turns the part of its arrow at right angles to it round and keeps the part along it: (5, 2) on a line drawn north is (' + r1.u + ', ' + r1.v + '), (6, 0) on one drawn south-east is (' + r2.u + ', ' + r2.v + '), straight at a line drawn east (0, -5) is (' + r3.u + ', ' + r3.v + '), and doing it twice gives the arrow back (' + JSON.stringify(r(N, r1.u, r1.v)) + ')',
+    r1.u === -5 && r1.v === 2 && near(r2.u, 0, 0.11) && near(r2.v, -6, 0.11) && r3.u === 0 && r3.v === 5 && r(N, r1.u, r1.v).u === 5 && r(N, r1.u, r1.v).v === 2 && r(N, 0, 4).v === 4 && r(N, 0, 4).u === 0);
+  const rd = G.reflectMotion(N, { u: 3.14159, v: 2.71828 });
+  check('it is rounded to a tenth like the arrows of the editor (' + rd.u + ', ' + rd.v + '), a line with no length keeps its arrow (' + JSON.stringify(G.reflectMotion([[1, 1], [1, 1]], { u: 4, v: -2 })) + ')', rd.u === -3.1 && rd.v === 2.7 && G.reflectMotion([[1, 1], [1, 1]], { u: 4, v: -2 }).u === 4 && G.reflectMotion([[1, 1], [1, 1]], { u: 4, v: -2 }).v === -2);
+}
+
 /* 2. The warnings. */
 {
   const N = [[0, -100], [0, 100]], E = [[-100, 0], [100, 0]];                                                // a line drawn north (its left is west) and one drawn east (its left is north)
@@ -43,6 +60,13 @@ const t0 = Date.now();
     w({ type: 'front', kind: 'cold', pts: N, contrast: 1.9 }).length === 1 && w({ type: 'front', kind: 'cold', pts: N, contrast: 1.9 })[0].level === 'info' && w({ type: 'front', kind: 'cold', pts: N, contrast: 2 }).length === 0 && w({ type: 'front', kind: 'cold', pts: N }).length === 0 && w({ type: 'front', kind: 'cold', pts: N, contrast: 0 }).length === 1);
   check('a dryline needs a dew point contrast of 3 K (2.9: ' + w({ type: 'dryline', pts: N, contrast: 2.9 }).length + ' ' + (w({ type: 'dryline', pts: N, contrast: 2.9 })[0] || {}).level + ', 3: ' + w({ type: 'dryline', pts: N, contrast: 3 }).length + ', none given: ' + w({ type: 'dryline', pts: N }).length + '), and a front\'s contrast says nothing about it',
     w({ type: 'dryline', pts: N, contrast: 2.9 }).length === 1 && w({ type: 'dryline', pts: N, contrast: 2.9 })[0].level === 'warn' && w({ type: 'dryline', pts: N, contrast: 3 }).length === 0 && w({ type: 'dryline', pts: N }).length === 0 && w({ type: 'outflow', pts: N, contrast: 1 }).length === 0);
+  const of = (u, v, extra) => w(Object.assign({ type: 'outflow', pts: N, cool: 'left', motion: { u, v } }, extra));
+  check('an outflow boundary goes out into the warm air, the ticks on the side it goes: with its cold air to the west of a line drawn north, going east is fine (' + of(5, 0).length + ') and going west back into the cold air is a warning (' + of(-5, 0).length + ': ' + (of(-5, 0)[0] || {}).text + ')',
+    of(5, 0).length === 0 && of(-5, 0).length === 1 && of(-5, 0)[0].level === 'warn' && of(-5, 0)[0].index === 0 && /outflow boundary moves back into its own cold air/.test(of(-5, 0)[0].text));
+  check('the boundary is 1 m/s (1: ' + of(-1, 0).length + ', 1.5: ' + of(-1.5, 0).length + '), along the line is nothing (' + of(0, 9).length + '), the side matters (cold air to the east, going east: ' + of(5, 0, { cool: 'right' }).length + ', going west: ' + of(-5, 0, { cool: 'right' }).length + '), no side drawn is the left (' + w({ type: 'outflow', pts: N, motion: { u: -5, v: 0 } }).length + '), and no arrow is no warning (' + w({ type: 'outflow', pts: N, cool: 'left' }).length + ')',
+    of(-1, 0).length === 0 && of(-1.5, 0).length === 1 && of(0, 9).length === 0 && of(5, 0, { cool: 'right' }).length === 1 && of(-5, 0, { cool: 'right' }).length === 0 && w({ type: 'outflow', pts: N, motion: { u: -5, v: 0 } }).length === 1 && w({ type: 'outflow', pts: N, cool: 'left' }).length === 0);
+  const third = G.warnings({ objects: [{ type: 'low', x: 0, y: 0 }, { type: 'trough', pts: N }, { type: 'outflow', pts: N, cool: 'left', motion: { u: -5, v: 0 } }] }).filter((x) => /outflow boundary moves back/.test(x.text));
+  check('the warning says which object it is about (the outflow boundary third in the drawing: ' + third.map((x) => x.index).join(', ') + ')', third.length === 1 && third[0].index === 2);
   const short = (type, L) => w({ type, pts: [[0, 0], [L, 0]], kind: type === 'front' ? 'cold' : undefined });
   check('a line under 40 km is an information (a front of 39: ' + short('front', 39).length + ', of 40: ' + short('front', 40).length + '; a dryline of 39: ' + short('dryline', 39).length + ', an outflow boundary of 10: ' + short('outflow', 10).length + ', a trough of 39: ' + short('trough', 39).length + '), the length of a bent line is the sum of its pieces (three of 14 make 42 though its ends are only 31 apart: ' + w({ type: 'trough', pts: [[0, 0], [14, 0], [14, 14], [28, 14]] }).length + ' warnings; three of 12 make 36: ' + w({ type: 'trough', pts: [[0, 0], [12, 0], [12, 12], [24, 12]] }).length + '), but a jet or a moist tongue may be short (' + short('jet', 10).length + ', ' + short('moisture', 10).length + ')',
     short('front', 39).length === 1 && short('front', 39)[0].level === 'info' && short('front', 40).length === 0 && short('dryline', 39).length === 1 && short('outflow', 10).length === 1 && short('trough', 39).length === 1
