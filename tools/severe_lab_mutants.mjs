@@ -142,8 +142,7 @@ const M = [
   ['core-graupel-density', 'lab', 'rhog: 400,', 'rhog: 900,'],
   ['core-rain-intercept', 'lab', 'n0r: 8e6, evap, twoMoment', 'n0r: 4e6, evap, twoMoment'],
   // the ground
-  ['run-drag-default-none', 'lab', 'drag = spec.drag === undefined ? 0.1 :', 'drag = spec.drag === undefined ? 0 :'],
-  ['run-drag-default-value', 'lab', 'drag = spec.drag === undefined ? 0.1 :', 'drag = spec.drag === undefined ? 0.2 :'],
+  ['run-drag-default-on', 'lab', 'drag = spec.drag === undefined ? 0 :', 'drag = spec.drag === undefined ? 0.1 :'],
   ['run-drag-cannot-be-off', 'lab', '(+spec.drag || 0)', '(+spec.drag || 0.1)'],
   ['run-drag-ignored', 'lab', ': (+spec.drag || 0)', ': 0.1'],
   ['run-drag-roughness', 'lab', 'drag ? { z0: drag, frame:', 'drag ? { z0: 0.1, frame:'],
