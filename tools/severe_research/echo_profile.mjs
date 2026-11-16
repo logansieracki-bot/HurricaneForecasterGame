@@ -13,7 +13,7 @@ import { gunzipSync } from 'node:zlib';
 const args = process.argv.slice(2), mode = args[0], src = args[1], rest = args.slice(2), frame = mode === 'pack' ? rest.shift() : undefined, opt = Object.fromEntries(rest.map((s) => s.split('=')));
 if (mode !== 'real' && mode !== 'pack') { console.error('usage: echo_profile.mjs real <base> | pack <pack.hfp> <frame> [key=value ...]'); process.exit(1); }
 const IN = +(opt.in || 30), OUT = +(opt.out || 10), R = globalThis.HFSevereRadar, DEG = Math.PI / 180, PX = 0.25, WIN = +(opt.win || 100), THR = 50, CORE = +(opt.thr || 40);
-let sweep, center, label;
+let sweep, center, label, motion = opt.motion ? opt.motion.split(',').map(Number) : null;
 if (mode === 'real') {
   const meta = JSON.parse(readFileSync(src + '.json', 'utf8')), raw = readFileSync(src + '.f32');
   sweep = { dbz: new Float32Array(raw.buffer, raw.byteOffset, meta.n * meta.gates), nRad: meta.n, nGates: meta.gates, dAz: 360 / meta.n, gate: meta.dr, r0: meta.gate0 };
@@ -32,6 +32,7 @@ if (mode === 'real') {
   const vol = P.volume(fi), so = { x: rad[0], y: rad[1], elev: +(opt.elev || 0.5), seed: 1, n: +(opt.n || 16), edge: +(opt.edge || 0), clutter: { ground: +(opt.ground ?? 1), clearAir: +(opt.clear ?? 1) }, velocity: false };
   sweep = R.scan(vol, so);
   center = [(tr[0] - rad[0]) / 1000, (tr[1] - rad[1]) / 1000];
+  if (!motion) { const pa = P.path().pts, a = Math.max(0, fi - 4), b = Math.min(P.n - 1, fi + 4); motion = [pa[b].x - pa[a].x, pa[b].y - pa[a].y]; }
   label = src.replace(/.*\//, '') + ' frame ' + fi + ' (minute ' + P.times[fi] + '), the radar ' + Math.round(Math.hypot(center[0], center[1])) + ' km from the strongest updraft';
 }
 const N = Math.round(WIN / PX), half = WIN / 2, f = new Float32Array(N * N).fill(NaN);
@@ -62,11 +63,16 @@ for (let q = 0; q < NB; q++) { const b = bins[q]; console.log('  ' + (q * BIN).t
   for (let k = 0; k < N * N; k++) if (!(f[k] >= OUT)) far[k] = 0;
   for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) { const k = j * N + i; let d = far[k]; if (i > 0) d = Math.min(d, far[k - 1] + D1); if (j > 0) { d = Math.min(d, far[k - N] + D1); if (i > 0) d = Math.min(d, far[k - N - 1] + D2); if (i < N - 1) d = Math.min(d, far[k - N + 1] + D2); } far[k] = d; }
   for (let j = N - 1; j >= 0; j--) for (let i = N - 1; i >= 0; i--) { const k = j * N + i; let d = far[k]; if (i < N - 1) d = Math.min(d, far[k + 1] + D1); if (j < N - 1) { d = Math.min(d, far[k + N] + D1); if (i < N - 1) d = Math.min(d, far[k + N + 1] + D2); if (i > 0) d = Math.min(d, far[k + N - 1] + D2); } far[k] = d; }
-  const inside = (v) => v >= IN, w = [];
+  const inside = (v) => v >= IN, w = [], sec = [];
   for (let j = m; j < N - m; j++) for (let i = m; i < N - m; i++) {
     if (!inside(f[j * N + i])) continue;
     if (inside(f[j * N + i - 1]) && inside(f[j * N + i + 1]) && inside(f[(j - 1) * N + i]) && inside(f[(j + 1) * N + i])) continue;
     w.push(far[j * N + i] * PX);
+    if (motion) {                                                                                           // the outward normal of the border: where the pixels that are not the echo are, in a window of 7 x 7
+      let nx = 0, ny = 0; for (let dj = -3; dj <= 3; dj++) for (let di = -3; di <= 3; di++) if (!inside(f[(j + dj) * N + i + di])) { nx += di; ny += dj; }
+      const nn = Math.hypot(nx, ny), mm = Math.hypot(motion[0], motion[1]);
+      if (nn > 0 && mm > 0) sec.push([far[j * N + i] * PX, (nx * motion[0] + ny * motion[1]) / (nn * mm)]);
+    }
   }
   w.sort((p, q) => p - q);
   const q = (p) => w.length ? w[Math.min(w.length - 1, Math.floor(p * w.length))].toFixed(2) : '-', sh = (t) => w.length ? (100 * w.filter((d) => d <= t).length / w.length).toFixed(0) : '-';
@@ -81,4 +87,11 @@ for (let q = 0; q < NB; q++) { const b = bins[q]; console.log('  ' + (q * BIN).t
     writePng(opt.map, W, W, rgba);
   }
   console.log('  edge of the echo of ' + IN + ' dBZ or more to under ' + OUT + ' dBZ (' + w.length + ' border pixels): quantiles 10, 25, 50, 75, 90 %: ' + [0.1, 0.25, 0.5, 0.75, 0.9].map(q).join(', ') + ' km; within 0.5 km ' + sh(0.5) + ' %, within 1 km ' + sh(1) + ' %');
+  if (sec.length) {                                                                                         // by the side of the storm the border faces: forward (the way it moves), the two sides, the rear
+    const sectors = [['forward (cos >= 0.5)', (c) => c >= 0.5], ['sides (|cos| < 0.5)', (c) => Math.abs(c) < 0.5], ['rear (cos <= -0.5)', (c) => c <= -0.5]];
+    for (const [name, is] of sectors) {
+      const v = sec.filter((x) => is(x[1])).map((x) => x[0]).sort((p, q) => p - q), qq = (p) => v.length ? v[Math.min(v.length - 1, Math.floor(p * v.length))].toFixed(2) : '-';
+      console.log('    facing ' + name + ': ' + v.length + ' border pixels, quartiles ' + qq(0.25) + ', ' + qq(0.5) + ', ' + qq(0.75) + ' km, 90 % ' + qq(0.9) + ' km; within 1 km ' + (v.length ? (100 * v.filter((d) => d <= 1).length / v.length).toFixed(0) : '-') + ' %, 3 km or more ' + (v.length ? (100 * v.filter((d) => d >= 3).length / v.length).toFixed(0) : '-') + ' %');
+    }
+  }
 }

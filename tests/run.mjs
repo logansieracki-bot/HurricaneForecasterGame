@@ -4147,8 +4147,12 @@ async function checkSave() {
     refusals.every((r) => r.resume === 'refused' && r.playing && r.meta === null && r.save === null));
 
   // Discard needs two clicks
-  await p1.evaluate(() => localStorage.setItem('hf-save-meta', JSON.stringify({ v: 1, basin: 'atlantic', name: 'Atlantic', year: 2026, hour: 100, date: 'Jun 5', dep: 1, named: 0, hurr: 0, major: 0, ace: 0, savedAt: Date.now() })));
+  const season = JSON.stringify({ v: 1, basin: 'atlantic', name: 'Atlantic', year: 2026, hour: 100, date: 'Jun 5', dep: 1, named: 0, hurr: 0, major: 0, ace: 0, savedAt: Date.now() });
+  await p1.evaluate((m) => localStorage.setItem('hf-save-meta', m), season);
   await p1.goto(MENU);
+  for (let t = 0; t < 20 && await p1.evaluate(() => document.getElementById('continue').hidden); t++) {            // (the write above reaches the menu's document asynchronously and the menu reads it once, at load: CI run 197 read nothing and waited 30 s for a button that was not there; write it from the menu itself and load again)
+    await p1.waitForTimeout(250); await p1.evaluate((m) => localStorage.setItem('hf-save-meta', m), season); await p1.reload({ waitUntil: 'load' });
+  }
   await p1.click('#rs-del'); const afterOne = { hidden: await p1.evaluate(() => document.getElementById('continue').hidden), label: await p1.textContent('#rs-del') };
   await p1.click('#rs-del');
   const afterTwo = { hidden: await p1.evaluate(() => document.getElementById('continue').hidden), meta: await meta(p1) };
