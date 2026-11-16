@@ -4091,9 +4091,11 @@ async function checkSave() {
   const gap = ox.systems.map((a) => { const b = oy.systems.find((q) => q.id === a.id); return b ? [Math.hypot(a.lat - b.lat, (a.lon - b.lon) * Math.cos(a.lat * Math.PI / 180)), Math.abs(a.v - b.v)] : [99, 99]; });
   check(`[save] twelve hours later the resumed storms are within ${Math.max(...gap.map((g) => g[0])).toFixed(2)} degrees and ${Math.max(...gap.map((g) => g[1])).toFixed(1)} kt of where the uninterrupted ones are (${gap.length} systems, same list: ${ox.systems.length === oy.systems.length})`,
     ox.hour === oy.hour && ox.systems.length === oy.systems.length && gap.every((g) => g[0] < 1.0 && g[1] < 15));
+  await odd.evaluate(() => window.SSTSIM.deleteSave()); await oddBack.evaluate(() => window.SSTSIM.deleteSave());          // (a page that is closed saves as it goes, and on a loaded runner that write reached the storage after the Start below had removed the season, which then outlived it: CI run 201)
   await odd.close(); await oddBack.close();
 
   // a new game deletes the save
+  await p1.evaluate(() => window.SSTSIM.saveNow());                                                                          // (the season that this page holds, saved by this page, is what the menu is to find)
   await Promise.all([p1.waitForNavigation({ waitUntil: 'load', timeout: 20000 }), p1.click('#b-menu')]);
   let had = await meta(p1); for (let t = 0; t < 20 && !had; t++) { await p1.waitForTimeout(250); had = await meta(p1); }          // (a save that another page made a moment ago reaches this page's storage a moment later: CI run 182 read nothing here, and then the old save outlived Start, whose removal a page that does not see it yet cannot make)
   await p1.click('#play'); await p1.click('#d-tropical'); await p1.click('.basin[data-id="atlantic"]');
@@ -4109,7 +4111,7 @@ async function checkSave() {
   for (let t = 0; t < 4 && await q.evaluate(() => document.body.dataset.resume === 'beside'); t++) { await q.close(); await p1.waitForTimeout(400 * (t + 1)); q = await open(SIM, true); }          // (a page that opens while the removal of the last season has not reached it yet opens beside a season and saves nothing: it is opened again; CI run 149 had this once)
   const qHour = await q.evaluate(() => { const S = window.SSTSIM; S.setPlaying(false); S.deleteSave(); S.applySeed(8); S.setPlaying(false); S.stormAuto(true); S.tick(24 * 12 + 7); S.saveNow(); S.tick(5); S.set('moisture', 6); return S.state().simHour; });   // saved at 12 d 7 h; the five hours and the slider since are not (the saver waits 1.2 s between writes)
   await q.goto(MENU, { waitUntil: 'load' });
-  let qMeta = await meta(q); for (let t = 0; t < 12 && !(qMeta && qMeta.hour === qHour); t++) { await q.waitForTimeout(250); qMeta = await meta(q); }          // (the save a page makes as it goes away reaches the menu a moment later)
+  let qMeta = await meta(q); for (let t = 0; t < 40 && !(qMeta && qMeta.hour === qHour); t++) { await q.waitForTimeout(250); qMeta = await meta(q); }          // (the save a page makes as it goes away reaches the menu a moment later)
   check(`[save] a page that is left any other way saves as it goes (hour ${qHour}, saved ${qMeta && qMeta.hour})`, !!qMeta && qMeta.hour === qHour);
   await q.close();
 

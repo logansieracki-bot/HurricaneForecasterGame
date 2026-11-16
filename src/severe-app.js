@@ -419,7 +419,7 @@
   const row2 = (id, name, sub, checked) => '<button class="row two" role="menuitemradio" aria-checked="' + (checked ? 'true' : 'false') + '" data-id="' + id + '"><span class="rt"><b>' + name + '</b><span class="sub">' + sub + '</span></span></button>';        // a row with its note under the name
   function openStormMenu(anchor) {
     openPop(anchor, '<h4>Storms</h4>' + STORMS.map((q) => row2(q.id, q.name, q.sub + (q.mb ? ' · ' + q.mb + ' MB' : ''), S.storm === q.id)).join('') + (runPack ? row2('run', 'Your last run', 'From Draw: ' + (runPack.name || 'a storm'), S.storm === 'run') : '')
-      + '<div class="kv"><span></span><span style="font-weight:400;font-size:11px;color:var(--dim)">The 100 m storm is a recording of the real model: cells of 500 m with a nest of 100 m round the storm\'s rotation. The outbreak day\'s is the editor\'s own day, run with cells of 500 m.</span></div>', 'below',
+      + '<div class="kv"><span></span><span style="font-weight:400;font-size:11px;color:var(--dim)">The 100 m storm is a recording of the real model: cells of 500 m with a nest of 100 m round the storm\'s rotation. The outbreak day\'s is the editor\'s own day, run as Run a storm runs it when it is Fine: cells of 1 km and a nest of 500 m round the storm.</span></div>', 'below',
       (el) => onRows(el, (id) => { closePop(); showStorm(id).catch((e) => { $('toast').hidden = true; toast('That storm could not be shown: ' + e.message, 9000); }); }));
   }
 
