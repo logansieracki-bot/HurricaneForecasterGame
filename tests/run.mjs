@@ -2894,6 +2894,8 @@ async function checkBasin(label, dist, extra) {
   await browser.close();
 }
 
+const SKIP = (process.env.SKIP || '').split(',');                                   // SKIP='save,menu' leaves those out (a working aid; CI runs them all)
+if (!SKIP.includes('save')) await checkSave();                                     // (the first of all, on a runner that has not been at work for an hour: its checks wait for what one page writes to reach another, and CI runs 182, 197, 201 and 204 failed in it at the very end of the suite)
 await checkBasin('Atlantic', ATLANTIC_DIST, async (page, label) => {
   // The border-line data only covers roughly the Atlantic domain + a margin (e.g. it's empty
   // over Alaska/Yukon); panning there used to show a map with no state/country outlines at all.
@@ -4108,7 +4110,10 @@ async function checkSave() {
   await p1.evaluate(() => { window.SSTSIM.setPlaying(false); window.SSTSIM.deleteSave(); });        // this page is done: paused, nothing of it left on disk (two tabs would take turns at one save)
   // leaving without the Menu link (a closed tab, a typed address): the page saves as it goes away
   let q = await open(SIM, true);
-  for (let t = 0; t < 4 && await q.evaluate(() => document.body.dataset.resume === 'beside'); t++) { await q.close(); await p1.waitForTimeout(400 * (t + 1)); q = await open(SIM, true); }          // (a page that opens while the removal of the last season has not reached it yet opens beside a season and saves nothing: it is opened again; CI run 149 had this once)
+  for (let t = 0; t < 6 && await q.evaluate(() => document.body.dataset.resume === 'beside'); t++) {          // (a page that opens while a season is still in the storage, one that another page wrote or whose removal has not reached it yet, opens beside it and saves nothing: CI runs 149 and 204 had this; the season is removed from this page's own storage, which it sees at once, and the page is loaded again)
+    await q.evaluate(() => { localStorage.removeItem('hf-save-meta'); localStorage.removeItem('hf-save'); }); await p1.waitForTimeout(300 * (t + 1));
+    await q.reload({ waitUntil: 'load' }); await q.waitForFunction(() => window.__ready === true, { timeout: 30000 });
+  }
   const qHour = await q.evaluate(() => { const S = window.SSTSIM; S.setPlaying(false); S.deleteSave(); S.applySeed(8); S.setPlaying(false); S.stormAuto(true); S.tick(24 * 12 + 7); S.saveNow(); S.tick(5); S.set('moisture', 6); return S.state().simHour; });   // saved at 12 d 7 h; the five hours and the slider since are not (the saver waits 1.2 s between writes)
   await q.goto(MENU, { waitUntil: 'load' });
   let qMeta = await meta(q); for (let t = 0; t < 40 && !(qMeta && qMeta.hour === qHour); t++) { await q.waitForTimeout(250); qMeta = await meta(q); }          // (the save a page makes as it goes away reaches the menu a moment later)
@@ -4116,8 +4121,9 @@ async function checkSave() {
   await q.close();
 
   // a simulator page opened directly beside a saved season does not overwrite it; Restart takes over
-  const savedHour = qMeta.hour;                                                    // the season the last page left behind
-  const other = await open(SIM, true);                                           // a bookmark of the simulator, with that season saved
+  const savedHour = qMeta ? qMeta.hour : -1;                                       // the season the last page left behind
+  let other = await open(SIM, true);                                             // a bookmark of the simulator, with that season saved
+  for (let t = 0; t < 6 && await other.evaluate(() => document.body.dataset.resume !== 'beside'); t++) { await other.close(); await p1.waitForTimeout(400 * (t + 1)); other = await open(SIM, true); }          // (the season that the last page left reaches a page that opens a moment later only a moment later: the page is opened again until it is there)
   const beside = await other.evaluate(() => ({ resume: document.body.dataset.resume, owner: window.SSTSIM.saveInfo().owner }));
   await other.evaluate(() => { const S = window.SSTSIM; S.setPlaying(false); S.stormAuto(true); S.tick(24 * 6); S.set('moisture', 4); });
   await other.waitForTimeout(1800);
@@ -4266,8 +4272,6 @@ async function checkBackdrop() {
   await browser.close();
 }
 
-const SKIP = (process.env.SKIP || '').split(',');                                   // SKIP='save,menu' leaves those out (a working aid; CI runs them all)
-if (!SKIP.includes('save')) await checkSave();
 if (!SKIP.includes('menu')) await checkMenu();
 if (!SKIP.includes('menu')) await checkWhatsNew();
 if (!SKIP.includes('menu')) await checkBackdrop();

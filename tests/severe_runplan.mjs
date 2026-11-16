@@ -21,8 +21,8 @@ const t0 = Date.now(), D = P.SET_DEF, st = (o) => Object.assign({}, D, o);
     JSON.stringify(P.SETS.map((r) => r.opts.map((o) => o[0]))) === '[[0,0.03,0.1,0.3,1],[1,0.5,0.3],[0,1],[2,3,4,5],[2,3,4],[20,30,40],[10,20,30]]');
   check('the model\'s own is one of the choices of every row, and only the nest\'s three rows are for the fine model alone (' + P.SETS.filter((r) => r.fine).map((r) => r.id).join(', ') + ')',
     P.SETS.every((r) => r.opts.some((o) => o[0] === D[r.id])) && P.SETS.filter((r) => r.fine).map((r) => r.id).join(',') === 'nest,nestBox,nestFrom' && P.SETS.slice(0, 4).every((r) => !r.fine));
-  check('the nest, the fine model and the quick one as the Lab takes them: a nest of 500 m, 30 km, from minute 20, the lowest 8 km, a frame a minute; a box of 108 km at 1 km (a step of 5 s) with the middle 96 km recorded; a box of 128 km for the quick model',
-    JSON.stringify(P.DETAIL) === JSON.stringify({ dx: 500, box: 30000, from: 20, ztop: 8000, every: 1, cost: 3.1, boxRate: 15 }) && P.FINE.dx === 1000 && P.FINE.dt === 5 && P.FINE.box === 108000 && P.FINE.window === 96000 && P.FINE.detail === P.DETAIL && P.FAST.box === 128000 && Object.keys(P.FAST).length === 1);
+  check('the nest, the fine model and the quick one as the Lab takes them: a nest of 500 m, 30 km, from minute 20, the lowest 8 km, a frame a minute, 8 km upshear of the middle of the box; a box of 108 km at 1 km (a step of 5 s) with the middle 96 km recorded; a box of 128 km for the quick model',
+    JSON.stringify(P.DETAIL) === JSON.stringify({ dx: 500, box: 30000, from: 20, ztop: 8000, every: 1, upshear: 8000, cost: 3.1, boxRate: 15 }) && P.FINE.dx === 1000 && P.FINE.dt === 5 && P.FINE.box === 108000 && P.FINE.window === 96000 && P.FINE.detail === P.DETAIL && P.FAST.box === 128000 && Object.keys(P.FAST).length === 1);
 }
 
 /* 2. How many settings are not the model's own. */
@@ -61,7 +61,7 @@ const t0 = Date.now(), D = P.SET_DEF, st = (o) => Object.assign({}, D, o);
 /* 5. The spec of a run. */
 {
   const s1 = P.spec({ minutes: 90, fine: true, zone: null }, D);
-  check('a fine run with the model\'s own settings: ' + JSON.stringify(s1), JSON.stringify(s1) === JSON.stringify({ minutes: 90, drag: 0.1, evap: 1, twoMoment: true, bubble: 3, dx: 1000, dt: 5, box: 108000, window: 96000, detail: { dx: 500, box: 30000, from: 20, ztop: 8000, every: 1, cost: 3.1, boxRate: 15 } }));
+  check('a fine run with the model\'s own settings: ' + JSON.stringify(s1), JSON.stringify(s1) === JSON.stringify({ minutes: 90, drag: 0.1, evap: 1, twoMoment: true, bubble: 3, dx: 1000, dt: 5, box: 108000, window: 96000, detail: { dx: 500, box: 30000, from: 20, ztop: 8000, every: 1, upshear: 8000, cost: 3.1, boxRate: 15 } }));
   const s2 = P.spec({ minutes: 120, fine: true, zone: null }, st({ ground: 0, evap: 0.5, rain: 0, bubble: 5, nest: 3, nestBox: 20, nestFrom: 10 }));
   check('with every setting changed they are all in it: the ground ' + s2.drag + ', the rain ' + s2.evap + ' with its drops ' + (s2.twoMoment ? 'sorted by size' : 'of one size') + ', the bubble ' + s2.bubble + ' K, a nest of ' + s2.detail.dx.toFixed(2) + ' m cells over ' + s2.detail.box / 1000 + ' km from minute ' + s2.detail.from + ' that costs ' + s2.detail.cost.toFixed(4) + ' times the box (1 + 2.1 x ' + (0.36 + 0.64 * 3.375 * 4 / 9).toFixed(4) + '), the minutes ' + s2.minutes,
     s2.minutes === 120 && s2.drag === 0 && s2.evap === 0.5 && s2.twoMoment === false && s2.bubble === 5 && near(s2.detail.dx, 1000 / 3, 1e-12) && Math.abs(3 * s2.detail.dx - 1000) < 1e-9 && s2.detail.box === 20000 && s2.detail.from === 10 && near(s2.detail.cost, 1 + 2.1 * (0.36 + 0.64 * 3.375 * 4 / 9), 1e-12) && s2.detail.ztop === 8000 && s2.detail.every === 1 && s2.detail.boxRate === 15 && s2.dx === 1000 && s2.dt === 5 && s2.box === 108000 && s2.window === 96000);

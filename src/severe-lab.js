@@ -10,7 +10,8 @@
  *      what a page needs to play the run while it goes (HFSeverePack.live)
  *      header: what a pack's header has but the scenario (its place on the ground is the page's to say): { v: 1, nx, ny, nz, dx, dz, floor, times, motion, base, track, drift, scale, lab: { evap, bubble, dt, minutes, follow, detail } },
  *              and, if the run made a nest, { v: 2, nests, fn } (src/severe-pack.js: HFSeverePack.assemble makes the offsets)
- *      detail (spec, off unless given): { dx 500 (m), box 40000 (m), from 20 (minutes), ztop 8000 (m), every 1 (minute), minUpdraft 10 (m/s) }: a finer core, the nest of src/severe-nest.js, lies in the middle of the box from the first frame at or after `from`
+ *      detail (spec, off unless given): { dx 500 (m), box 40000 (m), from 20 (minutes), ztop 8000 (m), every 1 (minute), minUpdraft 10 (m/s), upshear 0 (m), offset }: a finer core, the nest of src/severe-nest.js, lies in the middle of the box (or `upshear` metres against the shear of the lowest 6 km of the environment, less in a shear under 20 m/s: `upshear`
+ *              below; `offset` [east, north] in metres says where outright) from the first frame at or after `from`
  *              minutes at which the box's updraft is `minUpdraft` or more (a day that grows no storm is not run at 500 m for nothing): cells of `dx` (a whole fraction of the box's) over `box` metres (a whole number of the box's cells, in its middle), driven at its sides by the box's own state, the box unaffected by it. Hooks of a supercell need
  *              cells of 500 m or less and a nest that starts with the storm: one that starts at minute 60 makes none (docs/severe-research.md part 7). Its lowest `ztop` metres go into every frame, in 1 m/s steps of wind (it has
  *              winds past 63.5 m/s), and the frames are `every` minutes apart from then on. It needs `follow` (the box that keeps its storm in the middle keeps the nest's storm in the nest's), and moves with the box (rollNested).
@@ -30,6 +31,7 @@
  *   HFSevereLab.roll(core, sx, sy)             // the state of a periodic core moved by whole cells (east, north)
  *   HFSevereLab.rollNested(core, nest, ratio, sx, sy) // the box moved so, and its nest (or null) with it: ratio times as many cells of the finer core, the cells that came round its edge taken again from the box
  *   HFSevereLab.centring(block, nx, ny, nz, dz) // { sx, sy }: the cells that put the echo of a frame's block in the middle of the box, or null
+ *   HFSevereLab.upshear(env, m)                // [east, north] metres: m against the shear of the lowest 6 km of an environment (envOf), in proportion to it under 20 m/s, [0, 0] in none: where a nest goes, to have the hook's rotation in it
  *   HFSevereLab.bubble(x, y, z, xc, yc, delt, rx, ry, zc, rz)  // the +3 K cosine-squared bubble of Weisman and Klemp (10 km by 10 km by 1.5 km at 1.5 km; the optional radii and height are a seed's)
  *   HFSevereLab.recorder(core, { wind: 0.5, nz })  // a function that records the core's state as a pack frame's block: record(into, at) writes it into a block of bytes from the byte `at`; the winds in steps of `wind` m/s, the lowest nz levels
  *
@@ -102,6 +104,14 @@
 
   /* where the echo of a frame is, as the whole cells that would put it in the middle of the box: the centre of the power (10^(dBZ/10)) of the cells of 30 dBZ or more in the levels from 500 m to 3.5 km, as a mean of angles round the box's
      circle so that a storm cut by an edge counts as one; null if there is no storm yet (under 3 such cells) or the echo is not one lump (two storms half a box apart: the length of the mean vector, 1 for a point, is under 0.3) */
+  /* where the nest goes against the middle of the box, as an offset in metres (east, north): against the shear of the lowest 6 km of the environment by `m` metres when that shear is 20 m/s or more, less in weaker shear (in proportion), none where there is
+     none. The echo of a supercell is long downshear (its forward flank and its anvil) and its centre lies there, 5 to 15 km from the low-level rotation that a hook curls round, which is upshear of it (docs/severe-research.md part 7); a nest in the middle of the
+     box is on the echo's centre and a nest of 30 km has the rotation inside it, 3 km or more from its edge, on 17 of 26 frames from minute 30 to 80 of the outbreak day (21 with the nest 8 km upshear) and on 2 of the 7 frames from minute 44 to 56, where its hook is (7 of 7). */
+  function upshear(env, m) {
+    if (!(m > 0)) return [0, 0];
+    const su = env.uG(6000) - env.uG(0), sv = env.vG(6000) - env.vG(0), s = Math.hypot(su, sv); if (!(s > 1)) return [0, 0];
+    const f = Math.min(1, s / 20) * m / s; return [-su * f, -sv * f];
+  }
   function centring(block, nx, ny, nz, dz) {
     const dbz = new Int8Array(block.buffer, block.byteOffset, nx * ny * nz), k0 = Math.max(0, Math.floor(500 / dz)), k1 = Math.min(nz - 1, Math.floor(3500 / dz));
     let n = 0, W = 0, cx = 0, sx = 0, cy = 0, sy = 0;
@@ -132,14 +142,15 @@
     const record = recorder(core, win ? { wx: nw, wy: nw, i0: w0, j0: w0 } : {}), nzCen = Math.min(nz, Math.floor(3500 / dz) + 1), cenRec = win ? recorder(core, { nz: nzCen }) : null, frames = [], t0 = Date.now(), motion = env.motion, nSteps = Math.round(minutes * 60 / dt), follow = spec.follow !== false, cum = [0, 0];
     /* the detail nest: from the first recorded frame at or after `from` minutes a finer core (cells of `dx`, a box of `box` metres as whole cells of the box's, in its middle) lies in the middle of the box, driven at its sides by the box's own state
        (src/severe-nest.js), and every frame carries its lowest `ztop` metres beside the box's. It stays where it is in the box, which follows the storm, and is moved with the box when that is moved. */
-    const NEST = globalThis.HFSevereNest, det = spec.detail ? Object.assign({ dx: 500, box: 40000, from: 20, ztop: 8000, every: 1, minUpdraft: 10 }, spec.detail) : null;
-    let ratio = 0, cn = 0, cx0 = 0, cy0 = 0, nzr = 0, child = null, nest = null, crec = null;
+    const NEST = globalThis.HFSevereNest, det = spec.detail ? Object.assign({ dx: 500, box: 40000, from: 20, ztop: 8000, every: 1, minUpdraft: 10, upshear: 0 }, spec.detail) : null;
+    let ratio = 0, cn = 0, cx0 = 0, cy0 = 0, nestOff = [0, 0], nzr = 0, child = null, nest = null, crec = null;
     if (det) {
       if (!NEST) throw new Error('severe-lab: a detail nest needs HFSevereNest');
       if (!follow) throw new Error('severe-lab: a detail nest needs a box that follows its storm');
       if (timed.length) throw new Error('severe-lab: a seed that goes off after minute 0 does not reach a nest (it is driven at its sides only)');
       ratio = Math.round(dx / det.dx); if (ratio < 2 || Math.abs(ratio * det.dx - dx) > 1e-6) throw new Error('severe-lab: the detail cells (' + det.dx + ' m) must be a whole fraction (a half or less) of the box\'s (' + dx + ' m)');
-      const pc = Math.max(4, Math.min(nx - 4, Math.round(det.box / dx))); cn = pc * ratio; cx0 = cy0 = Math.round((nx - pc) / 2) * dx; nzr = Math.min(nz, Math.max(1, Math.ceil(det.ztop / dz - 1e-9)));
+      const pc = Math.max(4, Math.min(nx - 4, Math.round(det.box / dx))); cn = pc * ratio; const mid = Math.round((nx - pc) / 2) * dx, lo = w0 * dx, hi = (w0 + nw - pc) * dx, put = (v) => Math.max(lo, Math.min(hi, mid + Math.round((+v || 0) / dx) * dx)), o = det.offset || upshear(env, det.upshear);
+      cx0 = put(o[0]); cy0 = put(o[1]); nestOff = [cx0 - mid, cy0 - mid]; nzr = Math.min(nz, Math.max(1, Math.ceil(det.ztop / dz - 1e-9)));
     }
     const startNest = () => {
       child = C.create(Object.assign(physics(cn, det.dx), { bc: { x: 'driven', y: 'driven' }, relax: { width: 6 } }));
@@ -147,7 +158,7 @@
     };
     /* the header is made now and its frames' parts grow with them: a page that plays the run while it goes (hooks.start) has the grid, the scale, the motion and the nest's grid before the first frame */
     const header = { v: det ? 2 : 1, nx: nw, ny: nw, nz, dx, dz, floor: -30, times: [], motion: { u: motion.u, v: motion.v }, track: [], drift: [], scale: { wind: 0.5, vz: 0.25 },
-      lab: Object.assign({ evap, bubble: spec.bubble === undefined ? 3 : spec.bubble, dt, minutes, follow }, win ? { box: L, window: nw * dx } : {}, drag ? { drag } : {}, vf !== 1 ? { visc: vf } : {}, spec.twoMoment ? { twoMoment: true } : {}, spec.seeds ? { seeds: seeds.map((q) => [Math.round(q.x), Math.round(q.y), q.t, q.amp === undefined ? 3 : q.amp]) } : {}, det ? { detail: { dx: det.dx, box: cn * det.dx, from: det.from, ztop: nzr * dz, every: det.every, minUpdraft: det.minUpdraft } } : {}),     // (what the run was set to; the pack reader does not look at it)
+      lab: Object.assign({ evap, bubble: spec.bubble === undefined ? 3 : spec.bubble, dt, minutes, follow }, win ? { box: L, window: nw * dx } : {}, drag ? { drag } : {}, vf !== 1 ? { visc: vf } : {}, spec.twoMoment ? { twoMoment: true } : {}, spec.seeds ? { seeds: seeds.map((q) => [Math.round(q.x), Math.round(q.y), q.t, q.amp === undefined ? 3 : q.amp]) } : {}, det ? { detail: Object.assign({ dx: det.dx, box: cn * det.dx, from: det.from, ztop: nzr * dz, every: det.every, minUpdraft: det.minUpdraft }, nestOff[0] || nestOff[1] ? { offset: nestOff } : {}) } : {}),     // (what the run was set to; the pack reader does not look at it)
       base: { z: Array.from(b.rhoc, (_, k) => (k + 0.5) * dz), u: Array.from(b.ubc, (v) => +(v + motion.u).toFixed(3)), v: Array.from(b.vbc, (v) => +(v + motion.v).toFixed(3)) } };
     if (det) { header.nests = [{ nx: cn, ny: cn, nz: nzr, dx: det.dx, dz, scale: { wind: 1, vz: 0.25 }, frame: { u: 0, v: 0 } }]; header.fn = []; }
     if (hooks.start) hooks.start(header);
@@ -178,5 +189,5 @@
     return { frames, header, wall: (Date.now() - t0) / 1000, steps: nSteps, stopped, reason };
   }
 
-  globalThis.HFSevereLab = { envOf, run, bubble, recorder, roll, rollNested, centring };
+  globalThis.HFSevereLab = { envOf, run, bubble, recorder, roll, rollNested, centring, upshear };
 })();

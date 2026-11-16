@@ -4,7 +4,8 @@
  *                                           nestBox 30 (km), nestFrom 20 (the minute the nest starts) }
  *   HFSevereRunPlan.SETS                    the rows of the card, [{ id, title, fine (only for the fine model), opts: [[value, label], ...], hint }], in the order they are shown
  *   HFSevereRunPlan.DETAIL, FINE, FAST      the nest, the fine model (a box of 108 km at 1 km, the middle 96 km recorded, and the nest) and the quick one (a box of 128 km at 2 km) as the Lab takes them (src/severe-lab.js);
- *                                           DETAIL.cost (3.1) is a model minute with the nest over a model minute of the box alone, and DETAIL.boxRate (15) the box's seconds of work for one
+ *                                           DETAIL.cost (3.1) is a model minute with the nest over a model minute of the box alone, DETAIL.boxRate (15) the box's seconds of work for one, and DETAIL.upshear (8000) the metres by which the nest lies
+ *                                           upshear of the middle of the box (against the shear of the lowest 6 km, in proportion to it under 20 m/s: where the rotation that a hook curls round is, src/severe-lab.js `upshear`)
  *   HFSevereRunPlan.changed(st, fine)       how many of the settings are not the model's own (the nest's three count for a fine run only)
  *   HFSevereRunPlan.nestFactor(st)          what the nest costs next to the 500 m nest over 30 km (1 for that one): a part that does not depend on its size (0.36: the recording of a frame every minute, the box's too) and one that does,
  *                                           its columns, (nestBox / 30)^2, times the steps it takes for each of the box's, nest / 2 of them over the 2 of the first, so (nest / 2)^3 in all. Measured in Node (the outbreak day, the box of 108 km, the nest from minute 3):
@@ -30,7 +31,7 @@
     { id: 'nestBox', title: 'Nest width', fine: true, opts: [[20, '20 km'], [30, '30 km'], [40, '40 km']], hint: 'How wide the nest is, round the storm. A wider one holds more of the storm\'s edges and costs by its area.' },
     { id: 'nestFrom', title: 'Nest starts', fine: true, opts: [[10, 'minute 10'], [20, 'minute 20'], [30, 'minute 30']], hint: 'The minute the nest starts, once the storm has an updraft. An earlier nest follows the storm from nearer its start and costs more of the run.' },
   ];
-  const DETAIL = { dx: 500, box: 30000, from: 20, ztop: 8000, every: 1, cost: 3.1, boxRate: 15 }, FINE = { dx: 1000, dt: 5, box: 108000, window: 96000, detail: DETAIL }, FAST = { box: 128000 };
+  const DETAIL = { dx: 500, box: 30000, from: 20, ztop: 8000, every: 1, upshear: 8000, cost: 3.1, boxRate: 15 }, FINE = { dx: 1000, dt: 5, box: 108000, window: 96000, detail: DETAIL }, FAST = { box: 128000 };
 
   const changed = (st, fine) => Object.keys(SET_DEF).filter((k) => st[k] !== SET_DEF[k] && !(!fine && /^nest/.test(k))).length;
   const FIXED = 0.36, nestFactor = (st) => FIXED + (1 - FIXED) * Math.pow(st.nestBox / 30, 2) * Math.pow(st.nest / 2, 3);
