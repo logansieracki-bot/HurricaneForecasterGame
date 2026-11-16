@@ -551,20 +551,33 @@
   };
   function closeRun() { $('ed-run').hidden = true; }
   function stopRun() { if (LAB.worker) LAB.worker.postMessage({ t: 'cancel', keep: true }); }          // (the model stops at the end of its step, which with the finer model is seconds; the frames it has made stay on the radar)
-  function scenarioOf(L, header, name, far) {                                                              // where the box is on the ground: the radar site that the storm's track passes best, the box so that the storm starts at the spot
-    /* the storm's own path (its updraft's place with the box's drift: a storm that does not move as Bunkers' estimate says is not where the nominal motion puts it: the dryline day's is 32 km off at 50 minutes): the site nearest the middle of its mature part that is at least 25 km from it and 15 km from every frame's place, not in the cone of silence */
-    const sp = E.spot, S = geo.points.site, best = pickSite(HFSeverePack.stormPath(header), far), site = { id: S.names[best], lat: S.lat[best], lon: S.lon[best] }, here = G.fromLocal(lat0(), lon0(), sp.x * 1000, sp.y * 1000), l = G.local(site.lat, site.lon, here.lat, here.lon), half = header.nx * header.dx / 2;
+  function scenarioOf(L, header, name, site0) {                                                              // where the box is on the ground: by the site that `radarFor` gives (the radar itself, or the nearest of all when the radar is a virtual one), the box so that the storm starts at the spot
+    /* the storm's own path (its updraft's place with the box's drift: a storm that does not move as Bunkers' estimate says is not where the nominal motion puts it: the dryline day's is 32 km off at 50 minutes): a run is put on the ground by the nominal path's, a pack that is known by its own */
+    const sp = E.spot, S = geo.points.site, best = site0 === undefined ? radarFor(HFSeverePack.stormPath(header)).site : site0, site = { id: S.names[best], lat: S.lat[best], lon: S.lon[best] }, here = G.fromLocal(lat0(), lon0(), sp.x * 1000, sp.y * 1000), l = G.local(site.lat, site.lon, here.lat, here.lon), half = header.nx * header.dx / 2;
     const mm = Math.round(720 + L.t * 60), tz = here.lon > -85 ? 'EDT' : here.lon > -101 ? 'CDT' : here.lon > -115 ? 'MDT' : 'PDT';
     return { lat0: site.lat, lon0: site.lon, origin: [Math.round(l.x - half), Math.round(l.y - half)], radar: site.id, clock: String(Math.floor(mm / 60) % 24).padStart(2, '0') + ':' + String(mm % 60).padStart(2, '0'), tz };
   }
-  /* the radar site for a storm path (HFSeverePack.stormPath, in metres from the spot): the nearest to the middle of its mature part that is at least `far.mid` (25 km) from that and `far.path` (15 km) from every frame's place, not in the
-     cone of silence; the nearest of all if there is none */
+  /* the radar site for a storm path (HFSeverePack.stormPath, in metres from the spot): the nearest to the middle of its mature part that is at least `far.mid` (25 km) from that, at most `far.max` (no limit) and `far.path` (15 km) from every frame's place, not in the
+     cone of silence; the nearest of all if there is none (unless `far.only`: then -1) */
   function pickSite(sPath, far) {
-    far = Object.assign({ mid: 25000, path: 15000 }, far); const sp = E.spot, at = (p) => G.fromLocal(lat0(), lon0(), sp.x * 1000 + p.x, sp.y * 1000 + p.y), mid = at(sPath.mid), pl = sPath.pts.map(at), S = geo.points.site; let best = -1, bd = Infinity;
+    far = Object.assign({ mid: 25000, path: 15000, max: Infinity, only: false }, far); const sp = E.spot, at = (p) => G.fromLocal(lat0(), lon0(), sp.x * 1000 + p.x, sp.y * 1000 + p.y), mid = at(sPath.mid), pl = sPath.pts.map(at), S = geo.points.site; let best = -1, bd = Infinity;
     const clear = (i) => pl.every((q) => G.distBearing(q.lat, q.lon, S.lat[i], S.lon[i]).d >= far.path);
-    for (let i = 0; i < S.n; i++) { if (Math.abs(S.lat[i] - mid.lat) > 2 || Math.abs(S.lon[i] - mid.lon) > 2.6) continue; const d = G.distBearing(mid.lat, mid.lon, S.lat[i], S.lon[i]).d; if (d >= far.mid && d < bd && clear(i)) { bd = d; best = i; } }
-    if (best < 0) for (let i = 0; i < S.n; i++) { const d = G.distBearing(mid.lat, mid.lon, S.lat[i], S.lon[i]).d; if (d < bd) { bd = d; best = i; } }
+    for (let i = 0; i < S.n; i++) { if (Math.abs(S.lat[i] - mid.lat) > 2 || Math.abs(S.lon[i] - mid.lon) > 2.6) continue; const d = G.distBearing(mid.lat, mid.lon, S.lat[i], S.lon[i]).d; if (d >= far.mid && d <= far.max && d < bd && clear(i)) { bd = d; best = i; } }
+    if (best < 0 && !far.only) for (let i = 0; i < S.n; i++) { const d = G.distBearing(mid.lat, mid.lon, S.lat[i], S.lon[i]).d; if (d < bd) { bd = d; best = i; } }
     return best;
+  }
+  /* the radar of a storm that does not exist yet, from the path that the sounding's own motion gives (more room, 45 km from its middle and 30 km from every place on it, than a path that is known would need): a real site if one stands where a radar sees a
+     storm, the nearest within SEE (100 km: the 0.5 degree beam is 1.3 km up there and 3.6 km at 190 km, where the nearest site put a day's storm before this; the fine model's cells of 500 m are lost in a beam of 3 km); if there is none, with the room
+     of a known path (25 and 15 km), and if there is none still, a radar of the user's own (`virtual`: its latitude and longitude) STAND (50 km) from the middle of the path on the right of its way, to the south-east of a storm that goes north-east, from where
+     its flank and its hook are seen from the side. `site` is the real site that the box is put on the ground by (the nearest of all when the radar is a virtual one). */
+  const SEE = 100000, STAND = 50000;
+  function radarFor(sPath) {
+    let site = pickSite(sPath, { mid: 45000, path: 30000, max: SEE, only: true }); if (site < 0) site = pickSite(sPath, { mid: 25000, path: 15000, max: SEE, only: true });
+    if (site >= 0) return { site, virtual: null };
+    const sp = E.spot, at = (p) => G.fromLocal(lat0(), lon0(), sp.x * 1000 + p.x, sp.y * 1000 + p.y), mid = at(sPath.mid), a = sPath.pts[0], b = sPath.pts[sPath.pts.length - 1];
+    let dx = b.x - a.x, dy = b.y - a.y; if (Math.hypot(dx, dy) < 1000) { dx = 0; dy = 1; }                                  // (a storm that goes nowhere: it goes north, so the radar is to its east)
+    const th = Math.atan2(dx, dy) + Math.PI / 2, v = G.fromLocal(mid.lat, mid.lon, STAND * Math.sin(th), STAND * Math.cos(th));
+    return { site: pickSite(sPath), virtual: { lat: +v.lat.toFixed(4), lon: +v.lon.toFixed(4) } };
   }
   /* the seconds left of a run from its progress so far ([model minute, seconds of work] pairs): at the rate of the last 3 model minutes or more; before the nest of the fine model has started, from the rate of the box and the cost of the nest (sixty times it per model minute) */
   function runLeft(prog, of, detail) {
@@ -589,7 +602,7 @@
       const handle = async (m) => {
         if (ended) return;
         if (m.t === 'start') {
-          const nominal = { nx: m.header.nx, ny: m.header.ny, dx: m.header.dx, motion: m.header.motion, times: Array.from({ length: Math.floor(o.minutes / 5) + 1 }, (_, i) => i * 5) }, sc = scenarioOf(L, nominal, name, { mid: 45000, path: 30000 });
+          const nominal = { nx: m.header.nx, ny: m.header.ny, dx: m.header.dx, motion: m.header.motion, times: Array.from({ length: Math.floor(o.minutes / 5) + 1 }, (_, i) => i * 5) }, pick = radarFor(HFSeverePack.stormPath(nominal)), sc = Object.assign(scenarioOf(L, nominal, name, pick.site), pick.virtual ? { virtual: pick.virtual } : {});
           pack = HFSeverePack.live(Object.assign({}, m.header, { name, scenario: sc })); run = E.lastRun = { pack, spot: Object.assign({}, E.spot), t: L.t, wall: 0, ix: L.ix, scenario: sc, stopped: false, reason: '', maxW: 0 };
         } else if (m.t === 'frame') {
           pack.append({ t: m.time, track: m.track, drift: m.drift, fn: m.fn }, new Uint8Array(m.block)); run.maxW = Math.max(run.maxW, m.wmax);
@@ -600,7 +613,7 @@
           if (!pack || pack.n < 1) { SEV.live.end({ stopped: true, reason: m.reason }); toast('The model did not get far: ' + (m.reason || 'no frames'), 6000); return reject(new Error(m.reason || 'no frames')); }
           SEV.live.end({ stopped: m.stopped, reason: m.reason }); const swapped = handOff(pack, run);
           const quiet = !m.stopped && run.maxW < 10;                                                         // (a day that cannot support a storm grows none: the model says so, it is not made to)
-          toast(quiet ? 'No storm grew from this day at the spot you tapped: the strongest updraft was ' + Math.round(run.maxW * 2.2369) + ' mph. The air there is too stable or too dry. Move the spot, or change the day.' : (m.stopped ? (m.reason === 'stopped early' ? 'Stopped early. ' : m.reason + '; ') : '') + 'The storm is made: ' + pack.n + ' frames, ' + (swapped ? 'now seen from ' + swapped : run.scenario.radar + ' is the radar') + ' (' + Math.round(m.wall) + ' s of work)', quiet ? 9000 : 6000); resolve(run);
+          toast(quiet ? 'No storm grew from this day at the spot you tapped: the strongest updraft was ' + Math.round(run.maxW * 2.2369) + ' mph. The air there is too stable or too dry. Move the spot, or change the day.' : (m.stopped ? (m.reason === 'stopped early' ? 'Stopped early. ' : m.reason + '; ') : '') + 'The storm is made: ' + pack.n + ' frames, ' + (swapped ? 'now seen from ' + swapped : (run.scenario.virtual ? 'a radar of your own, ' + STAND / 1000 + ' km from it,' : run.scenario.radar) + ' is the radar') + ' (' + Math.round(m.wall) + ' s of work)', quiet ? 9000 : 6000); resolve(run);
         } else if (m.t === 'error') fail('The model stopped: ' + m.message, new Error(m.message));
       };
       w.onmessage = (ev) => { chain = chain.then(() => handle(ev.data)).catch((e) => fail('Could not show the storm: ' + (e && e.message || e), e)); };
@@ -668,7 +681,7 @@
     $('m-draw').addEventListener('click', () => setMode('draw')); $('m-radar').addEventListener('click', () => setMode('radar'));
     document.addEventListener('keydown', onKey, true);
     $('b-theme').addEventListener('click', () => { if (!map) return; map.setTheme(SEV.S.theme); E.fields = null; syncLegend(); if (E.sel >= 0 || E.probe) closeSheet(); scheduleField(0); redraw(); });
-    SEV.editor = { E, LAB, runStorm, runLeft, runSpec, runWork, SETS, SET_DEF, handOff, pickSite, openRun, closeRun, labEnv, scenarioOf, setMode, loadDay, setTool, setLayer, setTime, undo, redo, rebuild, commit, addObject, newObject, nearestPlace, openSheet, closeSheet, get map() { return map; }, toKm, toScreen, deleteSelected, TOOLS, PROPS, anchorOf, tipOf, zoneOf, zoneSpec, zoneSeeds, zonePlan, zoneRun, ZN };
+    SEV.editor = { E, LAB, runStorm, runLeft, runSpec, runWork, SETS, SET_DEF, handOff, pickSite, radarFor, openRun, closeRun, labEnv, scenarioOf, setMode, loadDay, setTool, setLayer, setTime, undo, redo, rebuild, commit, addObject, newObject, nearestPlace, openSheet, closeSheet, get map() { return map; }, toKm, toScreen, deleteSelected, TOOLS, PROPS, anchorOf, tipOf, zoneOf, zoneSpec, zoneSeeds, zonePlan, zoneRun, ZN };
     if (location.hash === '#draw') setMode('draw');
   }
   if (window.SEVERE && window.SEVERE.ready) init(); else window.addEventListener('severe-ready', init);

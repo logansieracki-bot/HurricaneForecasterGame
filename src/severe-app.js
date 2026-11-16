@@ -250,6 +250,12 @@
   function setRadar(r) {
     S.radar = r; for (const p of panes) p.map.activeSite = r.id; refresh(); syncDock(); for (const p of panes) p.map.redraw();
   }
+  /* the radar of a pack's scenario: its site, or the radar of the user's own that a run that no site stands near was given (`scenario.virtual`: where it is; the scenario's `radar` is then only the site that the box is put on the ground by) */
+  function radarOfScenario(sc) {
+    if (sc.virtual) return { id: null, custom: true, name: 'Virtual radar', lat: sc.virtual.lat, lon: sc.virtual.lon };
+    const i0 = geo.points.site.names.indexOf(sc.radar); if (i0 < 0) throw new Error('no radar ' + sc.radar);
+    const s0 = siteInfo(i0); return { id: s0.id, custom: false, name: s0.name, lat: s0.lat, lon: s0.lon };
+  }
   function openLayers(anchor) {
     const L = S.layers, items = [['rings', 'Range rings'], ['place', 'Places'], ['site', 'Radar sites'], ['road', 'Roads'], ['river', 'Rivers'], ['county', 'County lines'], ['state', 'State lines']];
     openPop(anchor, '<h4>Map layers</h4>' + items.map(([k, n]) => row(k, n, '', L[k])).join('') + '<div class="kv"><span></span><span style="font-weight:400;font-size:11px;color:var(--dim)">Map data: Census cartographic boundaries, Natural Earth and the US Cities Database, all public domain.</span></div>', 'below', (el) => onRows(el, (id, b) => { L[id] = !L[id]; b.setAttribute('aria-checked', L[id] ? 'true' : 'false'); for (const p of panes) { p.map.layers = L; p.map.redraw(); } save(); }));
@@ -351,8 +357,7 @@
     S.live = liveRun && liveRun.pack === p && !liveRun.done ? liveRun : null; S.follow = !!S.live;
     const old = scanner; pack = p; cache.clear(); pending.clear();
     scanner = await makeScanner(); if (old && old.dispose) old.dispose();
-    const sc = pack.scenario, i0 = geo.points.site.names.indexOf(sc.radar); if (i0 < 0) throw new Error('no radar ' + sc.radar);
-    const s0 = siteInfo(i0); S.radar = { id: s0.id, custom: false, name: s0.name, lat: s0.lat, lon: s0.lon };
+    S.radar = radarOfScenario(pack.scenario);
     if (o.interval && hasEvery(o.interval)) S.interval = o.interval; else if (!hasEvery(S.interval)) S.interval = [5, 10, 3, 1].find(hasEvery) || 5;
     const want = o.t === undefined ? 60 : o.t, near = S.live && o.t === undefined ? pack.times.length - 1 : pack.times.reduce((b, t, i) => (Math.abs(t - want) < Math.abs(pack.times[b] - want) ? i : b), 0); S.t = pack.times[near]; S.frame = frameAt(S.t);          // (a run that is still going opens on its newest frame)
     const tr0 = focusOf(pack, S.frame), fo = o.focus || [0, 0], tr = [tr0[0] + fo[0] * 1000, tr0[1] + fo[1] * 1000], c = pack.boxLatLon(pack.times[S.frame], tr[0], tr[1]), mid = o.zoom ? c : { lat: (c.lat + S.radar.lat) / 2, lon: (c.lon + S.radar.lon) / 2 };      // (close up: on the storm; else between the storm and the radar)
@@ -364,8 +369,7 @@
   async function liveBegin(p, o) {
     o = o || {}; setPlaying(false); S.liveAuto = true; runPack = p; liveRun = { pack: p, of: o.of, done: false, time: 0, left: null, stop: o.stop || null, stopped: false, reason: '' }; S.live = liveRun; S.follow = true;
     const old = scanner; pack = p; cache.clear(); pending.clear(); scanner = await makeScanner(); if (old && old.dispose) old.dispose();
-    const sc = pack.scenario, i0 = geo.points.site.names.indexOf(sc.radar); if (i0 < 0) throw new Error('no radar ' + sc.radar);
-    const s0 = siteInfo(i0); S.radar = { id: s0.id, custom: false, name: s0.name, lat: s0.lat, lon: s0.lon }; if (!hasEvery(S.interval)) S.interval = 5;
+    S.radar = radarOfScenario(pack.scenario); if (!hasEvery(S.interval)) S.interval = 5;
     S.t = pack.times[0]; S.frame = frameAt(S.t);
     const tr = focusOf(pack, S.frame), c = pack.boxLatLon(pack.times[S.frame], tr[0], tr[1]), mid = { lat: (c.lat + S.radar.lat) / 2, lon: (c.lon + S.radar.lon) / 2 };
     for (const pn of panes) { pn.map.activeSite = S.radar.id; pn.map.setView({ cx: G.mercX(mid.lon), cy: G.mercY(mid.lat), mpp: G.mppOf(o.zoom || 8.9) }); pn.sweep = null; pn.key = ''; }
@@ -455,7 +459,7 @@
     luts.brLight = Object.assign({}, luts.br, { rgba: Uint8ClampedArray.from(luts.br.rgba) });                    // on white the weak echo is made fainter, as RadarScope's light map does
     for (let i = 0; i < luts.br.n; i++) { const v = luts.br.vmin + i * luts.br.step; if (v < 25) luts.brLight.rgba[4 * i + 3] = Math.round(luts.br.rgba[4 * i + 3] * Math.max(0.35, Math.min(1, 0.35 + (v + 5) / 30 * 0.65))); }
     scanner = await makeScanner();
-    const sc = pack.scenario, i0 = geo.points.site.names.indexOf(sc.radar), s0 = siteInfo(i0); S.radar = { id: s0.id, custom: false, name: s0.name, lat: s0.lat, lon: s0.lon };
+    S.radar = radarOfScenario(pack.scenario);
     document.documentElement.dataset.theme = S.theme; $('b-theme').innerHTML = S.theme === 'dark' ? ICON_SUN : ICON_MOON; if (!hasEvery(S.interval)) S.interval = 5;
     setPaneCount(S.panes); panes[0].tilt = 0;
     const t60 = pack.times.reduce((b, t, i) => (Math.abs(t - 60) < Math.abs(pack.times[b] - 60) ? i : b), 0); S.t = pack.times[t60]; S.frame = frameAt(S.t);
