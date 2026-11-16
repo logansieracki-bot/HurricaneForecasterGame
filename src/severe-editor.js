@@ -573,11 +573,13 @@
   const SEE = 100000, STAND = 50000;
   function radarFor(sPath) {
     let site = pickSite(sPath, { mid: 45000, path: 30000, max: SEE, only: true }); if (site < 0) site = pickSite(sPath, { mid: 25000, path: 15000, max: SEE, only: true });
-    if (site >= 0) return { site, virtual: null };
+    return site >= 0 ? { site, virtual: null } : { site: pickSite(sPath), virtual: standFor(sPath) };
+  }
+  function standFor(sPath) {                                                                                                 // where the user's own radar goes for a path: STAND from the middle of its mature part, on the right of its way
     const sp = E.spot, at = (p) => G.fromLocal(lat0(), lon0(), sp.x * 1000 + p.x, sp.y * 1000 + p.y), mid = at(sPath.mid), a = sPath.pts[0], b = sPath.pts[sPath.pts.length - 1];
     let dx = b.x - a.x, dy = b.y - a.y; if (Math.hypot(dx, dy) < 1000) { dx = 0; dy = 1; }                                  // (a storm that goes nowhere: it goes north, so the radar is to its east)
     const th = Math.atan2(dx, dy) + Math.PI / 2, v = G.fromLocal(mid.lat, mid.lon, STAND * Math.sin(th), STAND * Math.cos(th));
-    return { site: pickSite(sPath), virtual: { lat: +v.lat.toFixed(4), lon: +v.lon.toFixed(4) } };
+    return { lat: +v.lat.toFixed(4), lon: +v.lon.toFixed(4) };
   }
   /* the seconds left of a run from its progress so far ([model minute, seconds of work] pairs): at the rate of the last 3 model minutes or more; before the nest of the fine model has started, from the rate of the box and the cost of the nest (sixty times it per model minute) */
   function runLeft(prog, of, detail) {
@@ -611,17 +613,26 @@
         else if (m.t === 'done') {
           ended = true; end(); run.wall = m.wall; run.stopped = !!m.stopped; run.reason = m.reason || '';
           if (!pack || pack.n < 1) { SEV.live.end({ stopped: true, reason: m.reason }); toast('The model did not get far: ' + (m.reason || 'no frames'), 6000); return reject(new Error(m.reason || 'no frames')); }
-          SEV.live.end({ stopped: m.stopped, reason: m.reason }); const swapped = handOff(pack, run);
+          SEV.live.end({ stopped: m.stopped, reason: m.reason }); const swapped = handOff(pack, run) || restand(pack, run);
           const quiet = !m.stopped && run.maxW < 10;                                                         // (a day that cannot support a storm grows none: the model says so, it is not made to)
           toast(quiet ? 'No storm grew from this day at the spot you tapped: the strongest updraft was ' + Math.round(run.maxW * 2.2369) + ' mph. The air there is too stable or too dry. Move the spot, or change the day.' : (m.stopped ? (m.reason === 'stopped early' ? 'Stopped early. ' : m.reason + '; ') : '') + 'The storm is made: ' + pack.n + ' frames, ' + (swapped ? 'now seen from ' + swapped : (run.scenario.virtual ? 'a radar of your own, ' + STAND / 1000 + ' km from it,' : run.scenario.radar) + ' is the radar') + ' (' + Math.round(m.wall) + ' s of work)', quiet ? 9000 : 6000); resolve(run);
         } else if (m.t === 'error') fail('The model stopped: ' + m.message, new Error(m.message));
       };
       w.onmessage = (ev) => { chain = chain.then(() => handle(ev.data)).catch((e) => fail('Could not show the storm: ' + (e && e.message || e), e)); };
       w.onerror = (e) => fail('The model stopped: ' + (e.message || 'worker error'), new Error(e.message || 'worker error'));
-      w.postMessage({ t: 'run', spec: { env: L.arr, dx: o.dx, box: o.box, dt: o.dt, minutes: o.minutes, frameEvery: o.frameEvery || 5, nz: o.nz || 40, dz: o.dz || 500, bubble: o.bubble, evap: o.evap, drag: o.drag, detail: o.detail, seeds: o.seeds, follow: o.follow, window: o.window } });
+      w.postMessage({ t: 'run', spec: { env: L.arr, dx: o.dx, box: o.box, dt: o.dt, minutes: o.minutes, frameEvery: o.frameEvery || 5, nz: o.nz || 40, dz: o.dz || 500, bubble: o.bubble, evap: o.evap, drag: o.drag, twoMoment: o.twoMoment, detail: o.detail, seeds: o.seeds, follow: o.follow, window: o.window } });
     });
   }
   /* the radar the storm's own path asks for, when the one chosen at the start is not it: a storm that went within 15 km of the radar (under it, in its cone of silence) or more than 200 km from it is seen from another, as a radar network hands a storm on */
+  /* a radar of the user's own that the run began with is put again where the storm's own path asks for it when the run is over (the storm went more to the north or the south than the sounding's motion said, as the drift of the box says: up to 30 km), unless it
+     has been moved since: a hand, a drag */
+  function restand(pack, run) {
+    try {
+      const v = run.scenario.virtual, R = SEV.S.radar; if (!v || SEV.S.storm !== 'run' || SEV.pack !== pack || !R.custom || Math.abs(R.lat - v.lat) > 1e-6 || Math.abs(R.lon - v.lon) > 1e-6) return '';
+      const n = standFor(HFSeverePack.stormPath(pack.h)); if (Math.abs(n.lat - v.lat) < 1e-4 && Math.abs(n.lon - v.lon) < 1e-4) return '';
+      run.scenario.virtual = n; SEV.setRadar({ id: null, custom: true, name: 'Virtual radar', lat: n.lat, lon: n.lon }); return 'a radar of your own, ' + STAND / 1000 + ' km from its path';
+    } catch (e) { console.warn('severe: no new place for the radar (' + e.message + ')'); return ''; }
+  }
   function handOff(pack, run) {
     try { return handOffTo(pack, run); } catch (e) { console.warn('severe: no hand-off of the radar (' + e.message + ')'); return ''; }          // (a radar that cannot be changed never costs a run that is made)
   }
@@ -630,7 +641,7 @@
     const sPath = HFSeverePack.stormPath(pack.h), sp = E.spot, S = geo.points.site, cur = S.names.indexOf(SEV.S.radar.id); if (cur < 0 || SEV.S.radar.custom) return '';
     const worst = sPath.pts.reduce((a, p) => { const q = G.fromLocal(lat0(), lon0(), sp.x * 1000 + p.x, sp.y * 1000 + p.y), d = G.distBearing(q.lat, q.lon, S.lat[cur], S.lon[cur]).d; return [Math.min(a[0], d), Math.max(a[1], d)]; }, [Infinity, 0]);
     if (worst[0] >= 15000 && worst[1] <= 200000) return '';
-    const best = pickSite(sPath); if (best < 0 || best === cur) return ''; SEV.setRadar(Object.assign({ custom: false }, SEV.siteInfo(best))); run.scenario = Object.assign({}, run.scenario, { radar: S.names[best] }); return S.names[best];
+    const best = pickSite(sPath); if (best < 0 || best === cur) return ''; SEV.setRadar(Object.assign({ custom: false }, SEV.siteInfo(best))); run.scenario.radar = S.names[best]; return S.names[best];                                  // (in place: the pack holds this very object, and a run that is taken up again from the Storms menu has the radar that it was handed on to)
   }
 
   /* ---- the mode, the map, the keys ---- */
@@ -681,7 +692,7 @@
     $('m-draw').addEventListener('click', () => setMode('draw')); $('m-radar').addEventListener('click', () => setMode('radar'));
     document.addEventListener('keydown', onKey, true);
     $('b-theme').addEventListener('click', () => { if (!map) return; map.setTheme(SEV.S.theme); E.fields = null; syncLegend(); if (E.sel >= 0 || E.probe) closeSheet(); scheduleField(0); redraw(); });
-    SEV.editor = { E, LAB, runStorm, runLeft, runSpec, runWork, SETS, SET_DEF, handOff, pickSite, radarFor, openRun, closeRun, labEnv, scenarioOf, setMode, loadDay, setTool, setLayer, setTime, undo, redo, rebuild, commit, addObject, newObject, nearestPlace, openSheet, closeSheet, get map() { return map; }, toKm, toScreen, deleteSelected, TOOLS, PROPS, anchorOf, tipOf, zoneOf, zoneSpec, zoneSeeds, zonePlan, zoneRun, ZN };
+    SEV.editor = { E, LAB, runStorm, runLeft, runSpec, runWork, SETS, SET_DEF, handOff, restand, pickSite, radarFor, standFor, openRun, closeRun, labEnv, scenarioOf, setMode, loadDay, setTool, setLayer, setTime, undo, redo, rebuild, commit, addObject, newObject, nearestPlace, openSheet, closeSheet, get map() { return map; }, toKm, toScreen, deleteSelected, TOOLS, PROPS, anchorOf, tipOf, zoneOf, zoneSpec, zoneSeeds, zonePlan, zoneRun, ZN };
     if (location.hash === '#draw') setMode('draw');
   }
   if (window.SEVERE && window.SEVERE.ready) init(); else window.addEventListener('severe-ready', init);

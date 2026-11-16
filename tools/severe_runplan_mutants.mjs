@@ -10,19 +10,26 @@ import { fileURLToPath } from 'node:url';
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const SRC = readFileSync(join(root, 'src/severe-runplan.js'), 'utf8');
 // [name, the text to find (once), its replacement]
+// One change that cannot be seen is left out: the drops' flag as `st.rain > 0` for `st.rain === 1` (the row has the values 0 and 1 and no other).
 const M = [
   // the model's own settings
-  ['def-ground', 'ground: 0.1, evap: 1, bubble: 3, nest: 2, nestBox: 30, nestFrom: 20 };', 'ground: 0.3, evap: 1, bubble: 3, nest: 2, nestBox: 30, nestFrom: 20 };'],
-  ['def-evap', 'ground: 0.1, evap: 1, bubble: 3, nest: 2, nestBox: 30, nestFrom: 20 };', 'ground: 0.1, evap: 0.5, bubble: 3, nest: 2, nestBox: 30, nestFrom: 20 };'],
-  ['def-bubble', 'ground: 0.1, evap: 1, bubble: 3, nest: 2, nestBox: 30, nestFrom: 20 };', 'ground: 0.1, evap: 1, bubble: 4, nest: 2, nestBox: 30, nestFrom: 20 };'],
-  ['def-nest', 'ground: 0.1, evap: 1, bubble: 3, nest: 2, nestBox: 30, nestFrom: 20 };', 'ground: 0.1, evap: 1, bubble: 3, nest: 3, nestBox: 30, nestFrom: 20 };'],
-  ['def-nest-width', 'ground: 0.1, evap: 1, bubble: 3, nest: 2, nestBox: 30, nestFrom: 20 };', 'ground: 0.1, evap: 1, bubble: 3, nest: 2, nestBox: 40, nestFrom: 20 };'],
-  ['def-nest-start', 'ground: 0.1, evap: 1, bubble: 3, nest: 2, nestBox: 30, nestFrom: 20 };', 'ground: 0.1, evap: 1, bubble: 3, nest: 2, nestBox: 30, nestFrom: 10 };'],
+  ['def-rain', 'ground: 0.1, evap: 1, rain: 0, bubble: 3, nest: 2, nestBox: 30, nestFrom: 20 };', 'ground: 0.1, evap: 1, rain: 1, bubble: 3, nest: 2, nestBox: 30, nestFrom: 20 };'],
+  ['def-ground', 'ground: 0.1, evap: 1, rain: 0, bubble: 3, nest: 2, nestBox: 30, nestFrom: 20 };', 'ground: 0.3, evap: 1, rain: 0, bubble: 3, nest: 2, nestBox: 30, nestFrom: 20 };'],
+  ['def-evap', 'ground: 0.1, evap: 1, rain: 0, bubble: 3, nest: 2, nestBox: 30, nestFrom: 20 };', 'ground: 0.1, evap: 0.5, rain: 0, bubble: 3, nest: 2, nestBox: 30, nestFrom: 20 };'],
+  ['def-bubble', 'ground: 0.1, evap: 1, rain: 0, bubble: 3, nest: 2, nestBox: 30, nestFrom: 20 };', 'ground: 0.1, evap: 1, rain: 0, bubble: 4, nest: 2, nestBox: 30, nestFrom: 20 };'],
+  ['def-nest', 'ground: 0.1, evap: 1, rain: 0, bubble: 3, nest: 2, nestBox: 30, nestFrom: 20 };', 'ground: 0.1, evap: 1, rain: 0, bubble: 3, nest: 3, nestBox: 30, nestFrom: 20 };'],
+  ['def-nest-width', 'ground: 0.1, evap: 1, rain: 0, bubble: 3, nest: 2, nestBox: 30, nestFrom: 20 };', 'ground: 0.1, evap: 1, rain: 0, bubble: 3, nest: 2, nestBox: 40, nestFrom: 20 };'],
+  ['def-nest-start', 'ground: 0.1, evap: 1, rain: 0, bubble: 3, nest: 2, nestBox: 30, nestFrom: 20 };', 'ground: 0.1, evap: 1, rain: 0, bubble: 3, nest: 2, nestBox: 30, nestFrom: 10 };'],
   // the rows
   ['row-ground-none', "opts: [[0, 'None'], [0.03, 'Smooth']", "opts: [[0, 'Off'], [0.03, 'Smooth']"],
   ['row-ground-smooth', "[0.03, 'Smooth']", "[0.05, 'Smooth']"],
   ['row-ground-crops', "[0.3, 'Crops']", "[0.5, 'Crops']"],
   ['row-ground-trees', "[1, 'Trees']", "[2, 'Trees']"],
+  ['row-rain-one-size', "[[0, 'One size'], [1, 'Sorted by size']]", "[[0, 'Plain'], [1, 'Sorted by size']]"],
+  ['row-rain-sorted', "[1, 'Sorted by size']", "[2, 'Sorted by size']"],
+  ['row-rain-value', "[[0, 'One size']", "[[3, 'One size']"],
+  ['row-rain-fine-only', "{ id: 'rain', title: 'Rain drops',", "{ id: 'rain', title: 'Rain drops', fine: true,"],
+  ['row-rain-before-evap', "{ id: 'rain', title: 'Rain drops',", "{ id: 'raind', title: 'Rain drops',"],
   ['row-evap-half', "[0.5, 'Half']", "[0.6, 'Half']"],
   ['row-evap-light', "[0.3, 'Light']", "[0.2, 'Light']"],
   ['row-bubble-2', "[[2, '2 K'], [3, '3 K']", "[[1, '2 K'], [3, '3 K']"],
@@ -88,9 +95,13 @@ const M = [
   ['time-word-minutes', "'about ' + mins + ' minutes'", "'about ' + mins + ' mins'"],
   // the spec of a run
   ['spec-minutes', 'const out = { minutes: o.minutes,', 'const out = { minutes: 90,'],
-  ['spec-ground', 'drag: st.ground, evap: st.evap };', 'drag: 0.1, evap: st.evap };'],
-  ['spec-rain', 'drag: st.ground, evap: st.evap };', 'drag: st.ground, evap: 1 };'],
-  ['spec-ground-and-rain-swapped', 'drag: st.ground, evap: st.evap };', 'drag: st.evap, evap: st.ground };'],
+  ['spec-ground', 'drag: st.ground, evap: st.evap, twoMoment: st.rain === 1 };', 'drag: 0.1, evap: st.evap, twoMoment: st.rain === 1 };'],
+  ['spec-rain', 'drag: st.ground, evap: st.evap, twoMoment: st.rain === 1 };', 'drag: st.ground, evap: 1, twoMoment: st.rain === 1 };'],
+  ['spec-two-moment-left-out', 'drag: st.ground, evap: st.evap, twoMoment: st.rain === 1 };', 'drag: st.ground, evap: st.evap };'],
+  ['spec-two-moment-always', 'drag: st.ground, evap: st.evap, twoMoment: st.rain === 1 };', 'drag: st.ground, evap: st.evap, twoMoment: true };'],
+  ['spec-two-moment-never', 'drag: st.ground, evap: st.evap, twoMoment: st.rain === 1 };', 'drag: st.ground, evap: st.evap, twoMoment: false };'],
+  ['spec-two-moment-inverted', 'drag: st.ground, evap: st.evap, twoMoment: st.rain === 1 };', 'drag: st.ground, evap: st.evap, twoMoment: st.rain !== 1 };'],
+  ['spec-ground-and-rain-swapped', 'drag: st.ground, evap: st.evap, twoMoment: st.rain === 1 };', 'drag: st.evap, evap: st.ground, twoMoment: st.rain === 1 };'],
   ['spec-zone-rest', 'if (o.zone) return Object.assign(out, o.zone);', 'if (o.zone) return Object.assign(o.zone, out);'],
   ['spec-zone-ignored', 'if (o.zone) return Object.assign(out, o.zone);', ''],
   ['spec-zone-bubble', 'if (o.zone) return Object.assign(out, o.zone);\n    out.bubble = st.bubble;', 'out.bubble = st.bubble;\n    if (o.zone) return Object.assign(out, o.zone);'],

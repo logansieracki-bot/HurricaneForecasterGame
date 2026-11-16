@@ -1,6 +1,6 @@
 /* Severe: the plan of a run (docs/severe-plan.md section 8): the settings of the editor's "Run a storm" card, the spec of the Lab that they make, and what a run costs. Pure, so that it is tested on its own.
  *
- *   HFSevereRunPlan.SET_DEF                 what the model does with nothing set: { ground 0.1 (m of roughness: short grass), evap 1 (the rain's evaporation), bubble 3 (K), nest 2 (the box's cells over the nest's: 500 m cells in a box of 1 km),
+ *   HFSevereRunPlan.SET_DEF                 what the model does with nothing set: { ground 0.1 (m of roughness: short grass), evap 1 (the rain's evaporation), rain 0 (one size of drops: 1 sorts them by size, the Lab's two-moment rain), bubble 3 (K), nest 2 (the box's cells over the nest's: 500 m cells in a box of 1 km),
  *                                           nestBox 30 (km), nestFrom 20 (the minute the nest starts) }
  *   HFSevereRunPlan.SETS                    the rows of the card, [{ id, title, fine (only for the fine model), opts: [[value, label], ...], hint }], in the order they are shown
  *   HFSevereRunPlan.DETAIL, FINE, FAST      the nest, the fine model (a box of 108 km at 1 km, the middle 96 km recorded, and the nest) and the quick one (a box of 128 km at 2 km) as the Lab takes them (src/severe-lab.js);
@@ -12,7 +12,7 @@
  *   HFSevereRunPlan.work(min, st)           the minutes of work of a fine run of `min` model minutes on a fast computer: 0.3 a minute for the box alone, and with the nest 0.3 + 0.52 times its factor (0.82 for the 500 m nest over 30 km, which
  *                                           is 3.1 times the box's: 15.6 and 37 s a minute in the first minutes and 48 in a mature storm, docs/severe-research.md part 7)
  *   HFSevereRunPlan.timeText(mins)          'about 65 minutes', or in hours, in halves, from 2 hours
- *   HFSevereRunPlan.spec(o, st)             the spec of a run for runStorm: o = { minutes, fine, zone }, `zone` the quick model's box and seeds of an initiation zone ({ dx, box, seeds, follow: false }) or null; the ground (`drag`) and the rain (`evap`)
+ *   HFSevereRunPlan.spec(o, st)             the spec of a run for runStorm: o = { minutes, fine, zone }, `zone` the quick model's box and seeds of an initiation zone ({ dx, box, seeds, follow: false }) or null; the ground (`drag`) and the rain (`evap`, `twoMoment`)
  *                                           go with every run, the bubble with all but a zone's (it has its own seeds), the nest with a fine one
  *
  * A classic script that sets `globalThis.HFSevereRunPlan`.
@@ -20,10 +20,11 @@
 (function () {
   'use strict';
 
-  const SET_DEF = { ground: 0.1, evap: 1, bubble: 3, nest: 2, nestBox: 30, nestFrom: 20 };
+  const SET_DEF = { ground: 0.1, evap: 1, rain: 0, bubble: 3, nest: 2, nestBox: 30, nestFrom: 20 };
   const SETS = [
     { id: 'ground', title: 'Ground', opts: [[0, 'None'], [0.03, 'Smooth'], [0.1, 'Grass'], [0.3, 'Crops'], [1, 'Trees']], hint: 'A drag on the lowest wind, by the roughness of the ground (grass is 0.1 m). With some, a storm\'s hook is sharper and curls more; with none the floor is free-slip.' },
     { id: 'evap', title: 'Rain evaporation', opts: [[1, 'Full'], [0.5, 'Half'], [0.3, 'Light']], hint: 'How fast falling rain dries in the air below the storm, which sets how cold its pool of outflow is. Full is the model\'s own.' },
+    { id: 'rain', title: 'Rain drops', opts: [[0, 'One size'], [1, 'Sorted by size']], hint: 'How the rain\'s drops are sized. One size is the model\'s own: every drop of a given mass is the same. Sorted by size follows the number of drops as well, so the big ones fall first and the small ones are left behind the shower: more weak echo round a strong core and a longer fade at its edges, at about the same cost.' },
     { id: 'bubble', title: 'Warm bubble', opts: [[2, '2 K'], [3, '3 K'], [4, '4 K'], [5, '5 K']], hint: 'The warm bubble that starts the storm at the spot (3 K is the usual one). A day on the edge of a storm may need more; more starts a stronger first storm.' },
     { id: 'nest', title: 'Nest cells', fine: true, opts: [[2, '500 m'], [3, '333 m'], [4, '250 m']], hint: 'Cells of the second model inside the first. Finer cells show a hook\'s detail and cost much more: 333 m about two and a half times the nest\'s work, 250 m about five and a half.' },
     { id: 'nestBox', title: 'Nest width', fine: true, opts: [[20, '20 km'], [30, '30 km'], [40, '40 km']], hint: 'How wide the nest is, round the storm. A wider one holds more of the storm\'s edges and costs by its area.' },
@@ -36,7 +37,7 @@
   const work = (min, st) => Math.min(min, st.nestFrom) * 0.3 + Math.max(0, min - st.nestFrom) * (0.3 + 0.52 * nestFactor(st));
   const timeText = (mins) => (mins >= 120 ? 'about ' + (Math.round(mins / 30) / 2) + ' hours' : 'about ' + mins + ' minutes');
   function spec(o, st) {
-    const out = { minutes: o.minutes, drag: st.ground, evap: st.evap };
+    const out = { minutes: o.minutes, drag: st.ground, evap: st.evap, twoMoment: st.rain === 1 };
     if (o.zone) return Object.assign(out, o.zone);
     out.bubble = st.bubble;
     if (!o.fine) return Object.assign(out, FAST);
