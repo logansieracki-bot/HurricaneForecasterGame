@@ -13,13 +13,13 @@ const SRC = readFileSync(join(root, 'src/severe-runplan.js'), 'utf8');
 // One change that cannot be seen is left out: the drops' flag as `st.rain > 0` for `st.rain === 1` (the row has the values 0 and 1 and no other).
 const M = [
   // the model's own settings
-  ['def-rain', 'ground: 0.1, evap: 1, rain: 0, bubble: 3, nest: 2, nestBox: 30, nestFrom: 20 };', 'ground: 0.1, evap: 1, rain: 1, bubble: 3, nest: 2, nestBox: 30, nestFrom: 20 };'],
-  ['def-ground', 'ground: 0.1, evap: 1, rain: 0, bubble: 3, nest: 2, nestBox: 30, nestFrom: 20 };', 'ground: 0.3, evap: 1, rain: 0, bubble: 3, nest: 2, nestBox: 30, nestFrom: 20 };'],
-  ['def-evap', 'ground: 0.1, evap: 1, rain: 0, bubble: 3, nest: 2, nestBox: 30, nestFrom: 20 };', 'ground: 0.1, evap: 0.5, rain: 0, bubble: 3, nest: 2, nestBox: 30, nestFrom: 20 };'],
-  ['def-bubble', 'ground: 0.1, evap: 1, rain: 0, bubble: 3, nest: 2, nestBox: 30, nestFrom: 20 };', 'ground: 0.1, evap: 1, rain: 0, bubble: 4, nest: 2, nestBox: 30, nestFrom: 20 };'],
-  ['def-nest', 'ground: 0.1, evap: 1, rain: 0, bubble: 3, nest: 2, nestBox: 30, nestFrom: 20 };', 'ground: 0.1, evap: 1, rain: 0, bubble: 3, nest: 3, nestBox: 30, nestFrom: 20 };'],
-  ['def-nest-width', 'ground: 0.1, evap: 1, rain: 0, bubble: 3, nest: 2, nestBox: 30, nestFrom: 20 };', 'ground: 0.1, evap: 1, rain: 0, bubble: 3, nest: 2, nestBox: 40, nestFrom: 20 };'],
-  ['def-nest-start', 'ground: 0.1, evap: 1, rain: 0, bubble: 3, nest: 2, nestBox: 30, nestFrom: 20 };', 'ground: 0.1, evap: 1, rain: 0, bubble: 3, nest: 2, nestBox: 30, nestFrom: 10 };'],
+  ['def-rain', 'ground: 0.1, evap: 1, rain: 1, bubble: 3, nest: 2, nestBox: 30, nestFrom: 20 };', 'ground: 0.1, evap: 1, rain: 0, bubble: 3, nest: 2, nestBox: 30, nestFrom: 20 };'],
+  ['def-ground', 'ground: 0.1, evap: 1, rain: 1, bubble: 3, nest: 2, nestBox: 30, nestFrom: 20 };', 'ground: 0.3, evap: 1, rain: 1, bubble: 3, nest: 2, nestBox: 30, nestFrom: 20 };'],
+  ['def-evap', 'ground: 0.1, evap: 1, rain: 1, bubble: 3, nest: 2, nestBox: 30, nestFrom: 20 };', 'ground: 0.1, evap: 0.5, rain: 1, bubble: 3, nest: 2, nestBox: 30, nestFrom: 20 };'],
+  ['def-bubble', 'ground: 0.1, evap: 1, rain: 1, bubble: 3, nest: 2, nestBox: 30, nestFrom: 20 };', 'ground: 0.1, evap: 1, rain: 1, bubble: 4, nest: 2, nestBox: 30, nestFrom: 20 };'],
+  ['def-nest', 'ground: 0.1, evap: 1, rain: 1, bubble: 3, nest: 2, nestBox: 30, nestFrom: 20 };', 'ground: 0.1, evap: 1, rain: 1, bubble: 3, nest: 3, nestBox: 30, nestFrom: 20 };'],
+  ['def-nest-width', 'ground: 0.1, evap: 1, rain: 1, bubble: 3, nest: 2, nestBox: 30, nestFrom: 20 };', 'ground: 0.1, evap: 1, rain: 1, bubble: 3, nest: 2, nestBox: 40, nestFrom: 20 };'],
+  ['def-nest-start', 'ground: 0.1, evap: 1, rain: 1, bubble: 3, nest: 2, nestBox: 30, nestFrom: 20 };', 'ground: 0.1, evap: 1, rain: 1, bubble: 3, nest: 2, nestBox: 30, nestFrom: 10 };'],
   // the rows
   ['row-ground-none', "opts: [[0, 'None'], [0.03, 'Smooth']", "opts: [[0, 'Off'], [0.03, 'Smooth']"],
   ['row-ground-smooth', "[0.03, 'Smooth']", "[0.05, 'Smooth']"],
