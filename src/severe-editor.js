@@ -557,22 +557,23 @@
     const mm = Math.round(720 + L.t * 60), tz = here.lon > -85 ? 'EDT' : here.lon > -101 ? 'CDT' : here.lon > -115 ? 'MDT' : 'PDT';
     return { lat0: site.lat, lon0: site.lon, origin: [Math.round(l.x - half), Math.round(l.y - half)], radar: site.id, clock: String(Math.floor(mm / 60) % 24).padStart(2, '0') + ':' + String(mm % 60).padStart(2, '0'), tz };
   }
-  /* the radar site for a storm path (HFSeverePack.stormPath, in metres from the spot): the nearest to the middle of its mature part that is at least `far.mid` (25 km) from that, at most `far.max` (no limit) and `far.path` (15 km) from every frame's place, not in the
-     cone of silence; the nearest of all if there is none (unless `far.only`: then -1) */
+  /* the radar site for a storm path (HFSeverePack.stormPath, in metres from the spot): the nearest to the middle of its mature part that is at least `far.mid` (25 km) from that, at most `far.max` (no limit) from it, `far.path` (15 km) or more from every frame's
+     place (not in the cone of silence) and, from the minute `far.from` (20) on, no more than `far.reach` (no limit) from any; the nearest of all if there is none (unless `far.only`: then -1) */
   function pickSite(sPath, far) {
-    far = Object.assign({ mid: 25000, path: 15000, max: Infinity, only: false }, far); const sp = E.spot, at = (p) => G.fromLocal(lat0(), lon0(), sp.x * 1000 + p.x, sp.y * 1000 + p.y), mid = at(sPath.mid), pl = sPath.pts.map(at), S = geo.points.site; let best = -1, bd = Infinity;
-    const clear = (i) => pl.every((q) => G.distBearing(q.lat, q.lon, S.lat[i], S.lon[i]).d >= far.path);
+    far = Object.assign({ mid: 25000, path: 15000, max: Infinity, reach: Infinity, from: 20, only: false }, far); const sp = E.spot, at = (p) => G.fromLocal(lat0(), lon0(), sp.x * 1000 + p.x, sp.y * 1000 + p.y), mid = at(sPath.mid), pl = sPath.pts.map(at), S = geo.points.site; let best = -1, bd = Infinity;
+    const clear = (i) => pl.every((q, k) => { const d = G.distBearing(q.lat, q.lon, S.lat[i], S.lon[i]).d; return d >= far.path && (sPath.pts[k].t < far.from || d <= far.reach); });
     for (let i = 0; i < S.n; i++) { if (Math.abs(S.lat[i] - mid.lat) > 2 || Math.abs(S.lon[i] - mid.lon) > 2.6) continue; const d = G.distBearing(mid.lat, mid.lon, S.lat[i], S.lon[i]).d; if (d >= far.mid && d <= far.max && d < bd && clear(i)) { bd = d; best = i; } }
     if (best < 0 && !far.only) for (let i = 0; i < S.n; i++) { const d = G.distBearing(mid.lat, mid.lon, S.lat[i], S.lon[i]).d; if (d < bd) { bd = d; best = i; } }
     return best;
   }
-  /* the radar of a storm that does not exist yet, from the path that the sounding's own motion gives (more room, 45 km from its middle and 30 km from every place on it, than a path that is known would need): a real site if one stands where a radar sees a
-     storm, the nearest within SEE (100 km: the 0.5 degree beam is 1.3 km up there and 3.6 km at 190 km, where the nearest site put a day's storm before this; the fine model's cells of 500 m are lost in a beam of 3 km); if there is none, with the room
-     of a known path (25 and 15 km), and if there is none still, a radar of the user's own (`virtual`: its latitude and longitude) STAND (50 km) from the middle of the path on the right of its way, to the south-east of a storm that goes north-east, from where
-     its flank and its hook are seen from the side. `site` is the real site that the box is put on the ground by (the nearest of all when the radar is a virtual one). */
+  /* the radar of a storm that does not exist yet, from the path that the sounding's own motion gives (more room, 45 km from its middle and 30 km from every place on it, than a path that is known would need): a real site if one stands where a radar sees the
+     storm for the whole of its life from the 20th minute, the nearest that keeps every place of it within SEE (100 km: the 0.5 degree beam is 1.3 km up there and 3.6 km at 190 km, where the nearest site put a day's storm before this; the fine model's cells of
+     500 m are lost in a beam of 3 km; the outbreak day's storm goes from 63 km to 152 km from the one site that is near it, in the 90 minutes, and was seen from it by its middle alone); if there is none, with the room of a known path (25 and 15 km), and if
+     there is none still, a radar of the user's own (`virtual`: its latitude and longitude) STAND (50 km) from the middle of the path on the right of its way, to the south-east of a storm that goes north-east, from where its flank and its hook are seen from the
+     side. `site` is the real site that the box is put on the ground by (the nearest of all when the radar is a virtual one). */
   const SEE = 100000, STAND = 50000;
   function radarFor(sPath) {
-    let site = pickSite(sPath, { mid: 45000, path: 30000, max: SEE, only: true }); if (site < 0) site = pickSite(sPath, { mid: 25000, path: 15000, max: SEE, only: true });
+    let site = pickSite(sPath, { mid: 45000, path: 30000, max: SEE, reach: SEE, only: true }); if (site < 0) site = pickSite(sPath, { mid: 25000, path: 15000, max: SEE, reach: SEE, only: true });
     return site >= 0 ? { site, virtual: null } : { site: pickSite(sPath), virtual: standFor(sPath) };
   }
   function standFor(sPath) {                                                                                                 // where the user's own radar goes for a path: STAND from the middle of its mature part, on the right of its way
