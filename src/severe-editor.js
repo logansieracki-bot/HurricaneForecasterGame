@@ -567,13 +567,13 @@
     return best;
   }
   /* the radar of a storm that does not exist yet, from the path that the sounding's own motion gives (more room, 45 km from its middle and 30 km from every place on it, than a path that is known would need): a real site if one stands where a radar sees the
-     storm for the whole of its life from the 20th minute, the nearest that keeps every place of it within SEE (100 km: the 0.5 degree beam is 1.3 km up there and 3.6 km at 190 km, where the nearest site put a day's storm before this; the fine model's cells of
+     storm for the whole of its life from the 20th minute, the nearest that keeps every place of it within SEE less SPARE (75 km, so that a storm that goes 25 km off its path is within SEE, 100 km: the 0.5 degree beam is 1.3 km up there and 3.6 km at 190 km, where the nearest site put a day's storm before this; the fine model's cells of
      500 m are lost in a beam of 3 km; the outbreak day's storm goes from 63 km to 152 km from the one site that is near it, in the 90 minutes, and was seen from it by its middle alone); if there is none, with the room of a known path (25 and 15 km), and if
      there is none still, a radar of the user's own (`virtual`: its latitude and longitude) STAND (50 km) from the middle of the path on the right of its way, to the south-east of a storm that goes north-east, from where its flank and its hook are seen from the
      side. `site` is the real site that the box is put on the ground by (the nearest of all when the radar is a virtual one). */
-  const SEE = 100000, STAND = 50000;
+  const SEE = 100000, SPARE = 25000, STAND = 50000;                                                                        // (SPARE: the storm that is made goes up to 25 km off the path of the sounding's motion, a Fast run of the outbreak day 34 km at the 90th minute and its Fine run of 45 minutes ended 113 km from the site that its path kept within 85)
   function radarFor(sPath) {
-    let site = pickSite(sPath, { mid: 45000, path: 30000, max: SEE, reach: SEE, only: true }); if (site < 0) site = pickSite(sPath, { mid: 25000, path: 15000, max: SEE, reach: SEE, only: true });
+    let site = pickSite(sPath, { mid: 45000, path: 30000, max: SEE, reach: SEE - SPARE, only: true }); if (site < 0) site = pickSite(sPath, { mid: 25000, path: 15000, max: SEE, reach: SEE - SPARE, only: true });
     return site >= 0 ? { site, virtual: null } : { site: pickSite(sPath), virtual: standFor(sPath) };
   }
   function standFor(sPath) {                                                                                                 // where the user's own radar goes for a path: STAND from the middle of its mature part, on the right of its way
