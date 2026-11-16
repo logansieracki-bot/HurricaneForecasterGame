@@ -19,11 +19,11 @@
     metric: { name: 'Kilometres and m/s', speed: 'm/s', k: 1, dist: 'km', m: 1000 } };
   const LS = 'hf-severe-v1';
   /* the storms the page can show: the recorded 1 km storm is inside the page, the others are files beside it (severe-packs/, made by tools/severe_research/make_nest_pack.mjs) that are fetched when they are asked for;
-     t: the minute the page opens it at, zoom: how close, focus: where to look, km east and north of the strongest updraft (the hook of the outbreak storm is 20 km west of it), panes: the products of its panes, interval: the minutes between the frames it plays, mb: the size of the file (the menu says it) */
+     t: the minute the page opens it at, zoom: how close, focus: where to look, km east and north of the middle of the nest (of the strongest updraft in a pack with none: the weak-echo eye of the outbreak storm is 9 km south and 6 km east of the nest's middle at minute 67), panes: the products of its panes, interval: the minutes between the frames it plays, mb: the size of the file (the menu says it) */
   const STORMS = [
     { id: 'wk82-1km', name: 'Supercell, 1 km grid', sub: 'Recorded · smooth rotation · a frame every 5 minutes' },
     { id: 'wk82-100m', name: 'Supercell, 100 m nest', sub: 'Recorded · a notch and a tight couplet · a frame every minute', file: 'severe-packs/wk82-100m-nest.hfp', mb: 10, t: 79, zoom: 11.3, panes: ['dbz', 'vel'], interval: 1 },
-    { id: 'outbreak-500m', name: 'Tornado outbreak day, 500 m', sub: 'Recorded · a hook echo curled round an eye · a frame every minute', file: 'severe-packs/outbreak-500m.hfp', mb: 20, t: 80, zoom: 11, focus: [-20, -8], panes: ['dbz', 'vel'], interval: 1 },
+    { id: 'outbreak-500m', name: 'Tornado outbreak day, Fine run', sub: 'Recorded · the Fine run of the outbreak day: a nest of 500 m, an eye of weak echo · a frame every minute', file: 'severe-packs/outbreak-500m.hfp', mb: 22, t: 67, zoom: 11, focus: [6, -9], panes: ['dbz', 'vel'], interval: 1 },
   ];
 
   /* ---- state ---- */
