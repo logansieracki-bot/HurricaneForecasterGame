@@ -4,7 +4,7 @@
  *   HFSevereLab.envOf(a)                       // an environment (HFSevereSounding.fromProfile) from arrays: a = { z, theta, qv, u, v, p0, motion }: z even from 0 (m), theta (K), qv (kg/kg), the winds in the ground's frame (m/s)
  *   HFSevereLab.run(spec, hooks)               // async: runs, calls hooks.frame(rec) for every recorded frame, hooks.progress(rec) at every step of the clock, hooks.yield() now and then (an await that lets a worker hear a cancel;
  *                                              // hooks.cancelled() true stops it, a string stops it with that as the reason: the frames so far are the run's); resolves { frames, header, wall, steps, stopped, reason }
- *      spec: { env: a (see envOf), dx 2000, box 84000 (m), nz 40, dz 500, dt 10, minutes 90, frameEvery 5 (minutes), bubble 3 (K), evap 1, twoMoment (false: the rain's drop number is a second variable of the core, see src/severe-core.js), iceParams (other settings of the ice scheme: n0g, rhog, n0r, xrMin, xrMax), seeds (the bubbles that start storms, see below), drag (the ground's drag on the lowest level, the z0 of its log law in m: 0.1 is short grass; 0, the default, for a free-slip floor), detail, ... }
+ *      spec: { env: a (see envOf), dx 2000, box 84000 (m), nz 40, dz 500, dt 10, minutes 90, frameEvery 5 (minutes), bubble 3 (K), evap 1, twoMoment (false: the rain's drop number is a second variable of the core, see src/severe-core.js), iceParams (other settings of the ice scheme: n0g, rhog, n0r, xrMin, xrMax, n0gq, n0gMin, vga, vgb; the header's `lab.ice` says them), seeds (the bubbles that start storms, see below), drag (the ground's drag on the lowest level, the z0 of its log law in m: 0.1 is short grass; 0, the default, for a free-slip floor), detail, ... }
  *      frame rec: { i, t (minutes), block (Uint8Array: the five arrays of a pack's frame, and those of the nest if it has one), track: [x, y, w], wmax, zmax, thvmin, drift: [east, north], nest (true if the block has the nest's arrays), fn (the pack's `fn` of the frame) }
  *      hooks.start(header) is called once before the first frame with the header as it is then (the grid, the scale, the motion, the base state, the nests' grids; `times`, `track`, `drift` and `fn` empty, and growing with the frames):
  *      what a page needs to play the run while it goes (HFSeverePack.live)
@@ -28,6 +28,12 @@
  *      follow (spec, true): the box keeps its storm in the middle. The box is periodic with nothing at its sides that knows where they are (no sponge, one sounding everywhere), so after each recorded frame the whole state is moved by whole cells to put the
  *      centre of the echo back in the middle (`centring`, `roll`), and the header's `drift` says, for each frame, how far the box's corner is from where the uniform motion would have it (HFSeverePack's corner adds it): the storm leaves no edge to be cut by.
  *      Without it a storm that moves a little differently from Bunkers' estimate (the dryline day's by 13 m/s northward) is out of a box of 84 km in an hour, and the sponge that stood at its sides made bars of echo as straight as the grid.
+ *      steer (spec, off): { lead (m: a fifth of the box, at most 24 km), uh (50 m2/s2), reach (20000 m) } or true for those: the box keeps its storm's rotating updraft (`rotating`, the right mover of a storm that splits) `lead` metres upshear of its middle (against
+ *              the shear of the lowest 6 km, less in a weak one, in whole cells) instead of the centre of all its echo, so that the forward flank and the anvil have the longer side; the bubble that starts the storm and the nest (unless the nest's `offset` or
+ *              `upshear` say where) are put at that place, the track of each frame is that storm, and the header's `lab.steer` says it, with `at` the place in the pack's grid. A box that splits its storm without it keeps the middle of both halves.
+ *      sponge (spec, 0): metres at the box's sides over which what is not the environment is damped away (a rate of 0.02 /s, src/severe-core.js `damp.lateral`; not the nest's), so that what leaves the storm (the left mover, the anvil) is not wrapped round
+ *              to its other side; the header's `lab.sponge` says it. A run with neither is the run it was before them, bit for bit.
+ *   HFSevereLab.rotating(core, o)              // the storm a steered box keeps: { x, y, uh, w, rot, far } (see the function) or null
  *   HFSevereLab.roll(core, sx, sy)             // the state of a periodic core moved by whole cells (east, north)
  *   HFSevereLab.rollNested(core, nest, ratio, sx, sy) // the box moved so, and its nest (or null) with it: ratio times as many cells of the finer core, the cells that came round its edge taken again from the box
  *   HFSevereLab.centring(block, nx, ny, nz, dz) // { sx, sy }: the cells that put the echo of a frame's block in the middle of the box, or null
@@ -112,6 +118,38 @@
     const su = env.uG(6000) - env.uG(0), sv = env.vG(6000) - env.vG(0), s = Math.hypot(su, sv); if (!(s > 1)) return [0, 0];
     const f = Math.min(1, s / 20) * m / s; return [-su * f, -sv * f];
   }
+  /* the storm that a box is to keep, from the core's own winds: the rotating updraft, where the updraft helicity of the levels from 2 to 5 km (the sum over them of the updraft times the vertical vorticity times the depth, m2/s2, smoothed over 3 x 3 cells) is
+     largest and at least `o.uh` (50): a supercell's updraft, and the cyclonic one of a storm that has split, the right mover, which is the one the box moves with (Bunkers' motion of the right mover is the frame's). Where no updraft turns, the strongest updraft
+     at 5.25 km of at least `o.w` (5 m/s). Both are looked for within `o.reach` metres of `o.at` ([x, y] in the box, where the storm was put last; the box is periodic) and, with nothing there, in the whole box. Returns { x, y (m, a cell's centre), uh, w (the
+     strongest updraft at 5.25 km within 6 km of it), rot (true if it is a rotating one), far (true if it was not within reach) } or null in a box with no updraft. */
+  function rotating(core, o) {
+    o = o || {};
+    const nx = core.nx, ny = core.ny, nz = core.nz, dx = core.dx, dz = core.dz, S = core.S, idx = core.idx, sy = idx(0, 1, 0) - idx(0, 0, 0), sz = idx(0, 0, 1) - idx(0, 0, 0), n = nx * ny;
+    const k0 = Math.max(0, Math.ceil(2000 / dz - 0.5)), k1 = Math.min(nz - 1, Math.floor(5000 / dz - 0.5)), k5 = Math.min(nz - 2, Math.floor(5250 / dz)), uhMin = o.uh === undefined ? 50 : o.uh, wMin = o.w === undefined ? 5 : o.w;
+    const raw = new Float64Array(n), uh = new Float64Array(n), w5 = new Float64Array(n);
+    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+      let h = 0;
+      for (let k = k0; k <= k1; k++) {
+        const q = idx(i, j, k), w = 0.5 * (S.w[q] + S.w[q + sz]); if (!(w > 0)) continue;
+        const dvdx = 0.5 * ((S.v[q + 1] + S.v[q + 1 + sy]) - (S.v[q - 1] + S.v[q - 1 + sy])) / (2 * dx), dudy = 0.5 * ((S.u[q + sy] + S.u[q + sy + 1]) - (S.u[q - sy] + S.u[q - sy + 1])) / (2 * dx);
+        h += w * (dvdx - dudy) * dz;
+      }
+      raw[j * nx + i] = h; const q5 = idx(i, j, k5); w5[j * nx + i] = 0.5 * (S.w[q5] + S.w[q5 + sz]);
+    }
+    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) { let a = 0; for (let b = -1; b <= 1; b++) for (let c = -1; c <= 1; c++) a += raw[mod(j + b, ny) * nx + mod(i + c, nx)]; uh[j * nx + i] = a / 9; }
+    const L = nx * dx, Ly = ny * dx, near = (i, j) => { if (!o.at || !(o.reach > 0)) return true; let ex = (i + 0.5) * dx - o.at[0], ey = (j + 0.5) * dx - o.at[1]; ex -= L * Math.round(ex / L); ey -= Ly * Math.round(ey / Ly); return ex * ex + ey * ey <= o.reach * o.reach; };
+    const best = (field, least, within) => { let b = -1, v = least; for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) { const q = j * nx + i; if (field[q] >= v && (b < 0 || field[q] > v) && (!within || near(i, j))) { v = field[q]; b = q; } } return b; };
+    const out = (q, rot, far) => {                                                             // (its updraft is the strongest at 5.25 km within 6 km of the place: the helicity is largest on the updraft's flank, not in its middle)
+      const qi = q % nx, qj = Math.floor(q / nx), r = Math.max(1, Math.round(6000 / dx)); let w = w5[q];
+      for (let b = -r; b <= r; b++) for (let c = -r; c <= r; c++) if (b * b + c * c <= r * r) w = Math.max(w, w5[mod(qj + b, ny) * nx + mod(qi + c, nx)]);
+      return { x: (qi + 0.5) * dx, y: (qj + 0.5) * dx, uh: uh[q], w, rot, far };
+    };
+    let q = best(uh, uhMin, true); if (q >= 0) return out(q, true, false);
+    q = best(w5, wMin, true); if (q >= 0) return out(q, false, false);
+    if (!o.at || !(o.reach > 0)) return null;
+    q = best(uh, uhMin, false); if (q >= 0) return out(q, true, true);
+    q = best(w5, wMin, false); return q >= 0 ? out(q, false, true) : null;
+  }
   function centring(block, nx, ny, nz, dz) {
     const dbz = new Int8Array(block.buffer, block.byteOffset, nx * ny * nz), k0 = Math.max(0, Math.floor(500 / dz)), k1 = Math.min(nz - 1, Math.floor(3500 / dz));
     let n = 0, W = 0, cx = 0, sx = 0, cy = 0, sy = 0;
@@ -128,10 +166,14 @@
   async function run(spec, hooks) {
     hooks = hooks || {};
     const evap = spec.evap === undefined ? 1 : spec.evap, drag = spec.drag === undefined ? 0.1 : (+spec.drag || 0), vf = spec.visc !== undefined && Number.isFinite(+spec.visc) && +spec.visc >= 0 ? +spec.visc : 1, env = envOf(spec.env), dx = spec.dx || 2000, L = spec.box || 84000, nx = Math.round(L / dx), nw = Math.min(nx, Math.max(2, Math.round((spec.window || L) / dx))), w0 = Math.floor((nx - nw) / 2), win = nw < nx, nz = spec.nz || 40, dz = spec.dz || 500, dt = spec.dt || 10, minutes = spec.minutes || 90, every = spec.frameEvery || 5;
-    const physics = (n, d) => ({ nx: n, ny: n, nz, dx: d, dy: d, dz, moist: true, ice: true, iceParams: Object.assign({ n0g: 4e6, rhog: 400, n0r: 8e6, evap, twoMoment: !!spec.twoMoment }, spec.iceParams || {}), theta: env.theta, qv: env.qv, wind: { u: env.u, v: env.v },
-      visc: { kh: 500 * d / 2000 * vf, kv: 500 * d / 2000 * vf }, damp: { top: { depth: 5000, rate: 0.003 } }, drag: drag ? { z0: drag, frame: { u: env.motion.u, v: env.motion.v }, balance: true } : null });
-    const core = C.create(Object.assign(physics(nx, dx), { bc: { x: 'periodic', y: 'periodic' } }));
-    const S = core.S, idx = core.idx, b = core.base, xc = L / 2, yc = L / 2, sz = idx(0, 0, 1) - idx(0, 0, 0), k5 = Math.min(nz - 2, Math.floor(5250 / dz));
+    /* `steer`: the box keeps the rotating updraft of its storm (`rotating`) at one place, `lead` metres upshear of its middle (the shear of the lowest 6 km, less in a weak one: `upshear`), in whole cells: the storm's forward flank and anvil lie
+       downshear of its updraft and have the longer part of the box. `sponge`: the outer metres of the box, where what is not the environment is damped away. */
+    const follow = spec.follow !== false, st = follow && spec.steer ? Object.assign({ lead: Math.min(24000, 0.2 * L), uh: 50, reach: 20000 }, spec.steer === true ? {} : spec.steer) : null, sponge = spec.sponge > 0 ? +spec.sponge : 0;
+    const lead = st ? upshear(env, st.lead).map((v) => Math.round(v / dx) * dx) : [0, 0], anchor = [L / 2 + lead[0], L / 2 + lead[1]];
+    const physics = (n, d, side) => ({ nx: n, ny: n, nz, dx: d, dy: d, dz, moist: true, ice: true, iceParams: Object.assign({ n0g: 4e6, rhog: 400, n0r: 8e6, evap, twoMoment: !!spec.twoMoment }, spec.iceParams || {}), theta: env.theta, qv: env.qv, wind: { u: env.u, v: env.v },
+      visc: { kh: 500 * d / 2000 * vf, kv: 500 * d / 2000 * vf }, damp: Object.assign({ top: { depth: 5000, rate: 0.003 } }, side ? { lateral: { width: side, rate: 0.02 } } : {}), drag: drag ? { z0: drag, frame: { u: env.motion.u, v: env.motion.v }, balance: true } : null });
+    const core = C.create(Object.assign(physics(nx, dx, sponge), { bc: { x: 'periodic', y: 'periodic' } }));
+    const S = core.S, idx = core.idx, b = core.base, xc = anchor[0], yc = anchor[1], sz = idx(0, 0, 1) - idx(0, 0, 0), k5 = Math.min(nz - 2, Math.floor(5250 / dz));
     /* the bubbles that start storms (docs/severe-plan.md 6.4): `spec.seeds` is a list of { x, y (m from the box's south-west corner; the middle of the box), t (minutes; 0), amp (K; spec.bubble, 3), rx, ry (m; 10000), zc, rz (m; 1500) }, and a run
        without it has one, in the middle at minute 0. Those at minute 0 are in the initial state, the others are added to the potential temperature when the clock reaches them; the box is periodic, so a bubble that reaches an edge goes on at the other. */
     const seeds = (spec.seeds || [{}]).map((q) => ({ x: q.x === undefined ? xc : q.x, y: q.y === undefined ? yc : q.y, t: q.t || 0, amp: q.amp === undefined ? spec.bubble : q.amp, rx: q.rx, ry: q.ry, zc: q.zc, rz: q.rz })).sort((p, q) => p.t - q.t);
@@ -139,7 +181,7 @@
     const timed = seeds.filter((q) => q.t > 0); let nextSeed = 0;
     for (let k = 0; k < nz; k++) for (let j = 0; j < nx; j++) for (let i = 0; i < nx; i++) { const o = idx(i, j, k); let th = 0; for (const q of seeds) if (!(q.t > 0)) th += warmth(q, i, j, k); S.th[o] = th; S.u[o] = b.ubc[k]; S.v[o] = b.vbc[k]; }
     core.fill();
-    const record = recorder(core, win ? { wx: nw, wy: nw, i0: w0, j0: w0 } : {}), nzCen = Math.min(nz, Math.floor(3500 / dz) + 1), cenRec = win ? recorder(core, { nz: nzCen }) : null, frames = [], t0 = Date.now(), motion = env.motion, nSteps = Math.round(minutes * 60 / dt), follow = spec.follow !== false, cum = [0, 0];
+    const record = recorder(core, win ? { wx: nw, wy: nw, i0: w0, j0: w0 } : {}), nzCen = Math.min(nz, Math.floor(3500 / dz) + 1), cenRec = win ? recorder(core, { nz: nzCen }) : null, frames = [], t0 = Date.now(), motion = env.motion, nSteps = Math.round(minutes * 60 / dt), cum = [0, 0];
     /* the detail nest: from the first recorded frame at or after `from` minutes a finer core (cells of `dx`, a box of `box` metres as whole cells of the box's, in its middle) lies in the middle of the box, driven at its sides by the box's own state
        (src/severe-nest.js), and every frame carries its lowest `ztop` metres beside the box's. It stays where it is in the box, which follows the storm, and is moved with the box when that is moved. */
     const NEST = globalThis.HFSevereNest, det = spec.detail ? Object.assign({ dx: 500, box: 40000, from: 20, ztop: 8000, every: 1, minUpdraft: 10, upshear: 0 }, spec.detail) : null;
@@ -149,7 +191,7 @@
       if (!follow) throw new Error('severe-lab: a detail nest needs a box that follows its storm');
       if (timed.length) throw new Error('severe-lab: a seed that goes off after minute 0 does not reach a nest (it is driven at its sides only)');
       ratio = Math.round(dx / det.dx); if (ratio < 2 || Math.abs(ratio * det.dx - dx) > 1e-6) throw new Error('severe-lab: the detail cells (' + det.dx + ' m) must be a whole fraction (a half or less) of the box\'s (' + dx + ' m)');
-      const pc = Math.max(4, Math.min(nx - 4, Math.round(det.box / dx))); cn = pc * ratio; const mid = Math.round((nx - pc) / 2) * dx, lo = w0 * dx, hi = (w0 + nw - pc) * dx, put = (v) => Math.max(lo, Math.min(hi, mid + Math.round((+v || 0) / dx) * dx)), o = det.offset || upshear(env, det.upshear);
+      const pc = Math.max(4, Math.min(nx - 4, Math.round(det.box / dx))); cn = pc * ratio; const mid = Math.round((nx - pc) / 2) * dx, lo = w0 * dx, hi = (w0 + nw - pc) * dx, put = (v) => Math.max(lo, Math.min(hi, mid + Math.round((+v || 0) / dx) * dx)), o = det.offset || (det.upshear > 0 || !st ? upshear(env, det.upshear) : lead);
       cx0 = put(o[0]); cy0 = put(o[1]); nestOff = [cx0 - mid, cy0 - mid]; nzr = Math.min(nz, Math.max(1, Math.ceil(det.ztop / dz - 1e-9)));
     }
     const startNest = () => {
@@ -158,7 +200,7 @@
     };
     /* the header is made now and its frames' parts grow with them: a page that plays the run while it goes (hooks.start) has the grid, the scale, the motion and the nest's grid before the first frame */
     const header = { v: det ? 2 : 1, nx: nw, ny: nw, nz, dx, dz, floor: -30, times: [], motion: { u: motion.u, v: motion.v }, track: [], drift: [], scale: { wind: 0.5, vz: 0.25 },
-      lab: Object.assign({ evap, bubble: spec.bubble === undefined ? 3 : spec.bubble, dt, minutes, follow }, win ? { box: L, window: nw * dx } : {}, drag ? { drag } : {}, vf !== 1 ? { visc: vf } : {}, spec.twoMoment ? { twoMoment: true } : {}, spec.seeds ? { seeds: seeds.map((q) => [Math.round(q.x), Math.round(q.y), q.t, q.amp === undefined ? 3 : q.amp]) } : {}, det ? { detail: Object.assign({ dx: det.dx, box: cn * det.dx, from: det.from, ztop: nzr * dz, every: det.every, minUpdraft: det.minUpdraft }, nestOff[0] || nestOff[1] ? { offset: nestOff } : {}) } : {}),     // (what the run was set to; the pack reader does not look at it)
+      lab: Object.assign({ evap, bubble: spec.bubble === undefined ? 3 : spec.bubble, dt, minutes, follow }, win ? { box: L, window: nw * dx } : {}, st ? { steer: { lead: st.lead, uh: st.uh, reach: st.reach, at: [anchor[0] - w0 * dx, anchor[1] - w0 * dx] } } : {}, sponge ? { sponge } : {}, drag ? { drag } : {}, vf !== 1 ? { visc: vf } : {}, spec.twoMoment ? { twoMoment: true } : {}, spec.iceParams ? { ice: Object.assign({}, spec.iceParams) } : {}, spec.seeds ? { seeds: seeds.map((q) => [Math.round(q.x), Math.round(q.y), q.t, q.amp === undefined ? 3 : q.amp]) } : {}, det ? { detail: Object.assign({ dx: det.dx, box: cn * det.dx, from: det.from, ztop: nzr * dz, every: det.every, minUpdraft: det.minUpdraft }, nestOff[0] || nestOff[1] ? { offset: nestOff } : {}) } : {}),     // (what the run was set to; the pack reader does not look at it)
       base: { z: Array.from(b.rhoc, (_, k) => (k + 0.5) * dz), u: Array.from(b.ubc, (v) => +(v + motion.u).toFixed(3)), v: Array.from(b.vbc, (v) => +(v + motion.v).toFixed(3)) } };
     if (det) { header.nests = [{ nx: cn, ny: cn, nz: nzr, dx: det.dx, dz, scale: { wind: 1, vz: 0.25 }, frame: { u: 0, v: 0 } }]; header.fn = []; }
     if (hooks.start) hooks.start(header);
@@ -168,10 +210,13 @@
       if (t >= nextFrame - 1e-9) {
         const d = core.diag(), dc = nest ? child.diag() : null, per5 = 5 * nw * nw * nz, { block, zmax } = record(nest ? new Uint8Array(per5 + 5 * cn * cn * nzr) : null, 0); let wm = -1, wx = 0, wy = 0;
         if (nest) crec(block, per5);
-        for (let j = w0; j < w0 + nw; j++) for (let i = w0; i < w0 + nw; i++) { const o = idx(i, j, k5), w = 0.5 * (S.w[o] + S.w[o + sz]); if (w > wm) { wm = w; wx = (i - w0 + 0.5) * dx; wy = (j - w0 + 0.5) * dx; } }
+        const tg = st ? rotating(core, { at: anchor, reach: st.reach, uh: st.uh }) : null;                 // (the storm the box keeps: its place is the frame's track, and where the box is moved from)
+        if (tg) { wm = tg.w; wx = tg.x - w0 * dx; wy = tg.y - w0 * dx; }
+        else for (let j = w0; j < w0 + nw; j++) for (let i = w0; i < w0 + nw; i++) { const o = idx(i, j, k5), w = 0.5 * (S.w[o] + S.w[o + sz]); if (w > wm) { wm = w; wx = (i - w0 + 0.5) * dx; wy = (j - w0 + 0.5) * dx; } }
         const rec = { i: frames.length, t: t / 60, block, track: [Math.round(wx), Math.round(wy), +wm.toFixed(1)], wmax: +d.wmax.toFixed(1), zmax: Math.round(zmax), thvmin: +d.thvmin.toFixed(2), drift: [cum[0], cum[1]], nest: !!nest, fn: nest ? [[0, cx0 - w0 * dx, cy0 - w0 * dx]] : [] };
         if (!Number.isFinite(d.wmax) || d.wmax > 150 || (dc && (!Number.isFinite(dc.wmax) || dc.wmax > 150))) { stopped = true; reason = 'the model blew up at ' + (t / 60).toFixed(1) + ' min'; break; }
-        const c = follow ? (win ? centring(cenRec().block, nx, nx, nzCen, dz) : centring(block, nx, nx, nz, dz)) : null;          // (a window is not periodic: the echo's place is read from the whole box; looked at before the hook: a worker hands the block over to the page and it is gone from here)
+        const half = (v) => { const r = mod(v, nx); return r > nx / 2 ? r - nx : r; }, toPlace = tg ? { sx: half(Math.round((anchor[0] - tg.x) / dx)), sy: half(Math.round((anchor[1] - tg.y) / dx)) } : null;      // (a steered box: the cells that put its storm back at its place)
+        const c = !follow ? null : st ? toPlace : win ? centring(cenRec().block, nx, nx, nzCen, dz) : centring(block, nx, nx, nz, dz);          // (a window is not periodic: the echo's place is read from the whole box; looked at before the hook: a worker hands the block over to the page and it is gone from here)
         frames.push(rec); header.times.push(rec.t); header.track.push(rec.track); header.drift.push(rec.drift); if (det) header.fn.push(rec.fn); if (hooks.frame) hooks.frame(rec);
         if (c && (c.sx || c.sy)) { rollNested(core, nest, ratio, c.sx, c.sy); cum[0] -= c.sx * dx; cum[1] -= c.sy * dx; }       // (the storm is back in the middle, the box's corner is where the storm's drift has taken it)
         if (det && !nest && t >= det.from * 60 - 1e-9 && d.wmax >= det.minUpdraft) { startNest(); if (hooks.nest) hooks.nest({ child, nest }); }
@@ -189,5 +234,5 @@
     return { frames, header, wall: (Date.now() - t0) / 1000, steps: nSteps, stopped, reason };
   }
 
-  globalThis.HFSevereLab = { envOf, run, bubble, recorder, roll, rollNested, centring, upshear };
+  globalThis.HFSevereLab = { envOf, run, bubble, recorder, roll, rollNested, centring, upshear, rotating };
 })();

@@ -1,5 +1,6 @@
-// Mutation testing of the Severe core's ice microphysics: each mutant changes one expression of src/severe-core.js, and the tests that should notice (tests/severe_ice.mjs,
-// tests/severe_moist.mjs) run against the changed copy. A mutant that all of them let through ("survived") is a place where the tests do not look.
+// Mutation testing of the Severe core's ice microphysics and of its mixing: each mutant changes one expression of src/severe-core.js, and the tests that should notice (tests/severe_ice.mjs and
+// tests/severe_moist.mjs for the microphysics; tests/severe_core.mjs for a mutant marked 'core', the mixing that leaves the base state's winds alone) run against the changed copy. A mutant that all
+// of them let through ("survived") is a place where the tests do not look.
 //   node tools/severe_mutants.mjs [name-filter]
 // The copy goes to a temporary directory with the test files and the sounding beside it, so nothing in the repository is touched.
 import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, copyFileSync, rmSync } from 'node:fs';
@@ -61,28 +62,43 @@ const M = [
   ['hail-ground-accounting', 'if (pr2) pr2[j * nx + i] += out;', ''],
   ['sedimentation-courant', 'if (crmax === 0) continue;\n        let nfall = Math.max(1, Math.round(0.5 + crmax / KS.MAXCR))', 'if (crmax === 0) continue;\n        let nfall = Math.max(1, Math.round(0.5 + crmax / (8 * KS.MAXCR)))'],
   ['pressure-expansion', 'S.pi[o] += Cc[k] * rho * (th1 * (1 + RV1 * qv) - th0 * (1 + RV1 * qv0));', ''],
+  // the mixing leaves the base state's winds alone (tests/severe_core.mjs, 1b)
+  ['mix-env-not-taken-out', 'out[o] += d - e;', 'out[o] += d;', 'core'],
+  ['mix-env-sign', 'out[o] += d - e;', 'out[o] += d + e;', 'core'],
+  ['mix-env-u-missing', 'addDiff(R.u, X.u, envU);', 'addDiff(R.u, X.u);', 'core'],
+  ['mix-env-v-missing', 'addDiff(R.v, X.v, envV);', 'addDiff(R.v, X.v);', 'core'],
+  ['mix-env-v-takes-u', 'addDiff(R.v, X.v, envV);', 'addDiff(R.v, X.v, envU);', 'core'],
+  ['mix-env-theta-too', 'addDiff(R.th, X.th);', 'addDiff(R.th, X.th, envU);', 'core'],
+  ['mix-env-ground', 'a = Math.max(k - 1, 0), b = Math.min(k + 1, nz - 1);', 'a = Math.max(k - 1, 1), b = Math.min(k + 1, nz - 1);', 'core'],
+  ['mix-env-lid', 'a = Math.max(k - 1, 0), b = Math.min(k + 1, nz - 1);', 'a = Math.max(k - 1, 0), b = Math.min(k + 1, nz - 2);', 'core'],
+  ['mix-env-halved', 'envU[k] = az * (ubc[a]', 'envU[k] = 0.5 * az * (ubc[a]', 'core'],
+  ['mix-env-v-halved', 'envV[k] = az * (vbc[a]', 'envV[k] = 0.5 * az * (vbc[a]', 'core'],
+  ['mix-env-horizontal-k', 'const az = KV / (dz * dz), a = Math.max', 'const az = KH / (dz * dz), a = Math.max', 'core'],
+  ['mix-full-never', 'const MIXFULL = !!(o.visc && o.visc.full),', 'const MIXFULL = false,', 'core'],
+  ['mix-full-always', 'const MIXFULL = !!(o.visc && o.visc.full),', 'const MIXFULL = true,', 'core'],
+  ['mix-env-middle-weight', 'envU[k] = az * (ubc[a] - 2 * ubc[k] + ubc[b]);', 'envU[k] = az * (ubc[a] - ubc[k] + ubc[b]);', 'core'],
 ];
 
 const only = process.argv[2], dir = mkdtempSync(join(tmpdir(), 'sev-mut-'));
 for (const d of ['src', 'tests', 'tools/severe_research']) mkdirSync(join(dir, d), { recursive: true });
-for (const f of ['tests/severe_ice.mjs', 'tests/severe_moist.mjs', 'tools/severe_research/wk82.mjs', 'tools/severe_research/wk82_sounding.txt']) copyFileSync(join(root, f), join(dir, f));
-const run = (name, text) => {
+for (const f of ['tests/severe_ice.mjs', 'tests/severe_moist.mjs', 'tests/severe_core.mjs', 'tools/severe_research/wk82.mjs', 'tools/severe_research/wk82_sounding.txt']) copyFileSync(join(root, f), join(dir, f));
+const TESTS = { ice: ['tests/severe_ice.mjs', 'tests/severe_moist.mjs'], core: ['tests/severe_core.mjs'] };
+const run = (name, text, set) => {
   writeFileSync(join(dir, 'src/severe-core.js'), text);
-  for (const t of ['tests/severe_ice.mjs', 'tests/severe_moist.mjs']) {
+  for (const t of TESTS[set || 'ice']) {
     const r = spawnSync('node', [t], { cwd: dir, encoding: 'utf8', timeout: 240000 });
     if (r.status !== 0) { const f = (r.stdout || '').split('\n').filter((l) => l.startsWith('FAIL')).map((l) => l.slice(5, 70)); return { killed: true, by: t.split('/')[1] + ': ' + (f[0] || (r.stderr || '').split('\n')[0] || 'crash') }; }
   }
   return { killed: false };
 };
-const base = run('original', src);
-if (base.killed) { console.log('the unmutated copy fails:', base.by); process.exit(2); }
+for (const set of Object.keys(TESTS)) { const base = run('original', src, set); if (base.killed) { console.log('the unmutated copy fails:', base.by); process.exit(2); } }
 let killed = 0, survived = [], skipped = 0;
-for (const [name, a, b] of M) {
+for (const [name, a, b, set] of M) {
   if (only && !name.includes(only)) continue;
   const n = src.split(a).length - 1;
   if (n !== 1) { console.log('SKIP     ' + name + ' (the original text occurs ' + n + ' times)'); skipped++; continue; }
   if (a === b) { skipped++; continue; }
-  const r = run(name, src.replace(a, () => b));
+  const r = run(name, src.replace(a, () => b), set);
   if (r.killed) { killed++; console.log('killed   ' + name.padEnd(30) + ' by ' + r.by); } else { survived.push(name); console.log('SURVIVED ' + name); }
 }
 console.log('\n' + killed + ' killed, ' + survived.length + ' survived' + (skipped ? ', ' + skipped + ' skipped' : '') + (survived.length ? ': ' + survived.join(', ') : ''));

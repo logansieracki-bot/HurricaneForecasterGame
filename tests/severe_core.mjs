@@ -18,6 +18,42 @@ const t0 = Date.now(), lap = () => ((Date.now() - t0) / 1000).toFixed(1) + ' s';
   check('a stratified base state at rest stays at rest (|w| ' + d.wmax + ', |pi\'| ' + d.pimax + ')', Math.max(Math.abs(d.wmax), Math.abs(d.wmin), d.pimax, d.umax, Math.abs(d.thmin), Math.abs(d.thmax)) < 1e-14);
 }
 
+/* 1b. The mixing leaves the environment's own winds alone. A constant viscosity mixes whatever wind profile it is given, storm or no storm; the base state's wind is what the large scale holds up, so the core takes its part out of
+   the Laplacian (`visc.full: true` leaves it in, as every run before 17 Nov 2026 had it: the low-level jet of a tornado day was gone in half an hour). What is not the base state's is mixed as before. */
+{
+  const jet = (z) => 4 + 16 * Math.exp(-(((z - 1500) / 800) ** 2)) + z / 1000, vz = (z) => 12 - z / 800, NX = 6, NZ = 24, DZ = 500;
+  const make = (o) => C.create(Object.assign({ nx: NX, ny: NX, nz: NZ, dx: 2000, dy: 2000, dz: DZ, theta: () => 300, bc: { x: 'periodic', y: 'periodic' }, visc: { kh: 300, kv: 500 } }, o));
+  const start = (core, bump) => {
+    const S = core.S, idx = core.idx, b = core.base;
+    for (let k = 0; k < NZ; k++) for (let j = 0; j < NX; j++) for (let i = 0; i < NX; i++) { const o = idx(i, j, k), p = bump ? bump((k + 0.5) * DZ) : 0; S.u[o] = b.ubc[k] + p; S.v[o] = b.vbc[k] - p; }
+    core.fill(); return core;
+  };
+  const off = (core) => { let m = 0; const S = core.S, b = core.base; for (let k = 0; k < NZ; k++) for (let j = 0; j < NX; j++) for (let i = 0; i < NX; i++) { const o = core.idx(i, j, k); m = Math.max(m, Math.abs(S.u[o] - b.ubc[k]), Math.abs(S.v[o] - b.vbc[k]), Math.abs(S.w[o])); } return m; };
+  const nose = (core) => core.S.u[core.idx(2, 2, 2)] - core.S.u[core.idx(2, 2, 0)];          // the wind at 1.25 km less the wind at 0.25 km
+  const kept = start(make({ wind: { u: jet, v: vz } })), mixed = start(make({ wind: { u: jet, v: vz }, visc: { kh: 300, kv: 500, full: true } })), n0 = nose(kept);
+  for (let m = 0; m < 180; m++) { kept.step(10); mixed.step(10); }
+  check('winds that are the base state\'s are not mixed away: after 30 minutes of a viscosity of 500 m2/s in the vertical (300 across) a jet of 16 m/s at 1.5 km over a sheared wind is what it was, to the last bit (largest difference ' + off(kept) + ' m/s; the wind at 1.25 km over the wind at 0.25 km ' + f2(nose(kept)) + ' m/s, as at the start)',
+    off(kept) === 0 && nose(kept) === n0);
+  check('with `visc.full` the whole wind is mixed, as before: the same jet is down to ' + f2(nose(mixed)) + ' m/s over the lowest kilometre from ' + f2(n0) + ' (under a third), and the profile is up to ' + f2(off(mixed)) + ' m/s from the base state\'s', nose(mixed) < n0 / 3 && off(mixed) > 3);
+  // the ground and the lid: a wind with shear at both (the Laplacian's zero gradient there would bend it) is left alone too, in u and in v
+  const lin = start(make({ wind: { u: (z) => z / 500, v: (z) => 20 - z / 400 } })), linFull = start(make({ wind: { u: (z) => z / 500, v: (z) => 20 - z / 400 }, visc: { kh: 300, kv: 500, full: true } }));
+  for (let m = 0; m < 60; m++) { lin.step(10); linFull.step(10); }
+  const gU = (core) => core.S.u[core.idx(1, 1, 0)] - core.base.ubc[0], lV = (core) => core.S.v[core.idx(1, 1, NZ - 1)] - core.base.vbc[NZ - 1];
+  check('a wind sheared right down to the ground and up to the lid is left alone at both (differences ' + gU(lin) + ' and ' + lV(lin) + ' m/s), where the whole-wind mixing bends it there (' + f2(gU(linFull), 3) + ' m/s at the lowest level, ' + f2(lV(linFull), 3) + ' at the highest)',
+    off(lin) === 0 && gU(linFull) > 0.2 && lV(linFull) > 0.2);
+  // what is not the base state's is mixed as it always was: the same bump on a base wind and on air at rest decays the same
+  const bump = (z) => 3 * Math.exp(-(((z - 4000) / 1500) ** 2)), onJet = start(make({ wind: { u: jet, v: vz } }), bump), atRest = start(make({}), bump);
+  for (let m = 0; m < 60; m++) { onJet.step(10); atRest.step(10); }
+  let dd = 0, left = 0; for (let k = 0; k < NZ; k++) { const o = onJet.idx(3, 3, k), a = onJet.S.u[o] - onJet.base.ubc[k], c = atRest.S.u[o], e = onJet.S.v[o] - onJet.base.vbc[k], g = atRest.S.v[o]; dd = Math.max(dd, Math.abs(a - c), Math.abs(e - g)); left = Math.max(left, Math.abs(a)); }
+  check('a disturbance of the wind is mixed as before: a bump of 3 m/s at 4 km on the jet\'s winds and the same bump on air at rest are the same after 10 minutes (largest difference ' + dd.toExponential(1) + ' m/s; ' + f2(left) + ' m/s of it left)', dd < 1e-11 && left > 1 && left < 2.9);
+  // a slice (ny = 1) has the same rule for its one wind
+  const sl = C.create({ nx: 8, ny: 1, nz: NZ, dx: 2000, dz: DZ, theta: () => 300, bc: { x: 'periodic' }, visc: { kh: 300, kv: 500 }, wind: { u: jet } });
+  for (let k = 0; k < NZ; k++) for (let i = 0; i < 8; i++) sl.S.u[sl.idx(i, 0, k)] = sl.base.ubc[k];
+  sl.fill(); for (let m = 0; m < 60; m++) sl.step(10);
+  let sm = 0; for (let k = 0; k < NZ; k++) sm = Math.max(sm, Math.abs(sl.S.u[sl.idx(4, 0, k)] - sl.base.ubc[k]));
+  check('and in a slice (ny = 1) the base wind is left alone as well (' + sm + ' m/s)', sm === 0);
+}
+
 /* 2. A passive tracer carried once round a periodic domain by a uniform wind: the error falls with the grid at (at least) the third order of RK3, and a constant stays constant. */
 {
   const run = (nx, dt, withV) => {

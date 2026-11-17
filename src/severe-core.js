@@ -205,15 +205,25 @@
         out[o] = -a;
       }
     }
-    function addDiff(out, psi) {            // constant-coefficient Laplacian: KH in the horizontal, KV in the vertical
+    /* The mixing is of what differs from the environment: theta' and qv' are perturbations already, and of the winds the base state's own profile is taken out (`env`: what the Laplacian makes of the base-state wind at
+       each level, with the ground's and the lid's zero gradient, by the same arithmetic as the field's own, so that winds that are the base state's are left exactly as they are). A constant viscosity mixes a
+       wind profile whether or not there is a storm: the 500 m2/s of a 2 km grid took the shear of the lowest kilometre of a tornado day from 12.8 to 2.3 m/s and its helicity from 144 to 21 m2/s2 in 30 minutes with
+       nothing else in the box (docs/severe-research.md part 7), where the real air keeps them (the large scale holds the profile up, and a closure that follows the turbulence has next to none of it outside a storm);
+       WRF's constant-K option does the same with mix_full_fields = .false. `visc.full: true` mixes the whole wind, as every run before 17 Nov 2026 did. */
+    const MIXFULL = !!(o.visc && o.visc.full), envU = new Float64Array(nz), envV = new Float64Array(nz);
+    if (KV && !MIXFULL) for (let k = 0; k < nz; k++) {
+      const az = KV / (dz * dz), a = Math.max(k - 1, 0), b = Math.min(k + 1, nz - 1);
+      envU[k] = az * (ubc[a] - 2 * ubc[k] + ubc[b]); envV[k] = az * (vbc[a] - 2 * vbc[k] + vbc[b]);
+    }
+    function addDiff(out, psi, env) {       // constant-coefficient Laplacian: KH in the horizontal, KV in the vertical; env: the part of it that is the base state's own (a wind's), which is not mixed
       if (!KH && !KV) return;
       const ax = KH / (dx * dx), ay = KH / (dy * dy), az = KV / (dz * dz);
-      for (let k = 0; k < nz; k++) for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+      for (let k = 0; k < nz; k++) { const e = env ? env[k] : 0; for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
         const o = idx(i, j, k), p0 = psi[o];
         let d = ax * (psi[o - 1] - 2 * p0 + psi[o + 1]) + az * (psi[o - sz] - 2 * p0 + psi[o + sz]);
         if (ny > 1) d += ay * (psi[o - sy] - 2 * p0 + psi[o + sy]);
-        out[o] += d;
-      }
+        out[o] += d - e;
+      } }
     }
     /* positive-definite advection (for cloud and rain): the same 5th-order upwind-biased fluxes in flux form with the base-state density, then the outgoing flux of every cell
        scaled down so that the cell cannot give away more than it holds (Skamarock & Weisman 2009, as in WRF's moist_adv_opt = 1): conservative, and nothing goes negative.
@@ -264,8 +274,8 @@
     function slow(X, ds) {
       fillAll(X);
       if (moist) computeTHV(X);
-      advect(R.u, X.u, 1, X.u, X.v, X.w); addDiff(R.u, X.u);
-      if (ny > 1) { advect(R.v, X.v, 2, X.u, X.v, X.w); addDiff(R.v, X.v); }
+      advect(R.u, X.u, 1, X.u, X.v, X.w); addDiff(R.u, X.u, envU);
+      if (ny > 1) { advect(R.v, X.v, 2, X.u, X.v, X.w); addDiff(R.v, X.v, envV); }
       advect(R.w, X.w, 3, X.u, X.v, X.w); addDiff(R.w, X.w);
       advect(R.th, X.th, 0, X.u, X.v, X.w); addDiff(R.th, X.th);
       advect(R.pi, X.pi, 0, X.u, X.v, X.w);
@@ -378,11 +388,16 @@
        Every process moves mass between species with its latent heat (condensation Lv, freezing and melting Lf, deposition and sublimation Ls = Lv + Lf), so water and the moist enthalpy
        cp T + Lv qv - Lf (qi + qs + qg) are conserved by construction. The processes are applied one after the other, each limited by what it can take. ---- */
     const T0 = 273.15, LF = 3.34e5, LV = KS.XLV, LS = LV + LF, RVAP = 461.5, lvK = LV / CP, lfK = LF / CP, lsK = LS / CP;
-    const IPAR = Object.assign({ n0g: 4e6, rhog: 400, n0r: 8e6, evap: 1, xrMin: 2.6e-10, xrMax: 5e-6, qi0: 1e-3, n0smax: 1e11 }, o.iceParams || {}), RHO0 = rhoc[0];
-    const N0R = IPAR.n0r, RHOW = 1000, RHOS = 100, N0S0 = 2e6, VRa = 842, VRb = 0.8, VSa = 11.72, VSb = 0.41, VGa = Math.sqrt(4 * G * IPAR.rhog / (3 * 0.6 * RHO0)), VGb = 0.5;   // fall speed a D^b (rain: Liu & Orville; snow: Locatelli & Hobbs; hail: drag law with C_D = 0.6)
+    const IPAR = Object.assign({ n0g: 4e6, rhog: 400, n0r: 8e6, evap: 1, xrMin: 2.6e-10, xrMax: 5e-6, qi0: 1e-3, n0smax: 1e11, n0gq: 0, n0gMin: 2e4, vga: 0, vgb: 0 }, o.iceParams || {}), RHO0 = rhoc[0];
+    const N0R = IPAR.n0r, RHOW = 1000, RHOS = 100, N0S0 = 2e6, VRa = 842, VRb = 0.8, VSa = 11.72, VSb = 0.41, VGa = IPAR.vga > 0 ? +IPAR.vga : Math.sqrt(4 * G * IPAR.rhog / (3 * 0.6 * RHO0)), VGb = IPAR.vgb > 0 ? +IPAR.vgb : 0.5;   // fall speed a D^b (rain: Liu & Orville; snow: Locatelli & Hobbs; hail: drag law with C_D = 0.6)
     const gvent = (b) => gammaF((b + 5) / 2), gmass = (b) => gammaF(4 + b) / 6, gcoll = (b) => gammaF(3 + b);
     const GR = { vent: gvent(VRb), mass: gmass(VRb), coll: gcoll(VRb) }, GS = { vent: gvent(VSb), mass: gmass(VSb), coll: gcoll(VSb) }, GG = { vent: gvent(VGb), mass: gmass(VGb), coll: gcoll(VGb) };
     const lamOf = (n0, rhox, rho, q) => Math.pow(Math.PI * rhox * n0 / (rho * q), 0.25);
+    /* the graupel's intercept: iceParams.n0g (4e6 m-4) whatever there is of it, or, with iceParams.n0gq (200, in the manner of Thompson et al. 2008: kg/m3 times m-4), fewer and larger particles the more graupel there is: n0gq over the
+       content rho q (kg/m3), held between iceParams.n0gMin (2e4, nearly the hail of Lin et al.) and iceParams.n0g. A little graupel is then small and slow and is carried far before it lands (the far end of a storm's forward flank), a lot of it is
+       large and fast and lands by the updraft with a strong echo (the core): what the sorting of sizes does in a real storm, which one fixed intercept cannot. The fall speed's law is the hail's of Lin et al. (a D^0.5 from the drag of a sphere of the
+       graupel's density) unless iceParams.vga and vgb give another (330 and 0.8: WSM6's graupel, slower for the small ones: 1.3 m/s at 1 mm against 2.8). */
+    const NGQ = IPAR.n0gq > 0 ? +IPAR.n0gq : 0, NGMAX = IPAR.n0g, NGMIN = Math.min(IPAR.n0gMin, NGMAX), n0gOf = NGQ ? (rq) => Math.max(NGMIN, Math.min(NGMAX, NGQ / rq)) : () => NGMAX;
     const n0sOf = (T) => Math.min(IPAR.n0smax, N0S0 * Math.exp(0.12 * Math.max(0, T0 - T)));
     const vbar = (a, b, mass, rho, l) => a * Math.sqrt(RHO0 / rho) * mass / Math.pow(l, b);                                   // mass-weighted fall speed of an exponential distribution
     const collSmall = (E, n0, a, b, coll, rho, l) => E * Math.PI / 4 * n0 * a * Math.sqrt(RHO0 / rho) * coll / Math.pow(l, 3 + b);   // 1/s: what a species sweeps out of small particles at rest
@@ -402,7 +417,7 @@
     const temp = (q, k) => (thc[k] + S.th[q]) * (pibc[k] + S.pi[q]);
     const vRain = (q, k, o) => q < 1e-12 ? 0 : vbar(VRa, VRb, GR.mass, rhoc[k], lamOf(N0R, RHOW, rhoc[k], q));
     const vSnow = (q, k, o) => q < 1e-12 ? 0 : vbar(VSa, VSb, GS.mass, rhoc[k], lamOf(n0sOf(temp(o, k)), RHOS, rhoc[k], q));
-    const vGrau = (q, k, o) => q < 1e-12 ? 0 : vbar(VGa, VGb, GG.mass, rhoc[k], lamOf(IPAR.n0g, IPAR.rhog, rhoc[k], q));
+    const vGrau = (q, k, o) => q < 1e-12 ? 0 : vbar(VGa, VGb, GG.mass, rhoc[k], lamOf(n0gOf(rhoc[k] * q), IPAR.rhog, rhoc[k], q));
     const vIce = (q, k, o) => q < 1e-12 ? 0 : 3.29 * Math.pow(rhoc[k] * q, 0.16);
     /* two-moment rain (iceParams.twoMoment): the number of drops nr (per kg of air) is a second prognostic variable beside the mass qr. The size distribution is still exponential, N(D) = N0 exp(-lambda D), but its intercept is free:
        lambda = (pi rho_w nr / qr)^(1/3) and N0 = rho nr lambda. The mean drop mass qr / nr is kept between xrMin (a drop of 80 microns) and xrMax (2.1 mm across, the size at which drops break up). Mass and number fall at their own speeds (the mass-weighted speed
@@ -489,14 +504,14 @@
         }
         const mu = 1.458e-6 * Math.pow(T, 1.5) / (T + 110.4), nu = mu / rho, dv = 2.11e-5 * Math.pow(T / 273.15, 1.94) * 101325 / p, sc = nu / dv, ka = 0.0243 + 7.8e-5 * (T - 273.15);
         const hasS0 = qs > 1e-12, hasG0 = qg > 1e-12;
-        let lS = 0, lG = 0, n0s = 0;
+        let lS = 0, lG = 0, n0s = 0, n0G = NGMAX;                       // (n0G: the graupel's intercept that goes with lG)
         if (hasS0) { n0s = n0sOf(T); lS = lamOf(n0s, RHOS, rho, qs); }
-        if (hasG0) lG = lamOf(IPAR.n0g, IPAR.rhog, rho, qg);
+        if (hasG0) { n0G = n0gOf(rho * qg); lG = lamOf(n0G, IPAR.rhog, rho, qg); }
         if (T > T0) {                                       // melting: cloud ice at once, snow and hail by the heat the air gives them (the bright band)
           if (qi > 0) { qc += qi; T -= lfK * qi; qi = 0; }
           const qsT0 = KS.EP2 * 611.2 / (p - 611.2);
           if (hasS0) { const Q = ka * (T - T0) + LV * dv * rho * (qv - qsT0); if (Q > 0) { const d = Math.min(2 * Math.PI * n0s * Q / (rho * LF) * ventI(VSa, VSb, GS.vent, lS, rho, nu, sc) * dt, qs, (T - T0) / lfK); if (TWO) nr += d / xMelt(rho * qs * lS / n0s); qs -= d; qr += d; T -= lfK * d; } }
-          if (hasG0) { const Q = ka * (T - T0) + LV * dv * rho * (qv - qsT0); if (Q > 0) { const d = Math.min(2 * Math.PI * IPAR.n0g * Q / (rho * LF) * ventI(VGa, VGb, GG.vent, lG, rho, nu, sc) * dt, qg, (T - T0) / lfK); if (TWO) nr += d / xMelt(rho * qg * lG / IPAR.n0g); qg -= d; qr += d; T -= lfK * d; } }
+          if (hasG0) { const Q = ka * (T - T0) + LV * dv * rho * (qv - qsT0); if (Q > 0) { const d = Math.min(2 * Math.PI * n0G * Q / (rho * LF) * ventI(VGa, VGb, GG.vent, lG, rho, nu, sc) * dt, qg, (T - T0) / lfK); if (TWO) nr += d / xMelt(rho * qg * lG / n0G); qg -= d; qr += d; T -= lfK * d; } }
         }
         if (T < 233.15) {                                   // homogeneous freezing
           if (qc > 0) { qi += qc; T += lfK * qc; qc = 0; }
@@ -507,18 +522,18 @@
           const n0rc = TWO && lR > 0 ? rho * neff(qr, nr) * lR : N0R;
           if (lR > 0) {                                     // freezing of rain (Bigg 1953) to graupel
             const d = Math.min(qr, 20 * Math.PI * Math.PI * 100 * n0rc * (RHOW / rho) * (Math.exp(0.66 * (T0 - T)) - 1) / Math.pow(lR, 7) * dt); if (TWO) nr *= (qr - d) / qr; qr -= d; qg += d; T += lfK * d;
-            if (qg > 1e-12 && lG === 0) lG = lamOf(IPAR.n0g, IPAR.rhog, rho, qg);
+            if (qg > 1e-12 && lG === 0) { n0G = n0gOf(rho * qg); lG = lamOf(n0G, IPAR.rhog, rho, qg); }
           }
-          const hasS = qs > 1e-12 && lS > 0, hasG = qg > 1e-12 && (lG > 0 || (lG = lamOf(IPAR.n0g, IPAR.rhog, rho, qg)) > 0);
+          const hasS = qs > 1e-12 && lS > 0, hasG = qg > 1e-12 && (lG > 0 || (lG = lamOf(n0G = n0gOf(rho * qg), IPAR.rhog, rho, qg)) > 0);
           if (qc > 1e-12) {                                 // riming: snow and graupel collect cloud water, which freezes onto them
             if (hasS) { const d = qc * (1 - Math.exp(-collSmall(1, n0s, VSa, VSb, GS.coll, rho, lS) * dt)); qc -= d; qs += d; T += lfK * d; }
-            if (hasG) { const d = qc * (1 - Math.exp(-collSmall(1, IPAR.n0g, VGa, VGb, GG.coll, rho, lG) * dt)); qc -= d; qg += d; T += lfK * d; }
+            if (hasG) { const d = qc * (1 - Math.exp(-collSmall(1, n0G, VGa, VGb, GG.coll, rho, lG) * dt)); qc -= d; qg += d; T += lfK * d; }
           }
-          if (hasG && lR > 0 && qr > 1e-12) { const d = Math.min(qr, pairColl(1, RHOW, IPAR.n0g, n0rc, SPG, lG, SPR, lR, rho) / rho * dt); if (TWO) nr *= (qr - d) / qr; qr -= d; qg += d; T += lfK * d; }     // graupel collects rain
-          if (hasG && hasS && qs > 1e-12) { const d = Math.min(qs, pairColl(Math.exp(0.09 * (T - T0)), RHOS, IPAR.n0g, n0s, SPG, lG, SPS, lS, rho) / rho * dt); qs -= d; qg += d; }   // graupel collects snow
+          if (hasG && lR > 0 && qr > 1e-12) { const d = Math.min(qr, pairColl(1, RHOW, n0G, n0rc, SPG, lG, SPR, lR, rho) / rho * dt); if (TWO) nr *= (qr - d) / qr; qr -= d; qg += d; T += lfK * d; }     // graupel collects rain
+          if (hasG && hasS && qs > 1e-12) { const d = Math.min(qs, pairColl(Math.exp(0.09 * (T - T0)), RHOS, n0G, n0s, SPG, lG, SPS, lS, rho) / rho * dt); qs -= d; qg += d; }   // graupel collects snow
           if (qi > 1e-12) {                                 // snow and graupel collect cloud ice
             if (hasS) { const d = qi * (1 - Math.exp(-collSmall(Math.exp(0.025 * (T - T0)), n0s, VSa, VSb, GS.coll, rho, lS) * dt)); qi -= d; qs += d; }
-            if (hasG) { const d = qi * (1 - Math.exp(-collSmall(0.1, IPAR.n0g, VGa, VGb, GG.coll, rho, lG) * dt)); qi -= d; qg += d; }
+            if (hasG) { const d = qi * (1 - Math.exp(-collSmall(0.1, n0G, VGa, VGb, GG.coll, rho, lG) * dt)); qi -= d; qg += d; }
             const d = Math.min(qi, Math.max(0, 1e-3 * Math.exp(0.025 * (T - T0)) * dt * (qi - IPAR.qi0))); qi -= d; qs += d;                                // ice becomes snow above 1 g/kg (iceParams.qi0, Lin's)
           }
           { const d = Math.min(qs, Math.max(0, 1e-3 * Math.exp(0.09 * (T - T0)) * dt * (qs - 6e-4))); qs -= d; qg += d; }                               // heavy snow becomes graupel
@@ -536,7 +551,7 @@
             let Ri = 0, Rs = 0, Rg = 0;
             if (qi > 1e-12) { const ni = 5.38e7 * Math.pow(rho * qi, 0.75), di = Math.cbrt(6 * rho * qi / ni / (Math.PI * 500)); Ri = 2 * Math.PI * ni * di * G1 * sm1 / rho; }
             if (qs > 1e-12) { if (!lS) { n0s = n0sOf(T); lS = lamOf(n0s, RHOS, rho, qs); } Rs = 2 * Math.PI * n0s * G1 * sm1 / rho * ventI(VSa, VSb, GS.vent, lS, rho, nu, sc); }
-            if (qg > 1e-12) { if (!lG) lG = lamOf(IPAR.n0g, IPAR.rhog, rho, qg); Rg = 2 * Math.PI * IPAR.n0g * G1 * sm1 / rho * ventI(VGa, VGb, GG.vent, lG, rho, nu, sc); }
+            if (qg > 1e-12) { if (!lG) lG = lamOf(n0G = n0gOf(rho * qg), IPAR.rhog, rho, qg); Rg = 2 * Math.PI * n0G * G1 * sm1 / rho * ventI(VGa, VGb, GG.vent, lG, rho, nu, sc); }
             const R = Ri + Rs + Rg;
             if (sm1 > 0 && R > 0) { const dep = Math.min(R * dt, Math.max(0, (qv - qsi) / gI)); qi += dep * Ri / R; qs += dep * Rs / R; qg += dep * Rg / R; qv -= dep; T += lsK * dep; }
             else if (sm1 < 0 && R < 0) {
@@ -568,6 +583,7 @@
                    base: { thc, thvc, thvw, Mc, Mw, Cc, dthc, rhoc, qvbc, pibc, ubc, vbc, piBar } };
     core.fill = () => { fillAll(S); };
     core.iceParams = IPAR;                      // the ice scheme's settings (n0g, rhog, n0r, evap): the reflectivity reads them
+    core.n0gOf = n0gOf;                         // the graupel's intercept for a content rho q (kg/m3): the reflectivity's too
     core.target = nestOn ? TG : null; core.names = names; core.halo = H; core.driven = drv; core.relaxWidth = RW; core.drag = DR;
     core.getState = () => { const r = { time: core.time, nx, ny, nz, f: {}, precip: precip.slice(), precipS: precipS.slice(), precipG: precipG.slice() }; for (const n of names) r.f[n] = S[n].slice(); return r; };
     core.setState = (r) => {
@@ -582,7 +598,7 @@
     core.zFall = {
       rain: (q, k, o) => q < 1e-12 ? 0 : vZ(VRa, VRb, rhoc[k], TWO ? lamR2(q, S.nr[o]) : lamOf(N0R, RHOW, rhoc[k], q)),
       snow: (q, k, o) => q < 1e-12 ? 0 : vZ(VSa, VSb, rhoc[k], lamOf(n0sOf(temp(o, k)), RHOS, rhoc[k], q)),
-      graupel: (q, k) => q < 1e-12 ? 0 : vZ(VGa, VGb, rhoc[k], lamOf(IPAR.n0g, IPAR.rhog, rhoc[k], q)) };
+      graupel: (q, k) => q < 1e-12 ? 0 : vZ(VGa, VGb, rhoc[k], lamOf(n0gOf(rhoc[k] * q), IPAR.rhog, rhoc[k], q)) };
     core.step = function (dt) {
       for (const n of names) S0[n].set(S[n]);
       for (const f of [1 / 3, 0.5, 1]) {

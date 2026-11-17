@@ -538,9 +538,9 @@
   const runStoryFast = () => 'The real model, 2 km cells in a box 128 km wide that moves with the storm, started in the drawing\'s sounding at the spot you tapped by a warm bubble. The radar opens at once and the frames appear on its slider as they are made: the whole storm takes a few minutes on this device. A storm of 2 km cells is smooth, with no hook.';
   const runStoryFine = (min) => {
     const st = LAB.set || SET_DEF, work = runWork(min, st), q = work >= 120 ? 30 : 5, mins = Math.max(5, Math.round(work / q) * q), first = Math.min(min, st.nestFrom), cells = Math.round(FINE.dx / st.nest);
-    return 'The real model with cells of 1 km, and from the ' + st.nestFrom + 'th minute a second one inside it: cells of ' + cells + ' m over ' + st.nestBox + ' km that stay on the storm, a little to its rear where its hook is, and show its core finely. The radar opens at once and the frames appear on its slider as they are made: the first ' + st.nestFrom + ' minutes in about ' + Math.max(1, Math.round(first * 0.3 / 2) * 2) + ' minutes, then a frame about every minute, <b>' + RP.timeText(mins) + '</b> in all on a fast computer, much longer on a phone. ' +
+    return 'The real model with cells of 1 km, and from the ' + st.nestFrom + 'th minute a second one inside it: cells of ' + cells + ' m over ' + st.nestBox + ' km that stay on the storm\'s rotating updraft, where its hook is, and show its core finely. The radar opens at once and the frames appear on its slider as they are made: the first ' + st.nestFrom + ' minutes in about ' + Math.max(1, Math.round(first * 0.3 / 2) * 2) + ' minutes, then a frame about every minute, <b>' + RP.timeText(mins) + '</b> in all on a fast computer, much longer on a phone. ' +
       (work >= 150 ? 'That is a long run: you can watch it as it goes, and Stop keeps what it has made. ' : '') +
-      (min <= 45 ? 'A hook echo comes late in a storm (the outbreak day\'s, from about the 45th minute), so this run will not have one yet.' : 'You can watch it as it goes, and Stop keeps what it has made. A hook echo comes late in a storm (the outbreak day\'s, from about the 45th minute) and is a faint one at this size of cell (Storms, Tornado outbreak day, Fine run, is a recorded run of the same kind).');
+      (min <= 45 ? 'A hook echo comes late in a storm (the outbreak day\'s, from about the 45th minute), so this run will not have one yet.' : 'You can watch it as it goes, and Stop keeps what it has made. A hook echo comes late in a storm (the outbreak day\'s, from about the 45th minute) and curls round a notch at its south-west end (Storms, Tornado outbreak day, Fine run, is a recorded run of the same kind).');
   };
   /* a run with an initiation zone (src/severe-zone.js): a box that holds the zone and 40 km round it, cells of 2 km, a warm bubble at each place and time the zone's draw gives, the box following no storm, no nest. What it costs is the Fast model's
      (about 1.7 s of work a model minute in an 84 km box, on a fast computer) times the box's area. */
@@ -553,9 +553,9 @@
   function stopRun() { if (LAB.worker) LAB.worker.postMessage({ t: 'cancel', keep: true }); }          // (the model stops at the end of its step, which with the finer model is seconds; the frames it has made stay on the radar)
   function scenarioOf(L, header, name, site0) {                                                              // where the box is on the ground: by the site that `radarFor` gives (the radar itself, or the nearest of all when the radar is a virtual one), the box so that the storm starts at the spot
     /* the storm's own path (its updraft's place with the box's drift: a storm that does not move as Bunkers' estimate says is not where the nominal motion puts it: the dryline day's is 32 km off at 50 minutes): a run is put on the ground by the nominal path's, a pack that is known by its own */
-    const sp = E.spot, S = geo.points.site, best = site0 === undefined ? radarFor(HFSeverePack.stormPath(header)).site : site0, site = { id: S.names[best], lat: S.lat[best], lon: S.lon[best] }, here = G.fromLocal(lat0(), lon0(), sp.x * 1000, sp.y * 1000), l = G.local(site.lat, site.lon, here.lat, here.lon), half = header.nx * header.dx / 2;
+    const sp = E.spot, S = geo.points.site, best = site0 === undefined ? radarFor(HFSeverePack.stormPath(header)).site : site0, site = { id: S.names[best], lat: S.lat[best], lon: S.lon[best] }, here = G.fromLocal(lat0(), lon0(), sp.x * 1000, sp.y * 1000), l = G.local(site.lat, site.lon, here.lat, here.lon), half = header.nx * header.dx / 2, kept = header.lab && header.lab.steer && header.lab.steer.at, hx = kept ? kept[0] : half, hy = kept ? kept[1] : half;      // (the storm starts in the middle of the box, or where a steered box keeps it)
     const mm = Math.round(720 + L.t * 60), tz = here.lon > -85 ? 'EDT' : here.lon > -101 ? 'CDT' : here.lon > -115 ? 'MDT' : 'PDT';
-    return { lat0: site.lat, lon0: site.lon, origin: [Math.round(l.x - half), Math.round(l.y - half)], radar: site.id, clock: String(Math.floor(mm / 60) % 24).padStart(2, '0') + ':' + String(mm % 60).padStart(2, '0'), tz };
+    return { lat0: site.lat, lon0: site.lon, origin: [Math.round(l.x - hx), Math.round(l.y - hy)], radar: site.id, clock: String(Math.floor(mm / 60) % 24).padStart(2, '0') + ':' + String(mm % 60).padStart(2, '0'), tz };
   }
   /* the radar site for a storm path (HFSeverePack.stormPath, in metres from the spot): the nearest to the middle of its mature part that is at least `far.mid` (25 km) from that, at most `far.max` (no limit) from it, `far.path` (15 km) or more from every frame's
      place (not in the cone of silence) and, from the minute `far.from` (20) on, no more than `far.reach` (no limit) from any; the nearest of all if there is none (unless `far.only`: then -1) */
@@ -605,7 +605,7 @@
       const handle = async (m) => {
         if (ended) return;
         if (m.t === 'start') {
-          const nominal = { nx: m.header.nx, ny: m.header.ny, dx: m.header.dx, motion: m.header.motion, times: Array.from({ length: Math.floor(o.minutes / 5) + 1 }, (_, i) => i * 5) }, pick = radarFor(HFSeverePack.stormPath(nominal)), sc = Object.assign(scenarioOf(L, nominal, name, pick.site), pick.virtual ? { virtual: pick.virtual } : {});
+          const nominal = { nx: m.header.nx, ny: m.header.ny, dx: m.header.dx, motion: m.header.motion, lab: m.header.lab, times: Array.from({ length: Math.floor(o.minutes / 5) + 1 }, (_, i) => i * 5) }, pick = radarFor(HFSeverePack.stormPath(nominal)), sc = Object.assign(scenarioOf(L, nominal, name, pick.site), pick.virtual ? { virtual: pick.virtual } : {});
           pack = HFSeverePack.live(Object.assign({}, m.header, { name, scenario: sc })); run = E.lastRun = { pack, spot: Object.assign({}, E.spot), t: L.t, wall: 0, ix: L.ix, scenario: sc, stopped: false, reason: '', maxW: 0 };
         } else if (m.t === 'frame') {
           pack.append({ t: m.time, track: m.track, drift: m.drift, fn: m.fn }, new Uint8Array(m.block)); run.maxW = Math.max(run.maxW, m.wmax);
@@ -621,7 +621,7 @@
       };
       w.onmessage = (ev) => { chain = chain.then(() => handle(ev.data)).catch((e) => fail('Could not show the storm: ' + (e && e.message || e), e)); };
       w.onerror = (e) => fail('The model stopped: ' + (e.message || 'worker error'), new Error(e.message || 'worker error'));
-      w.postMessage({ t: 'run', spec: { env: L.arr, dx: o.dx, box: o.box, dt: o.dt, minutes: o.minutes, frameEvery: o.frameEvery || 5, nz: o.nz || 40, dz: o.dz || 500, bubble: o.bubble, evap: o.evap, drag: o.drag, twoMoment: o.twoMoment, detail: o.detail, seeds: o.seeds, follow: o.follow, window: o.window } });
+      w.postMessage({ t: 'run', spec: { env: L.arr, dx: o.dx, box: o.box, dt: o.dt, minutes: o.minutes, frameEvery: o.frameEvery || 5, nz: o.nz || 40, dz: o.dz || 500, bubble: o.bubble, evap: o.evap, drag: o.drag, twoMoment: o.twoMoment, iceParams: o.iceParams, detail: o.detail, seeds: o.seeds, follow: o.follow, window: o.window, steer: o.steer, sponge: o.sponge } });
     });
   }
   /* the radar the storm's own path asks for, when the one chosen at the start is not it: a storm that went within 15 km of the radar (under it, in its cone of silence) or more than 200 km from it is seen from another, as a radar network hands a storm on */

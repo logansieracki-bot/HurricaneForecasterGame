@@ -40,6 +40,99 @@ const arrays = (nz = 41, dz = 500) => { const z = Array.from({ length: nz }, (_,
     && [up(0, 0, 8000), up(0.5, 0.5, 8000), up(30, 0, 0), up(30, 0, -5)].every((a) => a.map(r0).join() === '0,0'));
 }
 
+/* 1c. The storm a steered box keeps (the pure part; the runs that use it are in 1d): `rotating`, the updraft that turns, found from the core's own winds by the updraft helicity of the levels from 2 to 5 km. */
+{
+  const nx = 40, nz = 14, dx = 2000, dz = 500, mk = () => C.create({ nx, ny: nx, nz, dx, dy: dx, dz, theta: () => 300, bc: { x: 'periodic', y: 'periodic' } });
+  // a storm put in by hand: winds turning as a solid body at `om` (1/s; the vorticity is twice that) within 3.5 cells of the cell (i0, j0), and an updraft of `w` m/s in that cell and of three quarters of it in the eight round it
+  // (a mean of 7 w / 9 over the 3 x 3), from the level k0 to the level k1 (the updraft at the centre of the level above k1 is half of it)
+  const put = (core, i0, j0, om, w, k0 = 4, k1 = 9) => {
+    const S = core.S, idx = core.idx, wr = (d) => d - nx * Math.round(d / nx);
+    for (let k = k0; k <= k1; k++) for (let j = 0; j < nx; j++) for (let i = 0; i < nx; i++) {
+      const o = idx(i, j, k), xu = wr(i - (i0 + 0.5)), yu = wr(j + 0.5 - (j0 + 0.5)), xv = wr(i + 0.5 - (i0 + 0.5)), yv = wr(j - (j0 + 0.5));
+      if (Math.hypot(xu, yu) <= 3.5) S.u[o] += -om * yu * dx;
+      if (Math.hypot(xv, yv) <= 3.5) S.v[o] += om * xv * dx;
+      if (Math.abs(wr(i - i0)) <= 1 && Math.abs(wr(j - j0)) <= 1) { const ww = i === i0 && j === j0 ? w : 0.75 * w; S.w[o] = ww; S.w[idx(i, j, k + 1)] = ww; }
+    }
+    core.fill(); return core;
+  };
+  const cell = (r) => r && [Math.round(r.x / dx - 0.5), Math.round(r.y / dx - 0.5)].join(','), R = (c, o) => L.rotating(c, o), mean = 7 / 9;
+  const one = R(put(mk(), 12, 20, 0.004, 20));
+  check('an updraft of 20 m/s in winds that turn cyclonically (a vorticity of 0.008 /s over the 3 km from 2 to 5 km: an updraft helicity of 7/9 x 20 x 0.008 x 3000 = 373 m2/s2 in the mean of its 3 x 3 cells) is found at its cell (12, 20: ' + cell(one) + '), as a rotating one, with that helicity (' + (one && one.uh.toFixed(1)) + ') and its updraft at 5.25 km (' + (one && one.w) + ' m/s, the half of it that the level has)',
+    one && cell(one) === '12,20' && one.rot === true && one.far === false && near(one.uh, mean * 480, 0.5) && one.w === 10 && near(one.x, 12.5 * dx, 1e-9) && near(one.y, 20.5 * dx, 1e-9));
+  const pair = put(put(mk(), 12, 20, 0.004, 20), 30, 8, -0.006, 35), two = R(pair), anti = R(put(mk(), 30, 8, -0.006, 35));
+  check('of the two halves of a storm that has split, the cyclonic one is kept though the other is the stronger (an anticyclonic updraft of 35 m/s at (30, 8) beside the cyclonic 20 m/s at (12, 20): ' + cell(two) + ', rotating ' + (two && two.rot) + '); an anticyclonic updraft alone is no rotating one, and is found as the strongest updraft (' + cell(anti) + ', rotating ' + (anti && anti.rot) + ', ' + (anti && anti.w) + ' m/s, a helicity of ' + (anti && anti.uh.toFixed(0)) + ')',
+    cell(two) === '12,20' && two.rot === true && cell(anti) === '30,8' && anti.rot === false && anti.w === 17.5 && near(anti.uh, -mean * 35 * 0.012 * 3000, 1));
+  const sink = R(put(mk(), 30, 8, -0.006, -35));
+  check('only an updraft counts: air that sinks while it turns the other way (35 m/s down, anticyclonic: the same product of the two) is no storm (' + sink + ')', sink === null);
+  const weak = put(mk(), 12, 20, 0.0004, 20), w0 = R(weak), w1 = R(weak, { uh: 30 });
+  check('an updraft counts as rotating from a helicity of 50 m2/s2 (one of 37: found as the strongest updraft, rotating ' + (w0 && w0.rot) + ', its helicity ' + (w0 && w0.uh.toFixed(1)) + '), or from `uh` (30: rotating ' + (w1 && w1.rot) + ')', w0 && w0.rot === false && cell(w0) === '12,20' && near(w0.uh, mean * 48, 0.2) && w1.rot === true && cell(w1) === '12,20');
+  const both = put(put(mk(), 8, 8, 0.004, 20), 30, 30, 0.008, 20), nearA = R(both, { at: [8.5 * dx, 9.5 * dx], reach: 20000 }), anyw = R(both), farB = R(both, { at: [19.5 * dx, 19.5 * dx], reach: 6000 });
+  check('it is looked for within `reach` of where it was put last: of two rotating updrafts the weaker one, 2 km from that place, is kept (' + cell(nearA) + ', not far: ' + (nearA && nearA.far) + ') though the other turns twice as fast (with no place given the stronger: ' + cell(anyw) + '); with none within reach the strongest of the whole box is taken and said to be far (' + cell(farB) + ', ' + (farB && farB.far) + ')',
+    cell(nearA) === '8,8' && nearA.far === false && cell(anyw) === '30,30' && cell(farB) === '30,30' && farB.far === true && farB.rot === true);
+  const rim = R(both, { at: [8.5 * dx + 20000, 8.5 * dx], reach: 20000 }), short = R(both, { at: [8.5 * dx + 20000, 8.5 * dx], reach: 19999 });
+  check('the reach is a distance in metres from that place, in the round: the storm\'s own cell exactly 20000 m west of it is within a reach of 20000 (' + cell(rim) + ') and not within one of 19999, which takes the best cell that is, the next one east (' + cell(short) + ', a helicity of ' + (short && short.uh.toFixed(0)) + ' for 253)',
+    cell(rim) === '8,8' && rim.far === false && cell(short) === '9,8' && short.far === false && near(short.uh, 4.75 / 9 * 480, 1));
+  const diag = R(both, { at: [8.5 * dx + 15000, 8.5 * dx + 15000], reach: 20000 });
+  check('a place 15 km east and 15 km north of it is 21.2 km away, out of a reach of 20 km though each of the two is within it (the best cell within reach is another: ' + cell(diag) + ')', diag && cell(diag) !== '8,8' && diag.far === false);
+  const low = R(put(mk(), 12, 20, 0.004, 20, 0, 3)), high = R(put(mk(), 12, 20, 0.004, 20, 10, 12)), part = R(put(mk(), 12, 20, 0.004, 20, 3, 5));
+  check('the helicity is that of the levels from 2 to 5 km and the updraft that of 5.25 km: a storm that turns below 2 km only is nothing (' + low + '), one above 5 km only is an updraft that does not rotate (' + cell(high) + ', ' + (high && high.rot) + ', ' + (high && high.w) + ' m/s), and one from 1.75 to 2.75 km counts with its two levels above 2 km (a helicity of ' + (part && part.uh.toFixed(1)) + ' for 124.4) and has no updraft at 5.25 km (' + (part && part.w) + ')',
+    low === null && cell(high) === '12,20' && high.rot === false && high.w === 20 && part && part.rot === true && near(part.uh, mean * 160, 0.2) && part.w === 0);
+  const edge = R(put(mk(), 39, 0, 0.004, 20), { at: [0.5 * dx, 39.5 * dx], reach: 6000 });
+  check('the box is periodic: a storm at its south-east corner cell (39, 0) is found from a place across both edges, 2.8 km from it (' + cell(edge) + ', far ' + (edge && edge.far) + ')', cell(edge) === '39,0' && edge.far === false);
+  const calm = R(mk()), puff = put(mk(), 5, 5, 0, 6), p0 = R(puff), p1 = R(puff, { w: 2 });
+  check('a box with no updraft has none (' + calm + '), nor has one whose strongest is under 5 m/s at 5.25 km (3 m/s: ' + p0 + ') unless `w` says less (2: ' + cell(p1) + ', ' + (p1 && p1.w) + ' m/s)', calm === null && p0 === null && cell(p1) === '5,5' && p1.rot === false && p1.w === 3);
+  const off = put(mk(), 12, 20, 0.004, 20); { const S = off.S, idx = off.idx, k5 = 10; S.w[idx(14, 20, k5)] = 60; S.w[idx(14, 20, k5 + 1)] = 60; S.w[idx(17, 20, k5)] = 90; S.w[idx(17, 20, k5 + 1)] = 90; off.fill(); }
+  const ro = R(off);
+  check('its updraft is the strongest at 5.25 km within 6 km of the place (60 m/s two cells east of it, not the 90 m/s five cells east: ' + (ro && ro.w) + ' m/s, the place still ' + cell(ro) + ')', ro && ro.w === 60 && cell(ro) === '12,20');
+}
+
+/* 1d. A box that is steered (`steer`, docs/severe-research.md part 7; here, before the long runs, so that a mutant of it is caught early): it keeps the rotating updraft of its storm (`rotating`, 1c) at one place, `lead` metres upshear of its middle; the bubble that starts the storm and the nest are put at that
+      place; `sponge` damps what reaches the sides. Without them a run is what it was. The dryline day's storm at 3 km, as in 7 and 8 below. */
+{
+  const d = globalThis.HFSevereDays.get('dryline'), A = globalThis.HFSevereAnalysis.create(d.drawing), sp = d.spot, env = A.sounding(sp.x, sp.y, sp.t, { dz: 100, top: 20000 }), tb = env.table;
+  const ar = { z: Array.from(tb.z), theta: Array.from(tb.theta), qv: Array.from(tb.qv), u: Array.from(tb.z, (z) => env.uG(z)), v: Array.from(tb.z, (z) => env.vG(z)), p0: 1000, motion: env.motion };
+  const base = { env: ar, dx: 3000, box: 60000, dt: 10, minutes: 30, frameEvery: 5 }, cell = 3000, mid = 30000, whole = (v) => Math.round(v / cell) * cell;
+  const made = [], cores = [], orig = C.create; C.create = (o) => { made.push(o); const c = orig(o); cores.push(c); return c; };
+  const up9 = L.upshear(L.envOf(ar), 9000), at9 = [mid + whole(up9[0]), mid + whole(up9[1])], up12 = L.upshear(L.envOf(ar), 12000), at12 = [mid + whole(up12[0]), mid + whole(up12[1])];
+  let warm = null;                                             // (where the bubble is, read from the core when the run hands its header over, before the first step)
+  const where = (core) => { let b = -1, q = null; for (let j = 0; j < 20; j++) for (let i = 0; i < 20; i++) { const t = core.S.th[core.idx(i, j, 3)]; if (t > b) { b = t; q = [(i + 0.5) * cell, (j + 0.5) * cell]; } } return q; };
+  made.length = 0; cores.length = 0;
+  const st = await L.run(Object.assign({}, base, { steer: { lead: 9000 } }), { start: () => { warm = where(cores[0]); } }), hs = st.header.lab.steer;
+  check('a steered run says so in its header: the lead it was given (9000 m), the helicity that makes an updraft a rotating one (50) and the reach (20000 m) that are the Lab\'s own, and the place the storm is kept, 9000 m upshear of the middle of the box in whole cells (' + JSON.stringify(hs) + ' for ' + at9.join(', ') + ', the shear being ' + up9.map((v) => -Math.round(v)).join(', ') + ' m of it)',
+    hs && hs.lead === 9000 && hs.uh === 50 && hs.reach === 20000 && hs.at.join() === at9.join() && (at9[0] !== mid || at9[1] !== mid) && at9[0] % cell === 0 && at9[1] % cell === 0);
+  check('the bubble that starts the storm is at that place and not in the middle of the box (the warmest cell at 1.75 km before the first step is at ' + (warm && warm.join(', ')) + ' m, within a cell of ' + at9.join(', ') + ')', warm && Math.abs(warm[0] - at9[0]) <= cell && Math.abs(warm[1] - at9[1]) <= cell && Math.hypot(warm[0] - mid, warm[1] - mid) > 4000);
+  const tr = st.header.track, dist = tr.map((t) => Math.round(Math.max(Math.abs(t[0] - at9[0]), Math.abs(t[1] - at9[1])) / cell * 10) / 10), dr = st.header.drift;
+  check('once the storm has an updraft the box is moved to put it back at that place after every frame: the track (the storm the box keeps) is within 2 cells of it at each frame from the 20th minute (cells off, frame by frame: ' + dist.join(', ') + '), the box\'s corner has moved to do it (' + JSON.stringify(dr[dr.length - 1]) + ' m, whole cells) and the track\'s updraft is the storm\'s (' + tr.map((t) => t[2]).join(', ') + ' m/s)',
+    dist.slice(4).every((x) => x <= 2) && (dr[dr.length - 1][0] !== 0 || dr[dr.length - 1][1] !== 0) && dr.every((q) => q[0] % cell === 0 && q[1] % cell === 0) && tr[tr.length - 1][2] >= 15);
+  const non = await L.run(Object.assign({}, base, { follow: false, steer: { lead: 9000 }, seeds: [{ x: at9[0], y: at9[1] }] }), {});
+  const gs = st.header.track.map((t, i) => [t[0] + dr[i][0], t[1] + dr[i][1]]), gn = non.header.track, idxs = gs.map((x, i) => i).filter((i) => st.header.track[i][2] >= 10 && gn[i][2] >= 10), gap = Math.max(...idxs.map((i) => Math.hypot(gs[i][0] - gn[i][0], gs[i][1] - gn[i][1])));
+  check('the storm is where it would be in a box that is never moved (the same bubble at the same place, `follow: false`, which takes no steering: no `steer` in its header (' + (non.header.lab.steer === undefined) + '), no drift): the steered box\'s track plus its corner is that run\'s strongest updraft to within 2 cells at the ' + idxs.length + ' frames with an updraft of 10 m/s in both (the worst ' + Math.round(gap) + ' m)',
+    non.header.lab.steer === undefined && non.header.drift.every((q) => q[0] === 0 && q[1] === 0) && idxs.length >= 3 && gap <= 2 * cell * Math.SQRT2);
+  const spS = P.stormPath(st.header), h0 = Object.assign({}, st.header, { lab: Object.assign({}, st.header.lab, { steer: undefined }) }), sp0 = P.stormPath(h0), mo9 = st.header.motion, k9 = st.header.times.length - 1, q9 = st.header.track[k9], d9 = st.header.drift[k9];
+  check('the storm\'s path over the ground starts from the place the box keeps it at, where its bubble is (the first point ' + spS.pts[0].x + ', ' + spS.pts[0].y + '; at the end ' + Math.round(spS.pts[k9].x) + ', ' + Math.round(spS.pts[k9].y) + ' m: the motion, the drift and the track less the place), where read from the middle of the box it would be ' + Math.round(sp0.pts[k9].x - spS.pts[k9].x) + ', ' + Math.round(sp0.pts[k9].y - spS.pts[k9].y) + ' m off',
+    spS.pts[0].x === 0 && spS.pts[0].y === 0 && near(spS.pts[k9].x, mo9.u * 60 * st.header.times[k9] + d9[0] + q9[0] - at9[0], 1e-6) && near(spS.pts[k9].y, mo9.v * 60 * st.header.times[k9] + d9[1] + q9[1] - at9[1], 1e-6) && near(sp0.pts[k9].x - spS.pts[k9].x, at9[0] - mid, 1e-6) && near(sp0.pts[k9].y - spS.pts[k9].y, at9[1] - mid, 1e-6) && at9[0] !== at9[1]);
+  const dfl = await L.run(Object.assign({}, base, { minutes: 1, frameEvery: 1, steer: true }), {}), big = await L.run({ env: ar, dx: 6000, box: 192000, nz: 20, dz: 1000, dt: 30, minutes: 0.5, steer: true }, {});
+  check('`steer: true` takes the Lab\'s own lead, a fifth of the box (12000 m of 60 km: the place ' + JSON.stringify(dfl.header.lab.steer.at) + ' for ' + at12.join(', ') + ') and no more than 24 km (a box of 192 km: ' + big.header.lab.steer.lead + ' m)', dfl.header.lab.steer.lead === 12000 && dfl.header.lab.steer.at.join() === at12.join() && big.header.lab.steer.lead === 24000);
+  made.length = 0;
+  const DET = { dx: 1000, box: 18000, from: 15, ztop: 6000, every: 5 }, fnOf = (r) => r.header.fn[r.header.fn.length - 1][0].slice(1), b20 = Object.assign({}, base, { minutes: 20 });
+  const sn = await L.run(Object.assign({}, b20, { steer: { lead: 9000 }, detail: DET }), {}), su = await L.run(Object.assign({}, b20, { steer: { lead: 9000 }, detail: Object.assign({}, DET, { upshear: 6000 }) }), {}), so = await L.run(Object.assign({}, b20, { steer: { lead: 9000 }, detail: Object.assign({}, DET, { offset: [3000, -3000] }) }), {});
+  const up6 = L.upshear(L.envOf(ar), 6000);
+  check('the nest of a steered run is on the place the storm is kept, its middle there (its corner at ' + fnOf(sn).join(', ') + ' for ' + (at9[0] - 9000) + ', ' + (at9[1] - 9000) + ', and the header says how far that is from the middle of the box: ' + JSON.stringify(sn.header.lab.detail.offset) + '), unless it is told where: `upshear` (6000: ' + fnOf(su).join(', ') + ') and `offset` (3000, -3000: ' + fnOf(so).join(', ') + ') are from the middle of the box as they were',
+    fnOf(sn).join() === [at9[0] - 9000, at9[1] - 9000].join() && JSON.stringify(sn.header.lab.detail.offset) === JSON.stringify([at9[0] - mid, at9[1] - mid]) && fnOf(su).join() === [21000 + whole(up6[0]), 21000 + whole(up6[1])].join() && fnOf(so).join() === '24000,18000' && fnOf(sn).join() !== fnOf(su).join());
+  made.length = 0;
+  const sp6 = await L.run(Object.assign({}, b20, { minutes: 16, sponge: 6000, detail: DET }), {}), boxO = made[0], nestO = made[1];
+  check('`sponge` (6000 m) is a damping of the box\'s sides over that width at 0.02 /s beside the Rayleigh layer under its lid (' + JSON.stringify(boxO && boxO.damp) + '), the header says it (' + sp6.header.lab.sponge + '), and the nest, which is driven at its sides, has none (' + JSON.stringify(nestO && nestO.damp) + ')',
+    boxO && JSON.stringify(boxO.damp) === JSON.stringify({ top: { depth: 5000, rate: 0.003 }, lateral: { width: 6000, rate: 0.02 } }) && sp6.header.lab.sponge === 6000 && nestO && JSON.stringify(nestO.damp) === JSON.stringify({ top: { depth: 5000, rate: 0.003 } }) && nestO.bc.x === 'driven');
+  made.length = 0;
+  const plain = await L.run(Object.assign({}, base, { minutes: 1, frameEvery: 1 }), {}), zero = await L.run(Object.assign({}, base, { minutes: 1, frameEvery: 1, sponge: 0, steer: false }), {});
+  check('a run with neither is what it was: no sponge in the model (' + JSON.stringify(made[0].damp) + '), nothing of them in the header (' + ('steer' in plain.header.lab) + ', ' + ('sponge' in plain.header.lab) + '; with `sponge: 0` and `steer: false` the same: ' + ('steer' in zero.header.lab) + ', ' + ('sponge' in zero.header.lab) + '), and the bubble in the middle of the box',
+    JSON.stringify(made[0].damp) === JSON.stringify({ top: { depth: 5000, rate: 0.003 } }) && !('steer' in plain.header.lab) && !('sponge' in plain.header.lab) && !('steer' in zero.header.lab) && !('sponge' in zero.header.lab) && JSON.stringify(made[1].damp) === JSON.stringify(made[0].damp));
+  const swin = await L.run(Object.assign({}, base, { minutes: 20, window: 36000, steer: { lead: 9000 } }), {}), tw = swin.header.track[swin.header.track.length - 1], aw = swin.header.lab.steer.at;
+  check('with a window the place and the track are the window\'s (the box\'s less the window\'s corner, 12000 m: the place ' + JSON.stringify(aw) + ' for ' + (at9[0] - 12000) + ', ' + (at9[1] - 12000) + '; the track of the last frame within 2 cells of it: ' + JSON.stringify(tw.slice(0, 2)) + ')',
+    aw.join() === [at9[0] - 12000, at9[1] - 12000].join() && Math.max(Math.abs(tw[0] - aw[0]), Math.abs(tw[1] - aw[1])) <= 2 * cell);
+  C.create = orig;
+}
+
 /* 2. The bubble: a cosine squared of 10 km by 10 km by 1.5 km, centred at 1.5 km, 3 K. */
 {
   const b = (x, y, z, d) => L.bubble(x, y, z, 42000, 42000, d);
@@ -120,8 +213,8 @@ const arrays = (nz = 41, dz = 500) => { const z = Array.from({ length: nz }, (_,
   const tm = await L.run({ env: a, dx: 6000, box: 48000, nz: 20, dz: 1000, dt: 30, minutes: 0.2, evap: 0.3, twoMoment: true, iceParams: { n0r: 4e6, xrMax: 3e-6 } }, {}); C.create = orig;
   check('the ice scheme\'s own settings can be given to a run (`iceParams` win over the Lab\'s: the rain\'s intercept 4e6 and the largest drop 3e-6 kg here, the graupel\'s and the evaporation are the run\'s) and `twoMoment` gives the core the rain\'s drop number as a variable and says so in the header (' + JSON.stringify(tm.header.lab) + '), where a run that does not ask has neither (' + one.iceParams.twoMoment + ', ' + oneCore.names.length + ' variables against ' + tmCore.names.length + ')',
     made.iceParams.n0r === 4e6 && made.iceParams.xrMax === 3e-6 && made.iceParams.n0g === 4e6 && made.iceParams.rhog === 400 && made.iceParams.evap === 0.3 && made.iceParams.twoMoment === true
-    && tmCore.names.indexOf('nr') >= 0 && oneCore.names.indexOf('nr') < 0 && tmCore.names.length === oneCore.names.length + 1 && one.iceParams.twoMoment === false && one.iceParams.xrMax === undefined
-    && JSON.stringify(tm.header.lab) === '{"evap":0.3,"bubble":3,"dt":30,"minutes":0.2,"follow":true,"drag":0.1,"twoMoment":true}');
+    && JSON.stringify(tm.header.lab.ice) === JSON.stringify({ n0r: 4e6, xrMax: 3e-6 }) && !('ice' in v1.header.lab) && tmCore.names.indexOf('nr') >= 0 && oneCore.names.indexOf('nr') < 0 && tmCore.names.length === oneCore.names.length + 1 && one.iceParams.twoMoment === false && one.iceParams.xrMax === undefined
+    && JSON.stringify(tm.header.lab) === '{"evap":0.3,"bubble":3,"dt":30,"minutes":0.2,"follow":true,"drag":0.1,"twoMoment":true,"ice":{"n0r":4000000,"xrMax":0.000003}}');
   const five = await L.run(Object.assign({}, spec, { minutes: 7, frameEvery: 5, dt: 10 }), {});
   check('frames come every `frameEvery` minutes (5: at ' + five.header.times.join(' and ') + ' of a 7 minute run)', JSON.stringify(five.header.times) === '[0,5]');
   let asked = 0; const c = await L.run(Object.assign({}, spec, { minutes: 30 }), { yield: async () => { await new Promise((res) => setTimeout(res, 0)); }, cancelled: () => ++asked >= 1 });
@@ -512,7 +605,6 @@ const arrays = (nz = 41, dz = 500) => { const z = Array.from({ length: nz }, (_,
     check('a nest that blows up on its own (the box is fine) stops the run at the next frame with a reason and the frames before it (' + bl.stopped + ', "' + bl.reason + '", ' + bl.frames.length + ' frames)', bl.stopped && /blew up at 15\.0 min/.test(bl.reason) && bl.frames.length === 3);
   }
 }
-
 
 console.log('\n' + passed + ' passed, ' + failed + ' failed (' + ((Date.now() - t0) / 1000).toFixed(1) + ' s)');
 process.exit(failed ? 1 : 0);

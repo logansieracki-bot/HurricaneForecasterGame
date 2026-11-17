@@ -19,11 +19,11 @@
     metric: { name: 'Kilometres and m/s', speed: 'm/s', k: 1, dist: 'km', m: 1000 } };
   const LS = 'hf-severe-v1';
   /* the storms the page can show: the recorded 1 km storm is inside the page, the others are files beside it (severe-packs/, made by tools/severe_research/make_nest_pack.mjs) that are fetched when they are asked for;
-     t: the minute the page opens it at, zoom: how close, focus: where to look, km east and north of the middle of the nest (of the strongest updraft in a pack with none: the hook of the outbreak storm at minute 50 is 4 km west and 4 km south of the nest's middle), panes: the products of its panes, interval: the minutes between the frames it plays, mb: the size of the file (the menu says it) */
+     t: the minute the page opens it at, zoom: how close, focus: where to look, km east and north of the middle of the nest (of the strongest updraft in a pack with none: the hook of the outbreak storm at minute 72 is 4 km west and 1 km north of the nest's middle, which is on its rotating updraft), panes: the products of its panes, interval: the minutes between the frames it plays, mb: the size of the file (the menu says it) */
   const STORMS = [
     { id: 'wk82-1km', name: 'Supercell, 1 km grid', sub: 'Recorded · smooth rotation · a frame every 5 minutes' },
     { id: 'wk82-100m', name: 'Supercell, 100 m nest', sub: 'Recorded · a notch and a tight couplet · a frame every minute', file: 'severe-packs/wk82-100m-nest.hfp', mb: 10, t: 79, zoom: 11.3, panes: ['dbz', 'vel'], interval: 1 },
-    { id: 'outbreak-500m', name: 'Tornado outbreak day, Fine run', sub: 'Recorded · the Fine run of the outbreak day: a nest of 500 m, a hook of echo at minute 50 · a frame every minute', file: 'severe-packs/outbreak-500m.hfp', mb: 16, t: 50, zoom: 11, focus: [-4, -4], panes: ['dbz', 'vel'], interval: 1 },
+    { id: 'outbreak-500m', name: 'Tornado outbreak day, Fine run', sub: 'Recorded · the Fine run of the outbreak day: one supercell for two hours, a nest of 500 m, a hook at minute 72 · a frame every minute', file: 'severe-packs/outbreak-500m.hfp', mb: 19, t: 72, zoom: 11, focus: [-4, 1], panes: ['dbz', 'vel'], interval: 1 },
   ];
 
   /* ---- state ---- */
@@ -75,11 +75,14 @@
   /* ---- sweeps: what to scan, the cache, and who waits for what ---- */
   const cache = new Map(), pending = new Map();
   const quickOf = () => S.dragging || S.res === 'legacy';
+  /* the strength of the clear air's return (insects and birds in the boundary layer): 0.4 of the operator's own, 4 dB under it, -2 dBZ at the antenna, a dull day's (KTLX's and KSGF's storm-mode scans: -5 to +2 dBZ, docs/severe-research.md part 3).
+     The operator's +2 dBZ, a summer day of insects as KOAX's, laid a sea of teal over everything within 70 km, and a storm's anvil, which fades through the same 5 to 15 dBZ, was lost in it: it ends now in the dark, as the user's pictures do (1.60A) */
+  const CLEAR_AIR = 0.4;
   const keyOf = (frame, tilt, radar, quick) => [frame, TILTS[tilt], quick ? 'L' : 'S', radar.lat.toFixed(4), radar.lon.toFixed(4), S.dealias ? 1 : 0, S.clutter ? 1 : 0].join('|');
   /* the scan's options: 16 independent samples of the echo's speckle in a gate (a spread of 4.34 / sqrt(16) = 1.1 dB, as a real radar's average of many pulses has; the operator's own default of 2 is 3.1 dB, a grain that hides the shape of a storm), and the echo fades out over 5 to 15 km at the edge of the model's box, where the model has nothing beyond and an echo that goes on would be cut dead straight */
   function optsOf(frame, tilt, radar, quick) {
     const rb = pack.radarBox(pack.times[frame], radar.lat, radar.lon), geom = quick ? { dAz: 1, gate: 1000, nGates: 230, r0: 2500 } : { dAz: 0.5, gate: 250, nGates: 920, r0: 2125 };
-    return Object.assign(geom, { elev: TILTS[tilt], x: rb.x, y: rb.y, seed: 1 + frame * 131 + tilt, n: 16, edge: 10000, dealias: S.dealias, clutter: { ground: S.clutter ? 1 : 0, clearAir: S.clutter ? 1 : 0 } });
+    return Object.assign(geom, { elev: TILTS[tilt], x: rb.x, y: rb.y, seed: 1 + frame * 131 + tilt, n: 16, edge: 10000, dealias: S.dealias, clutter: { ground: S.clutter ? 1 : 0, clearAir: S.clutter ? CLEAR_AIR : 0 } });
   }
   function want(frame, tilt, radar, prio, quick) {                            // a promise of the sweep (from the cache if it is there)
     const key = keyOf(frame, tilt, radar, quick); if (cache.has(key)) return Promise.resolve(cache.get(key));
@@ -351,7 +354,7 @@
   }
 
   /* ---- another storm: the page plays the pack it is given (the Lab's, or a file's) ---- */
-  const focusOf = (p, i) => { const h = p.h, f = h.nests && h.fn && h.fn[i]; if (f && f.length) { const nh = h.nests[f[0][0]]; return [f[0][1] + nh.nx * nh.dx / 2, f[0][2] + nh.ny * nh.dx / 2]; } const q = p.track[i]; return p.live && q[2] < 5 ? [p.nx * p.dx / 2, p.ny * p.dx / 2] : q; };      // (a run's first frames have no storm yet: the middle of the box, where its bubble is)      // where to look: the middle of the first nest of the frame, else the strongest updraft
+  const focusOf = (p, i) => { const h = p.h, f = h.nests && h.fn && h.fn[i]; if (f && f.length) { const nh = h.nests[f[0][0]]; return [f[0][1] + nh.nx * nh.dx / 2, f[0][2] + nh.ny * nh.dx / 2]; } const q = p.track[i]; return p.live && q[2] < 5 ? (h.lab && h.lab.steer && h.lab.steer.at ? h.lab.steer.at.slice() : [p.nx * p.dx / 2, p.ny * p.dx / 2]) : q; };      // (a run's first frames have no storm yet: where its bubble is, the middle of the box or the place a steered box keeps its storm at)      // where to look: the middle of the first nest of the frame, else the strongest updraft
   async function setPack(p, o) {
     o = o || {}; setPlaying(false); if ((o.id || 'run') === 'run') runPack = p;
     S.live = liveRun && liveRun.pack === p && !liveRun.done ? liveRun : null; S.follow = !!S.live;
@@ -472,7 +475,7 @@
   }
 
   const api = { S, TILTS, SPEEDS, PRODUCTS, STORMS, toast, setPack, showStorm, fetchBytes, get runPack() { return runPack; }, get panes() { return panes; }, get pack() { return pack; }, get geo() { return geo; }, get cache() { return cache; }, get scanner() { return scanner; }, ready: false,
-    setT, step, setPlaying, setPaneCount, setTheme, setTool, setProduct, setTilt, setRadar, frames, keyOf, probeAt, tapPane, refresh, UNITS, siteInfo, tRange, live: { begin: liveBegin, frame: liveFrame, progress: liveProgress, end: liveEnd },
+    setT, step, setPlaying, setPaneCount, setTheme, setTool, setProduct, setTilt, setRadar, frames, keyOf, optsOf, CLEAR_AIR, probeAt, tapPane, refresh, UNITS, siteInfo, tRange, live: { begin: liveBegin, frame: liveFrame, progress: liveProgress, end: liveEnd },
     async whenIdle() { for (let i = 0; i < 600; i++) { if (!scanner.busy() && !panes.some((p) => p.busy)) { await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))); if (!scanner.busy() && !panes.some((p) => p.busy)) return true; } await new Promise((r) => setTimeout(r, 50)); } return false; } };
   window.SEVERE = api;
   boot().catch((e) => { console.error(e); toast('The radar could not start: ' + e.message, 12000); window.SEVERE.error = String(e && e.stack || e); });

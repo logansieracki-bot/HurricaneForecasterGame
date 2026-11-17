@@ -56,8 +56,8 @@
      the middle of its mature part, which is where a radar is to look: the frames from 20 to 70 minutes whose updraft is 15 m/s or more (else all the frames with such an updraft, else all of them). A header with no
      track gives the path of the uniform motion. */
   function stormPath(h) {
-    const mo = h.motion || { u: 0, v: 0 }, half = h.nx * h.dx / 2, tr = h.track || [], dr = h.drift || null;
-    const pts = h.times.map((t, i) => { const q = tr[i], d = dr ? dr[i] : [0, 0], at = q && q[2] >= 5 ? q : [half, half, q ? q[2] : 0]; return { t, x: mo.u * 60 * t + d[0] + at[0] - half, y: mo.v * 60 * t + d[1] + at[1] - half, w: at[2] }; });
+    const mo = h.motion || { u: 0, v: 0 }, half = h.nx * h.dx / 2, kept = h.lab && h.lab.steer && h.lab.steer.at, hx = kept ? kept[0] : half, hy = kept ? kept[1] : half, tr = h.track || [], dr = h.drift || null;      // (a steered box starts and keeps its storm at `lab.steer.at`, not in its middle: the path is from there)
+    const pts = h.times.map((t, i) => { const q = tr[i], d = dr ? dr[i] : [0, 0], at = q && q[2] >= 5 ? q : [hx, hy, q ? q[2] : 0]; return { t, x: mo.u * 60 * t + d[0] + at[0] - hx, y: mo.v * 60 * t + d[1] + at[1] - hy, w: at[2] }; });
     let use = pts.filter((p) => p.t >= 20 && p.t <= 70 && p.w >= 15); if (!use.length) use = pts.filter((p) => p.w >= 15); if (!use.length) use = pts;
     const n = use.length;
     return { pts, mid: { x: n ? use.reduce((a, p) => a + p.x, 0) / n : 0, y: n ? use.reduce((a, p) => a + p.y, 0) / n : 0, n } };
